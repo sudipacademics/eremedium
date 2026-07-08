@@ -1,0 +1,420 @@
+Test Name,Inferred FOCO Rate,Patient MRP,Method
+24 Hrs. Urine Metanephrine,2000,2400.0,market:endocrine
+Abdominoperineal Resection,2500,3000.0,market:histopath-large
+Adenosine Deaminase Activity - Mtb ( Ada - Mtb ),750.0,900.0,market:default
+Adequacy Test For Capd Fluid,400,480.0,market:fluid
+"Afp (Alpha Fetoprotein), Tumor Marker",1000,1200.0,market:marker
+Aldehyde Chopra Test For Kala Azar,750.0,900.0,market:default
+"Aldosterone/Pra Ratio, Serum",2000,2400.0,market:endocrine
+Allergy Food Panel -Vegetarian 12 Parameters,2500,3000.0,market:allergy-panel
+Allergy Food Panel- Vegetarian+ Non-Vegetarian 22 Parameters,2500,3000.0,market:allergy-panel
+Allergy Food Panel-Non Vegetarian,2500,3000.0,market:allergy-panel
+Allergy Panel - Food Vegetarian And Nonvegetarian Panel,2500,3000.0,market:allergy-panel
+"Allergy Panel - Food Vegetarians (Cow Milk, Lemon, Pineapple, Peanut, Potato, Wheat, Rice,Soyabean,",2500,3000.0,market:allergy-panel
+Allergy Panel-Adult 25 Parameters,2500,3000.0,market:allergy-panel
+Allergy Panel-Respiratory(Asthma),2500,3000.0,market:allergy-panel
+"Ammonia, Blood",800.0,960.0,sheet:sibling
+"Amphetamine Screen, Urine",1000,1200.0,market:drug-screen
+Ana By Ifa With Titre,1200,1440.0,market:serology
+"Ana/Anf (Anti Nuclear Antibody/Factor), Ifa",750.0,900.0,sheet:sibling
+"Ana/Anf (Anti Nuclear Antibody/Factor), Immunoblot 15 Antigens",1200,1440.0,market:serology
+"Ana/Anf (Anti Nuclear Antibody/Factor), Immunoblot 17 Antigens",1200,1440.0,market:serology
+"Angiotensin Converting Enzyme; Ace, Csf",1452.0,1742.4,sheet:sibling
+Anterior Resection,2500,3000.0,market:histopath-large
+Anti Beta-2-Glycoprotein Antibodies (Igg And Igm),1200,1440.0,market:serology
+Anti Beta-2-Glycoprotein Antibodies (Igg),1200,1440.0,market:serology
+Anti Beta-2-Glycoprotein Antibodies (Igm),1200,1440.0,market:serology
+Anti Cardiolipin Antibody - Iga,1200,1440.0,market:serology
+Anti Cardiolipin Antibody - Igg,1200,1440.0,market:serology
+Anti Cardiolipin Antibody - Igm,1200,1440.0,market:serology
+Anti D Titre,1200,1440.0,market:serology
+Anti Diuretic Hormone (Adh) / Vasopressin,2000,2400.0,market:endocrine
+Anti Ds Dna - Ifa With Titre,1200,1440.0,market:serology
+Anti Ds-Dna,1650.0,1980.0,sheet:sibling
+Anti Ds-Dna - With Titre,1200,1440.0,market:serology
+Anti Hepatitis B Surface Antigen (Hbsag) Total,1000,1200.0,market:marker
+Anti Hepatitis B Virus Core Antibody Igm,1200,1440.0,market:serology
+"Anti Lkm (Liver Kidney Microsomal) Antibodies, Eia",1200,1440.0,market:serology
+Anti Lkm Antibody,1200,1440.0,market:serology
+"Anti Mitochondrial Antibodies, Ama",1200,1440.0,market:serology
+Anti Mitochondrial Antibody,1200,1440.0,market:serology
+Anti Musk Antibody (Myasthenia Gravis),1200,1440.0,market:serology
+Anti Nmo Antibody,1200,1440.0,market:serology
+Anti Phospholipid Antibodies (Igg & Igm),825.0,990.0,sheet:sibling
+Anti Smooth Muscle Antibody (Asma) Screen - Ifa,1200,1440.0,market:serology
+Anti Ssa (Ro) Igg (Elisa),1200,1440.0,market:serology
+Anti Ssb (La) Igg (Elisa),1200,1440.0,market:serology
+"Apa-Igg Phospholipid Antibody, Serum",1200,1440.0,market:serology
+"Apa-Igm Phospholipid Antibody, Serum",1200,1440.0,market:serology
+Apolipoprotein,750.0,900.0,market:default
+Ascitic Fluid Examination,400,480.0,market:fluid
+"Asma , Smooth Muscle Antibody",1200,1440.0,market:serology
+"Asma , Smooth Muscle Antibody Ifa",1200,1440.0,market:serology
+Atopic Allergy Panel,2500,3000.0,market:allergy-panel
+"Barbiturate Screen, Qualitative, Urine Spot",1000,1200.0,market:drug-screen
+"Benzodiaepine Screen, Qualitative, Urine Spot",1000,1200.0,market:drug-screen
+Beta 2 Microglobulin,750.0,900.0,market:default
+"Beta 2 Microglobulin, Serum",750.0,900.0,market:default
+Beta Thalassemia Mutation Detection - Blood (7 Common Mutations),3500,4200.0,market:molecular
+Beta Thalassemia Screening,750.0,900.0,market:default
+"Beta Thalassemia, Beta Globin (Hbb) Gene Sequencing",3500,4200.0,market:molecular
+Bilateral Neck Dissection,2500,3000.0,market:histopath-large
+Bilateral Orchidectomy,2500,3000.0,market:histopath-large
+Bile Salt And Pigments - Urine,250,300.0,market:urine-chemistry
+"Bile Salts & Pigments, Urine",250,300.0,market:urine-chemistry
+"Bilirubin, Fluid",200.0,240.0,sheet:sibling
+Biological Indicator,750.0,900.0,market:default
+Biopsy From Ca Penis,1200,1440.0,market:histopath-biopsy
+Bladder Mucosal Biopsy,1200,1440.0,market:histopath-biopsy
+Bnp-B Type Natriuretic Peptide,750.0,900.0,market:default
+Bone Marrow Aspiration Cytology,600,720.0,market:cytology
+Bone Tomor Radical Excision,1200,1440.0,market:histopath-biopsy
+Bronchoscopic Biopsy,1200,1440.0,market:histopath-biopsy
+Brucella Agglutination Test,750.0,900.0,market:default
+Brucella Antibodies Igg & Igm,1200,1440.0,market:serology
+Buccal/Tongue Biopsies,1200,1440.0,market:histopath-biopsy
+Buffy Coat Smear,750.0,900.0,market:default
+Bursa Excision,1200,1440.0,market:histopath-biopsy
+Calcium Profile (Includes Calcium Total & Ionized),250,300.0,market:chemistry
+CALCIUM random URINE,300.0,360.0,sheet:sibling
+"Calcium, Random Urine",300.0,360.0,sheet:sibling
+"Calcium/Creatinine, Random Urine",250,300.0,market:urine-chemistry
+"C-Anca/Anca- Pr3 (Serin Proteinase 3 Antibodies), Eia",1200,1440.0,market:serology
+"Cannabis Marijuana-Delta 9-Thc Metabolites, Urine",1000,1200.0,market:drug-screen
+Capd Fluid Examintion,400,480.0,market:fluid
+"Carbamazepine, Tegretol",750.0,900.0,market:default
+"Catecholamines, 24Hrs Urine",250,300.0,market:urine-chemistry
+"Catecholamines, Plasma",6200.0,7440.0,sheet:sibling
+Ceruloplasmin(Copper Oxidase),1350.0,1620.0,sheet:sibling
+Cervical Smear,600,720.0,market:cytology
+Chlamydia Trachomatis Igm Antibody,1200,1440.0,market:serology
+Cholinesterase,750.0,900.0,market:default
+Chromosomal Study - Tissue,750.0,900.0,market:default
+Colonic Biopsy,1200,1440.0,market:histopath-biopsy
+"Coombs Test- Direct , Direct Antiglobulin Test (Dat)",750.0,900.0,market:default
+"Coombs Test- Indirect, Indirect Antiglobulin Test (Iat)",750.0,900.0,market:default
+Cryptococcal Antigen,1000,1200.0,market:marker
+"Cryptococcus Antigen, Rapid",1000,1200.0,market:marker
+Culture & Sensitivity,420.0,504.0,sheet:sibling
+CULTURE AND SENSITIVITY VITEK,500,600.0,market:culture
+Culture Icu,500,600.0,market:culture
+Culture Ot,500,600.0,market:culture
+Culture Sensitivity-Body Fluid,500,600.0,market:culture
+Culture Sensitivity-Semen (No-Growth),500,600.0,market:culture
+Culture Sensitivity-Stool (No-Growth),420.0,504.0,sheet:sibling
+Culture Sensitivity-Urine (No-Growth),420.0,504.0,sheet:sibling
+"Cytological Examination, Body Fluid",400,480.0,market:fluid
+"Cytology (Pap Smear) Conventional, Genital -Female",600,720.0,market:cytology
+"Cytology (Pap Smear) Liquid Based, Genital -Female",600,720.0,market:cytology
+"Cytology Examination, Body Fluids",600,720.0,market:cytology
+"Cytology, Fine Needle Aspiration(Fnac)",600,720.0,market:cytology
+Cytomegalovirus(Cmv) Antibodies Panel Igg & Igm,1200,1440.0,market:serology
+Debridement Tissue,1200,1440.0,market:histopath-biopsy
+"Dengue Antibody, Ns1(Rapid)",800.0,960.0,sheet:sibling
+Dengue Igg Antibody (Card Test),1200,1440.0,market:serology
+Dengue Ns1 Antigen (Card Test),1000,1200.0,market:marker
+"Dhea, Dehydroepiandrosterone",750.0,900.0,market:default
+Direct Renin,2000,2400.0,market:endocrine
+Double Marker Graph,1000,1200.0,market:marker
+Drug Abuse Panel-6,1000,1200.0,market:drug-screen
+Drug Of Abuse Panel -1,1000,1200.0,market:drug-screen
+E.Histolytica Antigen Detection,1000,1200.0,market:marker
+E.Histolytica Wet Mount Liver Abscess For Amoebic Trophozoites,750.0,900.0,market:default
+Ear Lesion,1200,1440.0,market:histopath-biopsy
+Echinococcus Antibody Igg (Hydatid Serology),1200,1440.0,market:serology
+Elisa - Dengue Combicheck,750.0,900.0,market:default
+Endometrium Tb Pcr,3500,4200.0,market:molecular
+Endometrium With Cervix,1200,1440.0,market:histopath-biopsy
+Entamoeba Histolytica Antibody (Igg)-Amoebiasis,1200,1440.0,market:serology
+"Epo, Erythropoeitin",2000,2400.0,market:endocrine
+Epstein Barr Viral Capsid Antigen - Igg,1200,1440.0,market:serology
+Epstein Barr Viral Capsid Antigen - Igm,1200,1440.0,market:serology
+Epstein Barr Virus (Nuclear Antigen) - Igg Antibodies,1200,1440.0,market:serology
+Epstein Barr Virus (Vca) - Igg Antibodies,1200,1440.0,market:serology
+Epstein Barr Virus (Vca) - Igm Antibodies,1200,1440.0,market:serology
+Epstein Barr Virus (Vcm+Vcg+Nuclear Ag) - Antibodies,1200,1440.0,market:serology
+Er Pr Her2,1500,1800.0,market:ihc
+Esophageal Biopsy,1200,1440.0,market:histopath-biopsy
+Fistula In Ano Excision,1200,1440.0,market:histopath-biopsy
+"Flow Cytometry, Kappa & Lambda Light Chains 3 **",3000,3600.0,market:flow-cytometry
+Flowcytometry - Cd55 & Cd 59,3000,3600.0,market:flow-cytometry
+Flowcytometry - Cd59,3000,3600.0,market:flow-cytometry
+Fluid Examination - Routine,400,480.0,market:fluid
+Fluid Examination Report,400,480.0,market:fluid
+Fluid For Afb Stain,400,480.0,market:fluid
+Fnac Reporting,600,720.0,market:cytology
+Fragile X (Fmr1) Mutation Screen,3500,4200.0,market:molecular
+Free T3 ( Tri-Iodothyronine - Free ),400,480.0,market:thyroid
+"Free T3, Free Tri-Iodothyronine",400,480.0,market:thyroid
+"Free T4, Free Thyroxine",400,480.0,market:thyroid
+"Fructose, Semen",750.0,900.0,market:default
+Fungal Culture & Sensitivity,500,600.0,market:culture
+Fungal Stain,750.0,900.0,market:default
+Fungus Culture,500,600.0,market:culture
+Fungus Routine (Koh Mount),750.0,900.0,market:default
+Gad Antibody,1200,1440.0,market:serology
+Gastric Or Duodenal Biopsy,1200,1440.0,market:histopath-biopsy
+Gene Expert Plus Mtb/Rif,750.0,900.0,market:default
+Gfr (Glomerular Filtration Rate),750.0,900.0,market:default
+Gilbert'S Syndrome Gene Sequencing (Ugt1A1 Gene Polymorphism),3500,4200.0,market:molecular
+Glucose Challenge Test (Pg 1 Hr After 75 Gms Of Glucose),750.0,900.0,market:default
+"Glucose Challenge Test(Gct), Pregnancy 75Gm Glucose",750.0,900.0,market:default
+Glucose Challenge Test(Gct); Glucose 1Hr Obstetrical,750.0,900.0,market:default
+"Glucose Tolerance Test(Gtt), Pregnancy 100Gm Glucose",750.0,900.0,market:default
+"Glucose Tolerance Test(Gtt), Pregnancy 75Gm Glucose",750.0,900.0,market:default
+Gram Stain Report,250.0,300.0,sheet:sibling
+Graph,750.0,900.0,market:default
+H.Pylori Antibodies Lga,1200,1440.0,market:serology
+H.Pylori Antibodies Lga And Igm,1200,1440.0,market:serology
+H.Pylori Antibodies Lgm,1200,1440.0,market:serology
+H.Pylori Antigen,1000,1200.0,market:marker
+Hanging Drop Preparation -Vibrio Cholerae,750.0,900.0,market:default
+Hb-H,750.0,900.0,market:default
+"Hcg Beta Total(Beta-Hcg), Maternal",750.0,900.0,market:default
+"Hcg Beta Total(Beta-Hcg), Tumor Marker",1000,1200.0,market:marker
+"He4, Human Epididymis Protein 4, Roma Index",250,300.0,market:chemistry
+Heinz Body Preparation,750.0,900.0,market:default
+"Helicobacter Pylori (H. Pylori)Antibodies Panel, Igg &Iga",1200,1440.0,market:serology
+"Helicobacter Pylori(H.Pylori) Antigen , Stool",1000,1200.0,market:marker
+Hemia Sac With Its Content,1200,1440.0,market:histopath-biopsy
+Hemicolectomy,750.0,900.0,market:default
+Hemorrhoidectomy,750.0,900.0,market:default
+"Hemosiderin, Urine",250,300.0,market:urine-chemistry
+"Hepatitis B Core Antibody (Anti-Hbc), Total",1200,1440.0,market:serology
+"Hepatitis B Core Anttibody (Anti-Hbc), Igm (Anti Hbc Ag-Igm)",1200,1440.0,market:serology
+Hepatitis B Surface Antibody (Anti Hbs),1200,1440.0,market:serology
+Hepatitis B Surface Antibody Total,1200,1440.0,market:serology
+Hepatitis B Viral Load -Quantitative Pcr,3500,4200.0,market:molecular
+Hepatitis B Virus (Hbv) Qualitative Pcr,3500,4200.0,market:molecular
+Hepatitis B Virus (Hbv) Quantitative Pcr,3500,4200.0,market:molecular
+Hepatitis B Virus Core Antibody ( Hbcab ) Total,1200,1440.0,market:serology
+Hepatitis B Virus Envelope Antibody ( Hbeab ),1200,1440.0,market:serology
+Hepatitis B Virus Envelope Antigen ( Hbeag ),1000,1200.0,market:marker
+Hepatitis Be Antibody(Anti Hbe Ag),1200,1440.0,market:serology
+"Hepatitis Be Panel (Includes Anti-Hbe, Hbeag)",1200,1440.0,market:serology
+"Hepatitis C Total Antibody (Anti Hcv), Rapid Card",767.5,921.0,sheet:sibling
+Hepatitis C Viral Rna (Hcv Rna) Quantitative,3500,4200.0,market:molecular
+Hepatitis C Virus (Hcv) Rna Viral Load,3500,4200.0,market:molecular
+Hepatitis C Virus Genotyping,3500,4200.0,market:molecular
+Hepatitis E Antibody (Anti Hev) Igm Elisa,1200,1440.0,market:serology
+"Hepatitis E Antibody (Anti Hev), Igg",1200,1440.0,market:serology
+"Hepatitis E Antibody (Anti Hev), Igm",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 1 Antibodies Panel Igg & Igm Antibody, Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 1 Igg Antibody, Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 1 Igm Antibody, Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 1+2 Igm, Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 2 Igg Antibody , Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv) 2 Igm Antibody , Serum",1200,1440.0,market:serology
+"Herpes Simplex Virus (Hsv)2 Antibodies Panel Igg & Igm, Serum",1200,1440.0,market:serology
+Herpes Simplex Virus 1 & 2 Igm [ Hsv ],1200,1440.0,market:serology
+Herpes Simplex Virus Type 1 & 2 Qualitative Pcr,3500,4200.0,market:molecular
+Histopathology Report,1500,1800.0,market:histopath
+Histopathology Report (Appendicectomy),1500,1800.0,market:histopath
+Histopathology Report (Bone Tumor Curretage),1200,1440.0,market:histopath-biopsy
+Histopathology Report (Cholecystectomy),1500,1800.0,market:histopath
+Histopathology Report (Endometrium Biopsy),1200,1440.0,market:histopath-biopsy
+Histopathology Report (Hemithyroidectomy),1500,1800.0,market:histopath
+Histopathology Report (Ovarian Cyst Excision),1200,1440.0,market:histopath-biopsy
+Histopathology Report (Simple Hysterectomy),2500,3000.0,market:histopath-large
+Histopathology Report (Total Abdominal Hysterectomy),2500,3000.0,market:histopath-large
+Histopathology Report (Wide Local Excision Of Tumor),1200,1440.0,market:histopath-biopsy
+"Histopathology Specimen, Large Specimen",1500,1800.0,market:histopath
+"Histopathology Specimen, Medium Specimen",1500,1800.0,market:histopath
+"Histopathology Specimen, Small Specimen",1500,1800.0,market:histopath
+"Hiv 1 & 2 Antibodies, Western Blot",1200,1440.0,market:serology
+"Hiv 1& 2 Antibodies, Screening Test",1200,1440.0,market:serology
+Hiv Ag/Ab Combo_Architech,750.0,900.0,market:default
+Hiv By Elisa Method,750.0,900.0,market:default
+Hiv P24 Antigen,1000,1200.0,market:marker
+Hiv Proviral Dna Pcr - Qualitative,3500,4200.0,market:molecular
+Hiv Rna Qualitative Pcr,3500,4200.0,market:molecular
+Hiv Spot,700.0,840.0,sheet:sibling
+Hiv Western Blot Assay(Hiv 1 & 2),750.0,900.0,market:default
+Hla A - B - Dr (Low Resolution),750.0,900.0,market:default
+Hla B-5 (51/52),750.0,900.0,market:default
+Hpv Digene Hybrid Dna Detection,3500,4200.0,market:molecular
+Hs Crp; High Sensitivity Crp,500,600.0,market:culture
+Hydrocele Sac,1200,1440.0,market:histopath-biopsy
+Hystectomy For Ovariyan Tumor With Node,750.0,900.0,market:default
+Ihc On Tissue Block,1500,1800.0,market:ihc
+"Immunoglobulin Ige(Ige Total Antibody), Serum",1200,1440.0,market:serology
+"Immunoglobulin M (Igm Total Antibody), Serum",1200,1440.0,market:serology
+Immunohistochemistry Er/Pr,1500,1800.0,market:ihc
+Immunohistochemistry Er/Pr/Her 2,1500,1800.0,market:ihc
+Immunohistochemistry Per Marker,1500,1800.0,market:ihc
+Incisional Biopsy Of Lump,1200,1440.0,market:histopath-biopsy
+"India Ink Preparation, Csf",750.0,900.0,market:default
+Influenza B Virus Igm Antibody,1200,1440.0,market:serology
+"Inhibin A, Pregnancy",2000,2400.0,market:endocrine
+"Inhibin A, Reproductive Marker",2000,2400.0,market:endocrine
+Interferon Gamma release assay,750.0,900.0,market:default
+Interferon Gamma Release Assay (Igra); Tb Platinum,750.0,900.0,market:default
+Intestinal Resection,2500,3000.0,market:histopath-large
+Iron Studies Monitoring Panel,1200,1440.0,market:serology
+J Needle Biopsy,1200,1440.0,market:histopath-biopsy
+Jak2 (V617F) Mutation Analysis - Pcr,3500,4200.0,market:molecular
+Jo-1 Antibody,1200,1440.0,market:serology
+"Kappa Freelite Chain, Serum",3000,3600.0,market:flow-cytometry
+Ki 67,1500,1800.0,market:ihc
+"Lactate, Plasma",750.0,900.0,market:default
+Leptospira Antibodies Panel (Igg & Igm),1200,1440.0,market:serology
+Leptospira Detection By Dark Field Microscopy,750.0,900.0,market:default
+Lh & Testosterone Total,750.0,900.0,market:default
+Lobectomy,750.0,900.0,market:default
+Lumpectomy,750.0,900.0,market:default
+"Magnesium, 24Hrs Urine",250,300.0,market:urine-chemistry
+Mandibulectomy With Mnd,750.0,900.0,market:default
+"Maternal Screen-1St Trimester, Dual Marker",1000,1200.0,market:marker
+"Maternal Screen-2Nd Trimester, Quadruple Marker",1000,1200.0,market:marker
+"Maternal Screen-2Nd Trimester, Triple Marker",1000,1200.0,market:marker
+"Mean Platelet Volume, Mpv",750.0,900.0,market:default
+"Measles (Rubeola) Antibodies Panel, Igg & Igm",1200,1440.0,market:serology
+Measles (Rubeola) Igg Quantitative,1200,1440.0,market:serology
+Measles Igm Antibody,1200,1440.0,market:serology
+Metanephrine -Free Plasma,2000,2400.0,market:endocrine
+"Metanephrine, 24 Hours Urine",2000,2400.0,market:endocrine
+"Metanephrines -24 Hrs Urine (Includes Metanephrine, Normetanephrine)",2000,2400.0,market:endocrine
+"Methamphetamine Screen, Urine",1000,1200.0,market:drug-screen
+MICROALBUMIN RANDOM URINE MAU,250,300.0,market:urine-chemistry
+Microalbuminuria,750.0,900.0,market:default
+Modified Glucose Tolerance Test,750.0,900.0,market:default
+Modified Radical Mastectomy,2500,3000.0,market:histopath-large
+Molecular Karyotyping,3500,4200.0,market:molecular
+Molecular Karyotyping Graph,3500,4200.0,market:molecular
+Mono Test,750.0,900.0,market:default
+Mthfr Gene Mutation,3500,4200.0,market:molecular
+"Mumps Virus Antibodies Panel, Igg & Igm",1200,1440.0,market:serology
+Mycobacterium Combined Panel: Mycobacterium Tuberculosis Dna Pcr,3500,4200.0,market:molecular
+Nasal Or Paranasal Sinus Mass,750.0,900.0,market:default
+Nasal Plypectomy,750.0,900.0,market:default
+Needle Biopsies Of Prostate,1200,1440.0,market:histopath-biopsy
+Nephrectomy Nonfunctioning Kidney,2500,3000.0,market:histopath-large
+"Nicotine Metabolite, Serum",1000,1200.0,market:drug-screen
+Nodulectomy,1200,1440.0,market:histopath-biopsy
+Nor Metanephrine-24 Hrs Urine,2000,2400.0,market:endocrine
+Nor Metanephrine-Free Plasma,2000,2400.0,market:endocrine
+Nt-Pro Bnp 2(N-Terminal Pro B Type Natriuretic Peptide),750.0,900.0,market:default
+"Opiates Screen, Urine",1000,1200.0,market:drug-screen
+Osmotic Fragility Test; Rbc Fragility Test,750.0,900.0,market:default
+"Ova & Parasite Detection, Concentration Method, Stool",750.0,900.0,market:default
+"Packed Cell Volume , Pch; Hematocrit",750.0,900.0,market:default
+"P-Anca/Anca-Mpo (Anti Myeloperoxidase Antibodies), Eia",1200,1440.0,market:serology
+Pappa-Pregnancy Associated Plasma Protein-A,250,300.0,market:chemistry
+Parotidectomy,750.0,900.0,market:default
+Parotidectomy With Neke Dissection,750.0,900.0,market:default
+Partial Esophagectomy,2500,3000.0,market:histopath-large
+Partial Or Total Gastectomy,750.0,900.0,market:default
+Partial Or Total Penectomy,2500,3000.0,market:histopath-large
+Parvo Virus B19 Dna Pcr,3500,4200.0,market:molecular
+Pas Staining,750.0,900.0,market:default
+Pateletcrit,750.0,900.0,market:default
+Paul Bunnel Test,750.0,900.0,market:default
+Pcr Tuberculosis ( Tb - Dna Pcr ),3500,4200.0,market:molecular
+Penectomy With Node Dissection,2500,3000.0,market:histopath-large
+Phencyclidine Phosphate (Qualitative),1000,1200.0,market:drug-screen
+Phenytoin/Eptoin/Dilantin,750.0,900.0,market:default
+Phospholipid Antibody Profile,1200,1440.0,market:serology
+"Phosphorous -Inorganic, Serum",250,300.0,market:chemistry
+Platelet Distribution Width; Pdw,750.0,900.0,market:default
+Plateletcrit,750.0,900.0,market:default
+Pleural Fluid Examination,400,480.0,market:fluid
+Post Prandial ( Pp ) Urine Sugar,250,300.0,market:urine-chemistry
+Protein C,2500,3000.0,market:coagulation
+"Protein Creatinine Ratio, 24 Hrs Urine",250,300.0,market:urine-chemistry
+Protein S & Protein C,2500,3000.0,market:coagulation
+"Protein, 24Hrs Urine",250,300.0,market:urine-chemistry
+"Protein, Random Urine",125.0,150.0,sheet:sibling
+"Protein/ Creatinine Ratio, Random Urine",250,300.0,market:urine-chemistry
+"Protein-Creatinine Ratio, Urine",250,300.0,market:urine-chemistry
+Prothrombin Gene Mutation,3500,4200.0,market:molecular
+QUADRAPLE MARKER TEST,1000,1200.0,market:marker
+Quantitative Hepatitis B Surface Antigen (Hbsag),400.0,480.0,sheet:sibling
+Radical Cystectomy With Prostectomy,2500,3000.0,market:histopath-large
+Radical Nephrectomy,2500,3000.0,market:histopath-large
+Radical Prostatectomy With Cystectomy,2500,3000.0,market:histopath-large
+Rapid Malaria Test,750.0,900.0,market:default
+"Reducing Substance , Paediatric Urine",250,300.0,market:urine-chemistry
+Reducing Sugar,750.0,900.0,market:default
+Renal Biopsy,1200,1440.0,market:histopath-biopsy
+Renal Function Test (Max),750.0,900.0,market:default
+Renal Function Test (Mini),750.0,900.0,market:default
+Report Of Cardiac Markers ( Troponin T ),750.0,900.0,market:default
+Rh Antibody - Titres,1200,1440.0,market:serology
+RIGHT HEMICOLECTOMY,750.0,900.0,market:default
+Rnp/Sm Antibody,1200,1440.0,market:serology
+"Roma, Risk Of Ovarian Malignancy Algorithim",750.0,900.0,market:default
+Rota Virus Antigen Detection (Stool),1000,1200.0,market:marker
+"Rota Virus Antigen, Stool",1000,1200.0,market:marker
+Rqpcr-Bcrabl,3500,4200.0,market:molecular
+"Rubella (German Measles)Antibodies Panel, Igg & Igm",1200,1440.0,market:serology
+Rubella Igg Quantitative,1200,1440.0,market:serology
+S. Gamma Glutamyl Transferase ( Ggtp ),750.0,900.0,market:default
+Salmonella Typhi & Salmonella Paratyphi A Antigen Detection,1000,1200.0,market:marker
+Scl-70 (Scleroderma )Antibody,1200,1440.0,market:serology
+"Semen Analysis, Seminogram",750.0,900.0,market:default
+"Semen Fructose, Qualitative",750.0,900.0,market:default
+Serum Acetone,750.0,900.0,market:default
+Serum Copper,750.0,900.0,market:default
+Serum Free Metanephrin,750.0,900.0,market:default
+Skin Tag /Moles/Nevus Excision,1200,1440.0,market:histopath-biopsy
+Slit Skin Smear,750.0,900.0,market:default
+Smear For Fungal Elements,750.0,900.0,market:default
+"Sodium, 24 Hrs Urine",200.0,240.0,sheet:sibling
+Ssa Antibody/Ro Antibody,1200,1440.0,market:serology
+Ssb Antibody/La Antibody,1200,1440.0,market:serology
+Stool For Fat Globules,750.0,900.0,market:default
+Subtotal Thyroidectomy,750.0,900.0,market:default
+Synovial Fluid Examination,400,480.0,market:fluid
+Synovial Piopsy,750.0,900.0,market:default
+"T3 Total, Total Tri-Iodothyronine",400,480.0,market:thyroid
+Tb Drug Sensitivity- 1St Line Drug,500,600.0,market:culture
+Tb Drug Sensitivity- 2Nd Line Drugs,500,600.0,market:culture
+Tb Platinum (Tb Gamma Interferon - Quantiferon),750.0,900.0,market:default
+Tb Rt Pcr On Tissue Block,1500,1800.0,market:ihc
+Tc/Hdl Ratio,750.0,900.0,market:default
+Testicular Biopsies,1200,1440.0,market:histopath-biopsy
+Testicular Tumor Orchiectomy,2500,3000.0,market:histopath-large
+Tissue Transglutaminase - Iga ( Ttga ),1200,1440.0,market:serology
+"Torch -8 Igg/Igm Antibodies To Toxoplasma, Cmv, Rubella, Hsv - 1&2 Combi Serum",1200,1440.0,market:serology
+Torch I,750.0,900.0,market:default
+Torch Panel Igg -4,1200,1440.0,market:serology
+Torch Panel Igg-5,1200,1440.0,market:serology
+Torch Panel Igm -4,1200,1440.0,market:serology
+Torch Panel Igm -5,1200,1440.0,market:serology
+Total Esophagectomy With Partial Gastrectomy,2500,3000.0,market:histopath-large
+Total Thyroidectomy With Neck Dissection,2500,3000.0,market:histopath-large
+Toxoplasma Igg- Csf,1200,1440.0,market:serology
+Triple Marker Graph,1000,1200.0,market:marker
+"Troponin I, High Sensitive",750.0,900.0,market:default
+Trucut Biopsy,1200,1440.0,market:histopath-biopsy
+Trucut Biopsy Of Lump,1200,1440.0,market:histopath-biopsy
+Trucut Biopsy Of Lung,1200,1440.0,market:histopath-biopsy
+"Ttg:Tissue Transglutaminase Antibody, Igg",1200,1440.0,market:serology
+Tuberculin Test ( Tt ) (Montoux Test),750.0,900.0,market:default
+Turbt,750.0,900.0,market:default
+Turp Depends On Volume And No Of Blocks,750.0,900.0,market:default
+"Ue3 (Free), Unconjugated Estriol",750.0,900.0,market:default
+Uibc,750.0,900.0,market:default
+Unstable Hb,750.0,900.0,market:default
+"Urea Nitrogen, Random Urine",200.0,240.0,sheet:sibling
+"Urea Nitrogen, Urine 24Hrs",250,300.0,market:urine-chemistry
+"Urea, Urine 24 Hrs",150.0,180.0,sheet:sibling
+Ureteroplasty,2500,3000.0,market:histopath-large
+Urine 24 Hr Copper,250,300.0,market:urine-chemistry
+Urine Fat Globules,250,300.0,market:urine-chemistry
+Urine For Haemoglobinuria,250,300.0,market:urine-chemistry
+Urine Osmolality,600.0,720.0,sheet:sibling
+Urine Porphobilinogen (Qualitative),250,300.0,market:urine-chemistry
+Urine Porphobilinogen (Quantitative),250,300.0,market:urine-chemistry
+Urobilinogen,750.0,900.0,market:default
+Vaccination Immune Status Panel,1200,1440.0,market:serology
+Varicella Zoster Pcr Detection,3500,4200.0,market:molecular
+Vit D Plus (Vitamin D Total-25 Hydroxy + Pth),2000,2400.0,market:vitamin
+"Vitamin B12, Cynacobalamin",2000,2400.0,market:vitamin
+Weil Felix Test,750.0,900.0,market:default
+Wertheims Hystectomy With B/L Pelvic Dissection,750.0,900.0,market:default
+Whipples Resection,2500,3000.0,market:histopath-large
+Wide Local Excision Of Lesion With Mnd,1200,1440.0,market:histopath-biopsy
+Wide Local Excision Of Lesion With Sohd,1200,1440.0,market:histopath-biopsy
+Wide Local Excision Of Mass,1200,1440.0,market:histopath-biopsy
+Y Chromosome Microdeletion Analysis,3500,4200.0,market:molecular

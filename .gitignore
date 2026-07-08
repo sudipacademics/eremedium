@@ -1,0 +1,45 @@
+# Environment & secrets
+.env
+*.pem
+*.key
+sudip_ssh_key
+sudip_ssh_key.pub
+
+# Archives / local dumps
+health_ecosystem_core.zip
+
+# Node
+health_web_app/node_modules/
+health_web_app/dist/
+
+# Docker volumes (local)
+docker/volumes/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Flutter
+health_flutter_app/.dart_tool/
+health_flutter_app/.flutter-plugins
+health_flutter_app/.flutter-plugins-dependencies
+health_flutter_app/.packages
+health_flutter_app/build/
+health_flutter_app/.idea/
+health_flutter_app/*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Frappe
+sites/
+*.log
