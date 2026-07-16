@@ -4,7 +4,35 @@ Canonical development path: **`C:\develop\My_Lab_System`**
 Production server: **Hetzner `167.233.108.90`** · site `health.localhost` · Docker `/opt/health-ecosystem/docker`
 
 App package version (Frappe): **`health_ecosystem_core` 1.0.0**  
-Document last updated: **2026-06-27**
+Document last updated: **2026-07-16**  
+**Forward roadmap:** see **`ROADMAP.md`**; NABL accreditation track = Phases **61–63** (after Phase 0 baseline)
+
+---
+
+## Phase 0 — Pre-NABL baseline (2026-07-16)
+
+**Tag:** `v1.2.0-pre-nabl` · **Server backup label:** `v1.2.0-pre-nabl`
+
+Freeze of what is already built **before** NABL 112A/112B/120/126/132 implementation.
+
+**Included in baseline (deployed / in develop tree):**
+- Phases 1–58 (clinical, web, reagents, reports, NABL report branding, signatories, etc.)
+- **Phase 59** — Operational inventory: Real vs Calculated parameters, derivation on Save, reagent consume on TRF Completed
+- **Phase 60** — Customer health packages (Lab Test Panels) + home Apollo-style package tiles (Lab Tests only)
+- Web dist on server under `/opt/health-ecosystem/health_web_app/dist`
+
+**Local note:** Many files under `C:\develop\My_Lab_System` remain untracked/uncommitted relative to the short git history; **authoritative restore point is the Hetzner backup** (`/root/backups/` code tarball + `bench backup --with-files`).
+
+**Commands run:**
+```bash
+# Local
+git tag -a v1.2.0-pre-nabl -m "Baseline before NABL 112A/112B/120/126/132 phases"
+
+# Server
+bash /opt/health-ecosystem/docker/backup-before-release.sh v1.2.0-pre-nabl
+```
+
+**Next:** Phase 61 (`v1.3.0-nabl-112b`) — NABL 112B operational DocTypes + gates + staff UI.
 
 ---
 
@@ -23,6 +51,13 @@ git push origin v0.8.0-phase8-nabl-reports   # when remote exists
 | `v0.6.0` | Multi-test TRF, panels, branded PDF (Phase 6) |
 | `v0.7.0` | Flutter mobile wiring (Phase 7) |
 | `v0.8.0` | NABL desk reports + Remedium PDF (Phase 8) |
+| `v0.9.0` | Secrets & integrations config (Phase 9) |
+| `v1.0.0-web` | Chrome web app + role dashboards (Phase 10) |
+| `v1.0.1-web` | Production web UX: nginx, login, pharmacy orders (Phase 10.1) |
+| **`v1.2.0-pre-nabl`** | **Phase 0: baseline before NABL 61–63 (incl. Phases 59–60)** |
+| `v1.3.0-nabl-112b` | Phase 61: NABL 112B ops (planned) |
+| `v1.4.0-nabl-qc` | Phase 62: IQC/equipment/EQA (planned) |
+| `v1.5.0-nabl-qms` | Phase 63: CAPA/complaints/QI (planned) |
 
 ---
 
@@ -34,6 +69,121 @@ git push origin v0.8.0-phase8-nabl-reports   # when remote exists
 | **6** | Multi-test TRF, lab panels, branded reports, workflow polish | Done |
 | **7** | Flutter: panels, multi-test bookings, prescription diagnostics, journey refresh | Done |
 | **8** | NABL-style lab report authoring, Remedium PDF, calculated parameters | Done (minor bugs) |
+| **9** | Secrets & integrations: LIS/Razorpay config, payment gate, desk tools | Done |
+| **10** | Chrome web app shell, session auth, role-aware routing | Done |
+| **10.1** | Production web: Services/Diagnostics nav, GPS, pricing, My orders, deploy | Done |
+| **11** | IAM: Phlebotomist, Patient portal, API + franchise scoping | Done |
+| **12** | Razorpay E2E on web + Flutter | In progress |
+| **13** | OTP via WhatsApp / SMS | Planned |
+| **14** | WhatsApp + email notification flows | Planned |
+| **15** | Dashboards: Franchisee, Phlebotomist, Public | Planned |
+| **16** | LIS Python bridge — **local lab install only** | Planned (last) |
+| **59** | Parameter inventory Real vs Calculated + reagent consume rules | Done (on server) |
+| **60** | Customer health packages + home package tiles | Done (on server) |
+| **0** | Pre-NABL version tag + server backup | Done 2026-07-16 |
+| **61** | NABL 112B ops (SCF, lot verify, release gates, competence, stability) | Next |
+| **62** | NABL 112A QC + 120/126 equipment/IQC/EQA | Planned |
+| **63** | NABL 112A QMS + 132 complaints | Planned |
+
+---
+
+## Phase 9 — Secrets & integrations
+
+**Goal:** Centralize API keys, document where secrets live, fix Password-field reads, LIS payment toggle.
+
+**Delivered:**
+- `clinical_secrets.py` — credential loader (site_config → Settings → placeholder)
+- Fixed **Password** fields read via `get_password()` (was broken with `get_single_value`)
+- **LIS Requires Razorpay Payment** toggle (default OFF for pay-at-counter)
+- Desk: **Health Ecosystem Settings** → Check Status / Copy LIS Config / Rotate Keys
+- `SECRETS_SETUP.md` — full operator guide
+- `lis_config.example.json` — lab PC template
+- Patch: `ensure_phase9_integration_fields.py`
+
+**Setup:**
+```bash
+bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.init.run_phase9_setup
+```
+
+**Where to put secrets:** See **`SECRETS_SETUP.md`**
+
+---
+
+## Phase 10.1 — Production web polish
+
+**Tag:** `v1.0.1-web` · **Backup:** `docker/backup-before-release.sh v1.0.1-web`
+
+**Delivered (2026-06-28):**
+- Host nginx on port 80 + UFW; Vite assets at `/web-assets/` (no Frappe clash)
+- Nav: Services, Diagnostics, My relationship; GPS address; post-checkout → My orders
+- Strikethrough pricing, HTML-stripped pharmacy descriptions
+- Login: CSRF/cookie fix, demo password reset, `api_secret` removed from auth response
+- `get_my_pharmacy_orders` scoped by owner + patient link + staff sees all
+
+**Always before major releases:**
+```bash
+# On server
+bash /opt/health-ecosystem/docker/backup-before-release.sh v1.0.1-web
+# Locally (when using git)
+git tag -a v1.0.1-web -m "Phase 10.1: production web polish"
+```
+
+---
+
+## Phase 12 — Razorpay E2E (in progress)
+
+**Goal:** Book → pay → confirm on web (Flutter follows).
+
+**Started:**
+- Web: `payWithRazorpay()` + Razorpay Checkout.js; test-mode auto-verify when keys are placeholders
+- Diagnostics booking + pharmacy checkout trigger payment after order/TRF creation
+- Booking detail: **Pay now** for pending TRFs
+- API: `create_razorpay_order` / `verify_razorpay_payment` accept `sid` for mobile + web parity
+
+---
+
+## Phase 11 — IAM hardening ✅
+
+**Goal:** Role + franchise scope on every patient-facing API.
+
+**Delivered:**
+- `clinical_iam.py` — `require_roles`, `trf_list_filters_for_user`, phlebotomist TRF scope
+- `PERMISSIONS.md` — role matrix
+- Demo users: `phlebotomist@health.local`, `patient_demo@health.local`
+- `validate_session` returns linked `patient` profile
+- `run_phase11_iam` / deploy hook
+
+**Setup:**
+```bash
+bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.init.run_phase11_iam
+```
+
+---
+
+## Phase 10 — Chrome web app + auth foundation
+
+**Goal:** Chrome-ready web app with session auth, protected routes, and role-based dashboards sharing APIs with Flutter.
+
+**Delivered:**
+- `health_web_app` — `AuthContext`, localStorage session (`sid`), `validate_session` on boot
+- API client aligned with Flutter (sid in body + Cookie header)
+- **Public layout** — home, lab, pharmacy (no login required)
+- **Staff layout** — sidebar shell for dashboards
+- **Protected routes** — lab booking, account, dashboards
+- **Role dashboards:** `/dashboard/patient`, `/franchisee`, `/phlebotomist`, `/staff`
+- `get_my_bookings` wired into dashboards (role-scoped TRF list)
+- Vite dev proxy for `/api`; production same-origin via nginx
+- Updated `health_web_app/README.md`
+
+**Build & deploy:**
+```bash
+cd health_web_app
+npm ci
+VITE_API_BASE_URL= npm run build
+scp -r dist root@167.233.108.90:/opt/health-ecosystem/health_web_app/
+```
+
+**Test logins:** `franchise_hub@health.local` → franchisee dashboard; `lab_tech@health.local` → staff dashboard.
 
 ---
 
@@ -252,16 +402,16 @@ bench --site health.localhost execute health_ecosystem_core.health_ecosystem_cor
 
 ## Backup before next step
 
-1. **Git commit** on develop tree with message e.g. `chore: snapshot phase 8 NABL reports`
-2. **Tag** `v0.8.0` (see above)
-3. **Server tarball** (optional):
-   ```bash
-   tar -czf /root/backups/health-ecosystem-$(date +%Y%m%d).tar.gz /opt/health-ecosystem/health_ecosystem_core
-   ```
-4. **DB backup:**
-   ```bash
-   docker compose exec -T backend bench --site health.localhost backup --with-files
-   ```
+**Use the release script (recommended):**
+```bash
+bash /opt/health-ecosystem/docker/backup-before-release.sh v1.0.1-web
+```
+
+Manual steps:
+1. **Git commit** on develop tree with message e.g. `chore: snapshot v1.0.1-web`
+2. **Tag** `v1.0.1-web` (see snapshot tags above)
+3. **Server tarball** — included in `backup-before-release.sh`
+4. **DB backup** — included in `backup-before-release.sh` (`bench backup --with-files`)
 
 ---
 
