@@ -77,10 +77,10 @@ export function SubscriptionsPage() {
           </p>
           <ul className="benefit-list">
             {current.plan.free_home_collection ? <li>Free home collection</li> : null}
-            {current.plan.lab_discount_percent > 0 ? (
+            {(current.plan.lab_discount_percent ?? 0) > 0 ? (
               <li>{current.plan.lab_discount_percent}% off lab tests</li>
             ) : null}
-            {current.plan.pharmacy_discount_percent > 0 ? (
+            {(current.plan.pharmacy_discount_percent ?? 0) > 0 ? (
               <li>{current.plan.pharmacy_discount_percent}% off pharmacy</li>
             ) : null}
           </ul>
@@ -101,10 +101,10 @@ export function SubscriptionsPage() {
             <p>{plan.description}</p>
             <ul className="benefit-list">
               {plan.free_home_collection ? <li>Free home collection</li> : null}
-              {plan.lab_discount_percent > 0 ? (
+              {(plan.lab_discount_percent ?? 0) > 0 ? (
                 <li>{plan.lab_discount_percent}% off lab tests</li>
               ) : null}
-              {plan.pharmacy_discount_percent > 0 ? (
+              {(plan.pharmacy_discount_percent ?? 0) > 0 ? (
                 <li>{plan.pharmacy_discount_percent}% off pharmacy</li>
               ) : null}
             </ul>

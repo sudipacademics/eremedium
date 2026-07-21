@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 
 type Props = {
-  referenceDoctype: 'Customer TRF' | 'Pharmacy Order';
+  referenceDoctype: 'Customer TRF' | 'Pharmacy Order' | 'Doctor Appointment' | 'Health Subscription';
   referenceName: string;
   label?: string;
   className?: string;

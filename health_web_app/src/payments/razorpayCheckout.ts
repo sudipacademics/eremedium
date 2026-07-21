@@ -26,7 +26,7 @@ type RazorpayPaymentResponse = {
 };
 
 export type PayOrderInput = {
-  referenceDoctype: 'Customer TRF' | 'Pharmacy Order';
+  referenceDoctype: 'Customer TRF' | 'Pharmacy Order' | 'Doctor Appointment' | 'Health Subscription';
   referenceName: string;
   amount: number;
   customerName?: string;
@@ -176,5 +176,5 @@ export async function payB2bWalletRecharge(input: {
     rzp.open();
   });
   const wallet = await api.getB2bWallet();
-  return { amount: input.amount, wallet_balance: Number(wallet.data?.balance || 0) };
+  return { amount: input.amount, wallet_balance: Number(wallet.data?.wallet_balance || 0) };
 }

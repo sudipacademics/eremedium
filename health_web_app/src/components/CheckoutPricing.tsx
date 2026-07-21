@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, CheckoutPricing } from '../api';
+import { api, type CheckoutPricing } from '../api';
 import { useAuth } from '../auth/AuthContext';
 
 type Props = {

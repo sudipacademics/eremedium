@@ -7,7 +7,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { api, SessionUser } from '../api';
+import { api, clearSession, SessionUser } from '../api';
 import { getDefaultDashboardRoute } from './roles';
 import { clearStoredSession, loadSession, saveSession, StoredSession } from './session';
 
@@ -16,6 +16,7 @@ type AuthContextValue = {
   loading: boolean;
   isAuthenticated: boolean;
   login: (usr: string, pwd: string) => Promise<SessionUser>;
+  loginWithOtp: (mobile: string, otp: string) => Promise<SessionUser>;
   logout: () => void;
   refreshSession: () => Promise<SessionUser | null>;
   completeOAuthLogin: (sid?: string, loginToken?: string) => Promise<SessionUser>;
@@ -102,9 +103,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return sessionUser;
   }, []);
 
+  const loginWithOtp = useCallback(async (mobile: string, otp: string) => {
+    const res = await api.verifyOtpLogin(mobile, otp);
+    const data = res.data;
+    if (!data.sid) {
+      throw new Error('OTP verification succeeded but no session was returned');
+    }
+    const stored: StoredSession = {
+      sid: data.sid,
+      user: data.user,
+      fullName: data.full_name,
+      roles: data.roles || [],
+      franchisee: data.franchisee ?? null,
+    };
+    saveSession(stored);
+    const sessionUser = toSessionUser(stored);
+    setUser(sessionUser);
+    return sessionUser;
+  }, []);
+
   const logout = useCallback(() => {
     clearStoredSession();
-    api.clearSession();
+    clearSession();
     setUser(null);
   }, []);
 
@@ -139,12 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isAuthenticated: Boolean(user),
       login,
+      loginWithOtp,
       logout,
       refreshSession,
       completeOAuthLogin,
       defaultRoute,
     }),
-    [user, loading, login, logout, refreshSession, completeOAuthLogin, defaultRoute],
+    [user, loading, login, loginWithOtp, logout, refreshSession, completeOAuthLogin, defaultRoute],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

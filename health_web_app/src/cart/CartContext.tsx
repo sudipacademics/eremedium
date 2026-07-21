@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
-import { CatalogItem, itemRate } from '../api';
+import { CatalogItem, CouponResult, itemRate } from '../api';
 
 export type CartLine = {
   itemCode: string;
@@ -11,7 +11,10 @@ export type CartLine = {
 type CartContextValue = {
   lines: CartLine[];
   count: number;
+  subtotal: number;
   total: number;
+  coupon: CouponResult | null;
+  setCoupon: (coupon: CouponResult | null) => void;
   addItem: (item: CatalogItem) => void;
   updateQty: (itemCode: string, qty: number) => void;
   removeItem: (itemCode: string) => void;
@@ -39,6 +42,7 @@ function saveCart(lines: CartLine[]) {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>(() => loadCart());
+  const [coupon, setCoupon] = useState<CouponResult | null>(null);
 
   const persist = useCallback((next: CartLine[]) => {
     setLines(next);
@@ -92,11 +96,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(() => persist([]), [persist]);
 
   const count = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines]);
-  const total = useMemo(() => lines.reduce((sum, l) => sum + l.rate * l.qty, 0), [lines]);
+  const subtotal = useMemo(() => lines.reduce((sum, l) => sum + l.rate * l.qty, 0), [lines]);
+  const total = useMemo(
+    () => Math.max(0, subtotal - (coupon?.discount_amount || 0)),
+    [subtotal, coupon],
+  );
 
   const value = useMemo<CartContextValue>(
-    () => ({ lines, count, total, addItem, updateQty, removeItem, clear }),
-    [lines, count, total, addItem, updateQty, removeItem, clear],
+    () => ({ lines, count, subtotal, total, coupon, setCoupon, addItem, updateQty, removeItem, clear }),
+    [lines, count, subtotal, total, coupon, addItem, updateQty, removeItem, clear],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

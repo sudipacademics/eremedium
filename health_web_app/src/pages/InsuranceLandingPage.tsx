@@ -40,9 +40,9 @@ export function InsuranceLandingPage() {
     try {
       await api.submitInsuranceQuoteRequest({
         product_code: form.product_code,
-        full_name: form.full_name,
+        customer_name: form.full_name,
         phone: form.phone,
-        city: form.city,
+        ...(form.city ? { notes: `City: ${form.city}` } : {}),
         ...(form.sum_insured ? { sum_insured: Number(form.sum_insured) } : {}),
       });
       setSuccess('Quote request submitted. Our advisor will contact you shortly.');

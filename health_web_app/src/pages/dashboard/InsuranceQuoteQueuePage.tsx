@@ -7,6 +7,7 @@ type InsuranceQuoteRequest = {
   customer_name: string;
   phone: string;
   email?: string;
+  product?: string;
   product_name?: string;
   insurer?: string;
   sum_insured?: number;

@@ -1,3 +1,5 @@
+import type { ProviderProfile } from '../api';
+
 const STORAGE_KEY = 'hec_web_session';
 
 export type FranchiseeProfile = {
@@ -14,6 +16,7 @@ export type StoredSession = {
   fullName?: string;
   roles: string[];
   franchisee?: FranchiseeProfile | null;
+  provider?: ProviderProfile | null;
 };
 
 export function loadSession(): StoredSession | null {

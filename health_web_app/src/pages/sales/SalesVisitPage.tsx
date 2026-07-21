@@ -52,7 +52,7 @@ export function SalesVisitPage() {
     setMessage(null);
     try {
       await api.logSalesVisit({
-        lead_id: leadId || undefined,
+        ...(leadId ? { lead_id: leadId } : {}),
         latitude,
         longitude,
         purpose,

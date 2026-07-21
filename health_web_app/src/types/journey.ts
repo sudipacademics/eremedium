@@ -40,3 +40,31 @@ export type CareJourney = {
   results?: JourneyLabResult[];
   structured?: { tests?: JourneyTestSection[] };
 };
+
+export type JourneyOpsRow = {
+  name: string;
+  patient_name?: string;
+  status: string;
+  customer_trf?: string | null;
+  appointment?: string | null;
+  prescription?: string | null;
+  pharmacy_order?: string | null;
+  phlebotomist?: string | null;
+  modified?: string;
+  next_status?: string | null;
+  ago?: string;
+};
+
+export type JourneyOpsBoard = {
+  journeys: JourneyOpsRow[];
+  stage_counts: Record<string, number>;
+  stages: string[];
+  can_admin?: boolean;
+};
+
+export type JourneyActivity = {
+  content?: string;
+  owner?: string;
+  creation?: string;
+  ago?: string;
+};

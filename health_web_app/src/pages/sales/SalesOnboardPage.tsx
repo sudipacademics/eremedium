@@ -43,7 +43,7 @@ export function SalesOnboardPage() {
     setMessage(null);
     try {
       const res = await api.submitSalesOnboarding({
-        lead_id: leadId || undefined,
+        ...(leadId ? { lead_id: leadId } : {}),
         franchise_name: franchiseName,
         owner_name: ownerName,
         proposed_branch_code: branchCode.toUpperCase(),
