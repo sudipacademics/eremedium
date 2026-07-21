@@ -8,7 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import frappe
@@ -2060,6 +2060,158 @@ def recharge_b2b_wallet(sid=None, amount=None, payment_reference=None):
 
 
 @frappe.whitelist(allow_guest=True)
+def create_b2b_wallet_razorpay_order(sid=None, amount=None):
+    """Phase 23 — create a Razorpay order for a franchisee wallet top-up."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import (
+        prepare_wallet_recharge,
+        stash_wallet_razorpay_order,
+    )
+
+    amount = _parse_request_value("amount", amount)
+    try:
+        recharge = prepare_wallet_recharge(frappe.session.user, amount)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+    franchisee_id = recharge["franchisee_id"]
+    amount_value = recharge["amount"]
+    amount_paise = recharge["amount_paise"]
+
+    if _razorpay_test_mode():
+        creds = _get_site_api_credentials()
+        order_id = f"order_wallet_{frappe.generate_hash(length=10)}"
+        stash_wallet_razorpay_order(order_id, franchisee_id, amount_value)
+        return _success(
+            {
+                "order_id": order_id,
+                "amount": amount_value,
+                "amount_paise": amount_paise,
+                "currency": "INR",
+                "razorpay_key_id": creds.get("razorpay_key_id"),
+                "test_mode": True,
+            },
+            message="Test wallet top-up order created",
+        )
+
+    creds = _get_site_api_credentials()
+    key_id = creds.get("razorpay_key_id")
+    key_secret = creds.get("razorpay_key_secret")
+    if not (key_id and key_secret):
+        return _error(_("Razorpay is not configured on server"))
+
+    auth_header = base64.b64encode(f"{key_id}:{key_secret}".encode("utf-8")).decode("ascii")
+    payload = json.dumps(
+        {
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": f"wallet-{franchisee_id}-{frappe.generate_hash(length=6)}",
+            "payment_capture": 1,
+        }
+    ).encode("utf-8")
+    req = Request(
+        "https://api.razorpay.com/v1/orders",
+        data=payload,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=20) as resp:
+            order_data = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        frappe.log_error(
+            title="create_b2b_wallet_razorpay_order",
+            message=exc.read().decode("utf-8", errors="replace"),
+        )
+        return _error(_("Razorpay order creation failed"))
+    except URLError as exc:
+        frappe.log_error(title="create_b2b_wallet_razorpay_order", message=str(exc))
+        return _error(_("Razorpay is unreachable"))
+
+    order_id = order_data.get("id")
+    stash_wallet_razorpay_order(order_id, franchisee_id, amount_value)
+    return _success(
+        {
+            "order_id": order_id,
+            "amount": amount_value,
+            "amount_paise": amount_paise,
+            "currency": order_data.get("currency", "INR"),
+            "razorpay_key_id": key_id,
+            "test_mode": False,
+        },
+        message="Razorpay wallet order created",
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_b2b_wallet_razorpay_payment(
+    sid=None,
+    razorpay_payment_id=None,
+    razorpay_order_id=None,
+    razorpay_signature=None,
+):
+    """Phase 23 — verify a Razorpay wallet top-up and credit the franchisee wallet."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import (
+        complete_wallet_razorpay_credit,
+        load_wallet_razorpay_order,
+        resolve_franchisee_for_user,
+    )
+
+    razorpay_payment_id = _parse_request_value("razorpay_payment_id", razorpay_payment_id)
+    razorpay_order_id = _parse_request_value("razorpay_order_id", razorpay_order_id)
+    razorpay_signature = _parse_request_value("razorpay_signature", razorpay_signature)
+
+    if not razorpay_order_id or not razorpay_payment_id:
+        return _error(_("Missing payment verification fields"))
+
+    stashed = load_wallet_razorpay_order(razorpay_order_id)
+    if not stashed:
+        return _error(_("Wallet order expired or not found"))
+
+    franchisee_id = stashed.get("franchisee_id")
+    amount = stashed.get("amount")
+
+    # The wallet top-up must belong to the authenticated franchisee.
+    if franchisee_id != resolve_franchisee_for_user(frappe.session.user):
+        return _error(_("This wallet order does not belong to you"), 403)
+
+    creds = _get_site_api_credentials()
+    key_secret = creds.get("razorpay_key_secret")
+    if not _razorpay_test_mode():
+        if not key_secret:
+            return _error(_("Razorpay secret not configured on server"))
+        if not razorpay_signature:
+            return _error(_("Missing payment signature"))
+        expected = hmac.new(
+            key_secret.encode("utf-8"),
+            f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, razorpay_signature):
+            return _error(_("Payment signature verification failed"), 403)
+
+    previous_user = frappe.session.user
+    try:
+        frappe.set_user("Administrator")
+        row = complete_wallet_razorpay_credit(
+            franchisee_id, amount, razorpay_payment_id, order_id=razorpay_order_id
+        )
+        frappe.db.commit()
+    finally:
+        frappe.set_user(previous_user)
+
+    return _success(row, message=_("Wallet recharged"))
+
+
+@frappe.whitelist(allow_guest=True)
 def create_b2b_walk_in_order(
     patient_name=None,
     patient_phone=None,
@@ -3699,30 +3851,39 @@ def ai_physician_turn(session_id=None, message=None, latitude=None, longitude=No
         return _error(str(exc) or _("Unable to continue care chat"))
 
 
-# Re-export guest wellness / insurance handlers so main api module path works
-from health_ecosystem_core.health_ecosystem_core.clinical_phase31_allied_health import (  # noqa: E402
-    book_allied_health_appointment,
-    get_allied_health_service,
-    get_allied_health_services,
-    get_allied_health_wings,
-)
-from health_ecosystem_core.health_ecosystem_core.clinical_phase44_insurance import (  # noqa: E402
-    get_insurance_landing,
-    get_my_insurance_requests,
-    submit_insurance_quote_request,
-)
-from health_ecosystem_core.health_ecosystem_core.clinical_phase32_pharmacy_quote import (  # noqa: E402
-    accept_pharmacy_quote,
-    list_pharmacy_quote_queue,
-    send_pharmacy_quote,
-)
-from health_ecosystem_core.health_ecosystem_core.clinical_phase18b import (  # noqa: E402
-    complete_oauth_login,
-)
+# ---------------------------------------------------------------------------
+# Lazy re-exports of guest/portal handlers that live in phase modules.
+#
+# Those phase modules import helpers from this module, so importing them
+# eagerly here creates a circular import that fails whenever a phase module is
+# loaded before ``api`` (bench execute, smokes, or any alternate import order).
+# Resolving them lazily via PEP 562 module ``__getattr__`` keeps the
+# ``...api.<fn>`` call paths working while breaking the import cycle.
+# ---------------------------------------------------------------------------
+_LAZY_REEXPORTS = {
+    "book_allied_health_appointment": "clinical_phase31_allied_health",
+    "get_allied_health_service": "clinical_phase31_allied_health",
+    "get_allied_health_services": "clinical_phase31_allied_health",
+    "get_allied_health_wings": "clinical_phase31_allied_health",
+    "get_insurance_landing": "clinical_phase44_insurance",
+    "get_my_insurance_requests": "clinical_phase44_insurance",
+    "submit_insurance_quote_request": "clinical_phase44_insurance",
+    "accept_pharmacy_quote": "clinical_phase32_pharmacy_quote",
+    "list_pharmacy_quote_queue": "clinical_phase32_pharmacy_quote",
+    "send_pharmacy_quote": "clinical_phase32_pharmacy_quote",
+    "complete_oauth_login": "clinical_phase18b",
+    "get_masked_call_context": "clinical_phase65_number_masking",
+    "start_masked_call": "clinical_phase65_number_masking",
+}
 
 
-# Phase 65 ??? Exotel masked click-to-call
-from health_ecosystem_core.health_ecosystem_core.clinical_phase65_number_masking import (  # noqa: E402
-    get_masked_call_context,
-    start_masked_call,
-)
+def __getattr__(name):
+    module = _LAZY_REEXPORTS.get(name)
+    if module:
+        import importlib
+
+        mod = importlib.import_module(
+            f"health_ecosystem_core.health_ecosystem_core.{module}"
+        )
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
