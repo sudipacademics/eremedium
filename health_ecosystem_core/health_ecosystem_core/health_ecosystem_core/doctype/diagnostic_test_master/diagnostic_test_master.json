@@ -1,0 +1,66 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:test_name",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "test_name",
+    "department",
+    "item",
+    "disabled",
+    "lis_code",
+    "report_category",
+    "nabl_discipline",
+    "machine_method",
+    "interpretation",
+    "description",
+    "parameters"
+  ],
+  "fields": [
+    {"fieldname": "test_name", "fieldtype": "Data", "in_list_view": 1, "label": "Test Name", "reqd": 1, "unique": 1},
+    {"fieldname": "department", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Department", "options": "Clinical Department", "reqd": 1},
+    {"fieldname": "item", "fieldtype": "Link", "label": "Billable Item", "options": "Item"},
+    {
+      "default": "0",
+      "description": "Hide this diagnostic master from catalogs and new lab reports",
+      "fieldname": "disabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Disabled"
+    },
+    {"fieldname": "lis_code", "fieldtype": "Data", "in_list_view": 1, "label": "LIS Machine Code"},
+    {"default": "CLINICAL BIOCHEMISTRY", "fieldname": "report_category", "fieldtype": "Data", "in_list_view": 1, "label": "Report Category Heading"},
+    {
+      "fieldname": "nabl_discipline",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "NABL Discipline",
+      "options": "\nClinical Biochemistry\nHaematology\nClinical Pathology\nMicrobiology\nSerology and Immunology\nHistopathology\nCytopathology\nMolecular Diagnostics\nGenetics\nOther"
+    },
+    {"fieldname": "machine_method", "fieldtype": "Data", "label": "Default Machine / Method"},
+    {"fieldname": "interpretation", "fieldtype": "Text Editor", "label": "Test Interpretation (Literature)"},
+    {"fieldname": "description", "fieldtype": "Text Editor", "label": "Description"},
+    {"fieldname": "parameters", "fieldtype": "Table", "label": "Parameters & Normal Ranges", "options": "Diagnostic Test Parameter"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Diagnostic Test Master",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "report": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "report": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

@@ -1,0 +1,148 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:promo_label",
+  "creation": "2026-06-26 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "promo_label",
+    "title",
+    "description",
+    "column_break_1",
+    "enabled",
+    "display_order",
+    "section_discount",
+    "discount_percent",
+    "discount_amount",
+    "min_order_amount",
+    "applies_to",
+    "item_group",
+    "valid_from",
+    "valid_upto"
+  ],
+  "fields": [
+    {
+      "fieldname": "promo_label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Offer Code / Label",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Offer Title",
+      "reqd": 1
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "label": "Description"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "0",
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Display Order"
+    },
+    {
+      "fieldname": "section_discount",
+      "fieldtype": "Section Break",
+      "label": "Checkout redemption"
+    },
+    {
+      "default": "0",
+      "fieldname": "discount_percent",
+      "fieldtype": "Float",
+      "label": "Discount %",
+      "description": "e.g. 10 for 10% off"
+    },
+    {
+      "default": "0",
+      "fieldname": "discount_amount",
+      "fieldtype": "Currency",
+      "label": "Flat discount (₹)"
+    },
+    {
+      "default": "0",
+      "fieldname": "min_order_amount",
+      "fieldtype": "Currency",
+      "label": "Minimum order (₹)"
+    },
+    {
+      "default": "All",
+      "fieldname": "applies_to",
+      "fieldtype": "Select",
+      "label": "Applies to",
+      "options": "All\nPharmacy\nLab Diagnostics"
+    },
+    {
+      "fieldname": "item_group",
+      "fieldtype": "Link",
+      "label": "Limit to Item Group",
+      "options": "Item Group",
+      "description": "Optional — leave blank for all items in applies_to"
+    },
+    {
+      "fieldname": "valid_from",
+      "fieldtype": "Date",
+      "label": "Valid From"
+    },
+    {
+      "fieldname": "valid_upto",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Valid Upto"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-26 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Mobile Promotion",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    }
+  ],
+  "sort_field": "display_order",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "promo_label",
+  "track_changes": 1
+}

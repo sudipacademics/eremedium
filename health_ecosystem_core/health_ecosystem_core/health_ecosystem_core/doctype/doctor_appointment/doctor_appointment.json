@@ -1,0 +1,149 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:HEC-APT-{YYYY}-{#####}",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "patient",
+    "patient_name",
+    "doctor",
+    "doctor_name",
+    "department",
+    "consultation_type",
+    "appointment_date",
+    "appointment_time",
+    "status",
+    "notes",
+    "amount",
+    "razorpay_payment_status",
+    "payment_method",
+    "payment_id",
+    "company"
+  ],
+  "fields": [
+    {
+      "fieldname": "patient",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Patient",
+      "options": "Health Patient",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "patient.patient_name",
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Patient Name",
+      "read_only": 1
+    },
+    {
+      "fieldname": "doctor",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Doctor",
+      "options": "Doctor"
+    },
+    {
+      "fetch_from": "doctor.doctor_name",
+      "fieldname": "doctor_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Doctor Name",
+      "read_only": 1
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Department",
+      "options": "Clinical Department"
+    },
+    {
+      "fieldname": "consultation_type",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Consultation Type",
+      "options": "Consultation Type",
+      "reqd": 1
+    },
+    {
+      "fieldname": "appointment_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Appointment Date",
+      "reqd": 1
+    },
+    {
+      "fieldname": "appointment_time",
+      "fieldtype": "Time",
+      "label": "Appointment Time"
+    },
+    {
+      "default": "Scheduled",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Scheduled\nConfirmed\nChecked In\nCompleted\nCancelled\nNo Show"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Consultation Fee"
+    },
+    {
+      "default": "Pending",
+      "fieldname": "razorpay_payment_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Payment Status",
+      "options": "Pending\nPaid\nFailed"
+    },
+    {
+      "default": "Online",
+      "fieldname": "payment_method",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Payment Method",
+      "options": "Online\nCash on Delivery\nPay at Hub"
+    },
+    {
+      "fieldname": "payment_id",
+      "fieldtype": "Data",
+      "label": "Payment Reference",
+      "read_only": 1
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company"
+    }
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Doctor Appointment",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Nurse", "read": 1, "write": 1, "create": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

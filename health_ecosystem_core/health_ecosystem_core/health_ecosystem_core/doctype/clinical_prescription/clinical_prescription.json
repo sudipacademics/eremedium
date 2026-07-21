@@ -1,0 +1,53 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:HEC-RX-{YYYY}-{#####}",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "patient",
+    "patient_name",
+    "doctor",
+    "department",
+    "care_journey",
+    "encounter_date",
+    "status",
+    "column_break_1",
+    "therapeutic_template",
+    "diagnosis",
+    "clinical_notes",
+    "medicines",
+    "diagnostics"
+  ],
+  "fields": [
+    {"fieldname": "patient", "fieldtype": "Link", "in_list_view": 1, "label": "Patient", "options": "Health Patient", "reqd": 1},
+    {"fetch_from": "patient.patient_name", "fieldname": "patient_name", "fieldtype": "Data", "in_list_view": 1, "label": "Patient Name", "read_only": 1},
+    {"fieldname": "doctor", "fieldtype": "Link", "in_list_view": 1, "label": "Doctor", "options": "Doctor", "reqd": 1},
+    {"fieldname": "department", "fieldtype": "Link", "label": "Department", "options": "Clinical Department"},
+    {"fieldname": "care_journey", "fieldtype": "Link", "label": "Patient Care Journey", "options": "Patient Care Journey"},
+    {"default": "Today", "fieldname": "encounter_date", "fieldtype": "Date", "in_list_view": 1, "label": "Encounter Date"},
+    {"default": "Draft", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Draft\nSubmitted\nDispensed\nCancelled"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "therapeutic_template", "fieldtype": "Link", "label": "Therapeutic Template", "options": "Therapeutic Template"},
+    {"fieldname": "diagnosis", "fieldtype": "Small Text", "label": "Diagnosis"},
+    {"fieldname": "clinical_notes", "fieldtype": "Text Editor", "label": "Clinical Notes"},
+    {"fieldname": "medicines", "fieldtype": "Table", "label": "Medicines", "options": "Prescription Medicine"},
+    {"fieldname": "diagnostics", "fieldtype": "Table", "label": "Diagnostic Workup", "options": "Prescription Diagnostic"}
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Clinical Prescription",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "write": 1, "create": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

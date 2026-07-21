@@ -1,0 +1,26 @@
+{
+ "creation": "2026-07-18 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-07-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "hec-pharma-billing",
+ "owner": "Administrator",
+ "page_name": "hec-pharma-billing",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Health System Admin"},
+  {"role": "Accounts User"},
+  {"role": "Accounts Manager"},
+  {"role": "Purchase User"},
+  {"role": "Purchase Manager"},
+  {"role": "Sales User"},
+  {"role": "Sales Manager"},
+  {"role": "Stock User"}
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "HEC Pharma Billing"
+}

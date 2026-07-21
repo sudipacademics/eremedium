@@ -1,0 +1,38 @@
+{
+  "actions": [],
+  "autoname": "field:profile_code",
+  "creation": "2026-07-07 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "profile_code",
+    "full_name",
+    "user",
+    "employee",
+    "division",
+    "role_tier",
+    "work_email",
+    "column_break_1",
+    "active"
+  ],
+  "fields": [
+    {"fieldname": "profile_code", "fieldtype": "Data", "in_list_view": 1, "label": "Profile Code", "reqd": 1, "unique": 1},
+    {"fieldname": "full_name", "fieldtype": "Data", "in_list_view": 1, "label": "Full Name", "reqd": 1},
+    {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User"},
+    {"fieldname": "employee", "fieldtype": "Link", "label": "Employee", "options": "Employee"},
+    {"fieldname": "division", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Division", "options": "Company Division", "reqd": 1},
+    {"fieldname": "role_tier", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Role Tier", "options": "Officer\nClerk\nService HR", "reqd": 1},
+    {"fieldname": "work_email", "fieldtype": "Data", "in_list_view": 1, "label": "Work Email", "options": "Email", "reqd": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"default": "1", "fieldname": "active", "fieldtype": "Check", "in_list_view": 1, "label": "Active"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Ops Staff Profile",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "division",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

@@ -1,0 +1,29 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:department_name",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["department_name", "description", "is_active"],
+  "fields": [
+    {"fieldname": "department_name", "fieldtype": "Data", "in_list_view": 1, "label": "Department Name", "reqd": 1, "unique": 1},
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+    {"default": "1", "fieldname": "is_active", "fieldtype": "Check", "in_list_view": 1, "label": "Is Active"}
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Clinical Department",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

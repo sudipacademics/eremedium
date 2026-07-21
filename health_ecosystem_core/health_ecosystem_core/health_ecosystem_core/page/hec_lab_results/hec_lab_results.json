@@ -1,0 +1,21 @@
+{
+ "creation": "2026-07-18 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-07-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "hec-lab-results",
+ "owner": "Administrator",
+ "page_name": "hec-lab-results",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Health System Admin"},
+  {"role": "Lab Technician"},
+  {"role": "Pathologist"}
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "HEC Lab Results"
+}

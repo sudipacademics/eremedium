@@ -1,0 +1,33 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:panel_name",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["panel_name", "description", "is_active", "show_on_mobile", "panel_rate", "tests"],
+  "fields": [
+    {"fieldname": "panel_name", "fieldtype": "Data", "in_list_view": 1, "in_standard_filter": 1, "label": "Panel Name", "reqd": 1, "unique": 1},
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+    {"default": "1", "fieldname": "is_active", "fieldtype": "Check", "in_list_view": 1, "label": "Active"},
+    {"default": "1", "fieldname": "show_on_mobile", "fieldtype": "Check", "in_list_view": 1, "label": "Show on Mobile"},
+    {"fieldname": "panel_rate", "fieldtype": "Currency", "in_list_view": 1, "label": "Panel Price (optional override)"},
+    {"fieldname": "tests", "fieldtype": "Table", "label": "Tests in Panel", "options": "Lab Test Panel Item", "reqd": 1}
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Test Panel",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "report": 1},
+    {"role": "Franchisee Operator", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

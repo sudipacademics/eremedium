@@ -1,0 +1,36 @@
+{
+  "actions": [],
+  "autoname": "field:division_code",
+  "creation": "2026-07-07 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "division_name",
+    "division_code",
+    "parent_division",
+    "column_break_1",
+    "principal_workflow",
+    "source_inputs",
+    "outputs",
+    "active"
+  ],
+  "fields": [
+    {"fieldname": "division_name", "fieldtype": "Data", "in_list_view": 1, "label": "Division Name", "reqd": 1},
+    {"fieldname": "division_code", "fieldtype": "Data", "in_list_view": 1, "in_standard_filter": 1, "label": "Division Code", "reqd": 1, "unique": 1},
+    {"fieldname": "parent_division", "fieldtype": "Link", "label": "Parent Division", "options": "Company Division"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "principal_workflow", "fieldtype": "Small Text", "label": "Principal Workflow"},
+    {"fieldname": "source_inputs", "fieldtype": "Small Text", "label": "Source Inputs"},
+    {"fieldname": "outputs", "fieldtype": "Small Text", "label": "Outputs"},
+    {"default": "1", "fieldname": "active", "fieldtype": "Check", "in_list_view": 1, "label": "Active"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Company Division",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "division_name",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

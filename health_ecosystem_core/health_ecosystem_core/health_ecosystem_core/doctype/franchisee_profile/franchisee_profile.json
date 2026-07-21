@@ -1,0 +1,190 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:branch_code",
+  "creation": "2024-01-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "franchise_name",
+    "branch_code",
+    "owner_name",
+    "territory_region",
+    "franchisee_type",
+    "commission_percentage_rate",
+    "commission_base",
+    "active_status",
+    "column_break_1",
+    "linked_user",
+    "contact_phone",
+    "contact_email",
+    "address",
+    "section_scf",
+    "scf_ownership_type",
+    "nabl_declared",
+    "primary_sample_manual_ref"
+  ],
+  "fields": [
+    {
+      "fieldname": "franchise_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Franchise Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "branch_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Unique Branch Code",
+      "reqd": 1,
+      "unique": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "owner_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Owner Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "territory_region",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Territory/Region",
+      "search_index": 1
+    },
+    {
+      "default": "Pulse",
+      "description": "Vector = B2B wholesale rate list; Pulse = FOCO rate list. Company MRP is always shared.",
+      "fieldname": "franchisee_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Franchisee Type",
+      "options": "Vector\nPulse",
+      "reqd": 1
+    },
+    {
+      "fieldname": "commission_percentage_rate",
+      "fieldtype": "Percent",
+      "in_list_view": 1,
+      "label": "Commission Percentage Rate",
+      "reqd": 1
+    },
+    {
+      "default": "Franchisee Rate",
+      "description": "Apply commission % on Vector/Pulse franchisee rate, or on company MRP",
+      "fieldname": "commission_base",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Commission Base",
+      "options": "Franchisee Rate\nMRP",
+      "reqd": 1
+    },
+    {
+      "default": "Active",
+      "fieldname": "active_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Active Status",
+      "options": "Active\nInactive\nSuspended",
+      "search_index": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "linked_user",
+      "fieldtype": "Link",
+      "label": "Linked User",
+      "options": "User"
+    },
+    {
+      "fieldname": "contact_phone",
+      "fieldtype": "Data",
+      "label": "Contact Phone"
+    },
+    {
+      "fieldname": "contact_email",
+      "fieldtype": "Data",
+      "label": "Contact Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "address",
+      "fieldtype": "Small Text",
+      "label": "Address"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_scf",
+      "fieldtype": "Section Break",
+      "label": "NABL Sample Collection Facility"
+    },
+    {
+      "default": "Franchisee",
+      "fieldname": "scf_ownership_type",
+      "fieldtype": "Select",
+      "label": "SCF Ownership",
+      "options": "Ownership\nManagement\nFranchisee"
+    },
+    {
+      "default": "0",
+      "description": "Only declared SCFs may be printed as accredited collection centres",
+      "fieldname": "nabl_declared",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "NABL Declared SCF"
+    },
+    {
+      "fieldname": "primary_sample_manual_ref",
+      "fieldtype": "Data",
+      "label": "Primary Sample Manual Ref"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-01-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Franchisee Profile",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "role": "Franchisee Operator"
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

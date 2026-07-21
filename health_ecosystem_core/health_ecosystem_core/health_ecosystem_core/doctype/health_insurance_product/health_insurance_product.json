@@ -1,0 +1,39 @@
+{
+  "actions": [],
+  "autoname": "field:product_code",
+  "creation": "2026-07-11 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "product_code", "product_name", "insurer", "category", "column_break_1",
+    "sum_insured_from", "sum_insured_to", "premium_from", "enabled", "display_order",
+    "section_details", "highlights", "description", "brochure_url"
+  ],
+  "fields": [
+    {"fieldname": "product_code", "fieldtype": "Data", "in_list_view": 1, "label": "Product Code", "reqd": 1, "unique": 1},
+    {"fieldname": "product_name", "fieldtype": "Data", "in_list_view": 1, "label": "Product Name", "reqd": 1},
+    {"fieldname": "insurer", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Insurer", "options": "GIC\nLIC\nOther", "reqd": 1},
+    {"fieldname": "category", "fieldtype": "Select", "in_list_view": 1, "label": "Category", "options": "Individual\nFamily\nSenior Citizen\nCritical Illness\nTop-up\nGroup"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "sum_insured_from", "fieldtype": "Currency", "label": "Sum Insured From"},
+    {"fieldname": "sum_insured_to", "fieldtype": "Currency", "label": "Sum Insured To"},
+    {"fieldname": "premium_from", "fieldtype": "Currency", "in_list_view": 1, "label": "Premium From (₹/yr)"},
+    {"default": "1", "fieldname": "enabled", "fieldtype": "Check", "in_list_view": 1, "label": "Enabled"},
+    {"default": "10", "fieldname": "display_order", "fieldtype": "Int", "label": "Display Order"},
+    {"fieldname": "section_details", "fieldtype": "Section Break", "label": "Details"},
+    {"fieldname": "highlights", "fieldtype": "Small Text", "label": "Highlights (comma-separated)"},
+    {"fieldname": "description", "fieldtype": "Text Editor", "label": "Description"},
+    {"fieldname": "brochure_url", "fieldtype": "Data", "label": "Brochure URL"}
+  ],
+  "modified": "2026-07-11 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Health Insurance Product",
+  "naming_rule": "By fieldname",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "display_order",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

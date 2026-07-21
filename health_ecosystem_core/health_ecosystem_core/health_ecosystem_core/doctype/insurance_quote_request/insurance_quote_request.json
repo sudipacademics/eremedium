@@ -1,0 +1,35 @@
+{
+  "actions": [],
+  "autoname": "format:INS-{YYYY}-{#####}",
+  "creation": "2026-07-11 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer_user", "customer_name", "phone", "email", "column_break_1",
+    "product", "insurer", "sum_insured", "status", "notes"
+  ],
+  "fields": [
+    {"fieldname": "customer_user", "fieldtype": "Link", "label": "User", "options": "User"},
+    {"fieldname": "customer_name", "fieldtype": "Data", "in_list_view": 1, "label": "Customer Name", "reqd": 1},
+    {"fieldname": "phone", "fieldtype": "Data", "in_list_view": 1, "label": "Mobile", "reqd": 1},
+    {"fieldname": "email", "fieldtype": "Data", "label": "Email", "options": "Email"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "product", "fieldtype": "Link", "in_list_view": 1, "label": "Product", "options": "Health Insurance Product", "reqd": 1},
+    {"fieldname": "insurer", "fieldtype": "Data", "in_list_view": 1, "label": "Insurer"},
+    {"fieldname": "sum_insured", "fieldtype": "Currency", "label": "Desired Sum Insured"},
+    {"default": "New", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "New\nContacted\nQuote Sent\nPolicy Issued\nClosed"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-11 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Insurance Quote Request",
+  "naming_rule": "Expression",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Patient", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

@@ -1,0 +1,62 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "analyte_code",
+    "analyte_name",
+    "specimen_material",
+    "column_break_1",
+    "rt_hours",
+    "refrigerated_hours",
+    "frozen_hours",
+    "do_not_freeze",
+    "notes"
+  ],
+  "fields": [
+    {
+      "default": "AS-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "AS-.#####",
+      "reqd": 1
+    },
+    {"fieldname": "analyte_code", "fieldtype": "Data", "in_list_view": 1, "in_standard_filter": 1, "label": "Analyte Code", "reqd": 1},
+    {"fieldname": "analyte_name", "fieldtype": "Data", "in_list_view": 1, "label": "Analyte Name", "reqd": 1},
+    {
+      "default": "Serum",
+      "fieldname": "specimen_material",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Specimen",
+      "options": "Serum\nPlasma\nEDTA Whole Blood\nFluoride Plasma\nUrine\nCSF\nOther",
+      "reqd": 1
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "rt_hours", "fieldtype": "Float", "label": "Room Temp Hours"},
+    {"fieldname": "refrigerated_hours", "fieldtype": "Float", "label": "Refrigerated Hours (2-8°C)"},
+    {"fieldname": "frozen_hours", "fieldtype": "Float", "label": "Frozen Hours"},
+    {"default": "0", "fieldname": "do_not_freeze", "fieldtype": "Check", "label": "Do Not Freeze"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Analyte Stability",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1},
+    {"role": "Pathologist", "read": 1, "write": 1}
+  ],
+  "sort_field": "analyte_code",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

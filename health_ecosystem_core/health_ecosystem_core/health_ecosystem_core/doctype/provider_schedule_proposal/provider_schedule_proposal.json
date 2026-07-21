@@ -1,0 +1,21 @@
+{
+  "actions": [],
+  "creation": "2026-07-11 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["day_of_week", "from_time", "to_time", "slot_duration", "consultation_mode"],
+  "fields": [
+    {"fieldname": "day_of_week", "fieldtype": "Select", "in_list_view": 1, "label": "Day", "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday", "reqd": 1},
+    {"fieldname": "from_time", "fieldtype": "Time", "in_list_view": 1, "label": "From", "reqd": 1},
+    {"fieldname": "to_time", "fieldtype": "Time", "in_list_view": 1, "label": "To", "reqd": 1},
+    {"default": "15", "fieldname": "slot_duration", "fieldtype": "Int", "in_list_view": 1, "label": "Slot (min)"},
+    {"default": "Both", "fieldname": "consultation_mode", "fieldtype": "Select", "in_list_view": 1, "label": "Mode", "options": "In-person\nOnline\nBoth"}
+  ],
+  "istable": 1,
+  "modified": "2026-07-11 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Provider Schedule Proposal",
+  "owner": "Administrator",
+  "permissions": []
+}

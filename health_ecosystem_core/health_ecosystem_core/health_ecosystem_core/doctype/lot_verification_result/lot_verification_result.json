@@ -1,0 +1,23 @@
+{
+  "actions": [],
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["parameter_name", "old_value", "new_value", "unit", "accepted"],
+  "fields": [
+    {"fieldname": "parameter_name", "fieldtype": "Data", "in_list_view": 1, "label": "Parameter", "reqd": 1},
+    {"fieldname": "old_value", "fieldtype": "Data", "in_list_view": 1, "label": "Old Lot Value"},
+    {"fieldname": "new_value", "fieldtype": "Data", "in_list_view": 1, "label": "New Lot Value"},
+    {"fieldname": "unit", "fieldtype": "Data", "label": "Unit"},
+    {"default": "1", "fieldname": "accepted", "fieldtype": "Check", "in_list_view": 1, "label": "Accepted"}
+  ],
+  "istable": 1,
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lot Verification Result",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

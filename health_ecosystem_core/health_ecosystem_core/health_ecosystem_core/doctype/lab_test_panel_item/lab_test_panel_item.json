@@ -1,0 +1,21 @@
+{
+  "actions": [],
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["item", "item_name", "diagnostic_test"],
+  "fields": [
+    {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Billable Item", "options": "Item", "reqd": 1},
+    {"fetch_from": "item.item_name", "fieldname": "item_name", "fieldtype": "Data", "in_list_view": 1, "label": "Test Name", "read_only": 1},
+    {"fieldname": "diagnostic_test", "fieldtype": "Link", "label": "Diagnostic Test Master", "options": "Diagnostic Test Master"}
+  ],
+  "istable": 1,
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Test Panel Item",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

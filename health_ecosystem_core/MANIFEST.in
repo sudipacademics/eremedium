@@ -1,0 +1,12 @@
+include MANIFEST.in
+include license.txt
+include pyproject.toml
+recursive-include health_ecosystem_core *.json
+recursive-include health_ecosystem_core *.py
+recursive-include health_ecosystem_core/health_ecosystem_core *.json
+recursive-include health_ecosystem_core/health_ecosystem_core *.py
+recursive-include health_ecosystem_core *.txt
+recursive-include health_ecosystem_core *.md
+recursive-include health_ecosystem_core *.html
+recursive-include health_ecosystem_core *.css
+recursive-include health_ecosystem_core *.js

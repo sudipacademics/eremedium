@@ -1,0 +1,58 @@
+{
+  "actions": [],
+  "autoname": "format:SRR-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer_trf",
+    "lab_report",
+    "reason",
+    "column_break_1",
+    "action_taken",
+    "rejected_by",
+    "rejected_on",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "customer_trf", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Customer TRF", "options": "Customer TRF", "reqd": 1},
+    {"fieldname": "lab_report", "fieldtype": "Link", "label": "Lab Report", "options": "Lab Report"},
+    {
+      "fieldname": "reason",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Reason",
+      "options": "Temperature Excursion\nHemolysis\nQuantity Not Sufficient\nLabeling Error\nStability Exceeded\nClotted\nWrong Container\nOther",
+      "reqd": 1
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Rejected",
+      "fieldname": "action_taken",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Action",
+      "options": "Rejected\nAccepted with Comment\nRecollect Requested"
+    },
+    {"fieldname": "rejected_by", "fieldtype": "Link", "label": "Recorded By", "options": "User"},
+    {"fieldname": "rejected_on", "fieldtype": "Datetime", "label": "Recorded On"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Sample Rejection Record",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1},
+    {"role": "Phlebotomist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

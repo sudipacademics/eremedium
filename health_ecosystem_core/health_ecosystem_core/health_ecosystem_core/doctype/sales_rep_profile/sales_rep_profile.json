@@ -1,0 +1,114 @@
+{
+  "actions": [],
+  "autoname": "field:rep_code",
+  "creation": "2026-07-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "rep_code",
+    "user",
+    "employee",
+    "full_name",
+    "designation",
+    "column_break_1",
+    "reports_to",
+    "territory_region",
+    "phone",
+    "active",
+    "hq_latitude",
+    "hq_longitude"
+  ],
+  "fields": [
+    {
+      "fieldname": "rep_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Rep Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "User",
+      "options": "User",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "employee",
+      "fieldtype": "Link",
+      "label": "Employee",
+      "options": "Employee"
+    },
+    {
+      "fieldname": "full_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Full Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "designation",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Designation",
+      "options": "Sales Representative\nArea Manager\nRegional Manager\nNational Head",
+      "default": "Sales Representative"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "reports_to",
+      "fieldtype": "Link",
+      "label": "Reports To",
+      "options": "Sales Rep Profile"
+    },
+    {
+      "fieldname": "territory_region",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Territory / Region"
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "default": "1",
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "label": "Active"
+    },
+    {
+      "fieldname": "hq_latitude",
+      "fieldtype": "Float",
+      "label": "HQ Latitude",
+      "precision": 8
+    },
+    {
+      "fieldname": "hq_longitude",
+      "fieldtype": "Float",
+      "label": "HQ Longitude",
+      "precision": 8
+    }
+  ],
+  "modified": "2026-07-05 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Sales Rep Profile",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

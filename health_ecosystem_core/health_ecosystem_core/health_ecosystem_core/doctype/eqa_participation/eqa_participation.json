@@ -1,0 +1,64 @@
+{
+  "actions": [],
+  "autoname": "format:EQA-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "scheme_name",
+    "discipline",
+    "cycle",
+    "column_break_1",
+    "participation_date",
+    "score",
+    "outcome",
+    "alternative_method",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "scheme_name", "fieldtype": "Data", "in_list_view": 1, "label": "Scheme / Provider", "reqd": 1},
+    {
+      "fieldname": "discipline",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Discipline",
+      "options": "Clinical Biochemistry\nHaematology\nClinical Pathology\nMicrobiology\nSerology and Immunology\nOther",
+      "reqd": 1
+    },
+    {"fieldname": "cycle", "fieldtype": "Data", "in_list_view": 1, "label": "Cycle / Round"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "participation_date", "fieldtype": "Date", "label": "Date", "reqd": 1},
+    {"fieldname": "score", "fieldtype": "Data", "label": "Score / Z"},
+    {
+      "default": "Satisfactory",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Outcome",
+      "options": "Satisfactory\nUnsatisfactory\nPending"
+    },
+    {
+      "fieldname": "alternative_method",
+      "fieldtype": "Select",
+      "label": "Alt. Method (if no formal PT)",
+      "options": "\nSplit Sample\nILC\nBlind Retest\nReference Material\nOther"
+    },
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes / CAPA"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "EQA Participation",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "participation_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

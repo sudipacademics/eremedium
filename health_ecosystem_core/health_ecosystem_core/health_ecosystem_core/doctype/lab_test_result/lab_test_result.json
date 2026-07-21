@@ -1,0 +1,130 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:RES-{YYYY}{MM}{DD}-{#####}",
+  "creation": "2024-01-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "barcode_link",
+    "analyte_test_name",
+    "numeric_result_value",
+    "unit_of_measure",
+    "machine_reference",
+    "verification_timestamp",
+    "customer_trf",
+    "reference_range",
+    "abnormal_flag"
+  ],
+  "fields": [
+    {
+      "fieldname": "barcode_link",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Barcode Link",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "analyte_test_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Analyte/Test Name",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "numeric_result_value",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Numeric Result Value",
+      "reqd": 1
+    },
+    {
+      "fieldname": "unit_of_measure",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Unit of Measure"
+    },
+    {
+      "fieldname": "machine_reference",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Machine Reference",
+      "options": "EM 200\nMaglumi 800\nLifotronic H8\nManual Entry",
+      "search_index": 1
+    },
+    {
+      "fieldname": "verification_timestamp",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Verification Timestamp",
+      "default": "Now"
+    },
+    {
+      "fieldname": "customer_trf",
+      "fieldtype": "Link",
+      "label": "Customer TRF",
+      "options": "Customer TRF",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_range",
+      "fieldtype": "Data",
+      "label": "Reference Range"
+    },
+    {
+      "fieldname": "abnormal_flag",
+      "fieldtype": "Select",
+      "label": "Abnormal Flag",
+      "options": "\nNormal\nHigh\nLow\nCritical"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-01-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Test Result",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Lab Technician",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "role": "Franchisee Operator"
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

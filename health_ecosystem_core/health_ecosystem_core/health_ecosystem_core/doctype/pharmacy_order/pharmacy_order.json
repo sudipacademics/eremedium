@@ -1,0 +1,213 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:PHM-{YYYY}{MM}{DD}-{#####}",
+  "creation": "2024-01-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer_name",
+    "delivery_address",
+    "uploaded_prescription_url",
+    "order_total",
+    "payment_id",
+    "delivery_status",
+    "delivery_user",
+    "column_break_1",
+    "razorpay_payment_status",
+    "customer_phone",
+    "duration_months",
+    "desired_discount_slab",
+    "request_latitude",
+    "request_longitude",
+    "order_kind",
+    "quote_sent_on",
+    "pharmacist_notes",
+    "items_json",
+    "promo_code",
+    "discount_amount",
+    "sales_invoice",
+    "sales_order"
+  ],
+  "fields": [
+    {
+      "fieldname": "customer_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Customer Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "delivery_address",
+      "fieldtype": "Small Text",
+      "label": "Delivery Address",
+      "reqd": 1
+    },
+    {
+      "fieldname": "uploaded_prescription_url",
+      "fieldtype": "Data",
+      "label": "Uploaded Prescription URL",
+      "reqd": 1
+    },
+    {
+      "fieldname": "order_total",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Order Total",
+      "reqd": 1
+    },
+    {
+      "fieldname": "payment_id",
+      "fieldtype": "Data",
+      "label": "Payment ID"
+    },
+    {
+      "default": "Pending",
+      "fieldname": "delivery_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Delivery Status",
+      "options": "Quotation Pending\nQuote Sent\nPending\nConfirmed\nPacked\nOut for Delivery\nDelivered\nCancelled",
+      "search_index": 1
+    },
+    {
+      "fieldname": "delivery_user",
+      "fieldtype": "Link",
+      "label": "Delivery User",
+      "options": "User",
+      "description": "Assigned delivery partner for masked click-to-call"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Pending",
+      "fieldname": "razorpay_payment_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Razorpay Payment Status",
+      "options": "Pending\nPaid\nFailed\nRefunded",
+      "search_index": 1
+    },
+    {
+      "fieldname": "customer_phone",
+      "fieldtype": "Data",
+      "label": "Customer Phone"
+    },
+    {
+      "fieldname": "duration_months",
+      "fieldtype": "Int",
+      "label": "Pack Duration (Months)"
+    },
+    {
+      "fieldname": "desired_discount_slab",
+      "fieldtype": "Select",
+      "label": "Desired Discount Slab",
+      "options": "\n20-30%\n30-40%\n40-50%\n50-60%\n60-70%"
+    },
+    {
+      "fieldname": "request_latitude",
+      "fieldtype": "Float",
+      "label": "Request Latitude",
+      "precision": "6"
+    },
+    {
+      "fieldname": "request_longitude",
+      "fieldtype": "Float",
+      "label": "Request Longitude",
+      "precision": "6"
+    },
+    {
+      "default": "Chronic quote",
+      "fieldname": "order_kind",
+      "fieldtype": "Select",
+      "in_standard_filter": 1,
+      "label": "Order Kind",
+      "options": "Chronic quote\nEcommerce"
+    },
+    {
+      "fieldname": "quote_sent_on",
+      "fieldtype": "Datetime",
+      "label": "Quote Sent On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "pharmacist_notes",
+      "fieldtype": "Small Text",
+      "label": "Pharmacist Notes"
+    },
+    {
+      "fieldname": "items_json",
+      "fieldtype": "Long Text",
+      "label": "Items JSON"
+    },
+    {
+      "fieldname": "promo_code",
+      "fieldtype": "Data",
+      "label": "Promo Code"
+    },
+    {
+      "fieldname": "discount_amount",
+      "fieldtype": "Currency",
+      "label": "Discount Amount"
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sales_order",
+      "fieldtype": "Link",
+      "label": "Sales Order",
+      "options": "Sales Order",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-01-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Pharmacy Order",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Franchisee Operator",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

@@ -1,0 +1,44 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-07-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "sales_rep",
+    "report_type",
+    "period_date",
+    "visits_count",
+    "new_leads",
+    "qualified_leads",
+    "onboardings",
+    "franchise_revenue",
+    "km_traveled",
+    "notes"
+  ],
+  "fields": [
+    {"default": "SCR-.#####", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "SCR-.#####", "reqd": 1},
+    {"fieldname": "sales_rep", "fieldtype": "Link", "in_list_view": 1, "label": "Sales Rep", "options": "Sales Rep Profile", "reqd": 1},
+    {"fieldname": "report_type", "fieldtype": "Select", "in_list_view": 1, "label": "Report Type", "options": "Daily\nMonthly", "reqd": 1},
+    {"fieldname": "period_date", "fieldtype": "Date", "in_list_view": 1, "label": "Period Date", "reqd": 1},
+    {"fieldname": "visits_count", "fieldtype": "Int", "label": "Visits", "default": "0"},
+    {"fieldname": "new_leads", "fieldtype": "Int", "label": "New Leads", "default": "0"},
+    {"fieldname": "qualified_leads", "fieldtype": "Int", "label": "Qualified Leads", "default": "0"},
+    {"fieldname": "onboardings", "fieldtype": "Int", "label": "Onboardings", "default": "0"},
+    {"fieldname": "franchise_revenue", "fieldtype": "Currency", "label": "Franchise Revenue (period)"},
+    {"fieldname": "km_traveled", "fieldtype": "Float", "label": "KM Traveled"},
+    {"fieldname": "notes", "fieldtype": "Text", "label": "Closing Notes"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Sales Closing Report",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

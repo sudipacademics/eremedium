@@ -1,0 +1,55 @@
+{
+  "actions": [],
+  "autoname": "format:EC-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "equipment",
+    "calibration_date",
+    "due_date",
+    "column_break_1",
+    "outcome",
+    "calibrating_cab",
+    "nabl_cert_no",
+    "mu_cmc",
+    "mu_accepted",
+    "certificate",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "equipment", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Equipment", "options": "Lab Equipment", "reqd": 1},
+    {"fieldname": "calibration_date", "fieldtype": "Date", "in_list_view": 1, "label": "Calibration Date", "reqd": 1},
+    {"fieldname": "due_date", "fieldtype": "Date", "in_list_view": 1, "label": "Next Due"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Accepted",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Outcome",
+      "options": "Accepted\nRejected\nConditional"
+    },
+    {"fieldname": "calibrating_cab", "fieldtype": "Data", "label": "Calibrating CAB"},
+    {"fieldname": "nabl_cert_no", "fieldtype": "Data", "label": "NABL Cert No"},
+    {"fieldname": "mu_cmc", "fieldtype": "Data", "label": "MU / CMC"},
+    {"default": "1", "fieldname": "mu_accepted", "fieldtype": "Check", "label": "MU Accepted"},
+    {"fieldname": "certificate", "fieldtype": "Attach", "label": "Certificate / Raw Data"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Equipment Calibration",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "calibration_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

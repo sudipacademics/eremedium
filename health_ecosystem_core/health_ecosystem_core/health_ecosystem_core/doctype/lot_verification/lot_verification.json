@@ -1,0 +1,63 @@
+{
+  "actions": [],
+  "autoname": "format:LV-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "old_batch",
+    "new_batch",
+    "assay_type",
+    "column_break_1",
+    "outcome",
+    "verified_by",
+    "verified_on",
+    "notes",
+    "section_results",
+    "parallel_results"
+  ],
+  "fields": [
+    {"fieldname": "old_batch", "fieldtype": "Link", "in_list_view": 1, "label": "Old Batch", "options": "Lab Reagent Batch"},
+    {"fieldname": "new_batch", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "New Batch", "options": "Lab Reagent Batch", "reqd": 1},
+    {
+      "default": "Chemistry",
+      "fieldname": "assay_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Assay Type",
+      "options": "Chemistry\nCBC\nCoagulation\nUrine Strip\nSerology\nMolecular\nOther",
+      "reqd": 1
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Pending",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Outcome",
+      "options": "Pending\nAccepted\nFailed",
+      "reqd": 1
+    },
+    {"fieldname": "verified_by", "fieldtype": "Link", "label": "Verified By", "options": "User"},
+    {"fieldname": "verified_on", "fieldtype": "Datetime", "label": "Verified On"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"},
+    {"fieldname": "section_results", "fieldtype": "Section Break", "label": "Parallel Results"},
+    {"fieldname": "parallel_results", "fieldtype": "Table", "label": "Results", "options": "Lot Verification Result"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lot Verification",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

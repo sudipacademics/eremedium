@@ -1,0 +1,52 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:consultation_type",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["consultation_type", "default_duration", "item", "description"],
+  "fields": [
+    {
+      "fieldname": "consultation_type",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Consultation Type",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "default": "15",
+      "fieldname": "default_duration",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Default Duration (minutes)"
+    },
+    {
+      "fieldname": "item",
+      "fieldtype": "Link",
+      "label": "Billable Item",
+      "options": "Item"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Consultation Type",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

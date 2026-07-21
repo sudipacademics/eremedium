@@ -1,0 +1,30 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:template_name",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["template_name", "department", "description", "medicines"],
+  "fields": [
+    {"fieldname": "template_name", "fieldtype": "Data", "in_list_view": 1, "label": "Template Name", "reqd": 1, "unique": 1},
+    {"fieldname": "department", "fieldtype": "Link", "in_list_view": 1, "label": "Department", "options": "Clinical Department"},
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+    {"fieldname": "medicines", "fieldtype": "Table", "label": "Medicines", "options": "Therapeutic Template Item"}
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Therapeutic Template",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "write": 1, "create": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

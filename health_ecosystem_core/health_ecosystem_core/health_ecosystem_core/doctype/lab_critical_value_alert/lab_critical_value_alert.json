@@ -1,0 +1,134 @@
+{
+  "actions": [],
+  "autoname": "format:LCA-{YYYY}{MM}{DD}-{#####}",
+  "creation": "2026-07-12 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "patient",
+    "patient_name",
+    "lab_report",
+    "customer_trf",
+    "care_journey",
+    "column_break_1",
+    "parameter",
+    "result_value",
+    "unit",
+    "abnormal_flag",
+    "reference_range",
+    "alert_status",
+    "notified_patient",
+    "notified_staff",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "patient",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Patient",
+      "options": "Health Patient"
+    },
+    {
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Patient Name"
+    },
+    {
+      "fieldname": "lab_report",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Lab Report",
+      "options": "Lab Report"
+    },
+    {
+      "fieldname": "customer_trf",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Customer TRF",
+      "options": "Customer TRF"
+    },
+    {
+      "fieldname": "care_journey",
+      "fieldtype": "Link",
+      "label": "Care Journey",
+      "options": "Patient Care Journey"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "parameter",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Parameter",
+      "reqd": 1
+    },
+    {
+      "fieldname": "result_value",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Result Value",
+      "reqd": 1
+    },
+    {
+      "fieldname": "unit",
+      "fieldtype": "Data",
+      "label": "Unit"
+    },
+    {
+      "fieldname": "abnormal_flag",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Flag",
+      "options": "H\nL\nCritical",
+      "reqd": 1
+    },
+    {
+      "fieldname": "reference_range",
+      "fieldtype": "Data",
+      "label": "Reference Range"
+    },
+    {
+      "default": "Open",
+      "fieldname": "alert_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Open\nAcknowledged\nClosed"
+    },
+    {
+      "default": "0",
+      "fieldname": "notified_patient",
+      "fieldtype": "Check",
+      "label": "Patient Notified"
+    },
+    {
+      "default": "0",
+      "fieldname": "notified_staff",
+      "fieldtype": "Check",
+      "label": "Staff Notified"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Lab Critical Value Alert",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

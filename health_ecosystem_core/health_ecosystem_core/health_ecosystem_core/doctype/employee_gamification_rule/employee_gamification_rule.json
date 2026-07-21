@@ -1,0 +1,154 @@
+{
+  "actions": [],
+  "autoname": "field:rule_code",
+  "creation": "2026-07-12 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "rule_code",
+    "title",
+    "reference_doctype",
+    "trigger_event",
+    "watch_field",
+    "watch_value",
+    "column_break_1",
+    "base_points",
+    "points_per_1000_revenue",
+    "revenue_field",
+    "assign_points_to",
+    "assign_employee_field",
+    "assign_user_field",
+    "enabled",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "rule_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Rule Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Title",
+      "reqd": 1
+    },
+    {
+      "fieldname": "reference_doctype",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Reference DocType",
+      "options": "DocType",
+      "reqd": 1
+    },
+    {
+      "default": "After Insert",
+      "fieldname": "trigger_event",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Trigger Event",
+      "options": "After Insert\nField Changed\nPayment Received\nOn Submit",
+      "reqd": 1
+    },
+    {
+      "description": "Used for Field Changed / Payment Received triggers",
+      "fieldname": "watch_field",
+      "fieldtype": "Data",
+      "label": "Watch Field"
+    },
+    {
+      "description": "Leave blank to award on any change to the watch field",
+      "fieldname": "watch_value",
+      "fieldtype": "Data",
+      "label": "Watch Value"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "10",
+      "fieldname": "base_points",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Base Points"
+    },
+    {
+      "default": "0",
+      "description": "Extra points = (revenue / 1000) × this value",
+      "fieldname": "points_per_1000_revenue",
+      "fieldtype": "Float",
+      "label": "Points per ₹1000 Revenue"
+    },
+    {
+      "default": "amount",
+      "fieldname": "revenue_field",
+      "fieldtype": "Data",
+      "label": "Revenue Field"
+    },
+    {
+      "default": "Document Owner",
+      "fieldname": "assign_points_to",
+      "fieldtype": "Select",
+      "label": "Assign Points To",
+      "options": "Document Owner\nSession User\nEmployee Field\nUser Field\nLinked Doc User"
+    },
+    {
+      "depends_on": "eval:doc.assign_points_to=='Employee Field'",
+      "fieldname": "assign_employee_field",
+      "fieldtype": "Data",
+      "label": "Employee Field on Document"
+    },
+    {
+      "depends_on": "eval:['User Field','Linked Doc User'].includes(doc.assign_points_to)",
+      "fieldname": "assign_user_field",
+      "fieldtype": "Data",
+      "label": "User / Link Field"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Description"
+    }
+  ],
+  "links": [],
+  "modified": "2026-07-12 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Employee Gamification Rule",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Healthcare Administrator",
+      "write": 1
+    }
+  ],
+  "sort_field": "rule_code",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

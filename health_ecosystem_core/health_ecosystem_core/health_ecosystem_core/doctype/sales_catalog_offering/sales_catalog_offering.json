@@ -1,0 +1,49 @@
+{
+  "actions": [],
+  "autoname": "field:offering_code",
+  "creation": "2026-07-06 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "offering_code",
+    "title",
+    "category",
+    "column_break_1",
+    "investment_from",
+    "investment_to",
+    "mrp_reference",
+    "wholesale_reference",
+    "sort_order",
+    "is_active",
+    "description",
+    "bullet_points",
+    "brochure_page"
+  ],
+  "fields": [
+    {"fieldname": "offering_code", "fieldtype": "Data", "in_list_view": 1, "label": "Offering Code", "reqd": 1, "unique": 1},
+    {"fieldname": "title", "fieldtype": "Data", "in_list_view": 1, "label": "Title", "reqd": 1},
+    {"fieldname": "category", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Category", "options": "Remedium Franchise\nDiagnostic Service\nHealth Package\nAdd-on Service\nRevenue Model\nFOCO Franchise", "reqd": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "investment_from", "fieldtype": "Currency", "label": "Investment From"},
+    {"fieldname": "investment_to", "fieldtype": "Currency", "label": "Investment To"},
+    {"fieldname": "mrp_reference", "fieldtype": "Currency", "label": "MRP Reference"},
+    {"fieldname": "wholesale_reference", "fieldtype": "Currency", "label": "Wholesale Reference"},
+    {"default": "100", "fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order"},
+    {"default": "1", "fieldname": "is_active", "fieldtype": "Check", "in_list_view": 1, "label": "Active"},
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+    {"fieldname": "bullet_points", "fieldtype": "Text", "label": "Bullet Points (one per line)"},
+    {"fieldname": "brochure_page", "fieldtype": "Int", "label": "Brochure Page #"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Sales Catalog Offering",
+  "naming_rule": "By fieldname",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1}
+  ],
+  "sort_field": "sort_order",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

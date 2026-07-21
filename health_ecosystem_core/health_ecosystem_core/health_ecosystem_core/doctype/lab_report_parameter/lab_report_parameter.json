@@ -1,0 +1,79 @@
+{
+  "actions": [],
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "include_in_report",
+    "description",
+    "result_value",
+    "unit",
+    "lower_range",
+    "upper_range",
+    "abnormal_flag",
+    "test_name",
+    "parameter_code",
+    "method",
+    "parameter_kind",
+    "is_calculated",
+    "formula",
+    "reagent_item",
+    "reagent_qty",
+    "interpretation",
+    "diagnostic_test",
+    "erp_item_code"
+  ],
+  "fields": [
+    {"default": "1", "fieldname": "include_in_report", "fieldtype": "Check", "in_list_view": 1, "label": "Print"},
+    {"fieldname": "description", "fieldtype": "Data", "in_list_view": 1, "label": "Parameter", "reqd": 1, "width": "180px"},
+    {"fieldname": "result_value", "fieldtype": "Data", "in_list_view": 1, "label": "Result", "width": "90px"},
+    {"fieldname": "unit", "fieldtype": "Data", "in_list_view": 1, "label": "Unit", "width": "70px"},
+    {"fieldname": "lower_range", "fieldtype": "Float", "in_list_view": 1, "label": "Low", "width": "60px"},
+    {"fieldname": "upper_range", "fieldtype": "Float", "in_list_view": 1, "label": "High", "width": "60px"},
+    {"fieldname": "abnormal_flag", "fieldtype": "Select", "in_list_view": 1, "label": "Flag", "options": "\nN\nH\nL\nCritical", "read_only": 1, "width": "50px"},
+    {"fieldname": "test_name", "fieldtype": "Data", "label": "Test Group", "read_only": 1},
+    {"fieldname": "parameter_code", "fieldtype": "Data", "label": "Code"},
+    {"fieldname": "method", "fieldtype": "Data", "label": "Method"},
+    {
+      "default": "Real",
+      "fieldname": "parameter_kind",
+      "fieldtype": "Select",
+      "label": "Parameter Type",
+      "options": "Real\nCalculated",
+      "read_only": 1
+    },
+    {"default": "0", "fieldname": "is_calculated", "fieldtype": "Check", "label": "Calculated", "read_only": 1},
+    {
+      "fieldname": "formula",
+      "fieldtype": "Small Text",
+      "label": "Derivation Equation",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reagent_item",
+      "fieldtype": "Link",
+      "label": "Reagent Item",
+      "options": "Item",
+      "read_only": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "reagent_qty",
+      "fieldtype": "Float",
+      "label": "Reagent Qty",
+      "read_only": 1
+    },
+    {"fieldname": "interpretation", "fieldtype": "Small Text", "label": "Interpretation"},
+    {"fieldname": "diagnostic_test", "fieldtype": "Link", "label": "Test Master", "options": "Diagnostic Test Master"},
+    {"fieldname": "erp_item_code", "fieldtype": "Link", "label": "ERP Item", "options": "Item"}
+  ],
+  "istable": 1,
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Report Parameter",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

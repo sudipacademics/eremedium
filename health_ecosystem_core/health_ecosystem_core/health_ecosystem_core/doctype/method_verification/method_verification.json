@@ -1,0 +1,65 @@
+{
+  "actions": [],
+  "autoname": "format:MV-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "diagnostic_test",
+    "equipment",
+    "verification_date",
+    "column_break_1",
+    "trigger_reason",
+    "outcome",
+    "accuracy_ok",
+    "precision_ok",
+    "linearity_ok",
+    "amr_ok",
+    "carryover_ok",
+    "inter_instrument_ok",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "diagnostic_test", "fieldtype": "Link", "in_list_view": 1, "label": "Diagnostic Test", "options": "Diagnostic Test Master"},
+    {"fieldname": "equipment", "fieldtype": "Link", "in_standard_filter": 1, "label": "Equipment", "options": "Lab Equipment"},
+    {"fieldname": "verification_date", "fieldtype": "Date", "in_list_view": 1, "label": "Date", "reqd": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "New Method",
+      "fieldname": "trigger_reason",
+      "fieldtype": "Select",
+      "label": "Trigger",
+      "options": "New Method\nOpen Channel\nLot Formulation Change\nMajor Hardware Change\nOther"
+    },
+    {
+      "default": "Pass",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Outcome",
+      "options": "Pass\nFail\nConditional"
+    },
+    {"default": "1", "fieldname": "accuracy_ok", "fieldtype": "Check", "label": "Accuracy OK"},
+    {"default": "1", "fieldname": "precision_ok", "fieldtype": "Check", "label": "Precision OK"},
+    {"default": "1", "fieldname": "linearity_ok", "fieldtype": "Check", "label": "Linearity OK"},
+    {"default": "1", "fieldname": "amr_ok", "fieldtype": "Check", "label": "AMR OK"},
+    {"default": "1", "fieldname": "carryover_ok", "fieldtype": "Check", "label": "Carryover OK"},
+    {"default": "1", "fieldname": "inter_instrument_ok", "fieldtype": "Check", "label": "Inter-instrument OK"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Method Verification",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "verification_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

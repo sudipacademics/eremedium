@@ -1,0 +1,66 @@
+{
+  "actions": [],
+  "autoname": "format:AUD-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "audit_title",
+    "audit_type",
+    "audit_date",
+    "column_break_1",
+    "status",
+    "auditor",
+    "area",
+    "findings_summary",
+    "nonconformities_count",
+    "linked_capa",
+    "next_audit_due",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "audit_title", "fieldtype": "Data", "in_list_view": 1, "label": "Title", "reqd": 1},
+    {
+      "default": "Internal",
+      "fieldname": "audit_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Type",
+      "options": "Internal\nExternal\nManagement Review\nVertical\nHorizontal"
+    },
+    {"fieldname": "audit_date", "fieldtype": "Date", "in_list_view": 1, "label": "Audit Date", "reqd": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Planned",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Planned\nIn Progress\nCompleted\nClosed"
+    },
+    {"fieldname": "auditor", "fieldtype": "Data", "label": "Auditor"},
+    {"fieldname": "area", "fieldtype": "Data", "in_list_view": 1, "label": "Area / Process"},
+    {"fieldname": "findings_summary", "fieldtype": "Text Editor", "label": "Findings Summary"},
+    {"default": "0", "fieldname": "nonconformities_count", "fieldtype": "Int", "label": "Nonconformities Count"},
+    {"fieldname": "linked_capa", "fieldtype": "Link", "label": "Linked CAPA", "options": "CAPA"},
+    {"fieldname": "next_audit_due", "fieldtype": "Date", "label": "Next Audit Due"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Internal Audit",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1}
+  ],
+  "sort_field": "audit_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

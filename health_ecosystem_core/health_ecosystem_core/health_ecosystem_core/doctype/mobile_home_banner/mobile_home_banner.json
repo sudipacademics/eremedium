@@ -1,0 +1,122 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:banner_title",
+  "creation": "2026-06-26 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "banner_title",
+    "subtitle",
+    "column_break_1",
+    "enabled",
+    "display_order",
+    "banner_placement",
+    "section_break_media",
+    "banner_image",
+    "color",
+    "icon"
+  ],
+  "fields": [
+    {
+      "fieldname": "banner_title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Banner Title",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "subtitle",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Subtitle"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "0",
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Display Order"
+    },
+    {
+      "default": "Home",
+      "description": "Home = patient portal home page. Wellness = Wellness & Allied Health hub.",
+      "fieldname": "banner_placement",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Show On",
+      "options": "Home\nWellness\nBoth"
+    },
+    {
+      "fieldname": "section_break_media",
+      "fieldtype": "Section Break",
+      "label": "Appearance"
+    },
+    {
+      "description": "Upload a JPEG/PNG for the mobile app carousel. If empty, a colour gradient is used.",
+      "fieldname": "banner_image",
+      "fieldtype": "Attach Image",
+      "label": "Banner Image"
+    },
+    {
+      "default": "#0D9488",
+      "description": "Hex colour used when no image is set, e.g. #0D9488",
+      "fieldname": "color",
+      "fieldtype": "Data",
+      "label": "Background Colour"
+    },
+    {
+      "description": "Optional Material icon name for the app, e.g. home_health",
+      "fieldname": "icon",
+      "fieldtype": "Data",
+      "label": "Icon Name"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-26 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Mobile Home Banner",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    }
+  ],
+  "sort_field": "display_order",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "banner_title",
+  "track_changes": 1
+}

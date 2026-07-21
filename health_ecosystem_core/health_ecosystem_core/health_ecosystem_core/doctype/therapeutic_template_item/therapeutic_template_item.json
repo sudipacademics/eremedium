@@ -1,0 +1,23 @@
+{
+  "actions": [],
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["medicine_item", "dosage", "duration", "frequency", "instructions"],
+  "fields": [
+    {"fieldname": "medicine_item", "fieldtype": "Link", "in_list_view": 1, "label": "Medicine", "options": "Item", "reqd": 1},
+    {"fieldname": "dosage", "fieldtype": "Data", "in_list_view": 1, "label": "Dosage"},
+    {"fieldname": "duration", "fieldtype": "Data", "in_list_view": 1, "label": "Duration"},
+    {"fieldname": "frequency", "fieldtype": "Data", "in_list_view": 1, "label": "Frequency"},
+    {"fieldname": "instructions", "fieldtype": "Data", "label": "Instructions"}
+  ],
+  "istable": 1,
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Therapeutic Template Item",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

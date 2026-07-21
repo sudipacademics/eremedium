@@ -1,0 +1,40 @@
+{
+  "actions": [],
+  "autoname": "field:task_code",
+  "creation": "2026-07-07 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "task_code",
+    "title",
+    "division",
+    "frequency",
+    "role_tier",
+    "sort_order",
+    "column_break_1",
+    "workflow_reference",
+    "checklist",
+    "active"
+  ],
+  "fields": [
+    {"fieldname": "task_code", "fieldtype": "Data", "in_list_view": 1, "label": "Task Code", "reqd": 1, "unique": 1},
+    {"fieldname": "title", "fieldtype": "Data", "in_list_view": 1, "label": "Title", "reqd": 1},
+    {"fieldname": "division", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Division", "options": "Company Division", "reqd": 1},
+    {"fieldname": "frequency", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Frequency", "options": "Daily\nWeekly\nMonthly", "reqd": 1},
+    {"fieldname": "role_tier", "fieldtype": "Select", "in_list_view": 1, "in_standard_filter": 1, "label": "Role Tier", "options": "Officer\nClerk\nAll\nService HR", "reqd": 1},
+    {"default": "100", "fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "workflow_reference", "fieldtype": "Small Text", "label": "Workflow Reference"},
+    {"fieldname": "checklist", "fieldtype": "Text Editor", "label": "Checklist"},
+    {"default": "1", "fieldname": "active", "fieldtype": "Check", "in_list_view": 1, "label": "Active"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Ops Rhythm Task",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "sort_order",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

@@ -1,0 +1,76 @@
+{
+  "actions": [],
+  "autoname": "format:IQC-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "equipment",
+    "analyte_code",
+    "analyte_name",
+    "qc_level",
+    "column_break_1",
+    "run_date",
+    "shift",
+    "control_lot",
+    "result_value",
+    "lab_mean",
+    "lab_sd",
+    "z_score",
+    "outcome",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "equipment", "fieldtype": "Link", "in_standard_filter": 1, "label": "Equipment", "options": "Lab Equipment"},
+    {"fieldname": "analyte_code", "fieldtype": "Data", "in_list_view": 1, "in_standard_filter": 1, "label": "Analyte Code", "reqd": 1},
+    {"fieldname": "analyte_name", "fieldtype": "Data", "in_list_view": 1, "label": "Analyte Name"},
+    {
+      "default": "1",
+      "fieldname": "qc_level",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Level",
+      "options": "1\n2\n3",
+      "reqd": 1
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "run_date", "fieldtype": "Date", "in_list_view": 1, "in_standard_filter": 1, "label": "Run Date", "reqd": 1},
+    {
+      "default": "Morning",
+      "fieldname": "shift",
+      "fieldtype": "Select",
+      "label": "Shift",
+      "options": "Morning\nAfternoon\nNight\nOther"
+    },
+    {"fieldname": "control_lot", "fieldtype": "Data", "label": "Control Lot"},
+    {"fieldname": "result_value", "fieldtype": "Float", "in_list_view": 1, "label": "Result", "reqd": 1},
+    {"fieldname": "lab_mean", "fieldtype": "Float", "label": "Lab Mean"},
+    {"fieldname": "lab_sd", "fieldtype": "Float", "label": "Lab SD"},
+    {"fieldname": "z_score", "fieldtype": "Float", "label": "Z Score", "read_only": 1},
+    {
+      "default": "Accept",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Outcome",
+      "options": "Accept\nReject\nWarning"
+    },
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "IQC Run",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "run_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

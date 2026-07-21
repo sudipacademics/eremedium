@@ -1,0 +1,133 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-07-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "reagent_item",
+    "lot_number",
+    "column_break_1",
+    "franchisee_id",
+    "status",
+    "verification_status",
+    "verified_on",
+    "verified_by",
+    "tests_per_pack",
+    "tests_remaining",
+    "opened_on",
+    "expiry_date",
+    "opened_by",
+    "remarks"
+  ],
+  "fields": [
+    {
+      "default": "LRB-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "LRB-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "reagent_item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Reagent Item",
+      "options": "Item",
+      "reqd": 1
+    },
+    {
+      "fieldname": "lot_number",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Lot Number",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "franchisee_id",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Hub / Franchisee",
+      "options": "Franchisee Profile"
+    },
+    {
+      "default": "Sealed",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Sealed\nOpen\nDepleted\nExpired"
+    },
+    {
+      "default": "Pending",
+      "description": "NABL 112B lot verification required before Open (unless Settings soft mode)",
+      "fieldname": "verification_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Lot Verification",
+      "options": "Pending\nVerified\nFailed"
+    },
+    {"fieldname": "verified_on", "fieldtype": "Datetime", "label": "Verified On", "read_only": 1},
+    {"fieldname": "verified_by", "fieldtype": "Link", "label": "Verified By", "options": "User", "read_only": 1},
+    {
+      "fieldname": "tests_per_pack",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Tests Per Pack",
+      "reqd": 1
+    },
+    {
+      "fieldname": "tests_remaining",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Tests Remaining",
+      "read_only": 1
+    },
+    {
+      "fieldname": "opened_on",
+      "fieldtype": "Date",
+      "label": "Opened On"
+    },
+    {
+      "fieldname": "expiry_date",
+      "fieldtype": "Date",
+      "label": "Expiry Date"
+    },
+    {
+      "fieldname": "opened_by",
+      "fieldtype": "Link",
+      "label": "Opened By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    }
+  ],
+  "modified": "2026-07-05 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Reagent Batch",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

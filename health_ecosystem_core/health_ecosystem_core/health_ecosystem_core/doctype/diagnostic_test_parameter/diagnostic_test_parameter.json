@@ -1,0 +1,149 @@
+{
+  "actions": [],
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "parameter_code",
+    "parameter_name",
+    "unit",
+    "normal_min",
+    "normal_max",
+    "critical_min",
+    "critical_max",
+    "method",
+    "specimen_material",
+    "nabl_discipline",
+    "amr_min",
+    "amr_max",
+    "cv_percent",
+    "measurement_uncertainty",
+    "delta_limit_percent",
+    "parameter_kind",
+    "is_calculated",
+    "formula",
+    "reagent_item",
+    "reagent_qty",
+    "interpretation",
+    "description"
+  ],
+  "fields": [
+    {"fieldname": "parameter_code", "fieldtype": "Data", "in_list_view": 1, "label": "Code"},
+    {"fieldname": "parameter_name", "fieldtype": "Data", "in_list_view": 1, "label": "Parameter", "reqd": 1},
+    {"fieldname": "unit", "fieldtype": "Data", "in_list_view": 1, "label": "Unit"},
+    {"fieldname": "normal_min", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Min"},
+    {"fieldname": "normal_max", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Max"},
+    {
+      "description": "Below this value triggers a critical alert",
+      "fieldname": "critical_min",
+      "fieldtype": "Float",
+      "label": "Critical Min"
+    },
+    {
+      "description": "Above this value triggers a critical alert",
+      "fieldname": "critical_max",
+      "fieldtype": "Float",
+      "label": "Critical Max"
+    },
+    {"fieldname": "method", "fieldtype": "Data", "in_list_view": 1, "label": "Method"},
+    {
+      "default": "Serum",
+      "fieldname": "specimen_material",
+      "fieldtype": "Select",
+      "label": "Specimen Material",
+      "options": "Serum\nPlasma\nEDTA Whole Blood\nFluoride Plasma\nUrine\nCSF\nOther"
+    },
+    {
+      "fieldname": "nabl_discipline",
+      "fieldtype": "Select",
+      "label": "NABL Discipline",
+      "options": "\nClinical Biochemistry\nHaematology\nClinical Pathology\nMicrobiology\nSerology and Immunology\nHistopathology\nCytopathology\nMolecular Diagnostics\nGenetics\nOther"
+    },
+    {
+      "description": "Analytical measurement range / LOD lower bound (NABL 112B)",
+      "fieldname": "amr_min",
+      "fieldtype": "Float",
+      "label": "AMR Min"
+    },
+    {
+      "description": "Analytical measurement range upper bound",
+      "fieldname": "amr_max",
+      "fieldtype": "Float",
+      "label": "AMR Max"
+    },
+    {
+      "description": "%CV from IQC — set NA conceptually for Calculated params",
+      "fieldname": "cv_percent",
+      "fieldtype": "Float",
+      "label": "%CV"
+    },
+    {
+      "fieldname": "measurement_uncertainty",
+      "fieldtype": "Data",
+      "label": "Measurement Uncertainty"
+    },
+    {
+      "default": "20",
+      "description": "Max % change vs prior patient result before release hold (delta check)",
+      "fieldname": "delta_limit_percent",
+      "fieldtype": "Float",
+      "label": "Delta Limit %"
+    },
+    {
+      "default": "Real",
+      "description": "Real = measured / LIS / manual. Calculated = derived from equation on Save.",
+      "fieldname": "parameter_kind",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Parameter Type",
+      "options": "Real\nCalculated"
+    },
+    {
+      "default": "0",
+      "depends_on": "eval:doc.parameter_kind=='Calculated'",
+      "fieldname": "is_calculated",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Calculated (Derived)"
+    },
+    {
+      "depends_on": "eval:doc.parameter_kind=='Calculated' || doc.is_calculated",
+      "description": "Derivation equation using {PARAMETER_CODE} tokens, e.g. {TOTAL_BILI} - {DIRECT_BILI}. Evaluated on Save (manual and LIS).",
+      "fieldname": "formula",
+      "fieldtype": "Small Text",
+      "label": "Derivation Equation"
+    },
+    {
+      "depends_on": "eval:doc.parameter_kind!='Calculated' && !doc.is_calculated",
+      "description": "Reagent Item consumed when this Real parameter is reported (TRF Completed)",
+      "fieldname": "reagent_item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Reagent Item",
+      "options": "Item"
+    },
+    {
+      "default": "1",
+      "depends_on": "eval:doc.reagent_item",
+      "fieldname": "reagent_qty",
+      "fieldtype": "Float",
+      "label": "Reagent Qty / Run"
+    },
+    {
+      "description": "Literature / interpretation printed below this parameter or test",
+      "fieldname": "interpretation",
+      "fieldtype": "Text Editor",
+      "label": "Interpretation"
+    },
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"}
+  ],
+  "istable": 1,
+  "modified": "2026-07-16 19:30:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Diagnostic Test Parameter",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

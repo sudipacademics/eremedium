@@ -1,0 +1,25 @@
+{
+ "creation": "2026-07-12 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-07-12 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "employee-gamification",
+ "owner": "Administrator",
+ "page_name": "employee-gamification",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Health System Admin"},
+  {"role": "Healthcare Administrator"},
+  {"role": "HR Manager"},
+  {"role": "Physician"},
+  {"role": "Lab Technician"},
+  {"role": "Phlebotomist"},
+  {"role": "Nurse"}
+ ],
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "Employee Gamification"
+}

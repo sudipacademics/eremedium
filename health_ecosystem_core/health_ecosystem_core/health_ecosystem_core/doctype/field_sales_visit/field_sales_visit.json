@@ -1,0 +1,46 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-07-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "sales_rep",
+    "lead",
+    "franchisee",
+    "visit_date",
+    "visit_time",
+    "latitude",
+    "longitude",
+    "purpose",
+    "outcome",
+    "duration_minutes",
+    "notes"
+  ],
+  "fields": [
+    {"default": "FSV-.#####", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "FSV-.#####", "reqd": 1},
+    {"fieldname": "sales_rep", "fieldtype": "Link", "in_list_view": 1, "label": "Sales Rep", "options": "Sales Rep Profile", "reqd": 1},
+    {"fieldname": "lead", "fieldtype": "Link", "in_list_view": 1, "label": "Lead", "options": "Franchise Sales Lead"},
+    {"fieldname": "franchisee", "fieldtype": "Link", "label": "Franchisee", "options": "Franchisee Profile"},
+    {"fieldname": "visit_date", "fieldtype": "Date", "in_list_view": 1, "label": "Visit Date", "reqd": 1},
+    {"fieldname": "visit_time", "fieldtype": "Time", "label": "Visit Time"},
+    {"fieldname": "latitude", "fieldtype": "Float", "label": "Latitude", "precision": 8},
+    {"fieldname": "longitude", "fieldtype": "Float", "label": "Longitude", "precision": 8},
+    {"fieldname": "purpose", "fieldtype": "Select", "in_list_view": 1, "label": "Purpose", "options": "Meet Lead\nFollow-up\nOnboarding\nFranchise Support\nHQ Check-in", "reqd": 1},
+    {"fieldname": "outcome", "fieldtype": "Select", "label": "Outcome", "options": "Positive\nNeutral\nNegative\nRescheduled"},
+    {"fieldname": "duration_minutes", "fieldtype": "Int", "label": "Duration (min)"},
+    {"fieldname": "notes", "fieldtype": "Text", "label": "Meeting Notes"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Field Sales Visit",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

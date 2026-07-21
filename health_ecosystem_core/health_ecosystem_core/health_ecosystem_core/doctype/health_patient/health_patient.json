@@ -1,0 +1,107 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:HEC-PAT-{YYYY}-{#####}",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "patient_name",
+    "gender",
+    "mobile",
+    "email",
+    "dob",
+    "age",
+    "column_break_1",
+    "customer",
+    "linked_user",
+    "status"
+  ],
+  "fields": [
+    {
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Patient Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "gender",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Gender",
+      "options": "Male\nFemale\nOther"
+    },
+    {
+      "fieldname": "mobile",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Mobile",
+      "search_index": 1
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "dob",
+      "fieldtype": "Date",
+      "label": "Date of Birth"
+    },
+    {
+      "fieldname": "age",
+      "fieldtype": "Int",
+      "label": "Age"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer",
+      "read_only": 1
+    },
+    {
+      "fieldname": "linked_user",
+      "fieldtype": "Link",
+      "label": "Linked App User",
+      "options": "User"
+    },
+    {
+      "default": "Active",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Active\nInactive"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Health Patient",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Nurse", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Lab Technician", "read": 1, "report": 1},
+    {"role": "Franchisee Operator", "read": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "title_field": "patient_name",
+  "track_changes": 1
+}

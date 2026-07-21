@@ -1,0 +1,220 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:TRF-{YYYY}{MM}{DD}-{#####}",
+  "creation": "2024-01-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "patient_name",
+    "age",
+    "gender",
+    "referred_doctor",
+    "test_required",
+    "tests",
+    "unique_barcode",
+    "razorpay_payment_status",
+    "franchisee_id",
+    "order_status",
+    "column_break_1",
+    "patient_phone",
+    "collection_address",
+    "collection_slot",
+    "payment_id",
+    "sales_invoice",
+    "sales_order",
+    "promo_code",
+    "discount_amount",
+    "amount"
+  ],
+  "fields": [
+    {
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Patient Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "age",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Age",
+      "reqd": 1
+    },
+    {
+      "fieldname": "gender",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Gender",
+      "options": "Male\nFemale\nOther",
+      "reqd": 1
+    },
+    {
+      "default": "Self",
+      "description": "Referring clinician, or Self if no doctor / walk-in",
+      "fieldname": "referred_doctor",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Referred Doctor"
+    },
+    {
+      "fieldname": "test_required",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Primary Test",
+      "options": "Item",
+      "reqd": 1
+    },
+    {
+      "fieldname": "tests",
+      "fieldtype": "Table",
+      "label": "Tests Ordered",
+      "options": "TRF Test Item"
+    },
+    {
+      "fieldname": "unique_barcode",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Unique Barcode String",
+      "reqd": 1,
+      "unique": 1,
+      "search_index": 1
+    },
+    {
+      "default": "Pending",
+      "fieldname": "razorpay_payment_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Razorpay Payment Status",
+      "options": "Pending\nPaid\nFailed\nRefunded",
+      "search_index": 1
+    },
+    {
+      "fieldname": "franchisee_id",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Franchisee ID",
+      "options": "Franchisee Profile",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "default": "Booked",
+      "fieldname": "order_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Order Status",
+      "options": "Booked\nSample Collected\nIn Lab\nCompleted\nCancelled",
+      "search_index": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "patient_phone",
+      "fieldtype": "Data",
+      "label": "Patient Phone"
+    },
+    {
+      "fieldname": "collection_address",
+      "fieldtype": "Small Text",
+      "label": "Collection Address"
+    },
+    {
+      "fieldname": "collection_slot",
+      "fieldtype": "Datetime",
+      "label": "Collection Slot"
+    },
+    {
+      "fieldname": "payment_id",
+      "fieldtype": "Data",
+      "label": "Payment ID"
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sales_order",
+      "fieldtype": "Link",
+      "label": "Sales Order",
+      "options": "Sales Order",
+      "read_only": 1
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "label": "Amount"
+    },
+    {
+      "fieldname": "promo_code",
+      "fieldtype": "Data",
+      "label": "Promo Code"
+    },
+    {
+      "fieldname": "discount_amount",
+      "fieldtype": "Currency",
+      "label": "Discount Amount"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-01-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Customer TRF",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Franchisee Operator",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "role": "Lab Technician",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

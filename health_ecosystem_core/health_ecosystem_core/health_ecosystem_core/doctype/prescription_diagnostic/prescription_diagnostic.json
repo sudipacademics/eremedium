@@ -1,0 +1,21 @@
+{
+  "actions": [],
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["diagnostic_test", "item", "notes"],
+  "fields": [
+    {"fieldname": "diagnostic_test", "fieldtype": "Link", "in_list_view": 1, "label": "Diagnostic Test", "options": "Diagnostic Test Master"},
+    {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Billable Item", "options": "Item"},
+    {"fieldname": "notes", "fieldtype": "Data", "label": "Notes"}
+  ],
+  "istable": 1,
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Prescription Diagnostic",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

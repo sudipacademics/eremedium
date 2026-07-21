@@ -1,0 +1,87 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "format:HEC-DOC-{YYYY}-{#####}",
+  "creation": "2026-06-27 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "doctor_name",
+    "user",
+    "primary_department",
+    "mobile",
+    "email",
+    "status",
+    "column_break_1",
+    "specialities"
+  ],
+  "fields": [
+    {
+      "fieldname": "doctor_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Doctor Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "label": "Linked User",
+      "options": "User"
+    },
+    {
+      "fieldname": "primary_department",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Primary Department",
+      "options": "Clinical Department"
+    },
+    {
+      "fieldname": "mobile",
+      "fieldtype": "Data",
+      "label": "Mobile"
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email"
+    },
+    {
+      "default": "Active",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Active\nInactive"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "specialities",
+      "fieldtype": "Table",
+      "label": "Departments & Specialities",
+      "options": "Doctor Speciality"
+    }
+  ],
+  "modified": "2026-06-27 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Doctor",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "email": 1, "share": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Physician", "read": 1, "write": 1, "report": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "title_field": "doctor_name",
+  "track_changes": 1
+}

@@ -1,0 +1,432 @@
+{
+  "actions": [],
+  "creation": "2024-01-01 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "mobile_home_title",
+    "mobile_home_subtitle",
+    "lab_catalog_title",
+    "pharmacy_catalog_title",
+    "section_break_consumer_home",
+    "home_search_placeholder",
+    "home_section_packages_title",
+    "home_section_radiology_title",
+    "home_section_popular_title",
+    "column_break_consumer",
+    "enable_whatsapp_cta",
+    "whatsapp_cta_label",
+    "whatsapp_business_number",
+    "whatsapp_prefill_message",
+    "section_break_mobile",
+    "api_key",
+    "api_secret",
+    "column_break_1",
+    "razorpay_key_id",
+    "razorpay_key_secret",
+    "section_break_otp",
+    "otp_provider",
+    "sms_auth_key",
+    "section_break_notify",
+    "enable_patient_notifications",
+    "notification_channel",
+    "sms_sender_id",
+    "whatsapp_api_key",
+    "whatsapp_source_number",
+    "section_break_email",
+    "enable_email_signup",
+    "patient_portal_base_url",
+    "noreply_email",
+    "support_email",
+    "section_break_analytics",
+    "monthly_marketing_spend",
+    "enable_critical_value_alerts",
+    "critical_alert_level",
+    "section_nabl_gates",
+    "nabl_enforce_competence",
+    "nabl_enforce_lot_verification",
+    "nabl_enforce_iqc",
+    "nabl_enforce_calibration",
+    "section_nabl_retention",
+    "retention_years_reports",
+    "retention_years_raw_data",
+    "retention_years_qc",
+    "retention_years_complaints",
+    "section_telephony",
+    "telephony_enabled",
+    "exotel_sid",
+    "exotel_api_key",
+    "exotel_api_token",
+    "exotel_virtual_number",
+    "exotel_webhook_secret",
+    "exotel_agent_connect_number",
+    "telephony_public_base_url",
+    "telephony_openai_api_key"
+  ],
+  "fields": [
+    {
+      "fieldname": "mobile_home_title",
+      "fieldtype": "Data",
+      "label": "Mobile Home Title"
+    },
+    {
+      "fieldname": "mobile_home_subtitle",
+      "fieldtype": "Data",
+      "label": "Mobile Home Subtitle"
+    },
+    {
+      "fieldname": "lab_catalog_title",
+      "fieldtype": "Data",
+      "label": "Lab Catalog Header"
+    },
+    {
+      "fieldname": "pharmacy_catalog_title",
+      "fieldtype": "Data",
+      "label": "Pharmacy Catalog Header"
+    },
+    {
+      "fieldname": "section_break_consumer_home",
+      "fieldtype": "Section Break",
+      "label": "Consumer Website (Homepage)"
+    },
+    {
+      "default": "Search tests & packages (e.g. CBC, thyroid, diabetes)",
+      "fieldname": "home_search_placeholder",
+      "fieldtype": "Data",
+      "label": "Home Search Placeholder"
+    },
+    {
+      "default": "Health packages",
+      "fieldname": "home_section_packages_title",
+      "fieldtype": "Data",
+      "label": "Packages Section Title"
+    },
+    {
+      "default": "Radiology & imaging",
+      "fieldname": "home_section_radiology_title",
+      "fieldtype": "Data",
+      "label": "Radiology Section Title"
+    },
+    {
+      "default": "Popular diagnostics",
+      "fieldname": "home_section_popular_title",
+      "fieldtype": "Data",
+      "label": "Popular Tests Section Title"
+    },
+    {
+      "fieldname": "column_break_consumer",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_whatsapp_cta",
+      "fieldtype": "Check",
+      "label": "Show WhatsApp CTA on Homepage"
+    },
+    {
+      "default": "Book on WhatsApp",
+      "fieldname": "whatsapp_cta_label",
+      "fieldtype": "Data",
+      "label": "WhatsApp Button Label"
+    },
+    {
+      "description": "10-digit Indian mobile without +91",
+      "fieldname": "whatsapp_business_number",
+      "fieldtype": "Data",
+      "label": "WhatsApp Business Number"
+    },
+    {
+      "default": "Hi, I would like to book a lab test.",
+      "fieldname": "whatsapp_prefill_message",
+      "fieldtype": "Small Text",
+      "label": "WhatsApp Prefill Message"
+    },
+    {
+      "fieldname": "section_break_mobile",
+      "fieldtype": "Section Break",
+      "label": "API & Payments"
+    },
+    {
+      "fieldname": "api_key",
+      "fieldtype": "Data",
+      "label": "LIS API Key",
+      "reqd": 1
+    },
+    {
+      "fieldname": "api_secret",
+      "fieldtype": "Password",
+      "label": "LIS API Secret",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "razorpay_key_id",
+      "fieldtype": "Data",
+      "label": "Razorpay Key ID"
+    },
+    {
+      "fieldname": "razorpay_key_secret",
+      "fieldtype": "Password",
+      "label": "Razorpay Key Secret"
+    },
+    {
+      "fieldname": "section_break_otp",
+      "fieldtype": "Section Break",
+      "label": "OTP / SMS"
+    },
+    {
+      "default": "Test",
+      "fieldname": "otp_provider",
+      "fieldtype": "Select",
+      "label": "OTP Provider",
+      "options": "Test\nMSG91\nTwilio\nGupshup"
+    },
+    {
+      "fieldname": "sms_auth_key",
+      "fieldtype": "Password",
+      "label": "SMS Auth Key"
+    },
+    {
+      "fieldname": "section_break_notify",
+      "fieldtype": "Section Break",
+      "label": "Patient Notifications"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_patient_notifications",
+      "fieldtype": "Check",
+      "label": "Enable Patient Notifications"
+    },
+    {
+      "default": "SMS",
+      "fieldname": "notification_channel",
+      "fieldtype": "Select",
+      "label": "Notification Channel",
+      "options": "Test\nSMS\nWhatsApp\nSMS and WhatsApp"
+    },
+    {
+      "default": "HECLAB",
+      "fieldname": "sms_sender_id",
+      "fieldtype": "Data",
+      "label": "SMS Sender ID"
+    },
+    {
+      "fieldname": "whatsapp_api_key",
+      "fieldtype": "Password",
+      "label": "WhatsApp API Key (Gupshup)"
+    },
+    {
+      "fieldname": "whatsapp_source_number",
+      "fieldtype": "Data",
+      "label": "WhatsApp Source Number",
+      "description": "Gupshup-approved WhatsApp business number"
+    },
+    {
+      "fieldname": "section_break_email",
+      "fieldtype": "Section Break",
+      "label": "Email / Sign up (Phase 18)"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_email_signup",
+      "fieldtype": "Check",
+      "label": "Enable Email Sign Up"
+    },
+    {
+      "default": "http://www.e-remedium.in",
+      "description": "Public patient website URL used in verification and reset emails",
+      "fieldname": "patient_portal_base_url",
+      "fieldtype": "Data",
+      "label": "Patient Portal Base URL"
+    },
+    {
+      "description": "Outgoing sender for patient emails (configure SMTP in Email Account)",
+      "fieldname": "noreply_email",
+      "fieldtype": "Data",
+      "label": "No-Reply Email",
+      "options": "Email"
+    },
+    {
+      "description": "Concierge / support inbox shown to patients",
+      "fieldname": "support_email",
+      "fieldtype": "Data",
+      "label": "Support / Concierge Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "section_break_analytics",
+      "fieldtype": "Section Break",
+      "label": "Analytics & Critical Alerts"
+    },
+    {
+      "description": "Used for estimated CAC on executive dashboard (₹/month)",
+      "fieldname": "monthly_marketing_spend",
+      "fieldtype": "Currency",
+      "label": "Monthly Marketing Spend"
+    },
+    {
+      "default": "1",
+      "fieldname": "enable_critical_value_alerts",
+      "fieldtype": "Check",
+      "label": "Enable Critical Value Alerts"
+    },
+    {
+      "default": "All Abnormal",
+      "fieldname": "critical_alert_level",
+      "fieldtype": "Select",
+      "label": "Alert Level",
+      "options": "Critical Only\nAll Abnormal"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_nabl_gates",
+      "fieldtype": "Section Break",
+      "label": "NABL Enforcement"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, pathologist must have Lab Competence Assessment matching report discipline",
+      "fieldname": "nabl_enforce_competence",
+      "fieldtype": "Check",
+      "label": "Enforce Competence on Authorize"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, reagent packs cannot be Opened until Lot Verification Accepted",
+      "fieldname": "nabl_enforce_lot_verification",
+      "fieldtype": "Check",
+      "label": "Enforce Lot Verification Before Open"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, today's IQC Reject blocks auto-release; missing IQC also blocks",
+      "fieldname": "nabl_enforce_iqc",
+      "fieldtype": "Check",
+      "label": "Enforce Daily IQC for Auto-release"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, overdue / Out-of-Service equipment blocks auto-release",
+      "fieldname": "nabl_enforce_calibration",
+      "fieldtype": "Check",
+      "label": "Enforce Equipment Calibration for Auto-release"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_nabl_retention",
+      "fieldtype": "Section Break",
+      "label": "NABL Record Retention"
+    },
+    {
+      "default": "5",
+      "fieldname": "retention_years_reports",
+      "fieldtype": "Int",
+      "label": "Retain Reports (years)"
+    },
+    {
+      "default": "5",
+      "fieldname": "retention_years_raw_data",
+      "fieldtype": "Int",
+      "label": "Retain Raw Data (years)"
+    },
+    {
+      "default": "3",
+      "fieldname": "retention_years_qc",
+      "fieldtype": "Int",
+      "label": "Retain QC Records (years)"
+    },
+    {
+      "default": "5",
+      "fieldname": "retention_years_complaints",
+      "fieldtype": "Int",
+      "label": "Retain Complaints (years)"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_telephony",
+      "fieldtype": "Section Break",
+      "label": "Cloud Telephony (Exotel)"
+    },
+    {
+      "default": "0",
+      "fieldname": "telephony_enabled",
+      "fieldtype": "Check",
+      "label": "Enable Cloud Telephony"
+    },
+    {
+      "fieldname": "exotel_sid",
+      "fieldtype": "Data",
+      "label": "Exotel Account SID"
+    },
+    {
+      "fieldname": "exotel_api_key",
+      "fieldtype": "Data",
+      "label": "Exotel API Key"
+    },
+    {
+      "fieldname": "exotel_api_token",
+      "fieldtype": "Password",
+      "label": "Exotel API Token"
+    },
+    {
+      "fieldname": "exotel_virtual_number",
+      "fieldtype": "Data",
+      "label": "Exotel Virtual Number"
+    },
+    {
+      "description": "Shared secret for Exotel webhooks (header X-Telephony-Secret or form webhook_secret)",
+      "fieldname": "exotel_webhook_secret",
+      "fieldtype": "Password",
+      "label": "Telephony Webhook Secret"
+    },
+    {
+      "description": "Front-desk number for Dial/Connect handoff",
+      "fieldname": "exotel_agent_connect_number",
+      "fieldtype": "Data",
+      "label": "Agent Connect Number"
+    },
+    {
+      "description": "Public HTTPS base for Exotel callback URLs (e.g. https://www.e-remedium.in)",
+      "fieldname": "telephony_public_base_url",
+      "fieldtype": "Data",
+      "label": "Telephony Public Base URL"
+    },
+    {
+      "description": "OpenAI API key for conversational voice agent; rule-based fallback if empty",
+      "fieldname": "telephony_openai_api_key",
+      "fieldtype": "Password",
+      "label": "Telephony OpenAI API Key"
+    }
+  ],
+  "issingle": 1,
+  "links": [],
+  "modified": "2024-01-01 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Health Ecosystem Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

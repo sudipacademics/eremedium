@@ -1,0 +1,49 @@
+{
+  "actions": [],
+  "autoname": "format:STL-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer_trf",
+    "franchisee_id",
+    "collected_on",
+    "column_break_1",
+    "pack_temp_setpoint_c",
+    "logger_min_c",
+    "logger_max_c",
+    "temp_acceptable",
+    "received_by",
+    "received_on",
+    "remarks"
+  ],
+  "fields": [
+    {"fieldname": "customer_trf", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Customer TRF", "options": "Customer TRF", "reqd": 1},
+    {"fieldname": "franchisee_id", "fieldtype": "Link", "in_standard_filter": 1, "label": "Collection Facility", "options": "Franchisee Profile"},
+    {"fieldname": "collected_on", "fieldtype": "Datetime", "in_list_view": 1, "label": "Collected On"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "pack_temp_setpoint_c", "fieldtype": "Float", "label": "Pack Temp Setpoint (°C)"},
+    {"fieldname": "logger_min_c", "fieldtype": "Float", "label": "Logger Min (°C)"},
+    {"fieldname": "logger_max_c", "fieldtype": "Float", "label": "Logger Max (°C)"},
+    {"default": "1", "fieldname": "temp_acceptable", "fieldtype": "Check", "in_list_view": 1, "label": "Temperature Acceptable"},
+    {"fieldname": "received_by", "fieldtype": "Link", "label": "Received By", "options": "User"},
+    {"fieldname": "received_on", "fieldtype": "Datetime", "label": "Received On"},
+    {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Sample Transport Log",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Phlebotomist", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

@@ -1,0 +1,56 @@
+{
+  "actions": [],
+  "autoname": "format:LIS-{YYYY}-{#####}",
+  "creation": "2026-07-16 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "checklist_title",
+    "verification_date",
+    "column_break_1",
+    "status",
+    "verified_by",
+    "access_control_ok",
+    "audit_trail_ok",
+    "backup_restore_ok",
+    "result_integrity_ok",
+    "interface_ok",
+    "user_training_ok",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "checklist_title", "fieldtype": "Data", "in_list_view": 1, "label": "Title", "reqd": 1},
+    {"fieldname": "verification_date", "fieldtype": "Date", "in_list_view": 1, "label": "Verification Date", "reqd": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Draft",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Draft\nPass\nFail\nPartial"
+    },
+    {"fieldname": "verified_by", "fieldtype": "Link", "label": "Verified By", "options": "User"},
+    {"default": "0", "fieldname": "access_control_ok", "fieldtype": "Check", "label": "Access Control OK"},
+    {"default": "0", "fieldname": "audit_trail_ok", "fieldtype": "Check", "label": "Audit Trail OK"},
+    {"default": "0", "fieldname": "backup_restore_ok", "fieldtype": "Check", "label": "Backup / Restore OK"},
+    {"default": "0", "fieldname": "result_integrity_ok", "fieldtype": "Check", "label": "Result Integrity OK"},
+    {"default": "0", "fieldname": "interface_ok", "fieldtype": "Check", "label": "Analyzer Interface OK"},
+    {"default": "0", "fieldname": "user_training_ok", "fieldtype": "Check", "label": "User Training OK"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-16 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "LIS Verification Checklist",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "verification_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}
