@@ -171,8 +171,9 @@ def _verify_webhook(secret_param=None):
 	"""Accept Exotel CustomField secret or X-Telephony-Secret header / form field."""
 	expected = _webhook_secret()
 	if not expected:
-		# Soft: allow when secret not configured (dev/smoke); still require telephony_enabled for live ops
-		return True
+		# No secret configured: allow only while telephony is disabled (dev/smoke).
+		# For live ops (telephony_enabled), require a secret — fail closed.
+		return not _telephony_enabled()
 	provided = (
 		secret_param
 		or frappe.get_request_header("X-Telephony-Secret")
