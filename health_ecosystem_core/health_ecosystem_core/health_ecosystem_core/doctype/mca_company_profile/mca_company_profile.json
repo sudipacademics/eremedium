@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-18 11:18:32.333709",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company_name",
+  "cin",
+  "pan",
+  "gstin",
+  "registered_office",
+  "authorized_capital",
+  "paid_up_capital",
+  "incorporation_date",
+  "financial_year_end"
+ ],
+ "fields": [
+  {
+   "fieldname": "company_name",
+   "fieldtype": "Data",
+   "label": "Company Name"
+  },
+  {
+   "fieldname": "cin",
+   "fieldtype": "Data",
+   "label": "CIN"
+  },
+  {
+   "fieldname": "pan",
+   "fieldtype": "Data",
+   "label": "PAN"
+  },
+  {
+   "fieldname": "gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "registered_office",
+   "fieldtype": "Small Text",
+   "label": "Registered Office"
+  },
+  {
+   "fieldname": "authorized_capital",
+   "fieldtype": "Currency",
+   "label": "Authorized Capital"
+  },
+  {
+   "fieldname": "paid_up_capital",
+   "fieldtype": "Currency",
+   "label": "Paid-up Capital"
+  },
+  {
+   "fieldname": "incorporation_date",
+   "fieldtype": "Date",
+   "label": "Incorporation Date"
+  },
+  {
+   "default": "March",
+   "fieldname": "financial_year_end",
+   "fieldtype": "Select",
+   "label": "FY End Month",
+   "options": "\nMarch\nDecember"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-18 11:18:32.333709",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "MCA Company Profile",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

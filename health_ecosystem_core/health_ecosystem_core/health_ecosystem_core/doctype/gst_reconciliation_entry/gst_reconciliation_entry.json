@@ -1,0 +1,145 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-18 11:18:32.173357",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "gst_return_period",
+  "source",
+  "invoice_no",
+  "supplier_gstin",
+  "invoice_date",
+  "taxable_value",
+  "tax_amount",
+  "match_status",
+  "books_invoice",
+  "variance_amount",
+  "raw_payload"
+ ],
+ "fields": [
+  {
+   "default": "GSTREC-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "GSTREC-.#####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "gst_return_period",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "GST Return Period",
+   "options": "GST Return Period",
+   "reqd": 1
+  },
+  {
+   "default": "GSTR-2B Upload",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "GSTR-2B Upload\nManual"
+  },
+  {
+   "fieldname": "invoice_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Invoice No"
+  },
+  {
+   "fieldname": "supplier_gstin",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Supplier GSTIN"
+  },
+  {
+   "fieldname": "invoice_date",
+   "fieldtype": "Date",
+   "label": "Invoice Date"
+  },
+  {
+   "fieldname": "taxable_value",
+   "fieldtype": "Currency",
+   "label": "Taxable"
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "Tax"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "match_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Match Status",
+   "options": "Pending\nMatched\nMismatch\nMissing in Books\nMissing in 2B"
+  },
+  {
+   "fieldname": "books_invoice",
+   "fieldtype": "Data",
+   "label": "Books Invoice"
+  },
+  {
+   "fieldname": "variance_amount",
+   "fieldtype": "Currency",
+   "label": "Variance"
+  },
+  {
+   "fieldname": "raw_payload",
+   "fieldtype": "Long Text",
+   "label": "Raw Row JSON"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-18 11:18:32.173357",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "GST Reconciliation Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

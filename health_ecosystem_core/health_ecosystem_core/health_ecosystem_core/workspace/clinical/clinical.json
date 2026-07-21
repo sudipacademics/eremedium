@@ -1,0 +1,313 @@
+{
+ "charts": [],
+ "content": "[{\"id\": \"fb9a5a7a46\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Clinical Shortcuts</b></span>\", \"col\": 12}}, {\"id\": \"79276fe290\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Patient Care Journey\", \"col\": 3}}, {\"id\": \"6231d6ec3f\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Health Patient\", \"col\": 3}}, {\"id\": \"f08239f5ea\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Doctor Appointment\", \"col\": 3}}, {\"id\": \"8b87bc07ca\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Clinical Prescription\", \"col\": 3}}, {\"id\": \"f1c53904d8\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"2ad43578fc\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Clinical Modules</b></span>\", \"col\": 12}}, {\"id\": \"02adf13bbe\", \"type\": \"card\", \"data\": {\"card_name\": \"Patient Workflow\", \"col\": 4}}, {\"id\": \"8fd1363195\", \"type\": \"card\", \"data\": {\"card_name\": \"Scheduling\", \"col\": 4}}, {\"id\": \"0465a54185\", \"type\": \"card\", \"data\": {\"card_name\": \"Laboratory\", \"col\": 4}}, {\"id\": \"89bd30b6e2\", \"type\": \"card\", \"data\": {\"card_name\": \"Masters\", \"col\": 4}}]",
+ "creation": "2026-06-29 14:21:02.985440",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "health",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Clinical",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Patient Workflow",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Patient Care Journeys",
+   "link_count": 0,
+   "link_to": "Patient Care Journey",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Nursing Assessments",
+   "link_count": 0,
+   "link_to": "Nursing Assessment",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Clinical Prescriptions",
+   "link_count": 0,
+   "link_to": "Clinical Prescription",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Pharmacy Orders",
+   "link_count": 0,
+   "link_to": "Pharmacy Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Scheduling",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Doctors",
+   "link_count": 0,
+   "link_to": "Doctor",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Appointments",
+   "link_count": 0,
+   "link_to": "Doctor Appointment",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Doctor Schedules",
+   "link_count": 0,
+   "link_to": "Doctor Schedule Slot",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Consultation Types",
+   "link_count": 0,
+   "link_to": "Consultation Type",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Laboratory",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lab TRFs",
+   "link_count": 0,
+   "link_to": "Customer TRF",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lab Test Panels",
+   "link_count": 0,
+   "link_to": "Lab Test Panel",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Diagnostic Test Masters",
+   "link_count": 0,
+   "link_to": "Diagnostic Test Master",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lab Test Results",
+   "link_count": 0,
+   "link_to": "Lab Test Result",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Masters",
+   "link_count": 0,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Departments",
+   "link_count": 0,
+   "link_to": "Clinical Department",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Therapeutic Templates",
+   "link_count": 0,
+   "link_to": "Therapeutic Template",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Health Patients",
+   "link_count": 0,
+   "link_to": "Health Patient",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gamification Rules",
+   "link_count": 0,
+   "link_to": "Employee Gamification Rule",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gamification Ledger",
+   "link_count": 0,
+   "link_to": "Employee Gamification Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-07-19 23:44:35.367337",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "Clinical",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Health System Admin"
+  },
+  {
+   "role": "Physician"
+  },
+  {
+   "role": "Nurse"
+  },
+  {
+   "role": "Lab Technician"
+  },
+  {
+   "role": "Phlebotomist"
+  },
+  {
+   "role": "Pathologist"
+  }
+ ],
+ "sequence_id": 0.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "Patient Care Journey",
+   "link_to": "Patient Care Journey",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Health Patient",
+   "link_to": "Health Patient",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Doctor Appointment",
+   "link_to": "Doctor Appointment",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "",
+   "label": "Clinical Prescription",
+   "link_to": "Clinical Prescription",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Employee Gamification",
+   "link_to": "employee-gamification",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "HEC Pharma Billing",
+   "link_to": "hec-pharma-billing",
+   "type": "Page"
+  },
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "HEC Lab Results",
+   "link_to": "hec-lab-results",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "Company Operations",
+   "link_to": "hec-company-ops",
+   "type": "Page"
+  }
+ ],
+ "title": "Clinical"
+}

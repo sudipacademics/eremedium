@@ -1,0 +1,127 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-18 11:20:41.323803",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "sale_projection",
+  "franchisee_id",
+  "from_date",
+  "to_date",
+  "status",
+  "total_gap_lines",
+  "items",
+  "computed_on"
+ ],
+ "fields": [
+  {
+   "default": "RRP-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "RRP-.#####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sale_projection",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sale Projection",
+   "options": "Sale Projection",
+   "reqd": 1
+  },
+  {
+   "fieldname": "franchisee_id",
+   "fieldtype": "Link",
+   "label": "Hub / Franchisee",
+   "options": "Franchisee Profile"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nComputed\nClosed"
+  },
+  {
+   "fieldname": "total_gap_lines",
+   "fieldtype": "Int",
+   "label": "Gap Lines",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Resource Lines",
+   "options": "Resource Requirement Plan Item"
+  },
+  {
+   "fieldname": "computed_on",
+   "fieldtype": "Datetime",
+   "label": "Computed On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-18 11:20:41.323803",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "Resource Requirement Plan",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-18 11:20:41.688986",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "planning_horizon_days",
+  "auto_run_material_mrp",
+  "auto_run_rrp",
+  "feedback_damping_factor",
+  "default_phlebotomy_slots_per_day",
+  "default_analyzer_hours_per_day",
+  "default_doctor_slots_per_day",
+  "default_wellness_chairs",
+  "last_nightly_run"
+ ],
+ "fields": [
+  {
+   "default": "30",
+   "fieldname": "planning_horizon_days",
+   "fieldtype": "Int",
+   "label": "Default Planning Horizon (days)"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_run_material_mrp",
+   "fieldtype": "Check",
+   "label": "Auto-run Material MRP nightly"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_run_rrp",
+   "fieldtype": "Check",
+   "label": "Auto-run RRP with Material MRP"
+  },
+  {
+   "default": "0.5",
+   "description": "Blend factor when applying feedback to next Sale Projection",
+   "fieldname": "feedback_damping_factor",
+   "fieldtype": "Float",
+   "label": "Feedback Damping (0-1)"
+  },
+  {
+   "default": "40",
+   "fieldname": "default_phlebotomy_slots_per_day",
+   "fieldtype": "Float",
+   "label": "Default Phlebotomy Slots / Day"
+  },
+  {
+   "default": "16",
+   "fieldname": "default_analyzer_hours_per_day",
+   "fieldtype": "Float",
+   "label": "Default Analyzer Hours / Day"
+  },
+  {
+   "default": "20",
+   "fieldname": "default_doctor_slots_per_day",
+   "fieldtype": "Float",
+   "label": "Default Doctor Slots / Day"
+  },
+  {
+   "default": "8",
+   "fieldname": "default_wellness_chairs",
+   "fieldtype": "Float",
+   "label": "Default Wellness Chairs / Day"
+  },
+  {
+   "fieldname": "last_nightly_run",
+   "fieldtype": "Datetime",
+   "label": "Last Nightly Run",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-18 11:20:41.688986",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "ERP Control Panel",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

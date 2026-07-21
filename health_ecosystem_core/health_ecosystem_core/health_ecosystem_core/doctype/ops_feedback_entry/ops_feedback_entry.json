@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-18 11:20:41.514387",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "sale_projection",
+  "material_plan",
+  "resource_plan",
+  "from_date",
+  "to_date",
+  "projected_tests",
+  "actual_tests",
+  "test_variance_pct",
+  "projected_reagent_tests",
+  "actual_reagent_consumed",
+  "reagent_variance_pct",
+  "resource_gap_units",
+  "suggested_adjust_factor",
+  "applied_to_next_projection",
+  "status",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "OFB-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "OFB-.#####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sale_projection",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sale Projection",
+   "options": "Sale Projection"
+  },
+  {
+   "fieldname": "material_plan",
+   "fieldtype": "Link",
+   "label": "Material Requirement Plan",
+   "options": "Material Requirement Plan"
+  },
+  {
+   "fieldname": "resource_plan",
+   "fieldtype": "Link",
+   "label": "Resource Requirement Plan",
+   "options": "Resource Requirement Plan"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "projected_tests",
+   "fieldtype": "Float",
+   "label": "Projected Tests"
+  },
+  {
+   "fieldname": "actual_tests",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Actual Tests"
+  },
+  {
+   "fieldname": "test_variance_pct",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Test Variance %"
+  },
+  {
+   "fieldname": "projected_reagent_tests",
+   "fieldtype": "Float",
+   "label": "Projected Reagent Demand"
+  },
+  {
+   "fieldname": "actual_reagent_consumed",
+   "fieldtype": "Float",
+   "label": "Actual Reagent Consumed"
+  },
+  {
+   "fieldname": "reagent_variance_pct",
+   "fieldtype": "Percent",
+   "label": "Reagent Variance %"
+  },
+  {
+   "fieldname": "resource_gap_units",
+   "fieldtype": "Float",
+   "label": "Resource Gap Units"
+  },
+  {
+   "default": "1",
+   "fieldname": "suggested_adjust_factor",
+   "fieldtype": "Float",
+   "label": "Suggested Adjust Factor"
+  },
+  {
+   "default": "0",
+   "fieldname": "applied_to_next_projection",
+   "fieldtype": "Check",
+   "label": "Applied To Next Projection"
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Open\nClosed"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-18 11:20:41.514387",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "Ops Feedback Entry",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

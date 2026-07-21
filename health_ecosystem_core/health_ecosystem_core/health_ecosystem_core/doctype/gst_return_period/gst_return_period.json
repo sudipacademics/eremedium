@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-18 11:18:32.006456",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "fiscal_year",
+  "period_month",
+  "period_year",
+  "period_label",
+  "from_date",
+  "to_date",
+  "status",
+  "gstr1_taxable",
+  "gstr1_tax",
+  "gstr2_taxable",
+  "gstr2_tax",
+  "gstr3b_json",
+  "lines",
+  "filed_on",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "GSTR-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "GSTR-.#####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Fiscal Year"
+  },
+  {
+   "fieldname": "period_month",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Month (1-12)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "period_year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "period_label",
+   "fieldtype": "Data",
+   "label": "Period Label",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nGenerated\nFiled\nReconciled"
+  },
+  {
+   "fieldname": "gstr1_taxable",
+   "fieldtype": "Currency",
+   "label": "GSTR-1 Taxable",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr1_tax",
+   "fieldtype": "Currency",
+   "label": "GSTR-1 Tax",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr2_taxable",
+   "fieldtype": "Currency",
+   "label": "GSTR-2 Taxable",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr2_tax",
+   "fieldtype": "Currency",
+   "label": "GSTR-2 Tax",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gstr3b_json",
+   "fieldtype": "Long Text",
+   "label": "GSTR-3B Summary JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines",
+   "options": "GST Return Line"
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-18 11:18:32.006456",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "GST Return Period",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "period_label"
+}

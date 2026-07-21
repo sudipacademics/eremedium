@@ -1,0 +1,135 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:rule_key",
+ "creation": "2026-07-18 11:18:31.458041",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule_key",
+  "label",
+  "hsn_sac",
+  "tax_category",
+  "gst_rate",
+  "item_groups",
+  "match_reagent",
+  "is_fallback",
+  "active",
+  "item_tax_template"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Rule Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "fieldname": "hsn_sac",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "HSN / SAC",
+   "reqd": 1
+  },
+  {
+   "default": "Service",
+   "fieldname": "tax_category",
+   "fieldtype": "Select",
+   "label": "Tax Category",
+   "options": "Goods\nService",
+   "reqd": 1
+  },
+  {
+   "default": "18",
+   "fieldname": "gst_rate",
+   "fieldtype": "Percent",
+   "label": "GST %",
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_groups",
+   "fieldtype": "Small Text",
+   "label": "Item Groups (comma-separated)"
+  },
+  {
+   "default": "0",
+   "fieldname": "match_reagent",
+   "fieldtype": "Check",
+   "label": "Match Reagents"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_fallback",
+   "fieldtype": "Check",
+   "label": "Fallback Rule"
+  },
+  {
+   "default": "1",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "label": "Active"
+  },
+  {
+   "fieldname": "item_tax_template",
+   "fieldtype": "Link",
+   "label": "Item Tax Template",
+   "options": "Item Tax Template"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-18 11:18:31.458041",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "HEC HSN Rule",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "rule_key"
+}

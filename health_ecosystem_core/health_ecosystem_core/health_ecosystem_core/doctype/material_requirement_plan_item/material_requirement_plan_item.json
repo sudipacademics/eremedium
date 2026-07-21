@@ -1,0 +1,73 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-18 11:20:40.962359",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reagent_item",
+  "reagent_name",
+  "required_qty",
+  "available_qty",
+  "shortfall",
+  "suggested_po_qty",
+  "source_tests"
+ ],
+ "fields": [
+  {
+   "fieldname": "reagent_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Reagent Item",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reagent_name",
+   "fieldtype": "Data",
+   "label": "Reagent Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "required_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Required (tests equiv)"
+  },
+  {
+   "fieldname": "available_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Available (open batches)"
+  },
+  {
+   "fieldname": "shortfall",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Shortfall"
+  },
+  {
+   "fieldname": "suggested_po_qty",
+   "fieldtype": "Float",
+   "label": "Suggested PO Qty"
+  },
+  {
+   "fieldname": "source_tests",
+   "fieldtype": "Small Text",
+   "label": "Driven By Tests"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-18 11:20:40.962359",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "Material Requirement Plan Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

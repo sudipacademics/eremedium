@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-18 11:18:31.871398",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "form_type",
+  "invoice",
+  "invoice_date",
+  "party",
+  "party_gstin",
+  "place_of_supply",
+  "hsn_sac",
+  "taxable_value",
+  "cgst_amount",
+  "sgst_amount",
+  "igst_amount",
+  "cess_amount",
+  "reverse_charge",
+  "match_status",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "form_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Form",
+   "options": "GSTR-1\nGSTR-2\nGSTR-3B"
+  },
+  {
+   "fieldname": "invoice",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Invoice"
+  },
+  {
+   "fieldname": "invoice_date",
+   "fieldtype": "Date",
+   "label": "Invoice Date"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "label": "Party"
+  },
+  {
+   "fieldname": "party_gstin",
+   "fieldtype": "Data",
+   "label": "Party GSTIN"
+  },
+  {
+   "fieldname": "place_of_supply",
+   "fieldtype": "Data",
+   "label": "Place of Supply"
+  },
+  {
+   "fieldname": "hsn_sac",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "HSN/SAC"
+  },
+  {
+   "fieldname": "taxable_value",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Taxable"
+  },
+  {
+   "fieldname": "cgst_amount",
+   "fieldtype": "Currency",
+   "label": "CGST"
+  },
+  {
+   "fieldname": "sgst_amount",
+   "fieldtype": "Currency",
+   "label": "SGST"
+  },
+  {
+   "fieldname": "igst_amount",
+   "fieldtype": "Currency",
+   "label": "IGST"
+  },
+  {
+   "fieldname": "cess_amount",
+   "fieldtype": "Currency",
+   "label": "Cess"
+  },
+  {
+   "default": "0",
+   "fieldname": "reverse_charge",
+   "fieldtype": "Check",
+   "label": "RCM"
+  },
+  {
+   "fieldname": "match_status",
+   "fieldtype": "Select",
+   "label": "Match",
+   "options": "\nMatched\nMismatch\nMissing in Books\nMissing in 2B"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-18 11:18:31.871398",
+ "modified_by": "Administrator",
+ "module": "Health Ecosystem Core",
+ "name": "GST Return Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
