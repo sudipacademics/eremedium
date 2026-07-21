@@ -585,6 +585,62 @@ def run_phase21_setup():
     return setup_phase21()
 
 
+def run_phase21_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase21_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import smoke_phase21
+
+    return smoke_phase21()
+
+
+def run_phase71_setup():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase71_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase71_ops_dashboards import setup_phase71
+
+    return setup_phase71()
+
+
+def run_phase72_setup():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase72_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import setup_phase72
+
+    return setup_phase72()
+
+
+def run_phase72_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase72_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import smoke_phase72
+
+    return smoke_phase72()
+
+
+def run_phase73_setup():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase73_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import setup_phase73
+
+    return setup_phase73()
+
+
+def run_phase73_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase73_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import smoke_phase73
+
+    return smoke_phase73()
+
+
+def run_phase74_setup():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase74_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase74_performance import setup_phase74
+
+    return setup_phase74()
+
+
+def run_phase74_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase74_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase74_performance import smoke_phase74
+
+    return smoke_phase74()
+
+
 def run_phase19_setup():
     """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase19_setup"""
     from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import setup_phase19

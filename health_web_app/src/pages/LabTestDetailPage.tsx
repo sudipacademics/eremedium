@@ -11,11 +11,19 @@ function formatTat(hours?: number) {
   return days === 1 ? '1 day' : `${days} days`;
 }
 
+function renderParagraphs(text?: string) {
+  if (!text) return null;
+  return text.split(/\n\s*\n/).map((paragraph, index) => (
+    <p key={index}>{paragraph.trim()}</p>
+  ));
+}
+
 export function LabTestDetailPage() {
   const { itemCode = '' } = useParams();
   const [item, setItem] = useState<LabTestDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const load = useCallback(async () => {
     if (!itemCode) return;
@@ -42,6 +50,8 @@ export function LabTestDetailPage() {
   const mrp = item ? itemMrp(item) : undefined;
   const discount = item ? itemDiscountPercent(item) : 0;
   const aliases = (item?.also_known_as || []).filter((name) => name !== item?.item_name);
+  const aboutSections = item?.about_sections || [];
+  const faqs = item?.faqs || [];
 
   return (
     <div className="lab-detail">
@@ -92,19 +102,56 @@ export function LabTestDetailPage() {
                 <span className="lab-fact-label">Tests included</span>
                 <strong>{item.test_count || 1}</strong>
               </div>
+              <div className="lab-fact">
+                <span className="lab-fact-label">Preparation</span>
+                <strong>{item.preparation?.toLowerCase().includes('no special') ? 'Not required' : 'See below'}</strong>
+              </div>
             </div>
 
-            {item.description && (
-              <div className="lab-detail-section">
-                <h2>About this test</h2>
-                <p>{item.description}</p>
-              </div>
+            {aboutSections.length > 0 ? (
+              aboutSections.map((section) => (
+                <div className="lab-detail-section" key={section.title}>
+                  <h2>{section.title}</h2>
+                  <div className="lab-detail-copy">{renderParagraphs(section.body)}</div>
+                </div>
+              ))
+            ) : (
+              item.description && (
+                <div className="lab-detail-section">
+                  <h2>About this test</h2>
+                  <div className="lab-detail-copy">
+                    <p>{item.description}</p>
+                  </div>
+                </div>
+              )
             )}
 
-            <div className="lab-detail-section">
-              <h2>Preparation</h2>
-              <p>{item.preparation || 'No special preparation is required.'}</p>
-            </div>
+            {faqs.length > 0 && (
+              <div className="lab-detail-section">
+                <h2>FAQs</h2>
+                <div className="lab-faq-list">
+                  {faqs.map((faq, index) => {
+                    const expanded = openFaq === index;
+                    return (
+                      <div className={`lab-faq-item${expanded ? ' open' : ''}`} key={faq.question}>
+                        <button
+                          type="button"
+                          className="lab-faq-question"
+                          aria-expanded={expanded}
+                          onClick={() => setOpenFaq(expanded ? null : index)}
+                        >
+                          <span>{faq.question}</span>
+                          <span className="lab-faq-toggle" aria-hidden>
+                            {expanded ? '−' : '+'}
+                          </span>
+                        </button>
+                        {expanded && <div className="lab-faq-answer">{faq.answer}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="lab-detail-section">
               <h2>Why book with Remedium</h2>

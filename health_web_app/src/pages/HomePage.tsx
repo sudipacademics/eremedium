@@ -1,5 +1,5 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   api,
   CatalogItem,
@@ -9,6 +9,7 @@ import {
   LabPanel,
   WhatsappCta,
 } from '../api';
+import { AiPhysicianEntry } from '../components/AiPhysicianEntry';
 import { PriceTag } from '../components/PriceTag';
 import { useLiveRefresh } from '../hooks/useLiveRefresh';
 import { stripHtml } from '../utils/text';
@@ -34,7 +35,6 @@ function isExternalHref(href: string) {
 }
 
 export function HomePage() {
-  const navigate = useNavigate();
   const [popular, setPopular] = useState<CatalogItem[]>([]);
   const [packages, setPackages] = useState<LabPanel[]>([]);
   const [radiology, setRadiology] = useState<HomeRadiologyService[]>([]);
@@ -45,7 +45,6 @@ export function HomePage() {
   const [quickActions, setQuickActions] = useState<HomeQuickAction[]>([]);
   const [whatsapp, setWhatsapp] = useState<WhatsappCta | null>(null);
   const [headers, setHeaders] = useState<HomeHeaders>({});
-  const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -77,12 +76,6 @@ export function HomePage() {
 
   useLiveRefresh(load);
 
-  function onSearch(e: FormEvent) {
-    e.preventDefault();
-    const q = search.trim();
-    navigate(q ? `/diagnostics?q=${encodeURIComponent(q)}` : '/diagnostics');
-  }
-
   const homeTitle = headers.home_title || 'Book lab tests online';
   const homeSubtitle =
     headers.home_subtitle ||
@@ -95,18 +88,7 @@ export function HomePage() {
       <section className="hero hero-home">
         <h1>{homeTitle}</h1>
         <p className="hero-lead">{homeSubtitle}</p>
-        <form className="home-search" onSubmit={onSearch}>
-          <input
-            type="search"
-            placeholder={searchPlaceholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search diagnostics"
-          />
-          <button className="btn" type="submit">
-            Search
-          </button>
-        </form>
+        <AiPhysicianEntry placeholder={searchPlaceholder} />
         <div className="home-quick-links">
           {quickActions.map((action) => {
             const href = quickLinkHref(action);
@@ -122,6 +104,12 @@ export function HomePage() {
               </Link>
             );
           })}
+          <Link className="btn secondary btn-sm" to="/wellness">
+            Wellness
+          </Link>
+          <Link className="btn secondary btn-sm" to="/insurance">
+            Insurance
+          </Link>
         </div>
       </section>
 

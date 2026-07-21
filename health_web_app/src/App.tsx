@@ -57,7 +57,10 @@ import { PhlebotomistDashboard } from './pages/dashboard/PhlebotomistDashboard';
 
 import { PhlebotomistReports } from './pages/dashboard/PhlebotomistReports';
 
+import { LabTechDashboard } from './pages/dashboard/LabTechDashboard';
+
 import { HrSelfServicePage } from './pages/dashboard/HrSelfServicePage';
+import { StaffPerformancePage } from './pages/dashboard/StaffPerformancePage';
 import { ReagentDashboardPage } from './pages/dashboard/ReagentDashboardPage';
 
 import { PublicDashboard } from './pages/dashboard/PublicDashboard';
@@ -70,6 +73,11 @@ import { JourneyPage } from './pages/JourneyPage';
 
 import { LabPage } from './pages/LabPage';
 import { LabTestDetailPage } from './pages/LabTestDetailPage';
+
+import { InsuranceLandingPage } from './pages/InsuranceLandingPage';
+import { WellnessHubPage } from './pages/wellness/WellnessHubPage';
+import { WellnessWingPage } from './pages/wellness/WellnessWingPage';
+import { WellnessBookPage } from './pages/wellness/WellnessBookPage';
 
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -154,6 +162,28 @@ export default function App() {
                 <Route path="pharmacy" element={<PharmacyPage />} />
 
                 <Route path="pharmacy/cart" element={<PharmacyCartPage />} />
+
+                <Route path="wellness" element={<WellnessHubPage />} />
+
+                <Route path="wellness/:wingId" element={<WellnessWingPage />} />
+
+                <Route
+
+                  path="wellness/:wingId/book/:serviceCode"
+
+                  element={
+
+                    <ProtectedRoute>
+
+                      <WellnessBookPage />
+
+                    </ProtectedRoute>
+
+                  }
+
+                />
+
+                <Route path="insurance" element={<InsuranceLandingPage />} />
 
                 <Route
 
@@ -409,6 +439,22 @@ export default function App() {
 
               <Route
 
+                path="lab-tech"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER]}>
+
+                    <LabTechDashboard />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
                 path="hr"
 
                 element={
@@ -425,11 +471,27 @@ export default function App() {
 
               <Route
 
+                path="performance"
+
+                element={
+
+                  <ProtectedRoute roles={HR_ACCESS}>
+
+                    <StaffPerformancePage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
                 path="staff"
 
                 element={
 
-                  <ProtectedRoute roles={STAFF_ACCESS}>
+                  <ProtectedRoute roles={[ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
 
                     <StaffDashboard />
 

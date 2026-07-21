@@ -116,8 +116,11 @@ def _set_no_cache_headers():
         pass
 
 
-LAB_ITEM_GROUPS = ["Lab Tests", "Services", "Laboratory", "Diagnostics", "Lab"]
-PHARMACY_ITEM_GROUPS = ["Medicines", "Pharmacy", "Healthcare", "Consumables"]
+LAB_ITEM_GROUPS = ["Lab Tests", "Laboratory", "Diagnostics", "Lab"]
+PHARMACY_ITEM_GROUPS = ["Medicines", "Pharmacy", "Healthcare"]
+# Never show these as customer-buyable lab catalog / packages / popular tests
+EXCLUDED_LAB_CATALOG_GROUPS = ("Consumables", "Raw Material", "Sub Assemblies")
+REAGENT_NAME_PREFIXES = ("REAGENT", "REAG-", "KIT-REAGENT")
 
 
 def _default_selling_price_list():
@@ -186,6 +189,37 @@ def _coupon_for_item_group(item_group, promos):
 def _is_lab_item_group(item_group):
     group = (item_group or "").strip()
     return group in LAB_ITEM_GROUPS
+
+
+def _is_reagent_or_excluded_item(item_code=None, item_group=None, item_name=None):
+    """Reagents / consumables must not appear in customer package or catalog surfaces."""
+    group = (item_group or "").strip()
+    if group in EXCLUDED_LAB_CATALOG_GROUPS:
+        return True
+    code = (item_code or "").strip().upper()
+    name = (item_name or "").strip().upper()
+    for prefix in REAGENT_NAME_PREFIXES:
+        if code.startswith(prefix) or name.startswith(prefix):
+            return True
+    if "REAGENT" in code or "REAGENT" in name:
+        return True
+    return False
+
+
+def _filter_public_lab_items(items):
+    """Keep only Lab Tests group items; drop reagents/consumables."""
+    out = []
+    for item in items or []:
+        code = item.get("name") or item.get("item_code")
+        group = item.get("item_group")
+        if group is None and code:
+            group = frappe.db.get_value("Item", code, "item_group")
+        if not _is_lab_item_group(group):
+            continue
+        if _is_reagent_or_excluded_item(code, group, item.get("item_name")):
+            continue
+        out.append(item)
+    return out
 
 
 def _public_lab_item_profile(item_code):
@@ -1772,6 +1806,81 @@ def attach_expense_receipt(
 
 
 @frappe.whitelist(allow_guest=True)
+def get_staff_performance_hub(sid=None):
+    """Phase 74 — training programs/events, KRAs, and appraisals for staff."""
+    denied = _require_hr_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase74_performance import (
+        get_performance_hub_payload,
+    )
+
+    return _success(get_performance_hub_payload(frappe.session.user))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_appraisal_self_review(
+    appraisal=None,
+    reflections=None,
+    ratings=None,
+    sid=None,
+):
+    """Phase 74 — employee self-reflection and criteria ratings on an appraisal."""
+    denied = _require_hr_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase74_performance import (
+        submit_appraisal_self_review as _submit,
+    )
+
+    appraisal = _parse_request_value("appraisal", appraisal)
+    reflections = _parse_request_value("reflections", reflections)
+    ratings = _parse_request_value("ratings", ratings)
+    if not appraisal:
+        return _error(_("appraisal is required"))
+
+    try:
+        row = _submit(frappe.session.user, appraisal, reflections, ratings)
+        return _success({"appraisal": row}, message=_("Self review saved"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_training_feedback(
+    training_event=None,
+    rating=None,
+    feedback=None,
+    sid=None,
+):
+    """Phase 74 — post-training feedback from staff."""
+    denied = _require_hr_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase74_performance import (
+        submit_training_feedback as _submit,
+    )
+
+    training_event = _parse_request_value("training_event", training_event)
+    rating = _parse_request_value("rating", rating)
+    feedback = _parse_request_value("feedback", feedback)
+    if not training_event:
+        return _error(_("training_event is required"))
+
+    try:
+        result = _submit(frappe.session.user, training_event, rating, feedback)
+        return _success(result, message=_("Training feedback submitted"))
+    except (frappe.ValidationError, frappe.DoesNotExistError) as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="submit_training_feedback", message=frappe.get_traceback())
+        return _error(str(exc)[:200] or _("Training feedback failed"))
+
+
+@frappe.whitelist(allow_guest=True)
 def get_health_subscription_plans(sid=None):
     """Phase 19 — list active subscription plans."""
     from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import list_subscription_plans
@@ -2672,6 +2781,89 @@ def validate_coupon(promo_code=None, subtotal=None, context=None, sid=None):
         return _error(_("Could not validate coupon"))
 
 
+@frappe.whitelist()
+def create_pharmacy_quote_request(
+    customer_name=None,
+    customer_phone=None,
+    delivery_address=None,
+    uploaded_prescription_url=None,
+    duration_months=None,
+    desired_discount_slab=None,
+    latitude=None,
+    longitude=None,
+    sid=None,
+):
+    """Chronic medicine pack quote request — pharmacist confirms items and sends quotation."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+
+    customer_name = _parse_request_value("customer_name", customer_name)
+    customer_phone = _parse_request_value("customer_phone", customer_phone)
+    delivery_address = _parse_request_value("delivery_address", delivery_address)
+    uploaded_prescription_url = _parse_request_value(
+        "uploaded_prescription_url", uploaded_prescription_url
+    )
+    duration_months = cint(_parse_request_value("duration_months", duration_months) or 0)
+    desired_discount_slab = _parse_request_value("desired_discount_slab", desired_discount_slab) or ""
+    latitude = _parse_request_value("latitude", latitude)
+    longitude = _parse_request_value("longitude", longitude)
+
+    if not all([customer_name, customer_phone, delivery_address, uploaded_prescription_url]):
+        return _error(_("Name, phone, address, and prescription are required"))
+    if duration_months < 1:
+        return _error(_("Select pack duration in months"))
+
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import (
+        ensure_patient,
+        patient_doctype_available,
+    )
+
+    patient_id = None
+    if patient_doctype_available():
+        patient_id = ensure_patient(
+            patient_name=customer_name,
+            phone=customer_phone,
+            user=frappe.session.user if frappe.session.user != "Guest" else None,
+        )
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import set_patient_link
+
+    order_data = {
+        "doctype": "Pharmacy Order",
+        "customer_name": customer_name,
+        "customer_phone": customer_phone,
+        "delivery_address": delivery_address,
+        "uploaded_prescription_url": uploaded_prescription_url,
+        "duration_months": duration_months,
+        "desired_discount_slab": desired_discount_slab or None,
+        "order_total": 0,
+        "order_kind": "Chronic quote",
+        "delivery_status": "Quotation Pending",
+        "razorpay_payment_status": "Pending",
+        "items_json": json.dumps([]),
+    }
+    if latitude not in (None, "") and longitude not in (None, ""):
+        order_data["request_latitude"] = flt(latitude)
+        order_data["request_longitude"] = flt(longitude)
+    if patient_id and frappe.get_meta("Pharmacy Order").has_field("patient"):
+        order_data["patient"] = patient_id
+    set_patient_link(order_data, patient_id, "Pharmacy Order")
+
+    order = frappe.get_doc(order_data)
+    order.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    return _success(
+        {
+            "order_id": order.name,
+            "delivery_status": order.delivery_status,
+            "duration_months": duration_months,
+            "patient": patient_id,
+        },
+        message=_("Quote request submitted — our pharmacist will confirm medicines and send a quotation"),
+    )
+
+
 @frappe.whitelist(allow_guest=True)
 def create_pharmacy_order(
     customer_name=None,
@@ -2911,11 +3103,13 @@ def _create_sales_invoice_for_pharmacy(order, items):
 
 @frappe.whitelist(allow_guest=True)
 def get_lab_test_catalog(item_group=None, q=None):
-    """Return published lab test items for mobile catalog."""
+    """Return published lab test items for mobile catalog (Lab Tests only — no reagents)."""
     _set_no_cache_headers()
     filters = {"is_sales_item": 1, "disabled": 0, "item_group": ["in", LAB_ITEM_GROUPS]}
     item_group = (_parse_request_value("item_group", item_group) or "").strip()
     if item_group:
+        if item_group in EXCLUDED_LAB_CATALOG_GROUPS or item_group not in LAB_ITEM_GROUPS:
+            return _success({"items": [], "item_groups": list(LAB_ITEM_GROUPS)})
         filters["item_group"] = item_group
     or_filters = _catalog_search_filters(q)
 
@@ -2927,16 +3121,7 @@ def get_lab_test_catalog(item_group=None, q=None):
         order_by="item_name asc",
         limit=1200,
     )
-
-    if not items and not item_group and not q:
-        items = frappe.get_all(
-            "Item",
-            filters={"is_sales_item": 1, "disabled": 0},
-            or_filters=or_filters,
-            fields=["name", "item_name", "description", "standard_rate", "image", "item_group"],
-            order_by="item_name asc",
-            limit=200,
-        )
+    items = _filter_public_lab_items(items)
 
     groups = frappe.get_all(
         "Item Group",
@@ -3055,18 +3240,33 @@ def _public_file_url(path):
     return frappe.utils.get_url(path)
 
 
-def _load_mobile_banners():
+def _load_portal_banners(placements, fallback=None):
+    """Load enabled Mobile Home Banner rows for the given portal placement(s)."""
     if not frappe.db.exists("DocType", "Mobile Home Banner"):
-        return MOBILE_HOME_BANNERS
+        return list(fallback or [])
+
+    filters = {"enabled": 1}
+    meta = frappe.get_meta("Mobile Home Banner")
+    fields = [
+        "banner_title",
+        "subtitle",
+        "color",
+        "icon",
+        "banner_image",
+        "display_order",
+    ]
+    if meta.has_field("banner_placement"):
+        filters["banner_placement"] = ["in", list(placements)]
+        fields.append("banner_placement")
 
     rows = frappe.get_all(
         "Mobile Home Banner",
-        filters={"enabled": 1},
-        fields=["banner_title", "subtitle", "color", "icon", "banner_image", "display_order"],
+        filters=filters,
+        fields=fields,
         order_by="display_order asc, modified desc",
     )
     if not rows:
-        return MOBILE_HOME_BANNERS
+        return list(fallback or [])
 
     banners = []
     for row in rows:
@@ -3081,6 +3281,14 @@ def _load_mobile_banners():
             item["image_url"] = image_url
         banners.append(item)
     return banners
+
+
+def _load_mobile_banners():
+    return _load_portal_banners(["Home", "Both"], MOBILE_HOME_BANNERS)
+
+
+def _load_wellness_promo_banners():
+    return _load_portal_banners(["Wellness", "Both"], [])
 
 
 def _load_mobile_promotions():
@@ -3166,20 +3374,12 @@ def get_home_content():
     """Banners, promotions, and popular tests for mobile home screen."""
     popular_tests = frappe.get_all(
         "Item",
-        filters={"is_sales_item": 1, "disabled": 0, "item_group": ["in", ["Lab Tests", "Services"]]},
-        fields=["name", "item_name", "description", "standard_rate", "image"],
+        filters={"is_sales_item": 1, "disabled": 0, "item_group": ["in", LAB_ITEM_GROUPS]},
+        fields=["name", "item_name", "description", "standard_rate", "image", "item_group"],
         order_by="modified desc",
-        limit=6,
+        limit=24,
     )
-
-    if not popular_tests:
-        popular_tests = frappe.get_all(
-            "Item",
-            filters={"is_sales_item": 1, "disabled": 0},
-            fields=["name", "item_name", "description", "standard_rate", "image"],
-            order_by="modified desc",
-            limit=6,
-        )
+    popular_tests = _filter_public_lab_items(popular_tests)[:8]
 
     return _success(
         {
@@ -3433,3 +3633,93 @@ def book_lab_test(
         payment_method=payment_method,
         promo_code=promo_code,
     )
+
+
+@frappe.whitelist(allow_guest=True)
+def find_nearby_collection_centers(latitude=None, longitude=None, radius_km=None, limit=None):
+    """Phase 66 — hubs near patient GPS for AI physician journey."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase66_ai_physician import (
+        find_nearby_collection_centers as _nearby,
+    )
+
+    latitude = _parse_request_value("latitude", latitude)
+    longitude = _parse_request_value("longitude", longitude)
+    radius_km = _parse_request_value("radius_km", radius_km) or 40
+    limit = _parse_request_value("limit", limit) or 5
+    try:
+        centers = _nearby(latitude, longitude, radius_km=radius_km, limit=limit)
+        return _success({"centers": centers, "count": len(centers)})
+    except Exception as exc:
+        frappe.log_error(title="find_nearby_collection_centers", message=frappe.get_traceback())
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def start_ai_physician_journey(symptoms=None, latitude=None, longitude=None):
+    """Phase 66 — open AI physician chat from symptom text/voice."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase66_ai_physician import (
+        start_ai_physician_journey as _start,
+    )
+
+    symptoms = _parse_request_value("symptoms", symptoms)
+    latitude = _parse_request_value("latitude", latitude)
+    longitude = _parse_request_value("longitude", longitude)
+    try:
+        return _success(_start(symptoms, latitude=latitude, longitude=longitude))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="start_ai_physician_journey", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to start care chat"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ai_physician_turn(session_id=None, message=None, latitude=None, longitude=None):
+    """Phase 66 — continue AI physician Q&A / get suggestions."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase66_ai_physician import (
+        continue_ai_physician_journey,
+    )
+
+    session_id = _parse_request_value("session_id", session_id)
+    message = _parse_request_value("message", message)
+    latitude = _parse_request_value("latitude", latitude)
+    longitude = _parse_request_value("longitude", longitude)
+    if not session_id:
+        return _error(_("session_id is required"))
+    try:
+        return _success(
+            continue_ai_physician_journey(
+                session_id, message, latitude=latitude, longitude=longitude
+            )
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ai_physician_turn", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to continue care chat"))
+
+
+# Re-export guest wellness / insurance handlers so main api module path works
+from health_ecosystem_core.health_ecosystem_core.clinical_phase31_allied_health import (  # noqa: E402
+    book_allied_health_appointment,
+    get_allied_health_service,
+    get_allied_health_services,
+    get_allied_health_wings,
+)
+from health_ecosystem_core.health_ecosystem_core.clinical_phase44_insurance import (  # noqa: E402
+    get_insurance_landing,
+    get_my_insurance_requests,
+    submit_insurance_quote_request,
+)
+from health_ecosystem_core.health_ecosystem_core.clinical_phase32_pharmacy_quote import (  # noqa: E402
+    accept_pharmacy_quote,
+    list_pharmacy_quote_queue,
+    send_pharmacy_quote,
+)
+from health_ecosystem_core.health_ecosystem_core.clinical_phase18b import (  # noqa: E402
+    complete_oauth_login,
+)
+from health_ecosystem_core.health_ecosystem_core.clinical_phase65_number_masking import (  # noqa: E402
+    get_masked_call_context,
+    start_masked_call,
+)

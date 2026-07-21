@@ -391,6 +391,118 @@ export type HomeHeaders = {
   section_popular_title?: string;
 };
 
+export type PromoBanner = {
+  title: string;
+  subtitle?: string;
+  color?: string;
+  image_url?: string;
+  icon?: string;
+};
+
+export type AlliedHealthWing = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon?: string;
+  color?: string;
+  image?: string;
+  service_count?: number;
+  starting_rate?: number;
+};
+
+export type AlliedHealthService = {
+  service_code: string;
+  service_name: string;
+  wing_id: string;
+  item_group?: string;
+  short_description?: string;
+  rate?: number;
+  duration_minutes?: number;
+};
+
+export type AiPhysicianCenter = {
+  name?: string;
+  franchise_name?: string;
+  distance_km?: number;
+  address?: string;
+};
+
+export type AiPhysicianSuggestions = {
+  diagnostic_workup?: Array<{
+    item_code?: string;
+    panel_id?: string;
+    item_name: string;
+    rate?: number;
+    mrp?: number;
+    reason?: string;
+    book_path?: string;
+  }>;
+  physician_services?: Array<{
+    service: string;
+    department?: string;
+    reason?: string;
+    book_path?: string;
+  }>;
+  wellness?: Array<{
+    title: string;
+    subtitle?: string;
+    book_path?: string;
+  }>;
+  nearby_centers?: AiPhysicianCenter[];
+};
+
+export type AiPhysicianTurn = {
+  session_id: string;
+  phase?: string;
+  message: string;
+  question?: string;
+  question_index?: number;
+  total_questions?: number;
+  suggestions?: AiPhysicianSuggestions | null;
+  disclaimer?: string;
+  openai_enabled?: boolean;
+};
+
+export type InsuranceProduct = {
+  product_code: string;
+  product_name: string;
+  insurer?: string;
+  category?: string;
+  sum_insured_from?: number;
+  sum_insured_to?: number;
+  premium_from?: number;
+  highlights?: string[];
+  description?: string;
+};
+
+export type TelephonyCallRow = {
+  name: string;
+  creation?: string;
+  from_number?: string;
+  path?: string;
+  status?: string;
+  patient_name?: string;
+  caller_known?: number | boolean;
+  service_intent?: string;
+  booking_ref?: string;
+  booking_doctype?: string;
+  escalate_reason?: string;
+};
+
+export type TelephonyDashboard = {
+  telephony_enabled?: boolean;
+  agent_configured?: boolean;
+  openai_configured?: boolean;
+  counts?: {
+    total?: number;
+    booked?: number;
+    escalated?: number;
+    ai?: number;
+    ivr?: number;
+  };
+  calls?: TelephonyCallRow[];
+};
+
 export type Franchisee = {
   name: string;
   franchise_name: string;
@@ -463,6 +575,60 @@ export type HrSelfService = {
   expense_types: Array<{ name: string; expense_type?: string }>;
   leave_applications: LeaveApplicationRow[];
   expense_claims: ExpenseClaimRow[];
+};
+
+export type StaffKraRow = {
+  name: string;
+  title?: string;
+  description?: string;
+  weightage?: number;
+  score?: number;
+};
+
+export type StaffAppraisalRow = {
+  name: string;
+  employee?: string;
+  employee_name?: string;
+  appraisal_cycle?: string;
+  appraisal_template?: string;
+  start_date?: string;
+  end_date?: string;
+  final_score?: number;
+  total_score?: number;
+  self_score?: number;
+  reflections?: string;
+  docstatus?: number;
+  kras?: StaffKraRow[];
+  self_ratings?: Array<{ criteria?: string; rating?: number; per_weightage?: number }>;
+};
+
+export type TrainingProgramRow = {
+  name: string;
+  training_program?: string;
+  status?: string;
+  description?: string;
+};
+
+export type TrainingEventRow = {
+  name: string;
+  event_name?: string;
+  training_program?: string;
+  event_status?: string;
+  start_time?: string;
+  end_time?: string;
+  type?: string;
+  introduction?: string;
+};
+
+export type StaffPerformanceHub = {
+  performance_available: boolean;
+  missing_modules?: string[];
+  employee?: string | null;
+  kras: StaffKraRow[];
+  appraisals: StaffAppraisalRow[];
+  training_programs: TrainingProgramRow[];
+  training_events: TrainingEventRow[];
+  feedback_criteria: Array<{ name: string; criteria?: string }>;
 };
 
 export type FranchiseeProfile = {
@@ -839,6 +1005,96 @@ export const api = {
       headers?: HomeHeaders;
     }>('get_home_content', { auth: false }),
 
+  startAiPhysicianJourney: (body: {
+    symptoms: string;
+    latitude?: number;
+    longitude?: number;
+  }) =>
+    request<AiPhysicianTurn>('start_ai_physician_journey', {
+      method: 'POST',
+      body,
+      auth: false,
+    }),
+
+  aiPhysicianTurn: (body: {
+    session_id: string;
+    message: string;
+    latitude?: number;
+    longitude?: number;
+  }) =>
+    request<AiPhysicianTurn>('ai_physician_turn', {
+      method: 'POST',
+      body,
+      auth: false,
+    }),
+
+  findNearbyCollectionCenters: (body: {
+    latitude: number;
+    longitude: number;
+    radius_km?: number;
+    limit?: number;
+  }) =>
+    request<{ centers: AiPhysicianCenter[]; count: number }>('find_nearby_collection_centers', {
+      method: 'POST',
+      body,
+      auth: false,
+    }),
+
+  getAlliedHealthWings: () =>
+    request<{ wings: AlliedHealthWing[]; promo_banners?: PromoBanner[] }>('get_allied_health_wings', {
+      auth: false,
+      module: 'appointments',
+    }),
+
+  getAlliedHealthServices: (wingId?: string, q?: string) =>
+    request<{ services: AlliedHealthService[]; count: number }>('get_allied_health_services', {
+      body: {
+        ...(wingId ? { wing_id: wingId } : {}),
+        ...(q ? { q } : {}),
+      },
+      auth: false,
+      module: 'appointments',
+    }),
+
+  getAlliedHealthService: (serviceCode: string) =>
+    request<{ service: AlliedHealthService }>('get_allied_health_service', {
+      body: { service_code: serviceCode },
+      auth: false,
+      module: 'appointments',
+    }),
+
+  bookAlliedHealthAppointment: (body: Record<string, string | number>) =>
+    request<{ appointment_id?: string }>('book_allied_health_appointment', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'appointments',
+    }),
+
+  createPharmacyQuoteRequest: (body: Record<string, string | number>) =>
+    request<{ order_id: string; delivery_status?: string; message?: string }>(
+      'create_pharmacy_quote_request',
+      {
+        method: 'POST',
+        body,
+        auth: true,
+      },
+    ),
+
+  getInsuranceLanding: () =>
+    request<{ products: InsuranceProduct[] }>('get_insurance_landing', {
+      auth: false,
+      module: 'insurance',
+    }),
+
+  submitInsuranceQuoteRequest: (body: Record<string, string | number>) =>
+    request<{ request_id?: string }>('submit_insurance_quote_request', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'insurance',
+    }),
+
   getLabPanels: () =>
     request<{ panels: LabPanel[] }>('get_lab_test_panels', { auth: false, module: 'diagnostics' }),
 
@@ -904,9 +1160,13 @@ export const api = {
       },
     ),
 
-  completeOAuthLogin: () =>
-    request<SessionUser>('complete_oauth_login', {
+  completeOAuthLogin: (sid?: string, loginToken?: string) =>
+    request<SessionUser & { sid?: string; full_name?: string }>('complete_oauth_login', {
       method: 'POST',
+      body: {
+        ...(sid ? { sid } : {}),
+        ...(loginToken ? { login_token: loginToken } : {}),
+      },
       auth: false,
       cookies: true,
       module: 'oauth',
@@ -987,6 +1247,27 @@ export const api = {
       auth: true,
     }),
 
+  getStaffPerformanceHub: () =>
+    request<StaffPerformanceHub>('get_staff_performance_hub', { body: {}, auth: true }),
+
+  submitAppraisalSelfReview: (body: {
+    appraisal: string;
+    reflections?: string;
+    ratings?: Array<{ criteria: string; rating: number; per_weightage?: number }>;
+  }) =>
+    request<{ appraisal: StaffAppraisalRow }>('submit_appraisal_self_review', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  submitTrainingFeedback: (body: { training_event: string; rating?: number; feedback?: string }) =>
+    request<{ ok: boolean; training_feedback?: string }>('submit_training_feedback', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
   markOfflinePaymentCollected: (referenceDoctype: string, referenceName: string) =>
     request<{ status: string; payment_method?: string }>('mark_offline_payment_collected', {
       method: 'POST',
@@ -1007,9 +1288,24 @@ export const api = {
       fileName || `Lab_Report_${journeyId}.pdf`,
     ),
 
-  getTrfDetail: (trfId: string) =>
-    request<{ trf: Booking; results: unknown[] }>('get_trf_detail', {
-      body: { trf_id: trfId },
+  getTrfDetail: (trfIdOrOpts: string | { trfId?: string; barcode?: string }) => {
+    const body =
+      typeof trfIdOrOpts === 'string'
+        ? { trf_id: trfIdOrOpts }
+        : {
+            ...(trfIdOrOpts.trfId ? { trf_id: trfIdOrOpts.trfId } : {}),
+            ...(trfIdOrOpts.barcode ? { barcode: trfIdOrOpts.barcode } : {}),
+          };
+    return request<{ trf: Booking; results: unknown[] }>('get_trf_detail', {
+      body,
+      auth: true,
+    });
+  },
+
+  updateOrderStatus: (trfId: string, orderStatus: string) =>
+    request<{ trf_id: string; order_status: string }>('update_order_status', {
+      method: 'POST',
+      body: { trf_id: trfId, order_status: orderStatus },
       auth: true,
     }),
 
@@ -1294,6 +1590,34 @@ export const api = {
       auth: true,
       module: 'diagnostics',
     }),
+
+  getTelephonyDashboard: () =>
+    request<TelephonyDashboard>('get_telephony_dashboard', {
+      auth: true,
+      module: 'telephony',
+    }),
+
+  getMaskedCallContext: (referenceDoctype: string, referenceName: string) =>
+    request<{
+      available?: boolean;
+      ready?: boolean;
+      telephony_enabled?: boolean;
+      masked_caller_id_display?: string | null;
+      peer_label?: string | null;
+      reason?: string | null;
+    }>('get_masked_call_context', {
+      body: { reference_doctype: referenceDoctype, reference_name: referenceName },
+      auth: true,
+    }),
+
+  startMaskedCall: (referenceDoctype: string, referenceName: string) =>
+    request<{ peer_label?: string; call_sid?: string }>('start_masked_call', {
+      method: 'POST',
+      body: { reference_doctype: referenceDoctype, reference_name: referenceName },
+      auth: true,
+    }),
+
+  clearSession,
 };
 
 /** List journeys; falls back to get_patient_journey when server lacks list_patient_journeys. */
