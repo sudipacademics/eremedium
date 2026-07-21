@@ -340,6 +340,28 @@ def _infer_sample_type(name):
     return DEFAULT_SAMPLE
 
 
+def _normalize_sample_type(value):
+    sample = (value or "").strip()
+    if not sample:
+        return ""
+    upper = sample.upper()
+    mapping = {
+        "SERUM": "Blood",
+        "PLASMA": "Blood",
+        "EDTA": "Blood",
+        "BLOOD": "Blood",
+        "URINE": "Urine",
+        "STOOL": "Stool",
+        "SWAB": "Swab",
+        "SALIVA": "Saliva",
+        "CSF": "CSF",
+    }
+    for key, normalized in mapping.items():
+        if key in upper:
+            return normalized
+    return sample.title()
+
+
 def _infer_category(name):
     lower = (name or "").lower()
     if any(k in lower for k in ("thyroid", "tsh", "t3", "t4")):
