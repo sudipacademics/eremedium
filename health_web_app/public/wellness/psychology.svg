@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" role="img" aria-label="Psychology">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="400" fill="url(#g)"/>
+  <text x="400" y="220" text-anchor="middle" font-size="120" fill="#fff" opacity="0.9">🧠</text>
+  <text x="400" y="320" text-anchor="middle" font-size="42" fill="#fff" font-family="system-ui,sans-serif" font-weight="600">Psychology</text>
+</svg>

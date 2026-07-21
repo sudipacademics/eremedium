@@ -982,6 +982,27 @@ export const api = {
       auth: true,
     }),
 
+  createB2bWalletRazorpayOrder: (body: { amount: number }) =>
+    request<RazorpayOrder>('create_b2b_wallet_razorpay_order', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  verifyB2bWalletRazorpayPayment: (body: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) =>
+    request<{ transaction_id: string; amount: number; wallet_balance: number; already_credited?: boolean }>(
+      'verify_b2b_wallet_razorpay_payment',
+      {
+        method: 'POST',
+        body,
+        auth: true,
+      },
+    ),
+
   validateSession: () =>
     request<{
       user: string;
