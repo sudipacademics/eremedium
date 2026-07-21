@@ -963,17 +963,19 @@ def _respond_xml(xml):
 	return xml
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def run_phase64_setup():
 	from health_ecosystem_core.health_ecosystem_core.api import _success
 
+	frappe.only_for("System Manager")
 	return _success(setup_phase64())
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def run_phase64_smoke():
 	from health_ecosystem_core.health_ecosystem_core.api import _success
 
+	frappe.only_for("System Manager")
 	return _success(smoke_phase64())
 
 
