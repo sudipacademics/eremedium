@@ -43,3 +43,4 @@ desktop.ini
 # Frappe
 sites/
 *.log
+health_web_app/tsconfig.tsbuildinfo
