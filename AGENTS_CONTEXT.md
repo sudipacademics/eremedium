@@ -79,5 +79,12 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 ## End-to-end validation of safe-update-app.sh (2026-07-21)
 
 - Ran `docker/safe-update-app.sh` live. **Reinstall is proven safe:** site-packages file inventory PRE=399 → POST=399 with **0 dropped, 0 added** (force-reinstall from reconciled `apps/` reproduces the running package exactly). Imports 59/59, `get_oauth_providers` + `get_lab_test_catalog` HTTP 200, reconciled DocTypes load meta. Inventory tool: `docker/inv-sp.sh <tag>` → `/opt/health-ecosystem/backups/sp-inv-<tag>.txt`.
-- **KNOWN BLOCKER (pre-existing, NOT from reconciliation):** step 4 `bench migrate` aborts with `cannot import name 'build_qb_match_conditions' from 'erpnext.accounts.utils'` while syncing hrms DocType **Shift Schedule Assignment**. Cause: app version skew — **erpnext 15.34.0** vs **hrms 15.63.0** (hrms expects a helper only present in newer erpnext; it is MISSING in 15.34.0). Because `safe-update-app.sh` uses `set -e`, migrate failure aborts before restart (no downtime; site stays up on old in-memory code).
-  - Fix options (need decision, both non-trivial on a live site): bump erpnext to a 15.x that defines `build_qb_match_conditions` (matching hrms 15.63.0), or pin hrms back to a version compatible with erpnext 15.34.0. Until resolved, `migrate`-dependent deploys (new DocTypes/fields) can't complete via safe-update.
+
+## ERPNext/Frappe bump — migrate unblocked (2026-07-22)
+
+- **Was:** image `frappe/erpnext:v15.34.0` → erpnext **15.34.0**, frappe **15.40.0**, hrms **15.63.0**. `bench migrate` failed on hrms DocType **Shift Schedule Assignment** (`cannot import name 'build_qb_match_conditions'`).
+- **Now (running apps/):** erpnext **15.81.1**, frappe **15.84.0**, hrms **15.63.0**. Migrate succeeds; `safe-update-app.sh` reaches `=== Safe update complete ===`. HTTP 200; 59/59 phase imports.
+- **How:** `apps/erpnext` and `apps/frappe` have **no `.git`** (image layers). Upgraded via GitHub release tarball swap + `pip install -e --no-deps`, not `git checkout`. Script: `docker/upgrade-erpnext-15.70.sh` (defaults to the proven pair below; name kept for plan continuity).
+- **Escalation note:** first attempt erpnext **v15.70.0** + frappe **v15.40.4** failed migrate — erpnext 15.70 needs `get_setup_wizard_completed_apps` (absent in frappe 15.40.4; present in **v15.84.0**). Proven pair matches [hrms#3619](https://github.com/frappe/hrms/issues/3619): **erpnext v15.81.1 + frappe v15.84.0**.
+- **Backups:** `/opt/health-ecosystem/backups/apps-erpnext-pre-20260722-055018.tgz`, `apps-frappe-pre-20260722-055018.tgz`, site backup under `sites/health.localhost/private/backups/20260722_112019-*`, notes `upgrade-notes-20260722-055018.txt`.
+- **Caveat:** compose still pins `image: frappe/erpnext:v15.34.0`. A container **recreate** from the image would wipe the swapped apps (hrms too — also not bind-mounted). Prefer `docker compose restart` only; do not recreate until image tag / bind-mount strategy is updated.
