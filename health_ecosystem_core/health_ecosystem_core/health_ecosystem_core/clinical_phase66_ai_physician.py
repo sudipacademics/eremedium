@@ -133,7 +133,12 @@ WELLNESS_SYMPTOM_MAP = (
 def _openai_key():
     try:
         s = frappe.get_single("Health Ecosystem Settings")
-        return (getattr(s, "telephony_openai_api_key", None) or "").strip()
+        # Password field — must use get_password; getattr returns encrypted/masked junk.
+        try:
+            key = s.get_password("telephony_openai_api_key", raise_exception=False)
+        except Exception:
+            key = None
+        return (key or "").strip()
     except Exception:
         return ""
 

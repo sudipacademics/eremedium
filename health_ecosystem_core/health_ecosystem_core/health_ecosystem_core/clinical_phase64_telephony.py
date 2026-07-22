@@ -138,12 +138,26 @@ def _telephony_enabled():
 
 def _webhook_secret():
 	s = _settings()
-	return (getattr(s, "exotel_webhook_secret", None) or "").strip() if s else ""
+	if not s:
+		return ""
+	# Password field — must use get_password.
+	try:
+		secret = s.get_password("exotel_webhook_secret", raise_exception=False)
+	except Exception:
+		secret = None
+	return (secret or "").strip()
 
 
 def _openai_key():
 	s = _settings()
-	return (getattr(s, "telephony_openai_api_key", None) or "").strip() if s else ""
+	if not s:
+		return ""
+	# Password field — must use get_password; getattr returns encrypted/masked junk.
+	try:
+		key = s.get_password("telephony_openai_api_key", raise_exception=False)
+	except Exception:
+		key = None
+	return (key or "").strip()
 
 
 def _agent_number():
