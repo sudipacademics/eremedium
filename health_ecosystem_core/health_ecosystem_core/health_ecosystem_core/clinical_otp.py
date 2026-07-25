@@ -53,10 +53,9 @@ def _dispatch_sms(mobile, code):
         frappe.logger("hec_otp").info(f"Test OTP for {mobile}: {code}")
         return True
 
-    from health_ecosystem_core.health_ecosystem_core.clinical_msg91 import send_msg91_sms
+    from health_ecosystem_core.health_ecosystem_core.clinical_msg91 import send_msg91_otp
 
-    message = f"Your Health Ecosystem OTP is {code}. Valid for 5 minutes."
-    if send_msg91_sms(mobile, message):
+    if send_msg91_otp(mobile, code):
         return True
     frappe.throw(_("Could not send OTP. Try again later."))
 
@@ -114,12 +113,14 @@ def verify_otp_code(mobile, otp):
     return True, None
 
 
-def ensure_patient_user_for_mobile(mobile):
+def ensure_patient_user_for_mobile(mobile, referral_code=None):
     """Find or create a Website User linked to Health Patient for this phone."""
     from health_ecosystem_core.health_ecosystem_core.clinical_iam import PATIENT_ROLE, link_user_to_health_patient
 
     mobile = normalize_mobile(mobile)
+    referral_code = (referral_code or "").strip() or None
     user = frappe.db.get_value("User", {"mobile_no": mobile}, "name")
+    created = False
     if not user:
         email = f"p{mobile}@otp.health.local"
         if frappe.db.exists("User", email):
@@ -141,6 +142,7 @@ def ensure_patient_user_for_mobile(mobile):
             doc.append("roles", {"role": PATIENT_ROLE})
             doc.insert(ignore_permissions=True)
             user = email
+            created = True
 
     roles = {r.role for r in frappe.get_doc("User", user).roles}
     if PATIENT_ROLE not in roles:
@@ -148,5 +150,10 @@ def ensure_patient_user_for_mobile(mobile):
         user_doc.append("roles", {"role": PATIENT_ROLE})
         user_doc.save(ignore_permissions=True)
 
-    link_user_to_health_patient(user, patient_name=f"Patient {mobile[-4:]}", phone=mobile)
+    link_user_to_health_patient(
+        user,
+        patient_name=f"Patient {mobile[-4:]}",
+        phone=mobile,
+        referral_code=referral_code if created else None,
+    )
     return user

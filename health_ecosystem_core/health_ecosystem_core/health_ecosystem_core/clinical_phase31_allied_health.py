@@ -34,13 +34,13 @@ ALLIED_WINGS = [
     {
         "id": "aesthetics",
         "title": "Aesthetics",
-        "subtitle": "Dermatology & cosmetic care",
+        "subtitle": "Skin, hair & body clinic — dermatology-led aesthetic care",
         "item_group": "Aesthetic Dermatology",
         "department_name": "Aesthetic Dermatology",
         "consultation_type": "Allied Aesthetics Session",
         "icon": "✨",
-        "color": "#EC4899",
-        "image": "/wellness/aesthetics.svg",
+        "color": "#0d9488",
+        "image": "/wellness/aesthetics-hero.jpg",
     },
     {
         "id": "physiotherapy",
@@ -90,6 +90,8 @@ ALLIED_WINGS = [
 
 WING_BY_ID = {w["id"]: w for w in ALLIED_WINGS}
 WING_BY_GROUP = {w["item_group"]: w for w in ALLIED_WINGS}
+# Beauty & Aesthetics CSV rows belong under the Aesthetics clinic wing.
+WING_BY_GROUP["Beauty & Aesthetics"] = WING_BY_ID["aesthetics"]
 
 
 def _csv_path():

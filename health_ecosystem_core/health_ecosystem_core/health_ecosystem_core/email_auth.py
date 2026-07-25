@@ -40,6 +40,7 @@ def register_patient(
     password=None,
     full_name=None,
     mobile=None,
+    referral_code=None,
 ):
     """Create a Website User patient account and send email verification."""
     frappe.flags.ignore_csrf = True
@@ -50,6 +51,7 @@ def register_patient(
     password = _parse_request_value("password", password) or ""
     full_name = (_parse_request_value("full_name", full_name) or "").strip()
     mobile = _parse_request_value("mobile", mobile)
+    referral_code = (_parse_request_value("referral_code", referral_code) or "").strip()
 
     if not is_real_email(email):
         return _error(_("Enter a valid email address"))
@@ -88,7 +90,9 @@ def register_patient(
     user.insert(ignore_permissions=True)
     update_password(email, password, logout_all_sessions=False)
 
-    link_user_to_health_patient(email, patient_name=full_name, phone=mobile_norm)
+    link_user_to_health_patient(
+        email, patient_name=full_name, phone=mobile_norm, referral_code=referral_code or None
+    )
 
     sent, err = send_verification_email(email, full_name=full_name)
     if not sent:

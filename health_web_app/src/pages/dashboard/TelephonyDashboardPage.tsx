@@ -53,7 +53,21 @@ export function TelephonyDashboardPage() {
         <ul>
           <li>Telephony enabled: {data?.telephony_enabled ? 'Yes' : 'No (set in Health Ecosystem Settings)'}</li>
           <li>Agent connect number: {data?.agent_configured ? 'Configured' : 'Missing'}</li>
-          <li>OpenAI voice: {data?.openai_configured ? 'Configured' : 'Rule-based fallback'}</li>
+          <li>
+            OpenAI voice:{' '}
+            {data?.openai_status?.ready
+              ? `Ready (${data.openai_status.model || 'gpt-4o-mini'})`
+              : data?.openai_configured
+                ? `Key set — falling back to rules${
+                    data.openai_status?.last_error_code
+                      ? ` (${data.openai_status.last_error_code})`
+                      : ''
+                  }`
+                : 'Rule-based fallback (no key)'}
+          </li>
+          {data?.openai_status?.last_error_message ? (
+            <li className="muted">OpenAI detail: {data.openai_status.last_error_message}</li>
+          ) : null}
         </ul>
         <p className="muted">
           Exotel Incoming Passthru →{' '}

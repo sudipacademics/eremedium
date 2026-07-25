@@ -321,8 +321,14 @@ def panel_catalog_payload():
     from health_ecosystem_core.health_ecosystem_core.api import (
         _is_lab_item_group,
         _is_reagent_or_excluded_item,
-        _resolve_selling_rate,
+        _list_selling_rate,
+        _patient_offer_pricing,
+        _subscription_coupon_tag,
     )
+    import health_ecosystem_core.health_ecosystem_core.api as hec_api
+
+    fallback_discount = float(getattr(hec_api, "PATIENT_FALLBACK_DISCOUNT", 0.10) or 0.10)
+    wallet_earn = float(getattr(hec_api, "WALLET_EARN_ON_PURCHASE", 0.10) or 0.10)
 
     # Prefer curated customer packages first
     preferred_order = (
@@ -343,6 +349,7 @@ def panel_catalog_payload():
     )
 
     panels = []
+    user = frappe.session.user if getattr(frappe, "session", None) else None
     for row in frappe.get_all(
         "Lab Test Panel",
         filters={"is_active": 1, "show_on_mobile": 1},
@@ -352,7 +359,8 @@ def panel_catalog_payload():
     ):
         doc = frappe.get_doc("Lab Test Panel", row.name)
         tests = []
-        total = 0
+        offer_total = 0
+        mrp_total = 0
         for line in doc.tests or []:
             item_code = line.item
             if not item_code:
@@ -361,23 +369,42 @@ def panel_catalog_payload():
             item_name = line.item_name or frappe.db.get_value("Item", item_code, "item_name")
             if not _is_lab_item_group(group) or _is_reagent_or_excluded_item(item_code, group, item_name):
                 continue
-            rate = _resolve_selling_rate(item_code)
-            total += rate
+            offer = _patient_offer_pricing(item_code)
+            rate = offer["rate"]
+            offer_total += rate
+            mrp_total += offer["mrp"] or _list_selling_rate(item_code) or rate
             tests.append(
                 {
                     "item_code": item_code,
                     "item_name": item_name,
                     "rate": rate,
+                    "mrp": offer["mrp"] or None,
+                    "price_basis": offer["price_basis"],
                 }
             )
         if len(tests) < 2:
             continue
+        panel_list = flt(doc.panel_rate) or offer_total
+        # Package sell: FOCO-sum when cheaper, else 10% off panel list
+        rate = offer_total if offer_total and offer_total < panel_list else round(
+            panel_list * (1.0 - fallback_discount), 2
+        )
+        mrp = max(mrp_total, panel_list)
+        if mrp <= rate:
+            mrp = round(rate / (1.0 - fallback_discount), 2)
         panels.append(
             {
                 "panel_id": doc.name,
                 "panel_name": doc.panel_name,
                 "description": doc.description,
-                "rate": flt(doc.panel_rate) or total,
+                "rate": rate,
+                "mrp": mrp if mrp > rate else None,
+                "discount_percent": round((1 - rate / mrp) * 100) if mrp and mrp > rate else 0,
+                "price_basis": "foco" if offer_total and offer_total < panel_list else "ten_percent",
+                "wallet_earn_percent": int(wallet_earn * 100),
+                "wallet_earn_amount": round(rate * wallet_earn, 2) if rate else 0,
+                "member_tag": _subscription_coupon_tag("Lab Tests", user),
+                "coupon_label": "Circle coupon",
                 "tests": tests,
                 "test_count": len(tests),
             }

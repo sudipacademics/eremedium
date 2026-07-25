@@ -14,7 +14,7 @@
     {"fieldname": "phone", "fieldtype": "Data", "in_list_view": 1, "label": "Mobile", "reqd": 1},
     {"fieldname": "email", "fieldtype": "Data", "label": "Email", "options": "Email"},
     {"fieldname": "column_break_1", "fieldtype": "Column Break"},
-    {"fieldname": "product", "fieldtype": "Link", "in_list_view": 1, "label": "Product", "options": "Health Insurance Product", "reqd": 1},
+    {"fieldname": "product", "fieldtype": "Link", "in_list_view": 1, "label": "Product", "options": "Health Insurance Product"},
     {"fieldname": "insurer", "fieldtype": "Data", "in_list_view": 1, "label": "Insurer"},
     {"fieldname": "sum_insured", "fieldtype": "Currency", "label": "Desired Sum Insured"},
     {"default": "New", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "New\nContacted\nQuote Sent\nPolicy Issued\nClosed"},

@@ -1,0 +1,44 @@
+{
+  "actions": [],
+  "autoname": "format:HINT-{YYYY}-{#####}",
+  "creation": "2026-07-24 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "job_applicant",
+    "interview_type",
+    "scheduled_on",
+    "duration_minutes",
+    "column_break_1",
+    "status",
+    "interviewer",
+    "meeting_link",
+    "location",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "job_applicant", "fieldtype": "Link", "in_list_view": 1, "label": "Job Applicant", "options": "Job Applicant", "reqd": 1},
+    {"default": "Screening", "fieldname": "interview_type", "fieldtype": "Select", "in_list_view": 1, "label": "Type", "options": "Screening\nTechnical\nHR\nFinal\nAssessment"},
+    {"fieldname": "scheduled_on", "fieldtype": "Datetime", "in_list_view": 1, "label": "Scheduled On", "reqd": 1},
+    {"default": "30", "fieldname": "duration_minutes", "fieldtype": "Int", "label": "Duration (min)"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"default": "Scheduled", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Scheduled\nCompleted\nCancelled\nNo Show"},
+    {"fieldname": "interviewer", "fieldtype": "Link", "label": "Interviewer", "options": "User"},
+    {"fieldname": "meeting_link", "fieldtype": "Data", "label": "Meeting Link"},
+    {"fieldname": "location", "fieldtype": "Data", "label": "Location"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-24 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Interview Schedule",
+  "naming_rule": "Expression",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "HR Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "HR User", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "scheduled_on",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

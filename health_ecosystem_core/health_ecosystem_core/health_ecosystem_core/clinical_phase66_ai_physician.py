@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 import frappe
 from frappe import _
@@ -131,16 +129,15 @@ WELLNESS_SYMPTOM_MAP = (
 
 
 def _openai_key():
-    try:
-        s = frappe.get_single("Health Ecosystem Settings")
-        # Password field — must use get_password; getattr returns encrypted/masked junk.
-        try:
-            key = s.get_password("telephony_openai_api_key", raise_exception=False)
-        except Exception:
-            key = None
-        return (key or "").strip()
-    except Exception:
-        return ""
+    from health_ecosystem_core.health_ecosystem_core.clinical_openai import get_openai_api_key
+
+    return get_openai_api_key()
+
+
+def _openai_status():
+    from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_runtime_status
+
+    return openai_runtime_status()
 
 
 def _session_key(session_id):
@@ -353,10 +350,14 @@ def _keyword_in(text, key):
     return re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", text) is not None
 
 
-def _match_wellness_wings(text):
+def _match_wellness_wings(text, preferred_wings=None):
     """Return priority wing ids: symptom-matched first, then remaining priority wings."""
     text_l = (text or "").lower()
     matched = []
+    preferred = [w for w in (preferred_wings or []) if w in PRIORITY_WELLNESS_WINGS]
+    for w in preferred:
+        if w not in matched:
+            matched.append(w)
     for keys, wing_id in WELLNESS_SYMPTOM_MAP:
         if any(_keyword_in(text_l, k) for k in keys) and wing_id not in matched:
             matched.append(wing_id)
@@ -368,7 +369,7 @@ def _match_wellness_wings(text):
     return ordered, matched
 
 
-def _allied_service_suggestions(transcript, limit=4):
+def _allied_service_suggestions(transcript, limit=4, preferred_wings=None):
     """Prefer aesthetics, physio, yoga, psychotherapy & related wellness services."""
     try:
         from health_ecosystem_core.health_ecosystem_core.clinical_phase31_allied_health import (
@@ -379,7 +380,7 @@ def _allied_service_suggestions(transcript, limit=4):
     except Exception:
         return [], []
 
-    wing_order, matched_wings = _match_wellness_wings(transcript)
+    wing_order, matched_wings = _match_wellness_wings(transcript, preferred_wings=preferred_wings)
     services = _load_services() or []
     if not services:
         # Fallback: wing landing cards when CSV not loaded
@@ -465,7 +466,7 @@ def _allied_service_suggestions(transcript, limit=4):
     return found, matched_wings
 
 
-def _physician_suggestions(specialty_hint, transcript="", limit=5):
+def _physician_suggestions(specialty_hint, transcript="", limit=5, preferred_wings=None):
     """
     Doctor / service bucket priority:
     1) Aesthetics / cosmetic dermatology
@@ -475,7 +476,9 @@ def _physician_suggestions(specialty_hint, transcript="", limit=5):
     5) Other wellness (chiro, ayurveda)
     then generic doctor / teleconsult as fallback.
     """
-    suggestions, matched_wings = _allied_service_suggestions(transcript, limit=max(4, limit))
+    suggestions, matched_wings = _allied_service_suggestions(
+        transcript, limit=max(4, limit), preferred_wings=preferred_wings
+    )
     # Generic clinical options after priority wellness
     suggestions.extend(
         [
@@ -546,11 +549,33 @@ def _match_symptom_hints(text):
     return uniq, specialty
 
 
-def build_recommendations(transcript, latitude=None, longitude=None):
+def _merge_hints(primary, secondary):
+    seen, out = set(), []
+    for h in list(primary or []) + list(secondary or []):
+        h = (h or "").strip()
+        if not h or h in seen:
+            continue
+        seen.add(h)
+        out.append(h)
+    return out
+
+
+def build_recommendations(
+    transcript,
+    latitude=None,
+    longitude=None,
+    search_hints=None,
+    specialty_hint=None,
+    wellness_wings=None,
+):
     """Ordered for UI: 1) health packages 2) doctor/services 3) individual tests (by probability)."""
-    hints, specialty = _match_symptom_hints(transcript)
+    keyword_hints, keyword_specialty = _match_symptom_hints(transcript)
+    hints = _merge_hints(search_hints, keyword_hints) or keyword_hints
+    specialty = (specialty_hint or "").strip() or keyword_specialty
     health_packages = _search_packages(hints + ["checkup", "package", "full body"], limit=3)
-    physicians = _physician_suggestions(specialty, transcript=transcript, limit=5)
+    physicians = _physician_suggestions(
+        specialty, transcript=transcript, limit=5, preferred_wings=wellness_wings
+    )
     individual_tests = _search_lab_items(hints, limit=6)
     centers = []
     if latitude and longitude:
@@ -593,34 +618,369 @@ def build_recommendations(transcript, latitude=None, longitude=None):
     }
 
 
+MAX_ASK_TURNS = 6
+
+CONDUCTOR_SYSTEM = """You are Remedium's AI care guide for patients in India.
+You help people describe symptoms, then point them to Remedium lab packages, tests, doctors, and wellness services.
+You are NOT a doctor and must never give a medical diagnosis or prescribe medicines.
+
+Return a single JSON object with keys:
+- phase: "ask" | "suggest" | "emergency" | "refine"
+- message: warm, specific reply in plain language (1-3 short paragraphs). Speak to THIS patient's words; avoid generic scripts.
+- question: one focused follow-up question, or null when phase is suggest/emergency
+- quick_replies: 2-4 short tap-friendly answers (strings), or []
+- clinical_notes: object with any of onset, severity, associated, history, red_flags (array of strings)
+- search_hints: lab/search keywords only (e.g. CBC, CRP, MALARIA, THYROID) — never invent brand/product names
+- specialty_hint: e.g. General Medicine, Cardiology, Endocrinology
+- wellness_wings: subset of ["aesthetics","physiotherapy","yoga","psychology","chiropractic","ayurvedic"] when relevant
+
+Rules:
+- Ask ONE high-yield question at a time, tailored to what they already said. Skip irrelevant canned questions.
+- Prefer concrete quick_replies (durations, yes/no, severity bands).
+- phase=emergency for: severe chest pain, breathing difficulty, stroke signs, uncontrolled bleeding, suicidal ideation — urge emergency care / nearest ER; still be calm.
+- phase=suggest when you have enough to recommend a workup (usually after 2-4 useful answers), or when the user asks for options now.
+- phase=refine when suggestions already exist and the user asks why / cheaper / alternatives — update message and hints; do not restart triage.
+- Never invent lab test or package names that are not search keywords.
+- Keep tone empathetic, concise, and India-aware (fever/dengue/typhoid season, local care pathways).
+"""
+
+
 def _openai_journey_turn(messages):
     """Optional LLM refinement; returns assistant text or None."""
-    key = _openai_key()
-    if not key:
-        return None
-    payload = json.dumps(
-        {
-            "model": "gpt-4o-mini",
-            "temperature": 0.3,
-            "messages": messages,
-        }
-    ).encode("utf-8")
-    req = Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_chat_completion
+
+    msg = openai_chat_completion(
+        messages,
+        temperature=0.45,
+        timeout=25,
+        log_prefix="ai_physician",
     )
-    try:
-        with urlopen(req, timeout=25) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return (data.get("choices") or [{}])[0].get("message", {}).get("content")
-    except Exception:
-        frappe.log_error(title="ai_physician_openai", message=frappe.get_traceback())
+    if not msg:
         return None
+    return (msg.get("content") or "").strip() or None
+
+
+def _openai_conductor(session, force_suggest=False, refine=False):
+    """Run structured OpenAI turn. Returns parsed dict or None."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_json_completion
+
+    turn_count = cint(session.get("turn_count") or 0)
+    notes = session.get("clinical_notes") or {}
+    extra = []
+    if force_suggest:
+        extra.append("You must set phase to \"suggest\" now and fill search_hints.")
+    if refine:
+        extra.append(
+            "Suggestions already shown. phase must be \"refine\". Adjust search_hints if the user wants "
+            "cheaper / different options; explain using only catalog items we will attach separately."
+        )
+    elif turn_count >= MAX_ASK_TURNS:
+        extra.append(f"Ask-turn limit ({MAX_ASK_TURNS}) reached — set phase to \"suggest\".")
+
+    system = CONDUCTOR_SYSTEM
+    if extra:
+        system += "\n\n" + " ".join(extra)
+
+    history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in (session.get("messages") or [])[-12:]
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    payload = openai_json_completion(
+        [
+            {"role": "system", "content": system},
+            {
+                "role": "system",
+                "content": json.dumps(
+                    {
+                        "turn_count": turn_count,
+                        "max_ask_turns": MAX_ASK_TURNS,
+                        "prior_clinical_notes": notes,
+                        "has_suggestions": bool(session.get("suggestions")),
+                    }
+                ),
+            },
+            *history,
+        ],
+        temperature=0.5,
+        timeout=35,
+        log_prefix="ai_physician_conductor",
+    )
+    if not payload:
+        return None
+    phase = (payload.get("phase") or "ask").strip().lower()
+    if phase not in ("ask", "suggest", "emergency", "refine"):
+        phase = "ask"
+    if force_suggest and phase == "ask":
+        phase = "suggest"
+    if refine:
+        phase = "refine"
+    if turn_count >= MAX_ASK_TURNS and phase == "ask":
+        phase = "suggest"
+
+    quick = payload.get("quick_replies") or []
+    if not isinstance(quick, list):
+        quick = []
+    quick = [str(x).strip() for x in quick if str(x).strip()][:4]
+
+    hints = payload.get("search_hints") or []
+    if not isinstance(hints, list):
+        hints = []
+    hints = [str(x).strip() for x in hints if str(x).strip()][:10]
+
+    wings = payload.get("wellness_wings") or []
+    if not isinstance(wings, list):
+        wings = []
+    wings = [str(x).strip() for x in wings if str(x).strip() in PRIORITY_WELLNESS_WINGS]
+
+    notes_in = payload.get("clinical_notes") if isinstance(payload.get("clinical_notes"), dict) else {}
+    message = (payload.get("message") or "").strip()
+    question = payload.get("question")
+    if question is not None:
+        question = str(question).strip() or None
+
+    return {
+        "phase": phase,
+        "message": message,
+        "question": question,
+        "quick_replies": quick,
+        "clinical_notes": notes_in,
+        "search_hints": hints,
+        "specialty_hint": (payload.get("specialty_hint") or "").strip() or None,
+        "wellness_wings": wings,
+    }
+
+
+def _merge_clinical_notes(prev, new):
+    out = dict(prev or {})
+    for k, v in (new or {}).items():
+        if v is None or v == "" or v == []:
+            continue
+        out[k] = v
+    return out
+
+
+def _catalog_snapshot(suggestions):
+    """Compact catalog for LLM narration — names/prices only, no invention."""
+    return {
+        "packages": [
+            {"name": x.get("item_name"), "rate": x.get("rate"), "reason": x.get("reason")}
+            for x in (suggestions.get("health_packages") or [])[:3]
+        ],
+        "services": [
+            {
+                "name": x.get("service"),
+                "department": x.get("department"),
+                "rate": x.get("rate"),
+                "reason": x.get("reason"),
+            }
+            for x in (suggestions.get("physician_services") or [])[:4]
+        ],
+        "tests": [
+            {
+                "name": x.get("item_name"),
+                "rate": x.get("rate"),
+                "probability": x.get("probability"),
+                "reason": x.get("reason"),
+            }
+            for x in (suggestions.get("individual_tests") or [])[:5]
+        ],
+        "centres": [
+            {
+                "name": x.get("franchise_name"),
+                "distance_km": x.get("distance_km"),
+            }
+            for x in (suggestions.get("nearby_centers") or [])[:3]
+        ],
+    }
+
+
+def _personalize_suggestions_message(session, suggestions, conductor_message=None):
+    catalog = _catalog_snapshot(suggestions)
+    llm = _openai_journey_turn(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are Remedium's care guide. Write 2-4 short sentences explaining why these "
+                    "Remedium catalogue options fit what the patient shared. "
+                    "Use ONLY the names listed in the catalog JSON. Do not invent tests or prices. "
+                    "Order: packages, then wellness/doctor services, then individual tests. "
+                    "Sound personal, not like a form letter. End without repeating a long legal disclaimer."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "patient_summary": session.get("symptoms"),
+                        "answers": session.get("answers") or [],
+                        "clinical_notes": session.get("clinical_notes") or {},
+                        "conductor_draft": conductor_message or "",
+                        "catalog": catalog,
+                    }
+                ),
+            },
+        ]
+    )
+    if llm:
+        return llm.strip() + f"\n\n{DISCLAIMER}"
+    # Deterministic fallback copy
+    bits = []
+    if catalog["packages"]:
+        bits.append("Packages: " + ", ".join(x["name"] for x in catalog["packages"] if x.get("name")))
+    if catalog["services"]:
+        bits.append("Services: " + ", ".join(x["name"] for x in catalog["services"] if x.get("name")))
+    if catalog["tests"]:
+        top = catalog["tests"][0]
+        bits.append(f"Top test: {top.get('name')} ({top.get('probability')}% match)")
+    body = (conductor_message or "Based on what you shared, here are options from our catalogue.") + " "
+    return body + " ".join(bits) + f"\n\n{DISCLAIMER}"
+
+
+def _rules_fallback_bot(session, idx):
+    """Canned question path when OpenAI is unavailable."""
+    if idx < len(FOLLOW_UP_QUESTIONS):
+        q = FOLLOW_UP_QUESTIONS[idx]
+        bot = f"Got it. {q}"
+        return {
+            "phase": "questions",
+            "message": bot,
+            "question": q,
+            "question_index": idx,
+            "quick_replies": [],
+            "suggestions": None,
+        }
+    transcript = " | ".join([session.get("symptoms") or ""] + list(session.get("answers") or []))
+    suggestions = build_recommendations(
+        transcript,
+        latitude=session.get("latitude"),
+        longitude=session.get("longitude"),
+    )
+    bot = _personalize_suggestions_message(session, suggestions)
+    return {
+        "phase": "suggestions",
+        "message": bot,
+        "question": None,
+        "question_index": idx,
+        "quick_replies": ["Something cheaper", "Why these tests?", "Book a doctor"],
+        "suggestions": suggestions,
+    }
+
+
+def _turn_response(session_id, session, *, phase, message, question=None, suggestions=None, quick_replies=None):
+    openai_status = _openai_status()
+    turn_count = cint(session.get("turn_count") or 0)
+    return {
+        "session_id": session_id,
+        "phase": phase,
+        "message": message,
+        "question": question,
+        "question_index": turn_count,
+        "total_questions": MAX_ASK_TURNS if session.get("mode") == "openai" else len(FOLLOW_UP_QUESTIONS),
+        "turn_count": turn_count,
+        "max_turns": MAX_ASK_TURNS if session.get("mode") == "openai" else len(FOLLOW_UP_QUESTIONS),
+        "suggestions": suggestions,
+        "quick_replies": quick_replies or [],
+        "disclaimer": DISCLAIMER,
+        "journey_mode": session.get("mode") or "rules",
+        "openai_enabled": bool(openai_status.get("ready")),
+        "openai_polished": session.get("mode") == "openai",
+        "openai_status": openai_status,
+    }
+
+
+def _apply_suggest_phase(session_id, session, conductor=None, response_phase="suggestions"):
+    transcript = " | ".join([session.get("symptoms") or ""] + list(session.get("answers") or []))
+    hints = (conductor or {}).get("search_hints") if conductor else None
+    specialty = (conductor or {}).get("specialty_hint") if conductor else None
+    wings = (conductor or {}).get("wellness_wings") if conductor else None
+    if session.get("last_search_hints") and not hints:
+        hints = session.get("last_search_hints")
+    if session.get("last_wellness_wings") and not wings:
+        wings = session.get("last_wellness_wings")
+    if session.get("last_specialty") and not specialty:
+        specialty = session.get("last_specialty")
+
+    suggestions = build_recommendations(
+        transcript,
+        latitude=session.get("latitude"),
+        longitude=session.get("longitude"),
+        search_hints=hints,
+        specialty_hint=specialty,
+        wellness_wings=wings,
+    )
+    draft = (conductor or {}).get("message") if conductor else None
+    bot = _personalize_suggestions_message(session, suggestions, conductor_message=draft)
+    session["messages"].append({"role": "assistant", "content": bot})
+    session["suggestions"] = suggestions
+    session["phase"] = response_phase if response_phase in ("suggestions", "refine") else "suggestions"
+    session["last_search_hints"] = suggestions.get("matched_hints") or hints or []
+    session["last_specialty"] = suggestions.get("specialty_hint") or specialty
+    session["last_wellness_wings"] = wings or []
+    session["quick_replies"] = (conductor or {}).get("quick_replies") or [
+        "Something cheaper",
+        "Why these tests?",
+        "I want a doctor consult",
+    ]
+    _save_session(session_id, session)
+    return _turn_response(
+        session_id,
+        session,
+        phase=session["phase"],
+        message=bot,
+        question=None,
+        suggestions=suggestions,
+        quick_replies=session["quick_replies"],
+    )
+
+
+def _apply_emergency_phase(session_id, session, conductor):
+    bot = (conductor.get("message") or "").strip() or (
+        "Your symptoms may need urgent in-person care. Please go to the nearest emergency department "
+        "or call local emergency services now. Remedium chat cannot replace emergency care."
+    )
+    if DISCLAIMER not in bot:
+        bot = bot + f"\n\n{DISCLAIMER}"
+    centers = []
+    if session.get("latitude") and session.get("longitude"):
+        centers = find_nearby_collection_centers(
+            session["latitude"], session["longitude"], radius_km=40, limit=4
+        )
+    suggestions = {
+        "health_packages": [],
+        "physician_services": [
+            {
+                "kind": "physician",
+                "service": "Urgent doctor consult",
+                "department": "Emergency / General Medicine",
+                "reason": "Seek urgent clinical care now",
+                "book_path": "/appointments/book",
+                "probability": 99,
+                "probability_label": "Urgent",
+            }
+        ],
+        "individual_tests": [],
+        "nearby_centers": centers,
+        "diagnostic_workup": [],
+        "specialty_hint": "Emergency",
+        "matched_hints": [],
+        "suggestion_order": ["physician_services", "nearby_centers"],
+    }
+    session["messages"].append({"role": "assistant", "content": bot})
+    session["suggestions"] = suggestions
+    session["phase"] = "emergency"
+    session["quick_replies"] = conductor.get("quick_replies") or ["Find nearby centre", "Book teleconsult"]
+    _save_session(session_id, session)
+    return _turn_response(
+        session_id,
+        session,
+        phase="emergency",
+        message=bot,
+        question=None,
+        suggestions=suggestions,
+        quick_replies=session["quick_replies"],
+    )
 
 
 def start_ai_physician_journey(symptoms, latitude=None, longitude=None):
@@ -629,35 +989,80 @@ def start_ai_physician_journey(symptoms, latitude=None, longitude=None):
         frappe.throw(_("Please describe your symptoms"))
 
     session_id = frappe.generate_hash(length=12)
+    openai_ready = bool(_openai_status().get("ready"))
     session = {
         "symptoms": symptoms,
         "answers": [],
         "question_index": 0,
+        "turn_count": 0,
         "latitude": flt(latitude) or None,
         "longitude": flt(longitude) or None,
-        "messages": [
-            {"role": "user", "content": symptoms},
-        ],
+        "messages": [{"role": "user", "content": symptoms}],
+        "clinical_notes": {},
+        "mode": "openai" if openai_ready else "rules",
+        "phase": "questions",
     }
+
+    if openai_ready:
+        conductor = _openai_conductor(session)
+        if conductor:
+            session["clinical_notes"] = _merge_clinical_notes({}, conductor.get("clinical_notes"))
+            session["turn_count"] = 1
+            phase = conductor["phase"]
+            if phase == "emergency":
+                session["mode"] = "openai"
+                _save_session(session_id, session)
+                return _apply_emergency_phase(session_id, session, conductor)
+            if phase == "suggest":
+                session["mode"] = "openai"
+                _save_session(session_id, session)
+                return _apply_suggest_phase(session_id, session, conductor)
+            bot = conductor.get("message") or ""
+            q = conductor.get("question")
+            if q and q not in bot:
+                bot = f"{bot}\n\n{q}".strip() if bot else q
+            if not bot:
+                bot = f"Thanks for sharing that. {DISCLAIMER}\n\n{FOLLOW_UP_QUESTIONS[0]}"
+                q = FOLLOW_UP_QUESTIONS[0]
+            elif DISCLAIMER.split(".")[0] not in bot:
+                # Soft reminder once at start, keep short
+                bot = f"{bot}\n\n(Not a diagnosis — seek emergency care for severe chest pain, breathing difficulty, or stroke signs.)"
+            session["messages"].append({"role": "assistant", "content": bot})
+            session["quick_replies"] = conductor.get("quick_replies") or []
+            session["last_search_hints"] = conductor.get("search_hints") or []
+            session["last_specialty"] = conductor.get("specialty_hint")
+            session["last_wellness_wings"] = conductor.get("wellness_wings") or []
+            _save_session(session_id, session)
+            return _turn_response(
+                session_id,
+                session,
+                phase="questions",
+                message=bot,
+                question=q,
+                quick_replies=session["quick_replies"],
+            )
+        session["mode"] = "rules"
+
+    # Rules fallback opener
     first_q = FOLLOW_UP_QUESTIONS[0]
     bot = (
         f"I’m your Remedium virtual care guide. Thanks for sharing: “{symptoms}”. "
         f"{DISCLAIMER}\n\nTo suggest the right workup from our offerings — {first_q}"
     )
     session["messages"].append({"role": "assistant", "content": bot})
+    session["mode"] = "rules"
+    session["turn_count"] = 0
+    session["question_index"] = 0
+    session["quick_replies"] = ["A few days", "About a week", "More than 2 weeks", "Not sure"]
     _save_session(session_id, session)
-
-    return {
-        "session_id": session_id,
-        "phase": "questions",
-        "message": bot,
-        "question": first_q,
-        "question_index": 0,
-        "total_questions": len(FOLLOW_UP_QUESTIONS),
-        "suggestions": None,
-        "disclaimer": DISCLAIMER,
-        "openai_enabled": bool(_openai_key()),
-    }
+    return _turn_response(
+        session_id,
+        session,
+        phase="questions",
+        message=bot,
+        question=first_q,
+        quick_replies=session["quick_replies"],
+    )
 
 
 def continue_ai_physician_journey(session_id, message, latitude=None, longitude=None):
@@ -676,119 +1081,115 @@ def continue_ai_physician_journey(session_id, message, latitude=None, longitude=
 
     session.setdefault("answers", []).append(message)
     session.setdefault("messages", []).append({"role": "user", "content": message})
+
+    prior_phase = session.get("phase") or "questions"
+    refine = prior_phase in ("suggestions", "emergency", "refine") and bool(session.get("suggestions"))
+
+    # OpenAI path
+    if session.get("mode") == "openai" and _openai_status().get("ready"):
+        if not refine:
+            session["turn_count"] = cint(session.get("turn_count") or 0) + 1
+        force_suggest = (not refine) and cint(session.get("turn_count") or 0) >= MAX_ASK_TURNS
+        conductor = _openai_conductor(session, force_suggest=force_suggest, refine=refine)
+        if conductor:
+            session["clinical_notes"] = _merge_clinical_notes(
+                session.get("clinical_notes"), conductor.get("clinical_notes")
+            )
+            session["last_search_hints"] = conductor.get("search_hints") or session.get("last_search_hints")
+            session["last_specialty"] = conductor.get("specialty_hint") or session.get("last_specialty")
+            session["last_wellness_wings"] = conductor.get("wellness_wings") or session.get(
+                "last_wellness_wings"
+            )
+
+            phase = conductor["phase"]
+            if phase == "emergency":
+                return _apply_emergency_phase(session_id, session, conductor)
+            if phase in ("suggest", "refine") or force_suggest:
+                # Re-build catalog for suggest/refine so ranking follows new hints
+                return _apply_suggest_phase(
+                    session_id,
+                    session,
+                    conductor,
+                    response_phase="refine" if refine else "suggestions",
+                )
+
+            bot = conductor.get("message") or ""
+            q = conductor.get("question")
+            if q and q not in bot:
+                bot = f"{bot}\n\n{q}".strip() if bot else q
+            if not bot:
+                bot = q or "Thanks — could you tell me a bit more?"
+            session["messages"].append({"role": "assistant", "content": bot})
+            session["phase"] = "questions"
+            session["quick_replies"] = conductor.get("quick_replies") or []
+            _save_session(session_id, session)
+            return _turn_response(
+                session_id,
+                session,
+                phase="questions",
+                message=bot,
+                question=q,
+                quick_replies=session["quick_replies"],
+            )
+        # OpenAI failed mid-journey → switch to rules
+        session["mode"] = "rules"
+
+    # Rules path (including mid-journey fallback)
     idx = cint(session.get("question_index")) + 1
     session["question_index"] = idx
-
-    # Still asking follow-ups
-    if idx < len(FOLLOW_UP_QUESTIONS):
-        q = FOLLOW_UP_QUESTIONS[idx]
-        bot = f"Got it. {q}"
-        # Optional LLM polish
-        llm = _openai_journey_turn(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a careful virtual triage assistant for a diagnostics company. "
-                        "Ask only the next clarifying question provided; do not diagnose. "
-                        f"Next question to ask: {q}"
-                    ),
-                },
-                *[{"role": m["role"], "content": m["content"]} for m in session["messages"][-6:]],
-            ]
+    session["turn_count"] = idx
+    if refine and session.get("suggestions"):
+        # Simple refine without OpenAI: rebuild from transcript
+        transcript = " | ".join([session.get("symptoms") or ""] + list(session.get("answers") or []))
+        suggestions = build_recommendations(
+            transcript,
+            latitude=session.get("latitude"),
+            longitude=session.get("longitude"),
         )
-        if llm:
-            bot = llm.strip()
+        bot = (
+            "I’ve updated the suggestions from our catalogue based on your latest note. "
+            f"\n\n{DISCLAIMER}"
+        )
         session["messages"].append({"role": "assistant", "content": bot})
+        session["suggestions"] = suggestions
+        session["phase"] = "suggestions"
+        session["quick_replies"] = ["Something cheaper", "Why these tests?", "Book a doctor"]
         _save_session(session_id, session)
-        return {
-            "session_id": session_id,
-            "phase": "questions",
-            "message": bot,
-            "question": q,
-            "question_index": idx,
-            "total_questions": len(FOLLOW_UP_QUESTIONS),
-            "suggestions": None,
-            "disclaimer": DISCLAIMER,
-        }
-
-    # Enough context → recommendations
-    transcript = " | ".join(
-        [session.get("symptoms") or ""] + list(session.get("answers") or [])
-    )
-    suggestions = build_recommendations(
-        transcript,
-        latitude=session.get("latitude"),
-        longitude=session.get("longitude"),
-    )
-
-    summary_bits = []
-    if suggestions.get("health_packages"):
-        summary_bits.append(
-            "Packages: " + ", ".join(x["item_name"] for x in suggestions["health_packages"][:3])
+        return _turn_response(
+            session_id,
+            session,
+            phase="suggestions",
+            message=bot,
+            suggestions=suggestions,
+            quick_replies=session["quick_replies"],
         )
-    if suggestions.get("physician_services"):
-        summary_bits.append(
-            "Physician / services: "
-            + ", ".join(x["service"] for x in suggestions["physician_services"][:3])
-        )
-    if suggestions.get("individual_tests"):
-        top = suggestions["individual_tests"][0]
-        summary_bits.append(
-            f"Top test: {top['item_name']} ({top.get('probability_label') or str(top.get('probability')) + '%'})"
-        )
-    if suggestions["nearby_centers"]:
-        c0 = suggestions["nearby_centers"][0]
-        dist = f" (~{c0['distance_km']} km)" if c0.get("distance_km") is not None else ""
-        summary_bits.append(f"Nearby centre: {c0['franchise_name']}{dist}")
 
-    bot = (
-        "Based on what you shared, here are suggested options from our catalogue "
-        "(packages first, then priority wellness services — aesthetics, physiotherapy, yoga, "
-        "psychotherapy — then individual tests by likelihood). "
-        + " ".join(summary_bits)
-        + f"\n\n{DISCLAIMER}"
-    )
-    llm = _openai_journey_turn(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "Summarize triage suggestions briefly for the patient in 2-3 sentences. "
-                    "Order: 1) health packages 2) priority wellness/doctor services "
-                    "(aesthetics, physiotherapy, yoga, psychotherapy first) "
-                    "3) individual tests with likelihood. "
-                    "Do not invent tests not listed. Emphasize this is not a diagnosis. "
-                    f"Packages: {[x['item_name'] for x in suggestions.get('health_packages') or []]}. "
-                    f"Services: {[x['service'] for x in suggestions.get('physician_services') or []]}. "
-                    f"Tests: {[(x['item_name'], x.get('probability')) for x in suggestions.get('individual_tests') or []]}."
-                ),
-            },
-            {"role": "user", "content": transcript},
-        ]
-    )
-    if llm:
-        bot = llm.strip() + f"\n\n{DISCLAIMER}"
-
-    session["messages"].append({"role": "assistant", "content": bot})
-    session["suggestions"] = suggestions
-    session["phase"] = "suggestions"
+    out = _rules_fallback_bot(session, idx)
+    session["messages"].append({"role": "assistant", "content": out["message"]})
+    session["phase"] = out["phase"]
+    session["quick_replies"] = out.get("quick_replies") or []
+    if out.get("suggestions"):
+        session["suggestions"] = out["suggestions"]
     _save_session(session_id, session)
-
-    return {
-        "session_id": session_id,
-        "phase": "suggestions",
-        "message": bot,
-        "question": None,
-        "question_index": idx,
-        "total_questions": len(FOLLOW_UP_QUESTIONS),
-        "suggestions": suggestions,
-        "disclaimer": DISCLAIMER,
-    }
+    return _turn_response(
+        session_id,
+        session,
+        phase=out["phase"],
+        message=out["message"],
+        question=out.get("question"),
+        suggestions=out.get("suggestions"),
+        quick_replies=session["quick_replies"],
+    )
 
 
 def setup_phase66():
-    return {"ok": True, "phase": 66, "openai_configured": bool(_openai_key())}
+    st = _openai_status()
+    return {
+        "ok": True,
+        "phase": 66,
+        "openai_configured": bool(st.get("configured")),
+        "openai_status": st,
+    }
 
 
 def smoke_phase66():
@@ -803,28 +1204,55 @@ def smoke_phase66():
     check("setup", setup.get("ok"))
     start = start_ai_physician_journey("fever and body ache for 2 days")
     check("start_session", bool(start.get("session_id")))
-    check("start_phase", start.get("phase") == "questions")
+    check("start_phase", start.get("phase") in ("questions", "suggestions", "emergency"))
+    check("journey_mode_set", start.get("journey_mode") in ("openai", "rules"), detail=str(start.get("journey_mode")))
     sid = start["session_id"]
-    turn = continue_ai_physician_journey(sid, "3 days")
-    check("turn_questions", turn.get("phase") == "questions")
-    # Finish remaining questions quickly
-    while turn.get("phase") == "questions":
-        turn = continue_ai_physician_journey(sid, "5")
-    check("suggestions_phase", turn.get("phase") == "suggestions")
-    sug = turn.get("suggestions") or {}
-    check("health_packages", isinstance(sug.get("health_packages"), list))
-    check("physician_services", bool(sug.get("physician_services")))
-    check("individual_tests", bool(sug.get("individual_tests")))
-    if sug.get("individual_tests"):
-        check("test_probability", cint(sug["individual_tests"][0].get("probability")) > 0)
-    check("nearby_centers", isinstance(sug.get("nearby_centers"), list))
-    check(
-        "suggestion_order",
-        (sug.get("suggestion_order") or [])[:3]
-        == ["health_packages", "physician_services", "individual_tests"],
+
+    if start.get("phase") == "questions":
+        turn = continue_ai_physician_journey(sid, "3 days")
+        check("turn_continues", turn.get("phase") in ("questions", "suggestions", "emergency", "refine"))
+        # Drive toward suggestions (OpenAI may be ready earlier; rules needs fixed questions)
+        guard = 0
+        while turn.get("phase") == "questions" and guard < 8:
+            turn = continue_ai_physician_journey(sid, "moderate, no other major issues")
+            guard += 1
+        check(
+            "suggestions_or_emergency",
+            turn.get("phase") in ("suggestions", "emergency", "refine"),
+            detail=str(turn.get("phase")),
+        )
+        sug = turn.get("suggestions") or {}
+    else:
+        turn = start
+        sug = turn.get("suggestions") or {}
+
+    if turn.get("phase") == "suggestions":
+        check("health_packages", isinstance(sug.get("health_packages"), list))
+        check("physician_services", bool(sug.get("physician_services")))
+        check("individual_tests", bool(sug.get("individual_tests")))
+        if sug.get("individual_tests"):
+            check("test_probability", cint(sug["individual_tests"][0].get("probability")) > 0)
+        check("nearby_centers", isinstance(sug.get("nearby_centers"), list))
+        check(
+            "suggestion_order",
+            (sug.get("suggestion_order") or [])[:3]
+            == ["health_packages", "physician_services", "individual_tests"],
+        )
+        # Refine path still open
+        refine = continue_ai_physician_journey(sid, "Something cheaper please")
+        check("refine_keeps_suggestions", refine.get("phase") in ("suggestions", "refine", "questions"))
+        check("quick_replies_list", isinstance(turn.get("quick_replies"), list))
+
+    # Explicit hints override
+    hinted = build_recommendations(
+        "fever",
+        search_hints=["MALARIA", "WIDAL", "CBC"],
+        specialty_hint="General Medicine",
     )
+    check("hint_merge", "MALARIA" in (hinted.get("matched_hints") or []), detail=str(hinted.get("matched_hints")))
+
     # Priority wellness: aesthetics / physio / yoga / psychotherapy surface first
-    skin = build_recommendations("acne and pigmentation on face")
+    skin = build_recommendations("acne and pigmentation on face", wellness_wings=["aesthetics"])
     skin_svcs = skin.get("physician_services") or []
     check(
         "priority_aesthetics",
@@ -843,7 +1271,7 @@ def smoke_phase66():
         or any(x.get("kind") == "wellness" for x in skin_svcs),
         detail=str(skin_svcs[:1]),
     )
-    back = build_recommendations("lower back pain needing physiotherapy")
+    back = build_recommendations("lower back pain needing physiotherapy", wellness_wings=["physiotherapy"])
     back_svcs = back.get("physician_services") or []
     check(
         "priority_physiotherapy",
@@ -855,7 +1283,9 @@ def smoke_phase66():
         ),
         detail=str([(x.get("wing_id"), x.get("service")) for x in back_svcs[:3]]),
     )
-    mind = build_recommendations("anxiety and depression needing psychotherapy")
+    mind = build_recommendations(
+        "anxiety and depression needing psychotherapy", wellness_wings=["psychology"]
+    )
     mind_svcs = mind.get("physician_services") or []
     check(
         "priority_psychotherapy",

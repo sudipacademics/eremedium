@@ -1,0 +1,27 @@
+{
+  "actions": [],
+  "autoname": "format:HNOTE-{YYYY}-{#####}",
+  "creation": "2026-07-24 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["job_applicant", "note_type", "content", "created_by_user"],
+  "fields": [
+    {"fieldname": "job_applicant", "fieldtype": "Link", "in_list_view": 1, "label": "Job Applicant", "options": "Job Applicant", "reqd": 1},
+    {"default": "Note", "fieldname": "note_type", "fieldtype": "Select", "in_list_view": 1, "label": "Type", "options": "Note\nActivity\nSystem"},
+    {"fieldname": "content", "fieldtype": "Text", "in_list_view": 1, "label": "Content", "reqd": 1},
+    {"fieldname": "created_by_user", "fieldtype": "Link", "label": "Author", "options": "User", "read_only": 1}
+  ],
+  "modified": "2026-07-24 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Application Note",
+  "naming_rule": "Expression",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "HR Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "HR User", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 0
+}

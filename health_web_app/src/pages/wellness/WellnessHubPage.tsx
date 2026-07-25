@@ -1,11 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, AlliedHealthWing, PromoBanner } from '../../api';
+import { getWellnessClinicConfig } from './wellnessClinicConfig';
 
 function WellnessWingVisual({ wing }: { wing: AlliedHealthWing }) {
+  const cfg = getWellnessClinicConfig(wing.id);
+  const img = cfg?.heroImage || wing.image;
   return (
-    <div className="wellness-wing-visual" style={{ backgroundColor: wing.color }} aria-hidden>
-      <span className="wellness-wing-visual-icon">{wing.icon}</span>
+    <div
+      className={`wellness-wing-visual${cfg ? ' wellness-wing-visual-photo' : ''}${
+        cfg?.theme === 'indic' ? ' is-indic' : ''
+      }`}
+      style={cfg ? undefined : { backgroundColor: wing.color }}
+      aria-hidden
+    >
+      {cfg ? (
+        <img
+          src={img}
+          alt=""
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = cfg.heroFallback;
+          }}
+        />
+      ) : (
+        <span className="wellness-wing-visual-icon">{wing.icon}</span>
+      )}
     </div>
   );
 }
@@ -44,13 +63,19 @@ export function WellnessHubPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const featuredIds = ['aesthetics', 'yoga', 'ayurvedic'];
+  const featured = featuredIds
+    .map((id) => wings.find((w) => w.id === id))
+    .filter(Boolean) as AlliedHealthWing[];
+  const otherWings = wings.filter((w) => !featuredIds.includes(w.id));
+
   return (
     <>
       <section className="hero hero-compact">
         <h1>Wellness &amp; Allied Health</h1>
         <p className="hero-lead">
-          Psychology, aesthetics, physiotherapy, chiropractic, and Ayurvedic care — book sessions,
-          pay online, and track appointments in My orders.
+          Session-based clinics for aesthetics, mind, movement, Ayurveda, and yoga — book and track in
+          My orders.
         </p>
       </section>
 
@@ -65,8 +90,46 @@ export function WellnessHubPage() {
         </div>
       )}
 
+      {featured.length > 0 ? (
+        <div className="wellness-featured-grid">
+          {featured.map((wing) => {
+            const cfg = getWellnessClinicConfig(wing.id);
+            return (
+              <Link
+                key={wing.id}
+                className={`wellness-aesthetics-feature${cfg?.theme === 'indic' ? ' is-indic' : ''}`}
+                to={`/wellness/${wing.id}`}
+              >
+                <div className="wellness-aesthetics-feature-copy">
+                  <span className="home-chronic-badge">
+                    {cfg?.theme === 'indic' ? 'Indic · Sessions' : 'Clinic · Sessions'}
+                  </span>
+                  <h2>{wing.title}</h2>
+                  <p>{cfg?.hubTeaser || wing.subtitle}</p>
+                  <p className="wellness-wing-meta">
+                    {wing.service_count ?? 0} sessions
+                    {wing.starting_rate ? ` · from ₹${wing.starting_rate.toFixed(0)}` : ''}
+                  </p>
+                  <span className="btn btn-sm">Explore clinic</span>
+                </div>
+                <div className="wellness-aesthetics-feature-visual" aria-hidden>
+                  <img
+                    src={cfg?.heroImage || wing.image}
+                    alt=""
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src =
+                        cfg?.heroFallback || wing.image || '';
+                    }}
+                  />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="wellness-wing-grid">
-        {wings.map((wing) => (
+        {otherWings.map((wing) => (
           <Link key={wing.id} className="wellness-wing-card" to={`/wellness/${wing.id}`}>
             <WellnessWingVisual wing={wing} />
             <div className="wellness-wing-body">
@@ -74,9 +137,9 @@ export function WellnessHubPage() {
                 {wing.icon}
               </span>
               <h2>{wing.title}</h2>
-              <p className="muted">{wing.subtitle}</p>
+              <p className="muted">{getWellnessClinicConfig(wing.id)?.hubTeaser || wing.subtitle}</p>
               <p className="wellness-wing-meta">
-                {wing.service_count ?? 0} services
+                {wing.service_count ?? 0} sessions
                 {wing.starting_rate ? ` · from ₹${wing.starting_rate.toFixed(0)}` : ''}
               </p>
             </div>

@@ -131,8 +131,12 @@ def _default_selling_price_list():
     )
 
 
-def _resolve_selling_rate(item_code):
-    """Use Item Price (selling price list) when set, else Item.standard_rate."""
+PATIENT_FALLBACK_DISCOUNT = 0.10  # 10% off when FOCO rate is missing
+WALLET_EARN_ON_PURCHASE = 0.10  # 10% wallet points on paid orders
+
+
+def _list_selling_rate(item_code):
+    """Undiscounted list price from Item Price / standard_rate (pre-offer)."""
     if not item_code or not frappe.db.exists("Item", item_code):
         return 0
 
@@ -150,6 +154,61 @@ def _resolve_selling_rate(item_code):
     return flt(frappe.db.get_value("Item", item_code, "standard_rate"))
 
 
+def _foco_rate_for_item(item_code):
+    if not item_code or not frappe.db.exists("Item", item_code):
+        return 0.0
+    try:
+        if not frappe.get_meta("Item").has_field("hec_foco_rate"):
+            return 0.0
+    except Exception:
+        return 0.0
+    return flt(frappe.db.get_value("Item", item_code, "hec_foco_rate"))
+
+
+def _patient_offer_pricing(item_code):
+    """
+    Patient web pricing:
+      - Sell at FOCO (hec_foco_rate) when available
+      - Else 10% off list/MRP
+    """
+    list_rate = _list_selling_rate(item_code)
+    standard = flt(frappe.db.get_value("Item", item_code, "standard_rate")) if item_code else 0
+    mrp = max(standard, list_rate)
+    foco = _foco_rate_for_item(item_code)
+
+    if foco > 0:
+        rate = foco
+        basis = "foco"
+        if mrp <= rate:
+            mrp = round(rate * 1.2, 2)
+    elif mrp > 0:
+        rate = round(mrp * (1.0 - PATIENT_FALLBACK_DISCOUNT), 2)
+        basis = "ten_percent"
+    elif list_rate > 0:
+        rate = round(list_rate * (1.0 - PATIENT_FALLBACK_DISCOUNT), 2)
+        mrp = list_rate
+        basis = "ten_percent"
+    else:
+        rate = 0
+        basis = "none"
+
+    if mrp and mrp < rate:
+        mrp = round(rate / (1.0 - PATIENT_FALLBACK_DISCOUNT), 2)
+
+    return {
+        "rate": flt(rate),
+        "mrp": flt(mrp) if mrp and mrp > rate else 0,
+        "foco_rate": flt(foco) if foco else None,
+        "price_basis": basis,
+        "list_rate": flt(list_rate),
+    }
+
+
+def _resolve_selling_rate(item_code):
+    """Patient sell rate for catalog + bookings: FOCO if available, else 10% off."""
+    return _patient_offer_pricing(item_code)["rate"]
+
+
 def _strip_catalog_description(text):
     if not text:
         return ""
@@ -163,11 +222,32 @@ def _strip_catalog_description(text):
 
 def _item_pricing(item_code):
     """Return (selling_rate, mrp) — mrp is list price when higher than selling rate."""
-    rate = _resolve_selling_rate(item_code)
-    mrp = flt(frappe.db.get_value("Item", item_code, "standard_rate"))
-    if mrp <= rate:
-        mrp = 0
-    return rate, mrp
+    pricing = _patient_offer_pricing(item_code)
+    return pricing["rate"], pricing["mrp"]
+
+
+def _subscription_coupon_tag(item_group=None, user=None):
+    """Health Circle chip — further discount beyond FOCO / 10% offer."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import get_entitlements
+
+        entitlements = get_entitlements(user) if user and user not in ("Guest", None) else None
+    except Exception:
+        entitlements = None
+
+    group = (item_group or "").lower()
+    is_pharma = any(k in group for k in ("medic", "pharma", "healthcare"))
+    if entitlements and entitlements.get("active"):
+        pct = flt(
+            entitlements.get("pharmacy_discount_percent")
+            if is_pharma
+            else entitlements.get("lab_discount_percent")
+        )
+        title = (entitlements.get("plan_title") or entitlements.get("plan_code") or "Circle").strip()
+        if pct > 0:
+            return f"{title} −{int(pct)}% extra"
+        return f"{title} member"
+    return "Circle coupon"
 
 
 def _coupon_for_item_group(item_group, promos):
@@ -227,7 +307,7 @@ def _public_lab_item_profile(item_code):
         from health_ecosystem_core.health_ecosystem_core.clinical_phase29_lab_import import lab_item_profile
 
         profile = lab_item_profile(item_code) or {}
-        profile.pop("foco_rate", None)
+        # Keep foco_rate for FOCO Deal badge; catalog rate already applies FOCO
         return profile
     except Exception:
         return {}
@@ -235,18 +315,41 @@ def _public_lab_item_profile(item_code):
 
 def _enrich_catalog_items(items):
     promos = _load_mobile_promotions()
+    user = frappe.session.user if getattr(frappe, "session", None) else None
     for item in items:
         code = item.get("name")
-        rate, mrp = _item_pricing(code)
+        offer = _patient_offer_pricing(code)
+        rate = offer["rate"]
+        mrp = offer["mrp"]
         item["rate"] = rate
         item["standard_rate"] = rate
         item["mrp"] = mrp or None
         item["discount_percent"] = round((1 - rate / mrp) * 100) if mrp and mrp > rate else 0
+        item["price_basis"] = offer["price_basis"]
+        item["foco_rate"] = offer.get("foco_rate")
+        item["wallet_earn_percent"] = int(WALLET_EARN_ON_PURCHASE * 100)
+        item["wallet_earn_amount"] = round(rate * WALLET_EARN_ON_PURCHASE, 2) if rate else 0
         item["coupon_label"] = _coupon_for_item_group(item.get("item_group"), promos)
+        item["member_tag"] = _subscription_coupon_tag(item.get("item_group"), user)
         desc = item.get("description") or frappe.db.get_value("Item", code, "description") or ""
         item["description"] = _strip_catalog_description(desc)
         if _is_lab_item_group(item.get("item_group")):
             item.update(_public_lab_item_profile(code))
+            # Profile merge must not overwrite patient offer pricing
+            item["rate"] = rate
+            item["standard_rate"] = rate
+            item["mrp"] = mrp or None
+            item["discount_percent"] = round((1 - rate / mrp) * 100) if mrp and mrp > rate else 0
+            item["price_basis"] = offer["price_basis"]
+            item["foco_rate"] = offer.get("foco_rate")
+            item["wallet_earn_percent"] = int(WALLET_EARN_ON_PURCHASE * 100)
+            item["wallet_earn_amount"] = round(rate * WALLET_EARN_ON_PURCHASE, 2) if rate else 0
+            item["member_tag"] = item.get("member_tag") or _subscription_coupon_tag(
+                item.get("item_group"), user
+            )
+            item["coupon_label"] = item.get("coupon_label") or _coupon_for_item_group(
+                item.get("item_group"), promos
+            )
     return items
 
 
@@ -767,6 +870,15 @@ def verify_razorpay_payment(
         on_payment_confirmed(reference_doctype, reference_name)
     except Exception:
         frappe.log_error(title="on_payment_confirmed", message=frappe.get_traceback())
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+            handle_payment_confirmed,
+        )
+
+        handle_payment_confirmed(reference_doctype, reference_name, paid_amount=amount)
+    except Exception:
+        frappe.log_error(title="phase75_payment_confirmed", message=frappe.get_traceback())
 
     return _success(
         {
@@ -1946,18 +2058,19 @@ def get_circle_landing(sid=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def preview_checkout_price(subtotal=None, context=None, promo_code=None, sid=None):
-    """Phase 26 — membership + coupon pricing preview for checkout."""
+def preview_checkout_price(subtotal=None, context=None, promo_code=None, use_wallet=None, sid=None):
+    """Phase 26 — membership + coupon + optional wallet pricing preview for checkout."""
     subtotal = flt(_parse_request_value("subtotal", subtotal) or 0)
     context = _parse_request_value("context", context) or "lab"
     promo_code = _parse_request_value("promo_code", promo_code)
+    use_wallet = cint(_parse_request_value("use_wallet", use_wallet) or 0)
     if subtotal <= 0:
         return _error(_("Order total must be greater than zero"))
     try:
         from health_ecosystem_core.health_ecosystem_core.clinical_phase26 import preview_checkout
 
         user = frappe.session.user if _require_mobile_auth(sid) else None
-        data = preview_checkout(user, subtotal, context, promo_code)
+        data = preview_checkout(user, subtotal, context, promo_code, use_wallet=use_wallet)
         return _success(data)
     except frappe.ValidationError as exc:
         return _error(str(exc))
@@ -3341,14 +3454,29 @@ def get_item_detail(item_code=None):
         return _error(_("Item not available"), 404)
 
     rate = _resolve_selling_rate(item_code)
-    mrp = flt(frappe.db.get_value("Item", item_code, "standard_rate"))
+    offer = _patient_offer_pricing(item_code)
+    mrp = offer["mrp"]
     item["rate"] = rate
     item["standard_rate"] = rate
     item["mrp"] = mrp if mrp > rate else None
     item["discount_percent"] = round((1 - rate / mrp) * 100) if mrp and mrp > rate else 0
+    item["price_basis"] = offer["price_basis"]
+    item["foco_rate"] = offer.get("foco_rate")
+    item["wallet_earn_percent"] = int(WALLET_EARN_ON_PURCHASE * 100)
+    item["wallet_earn_amount"] = round(rate * WALLET_EARN_ON_PURCHASE, 2) if rate else 0
+    item["coupon_label"] = _coupon_for_item_group(item.get("item_group"), _load_mobile_promotions())
+    item["member_tag"] = _subscription_coupon_tag(
+        item.get("item_group"), frappe.session.user if getattr(frappe, "session", None) else None
+    )
     item["description"] = _strip_catalog_description(item.get("description"))
     if _is_lab_item_group(item.get("item_group")):
         item.update(_public_lab_item_profile(item_code))
+        item["rate"] = rate
+        item["standard_rate"] = rate
+        item["mrp"] = mrp if mrp > rate else None
+        item["discount_percent"] = round((1 - rate / mrp) * 100) if mrp and mrp > rate else 0
+        item["price_basis"] = offer["price_basis"]
+        item["foco_rate"] = offer.get("foco_rate")
     return _success({"item": item})
 
 
@@ -3519,6 +3647,176 @@ def get_patient_profile(sid=None):
     profile = patient_profile_for_user() or {"linked": False}
     profile["healthcare_installed"] = True
     return _success(profile)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_patient_wallet(sid=None, limit=None):
+    """Phase 75 — Refer & Earn wallet + referral code for logged-in patient."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        get_patient_wallet_payload,
+        setup_phase75,
+    )
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _error(_("No patient profile linked to this account"))
+    return _success(get_patient_wallet_payload(patient_id, limit=limit or 30))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_my_referral(sid=None):
+    """Compact referral summary for home / account chips."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        get_patient_wallet_payload,
+        setup_phase75,
+    )
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _success({"linked": False})
+    payload = get_patient_wallet_payload(patient_id, limit=5)
+    return _success(
+        {
+            "linked": True,
+            "referral_code": payload.get("referral_code"),
+            "wallet_balance": payload.get("wallet_balance"),
+            "referred_count": payload.get("referred_count"),
+            "share_text": payload.get("share_text"),
+            "share_url": payload.get("share_url"),
+            "signup_credit": payload.get("signup_credit"),
+            "first_order_bonus": payload.get("first_order_bonus"),
+        }
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def update_patient_profile(
+    sid=None,
+    patient_name=None,
+    mobile=None,
+    email=None,
+    dob=None,
+    gender=None,
+    profile_image=None,
+    profile_image_filename=None,
+    new_password=None,
+):
+    """Phase 75 — update Health Patient + linked User profile fields."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        setup_phase75,
+        update_patient_profile_fields,
+    )
+    from frappe.utils.password import update_password
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _error(_("No patient profile linked to this account"))
+
+    patient_name = _parse_request_value("patient_name", patient_name)
+    mobile = _parse_request_value("mobile", mobile)
+    email = _parse_request_value("email", email)
+    dob = _parse_request_value("dob", dob)
+    gender = _parse_request_value("gender", gender)
+    profile_image = _parse_request_value("profile_image", profile_image)
+    profile_image_filename = _parse_request_value("profile_image_filename", profile_image_filename)
+    new_password = _parse_request_value("new_password", new_password)
+
+    try:
+        data = update_patient_profile_fields(
+            patient_id,
+            patient_name=patient_name,
+            mobile=mobile,
+            email=email,
+            dob=dob,
+            gender=gender,
+            profile_image_b64=profile_image,
+            profile_image_filename=profile_image_filename,
+        )
+        if new_password:
+            pwd = (new_password or "").strip()
+            if len(pwd) < 8:
+                return _error(_("Password must be at least 8 characters"))
+            update_password(frappe.session.user, pwd, logout_all_sessions=False)
+        frappe.db.commit()
+        refreshed = patient_profile_for_user() or {}
+        refreshed["wallet"] = data
+        return _success(refreshed, message=_("Profile updated"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="update_patient_profile", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update profile"))
+
+
+@frappe.whitelist(allow_guest=True)
+def apply_patient_wallet_credit(reference_doctype=None, reference_name=None, amount=None, sid=None):
+    """Debit patient wallet against a booking/TRF before or with payment."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    reference_doctype = _parse_request_value("reference_doctype", reference_doctype)
+    reference_name = _parse_request_value("reference_name", reference_name)
+    amount = flt(_parse_request_value("amount", amount) or 0)
+    if reference_doctype not in ("Customer TRF", "Doctor Appointment", "Pharmacy Order"):
+        return _error(_("Invalid reference doctype"))
+    if not reference_name or not frappe.db.exists(reference_doctype, reference_name):
+        return _error(_("Reference document not found"))
+    if amount <= 0:
+        return _error(_("Amount must be positive"))
+
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        debit_wallet_for_order,
+        setup_phase75,
+    )
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _error(_("No patient profile linked"))
+    try:
+        result = debit_wallet_for_order(patient_id, amount, reference_doctype, reference_name)
+        meta = frappe.get_meta(reference_doctype)
+        if meta.has_field("wallet_credit_applied"):
+            prev = flt(frappe.db.get_value(reference_doctype, reference_name, "wallet_credit_applied"))
+            frappe.db.set_value(
+                reference_doctype,
+                reference_name,
+                "wallet_credit_applied",
+                prev + amount,
+                update_modified=False,
+            )
+        if meta.has_field("amount"):
+            cur = flt(frappe.db.get_value(reference_doctype, reference_name, "amount"))
+            frappe.db.set_value(
+                reference_doctype,
+                reference_name,
+                "amount",
+                max(0, round(cur - amount, 2)),
+                update_modified=False,
+            )
+        frappe.db.commit()
+        return _success(result or {}, message=_("Wallet credit applied"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="apply_patient_wallet_credit", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to apply wallet credit"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -3849,6 +4147,20 @@ def ai_physician_turn(session_id=None, message=None, latitude=None, longitude=No
     except Exception as exc:
         frappe.log_error(title="ai_physician_turn", message=frappe.get_traceback())
         return _error(str(exc) or _("Unable to continue care chat"))
+
+
+@frappe.whitelist()
+def check_openai_status(force_probe=None):
+    """Ops: OpenAI key/model readiness. Optional live probe when force_probe=1."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_openai import (
+        openai_runtime_status,
+        probe_openai,
+    )
+
+    force = cint(_parse_request_value("force_probe", force_probe) or 0)
+    if force:
+        return _success(probe_openai(force=True))
+    return _success(openai_runtime_status())
 
 
 # ---------------------------------------------------------------------------

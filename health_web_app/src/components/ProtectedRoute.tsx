@@ -24,7 +24,7 @@ export function ProtectedRoute({ children, roles, fallback = '/login' }: Props) 
     return <Navigate to={fallback} replace state={{ from: location.pathname }} />;
   }
 
-  if (roles && roles.length > 0 && user && !hasAnyRole(user.roles, roles)) {
+  if (roles && roles.length > 0 && user && !hasAnyRole(user.roles || [], roles)) {
     return <Navigate to={defaultRoute} replace />;
   }
 

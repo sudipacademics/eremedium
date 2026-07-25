@@ -34,10 +34,30 @@ import { SalesCommissionPage } from './pages/sales/SalesCommissionPage';
 import { SalesReportsPage } from './pages/sales/SalesReportsPage';
 import { SalesTeamMapPage } from './pages/sales/SalesTeamMapPage';
 
+import { CareersLayout } from './components/CareersLayout';
+import { CareersHrLayout } from './components/CareersHrLayout';
+import { CareersApplicantLayout } from './components/CareersApplicantLayout';
+import { HostPortalGate } from './components/HostPortalGate';
+import { CareersLandingPage } from './pages/careers/CareersLandingPage';
+import { JobOpeningsPage } from './pages/careers/JobOpeningsPage';
+import { JobApplyPage } from './pages/careers/JobApplyPage';
+import { HrApplicationsPage } from './pages/careers/HrApplicationsPage';
+import { HrApplicationDetailPage } from './pages/careers/HrApplicationDetailPage';
+import { HiringMarketingDashboardPage } from './pages/careers/HiringMarketingDashboardPage';
+import { ApplicantDashboardPage } from './pages/careers/ApplicantDashboardPage';
+import { ApplicantApplicationsPage } from './pages/careers/ApplicantApplicationsPage';
+import { ApplicantApplicationDetailPage } from './pages/careers/ApplicantApplicationDetailPage';
+import { ApplicantProfilePage } from './pages/careers/ApplicantProfilePage';
+import { ApplicantDocumentsPage } from './pages/careers/ApplicantDocumentsPage';
+
 import { SubscriptionsPage } from './pages/SubscriptionsPage';
 import { CircleLandingPage } from './pages/CircleLandingPage';
 
 import { AccountPage } from './pages/AccountPage';
+
+import { UpdateProfilePage } from './pages/UpdateProfilePage';
+
+import { ReferEarnPage } from './pages/ReferEarnPage';
 
 import { AppointmentBookPage } from './pages/AppointmentBookPage';
 
@@ -69,6 +89,8 @@ import { StaffDashboard } from './pages/dashboard/StaffDashboard';
 
 import { HomePage } from './pages/HomePage';
 
+import { CentresPage } from './pages/CentresPage';
+
 import { JourneyPage } from './pages/JourneyPage';
 
 import { LabPage } from './pages/LabPage';
@@ -78,6 +100,7 @@ import { InsuranceLandingPage } from './pages/InsuranceLandingPage';
 import { WellnessHubPage } from './pages/wellness/WellnessHubPage';
 import { WellnessWingPage } from './pages/wellness/WellnessWingPage';
 import { WellnessBookPage } from './pages/wellness/WellnessBookPage';
+import { WellnessClinicLandingPage } from './pages/wellness/WellnessClinicLandingPage';
 
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -92,6 +115,7 @@ import { PharmacyCheckoutPage } from './pages/PharmacyCheckoutPage';
 import { PharmacyPage } from './pages/PharmacyPage';
 
 import { ServicesPage } from './pages/ServicesPage';
+import { LegalDocumentPage } from './pages/legal/LegalDocumentPage';
 
 
 
@@ -142,6 +166,41 @@ export default function App() {
         <CartProvider>
 
           <Routes>
+            <Route element={<HostPortalGate />}>
+
+            <Route element={<CareersLayout />}>
+              <Route path="careers" element={<CareersLandingPage />} />
+              <Route path="jobs" element={<JobOpeningsPage />} />
+              <Route path="jobs/:jobId/apply" element={<JobApplyPage />} />
+            </Route>
+
+            <Route
+              path="hr"
+              element={
+                <ProtectedRoute>
+                  <CareersHrLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="applications" element={<HrApplicationsPage />} />
+              <Route path="applications/:applicationId" element={<HrApplicationDetailPage />} />
+              <Route path="marketing" element={<HiringMarketingDashboardPage />} />
+            </Route>
+
+            <Route
+              path="my"
+              element={
+                <ProtectedRoute>
+                  <CareersApplicantLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<ApplicantDashboardPage />} />
+              <Route path="applications" element={<ApplicantApplicationsPage />} />
+              <Route path="applications/:applicationId" element={<ApplicantApplicationDetailPage />} />
+              <Route path="profile" element={<ApplicantProfilePage />} />
+              <Route path="documents" element={<ApplicantDocumentsPage />} />
+            </Route>
 
             <Route element={<PublicLayout />}>
 
@@ -159,11 +218,17 @@ export default function App() {
 
                 <Route path="lab" element={<Navigate to="/diagnostics" replace />} />
 
+                <Route path="centres" element={<CentresPage />} />
+
+                <Route path="centers" element={<Navigate to="/centres" replace />} />
+
                 <Route path="pharmacy" element={<PharmacyPage />} />
 
                 <Route path="pharmacy/cart" element={<PharmacyCartPage />} />
 
                 <Route path="wellness" element={<WellnessHubPage />} />
+
+                <Route path="wellness/aesthetics" element={<WellnessClinicLandingPage wingId="aesthetics" />} />
 
                 <Route path="wellness/:wingId" element={<WellnessWingPage />} />
 
@@ -313,6 +378,38 @@ export default function App() {
 
                 />
 
+                <Route
+
+                  path="account/profile"
+
+                  element={
+
+                    <ProtectedRoute>
+
+                      <UpdateProfilePage />
+
+                    </ProtectedRoute>
+
+                  }
+
+                />
+
+                <Route
+
+                  path="account/refer"
+
+                  element={
+
+                    <ProtectedRoute>
+
+                      <ReferEarnPage />
+
+                    </ProtectedRoute>
+
+                  }
+
+                />
+
                 <Route path="subscriptions" element={<SubscriptionsPage />} />
                 <Route path="circle" element={<CircleLandingPage />} />
 
@@ -350,6 +447,14 @@ export default function App() {
               <Route path="forgot-password" element={<ForgotPasswordPage />} />
               <Route path="verify-email" element={<VerifyEmailPage />} />
               <Route path="oauth/callback" element={<OAuthCallbackPage />} />
+
+              <Route path="legal/:docId" element={<LegalDocumentPage />} />
+              <Route path="privacy-policy" element={<Navigate to="/legal/privacy-policy" replace />} />
+              <Route path="disclaimer" element={<Navigate to="/legal/disclaimer" replace />} />
+              <Route path="terms" element={<Navigate to="/legal/terms-and-conditions" replace />} />
+              <Route path="terms-and-conditions" element={<Navigate to="/legal/terms-and-conditions" replace />} />
+              <Route path="refund-policy" element={<Navigate to="/legal/refund-policy" replace />} />
+              <Route path="data-use-policy" element={<Navigate to="/legal/data-use-policy" replace />} />
 
             </Route>
 
@@ -522,6 +627,8 @@ export default function App() {
 
 
             <Route path="*" element={<Navigate to="/" replace />} />
+
+            </Route>
 
           </Routes>
 

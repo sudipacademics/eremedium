@@ -61,6 +61,8 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 ## Phase 25 + 65
 
 - Sales: https://reach.e-remedium.in/sales — `sales_rep1@health.local` / `SalesRepChangeMe@123`
+- HR (careers / marketing / pipeline): https://www.e-remedium.in/hr/applications — `hr_manager@health.local` / `HrManagerChangeMe@123`
+- Hiring ads sync (phase 73f): Health Ecosystem Settings → Hiring Ad Analytics (Meta + Google tokens). Daily job `run_daily_hiring_ads_sync`. CSV: `import_campaigns_csv` / `import_leads_csv`. Webhook: `clinical_phase73f_ad_sync.ingest_ad_lead` + header `X-Hiring-Ads-Secret`.
 - Masked calls need Settings: telephony_enabled + exotel_sid + exotel_api_key + exotel_api_token + exotel_virtual_number; staff `mobile_no`
 - Canonical code: `C:\develop\My_Lab_System`; compose on server: `/opt/health-ecosystem/docker`
 
@@ -88,3 +90,20 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - **Escalation note:** first attempt erpnext **v15.70.0** + frappe **v15.40.4** failed migrate — erpnext 15.70 needs `get_setup_wizard_completed_apps` (absent in frappe 15.40.4; present in **v15.84.0**). Proven pair matches [hrms#3619](https://github.com/frappe/hrms/issues/3619): **erpnext v15.81.1 + frappe v15.84.0**.
 - **Backups:** `/opt/health-ecosystem/backups/apps-erpnext-pre-20260722-055018.tgz`, `apps-frappe-pre-20260722-055018.tgz`, site backup under `sites/health.localhost/private/backups/20260722_112019-*`, notes `upgrade-notes-20260722-055018.txt`.
 - **Caveat:** compose still pins `image: frappe/erpnext:v15.34.0`. A container **recreate** from the image would wipe the swapped apps (hrms too — also not bind-mounted). Prefer `docker compose restart` only; do not recreate until image tag / bind-mount strategy is updated.
+
+## OpenAI workflow (2026-07-23)
+
+- **Earlier failure:** API key authenticated; project has `gpt-4o-mini`; Chat Completions returned **429 `insufficient_quota`** (OpenAI billing). Not a decrypt/key-path bug (Password field already uses `get_password`).
+- **Live smoke after amend:** `probe_openai` → `ok: True` (reply `ok`); AI Physician journey `openai_enabled: True`. If quota returns, rule-based fallback still serves chat/voice.
+- **Code amend:** shared `clinical_openai.py` — parses OpenAI error bodies, 5‑min cooldown on quota/429, surfaces `openai_status` on telephony dashboard + AI journey APIs; optional Settings field `openai_chat_model` (default `gpt-4o-mini`).
+- **Ops:** billing https://platform.openai.com/account/billing ; probe via `check_openai_status` (`force_probe=1`) or `docker/smoke-openai-detailed.sh`.
+- **Deploy note:** live workers load the app from `frappe-bench/apps/health_ecosystem_core` via `safe-update-app.sh` (pip copy into site-packages). Do **not** `pip install -e` hotfixes — that left gunicorn unable to import `health_ecosystem_core` and surfaced as “Server is missing the start_ai_physician_journey API”. Fix: `./safe-update-app.sh` + backend restart. Verified 2026-07-23: `www.e-remedium.in` start_ai_physician_journey returns success with `openai_enabled: true`.
+- **AI Physician journey (2026-07-23):** OpenAI-led adaptive triage (JSON conductor, quick_replies, catalog-grounded suggest/refine, emergency phase). Host mount: `/opt/health-ecosystem/health_ecosystem_core` → container `apps/health_ecosystem_core`. Web: `health_web_app/dist` → `/opt/health-ecosystem/health_web_app/`.
+- **Home / Profile / Refer & Earn (2026-07-23):** Mock-aligned home; `/account/profile` + `/account/refer`; Phase 75 patient wallet — ₹50/₹50 on signup with code, ₹100 to referrer on first paid order. Smoke: `clinical_phase75_patient_referral.smoke_phase75`.
+- **Web deploy path:** nginx root is `/opt/health-ecosystem/health_web_app/dist` (not the parent folder). SCP `health_web_app/dist/*` there. Homepage mock v2 (carousel + image banners) live as of 2026-07-23.
+- **Aesthetics clinic landing (2026-07-24):** Oliva-inspired `/wellness/aesthetics` — hero, trust, Skin/Hair/Body treatments, specialists, concerns, sticky CTA. Beauty & Aesthetics CSV mapped into aesthetics wing (Phase 31).
+- **All wellness clinic landings (2026-07-24):** Psychology, Physio, Chiropractic share Oliva-style session landings; Yoga & Ayurveda use Indic-themed variants. Config in `wellnessClinicConfig.ts`.
+- **Careers portal MVP (2026-07-24):** `career.e-remedium.in` — public `/careers`, `/jobs`, `/jobs/:id/apply`; HR `/hr/applications`. Backend `clinical_phase73b_careers.py` on HRMS Job Opening / Job Applicant. Setup: `bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.clinical_phase73b_careers.setup_phase73b`. **Ops:** add DNS A/AAAA for `career.e-remedium.in` + nginx server_name (same SPA root as www) + TLS; run domain seed so Frappe Domain includes `career.e-remedium.in`.
+- **Applicant accounts 2a (2026-07-24):** `/my` hub — Dashboard, Applied Jobs, Profile, Documents. OTP login on careers; applications linked via `hec_user` + email/mobile claim. Prefill apply form from profile when signed in.
+- **Hiring marketing 2b (2026-07-24):** `/hr/marketing` Digital Marketing Dashboard. DocTypes `HEC Hiring Campaign` / `HEC Hiring Lead`; APIs in `clinical_phase73d_hiring_marketing.py`. Setup: `…clinical_phase73d_hiring_marketing.setup_phase73d`.
+- **Pipeline 2c (2026-07-24):** Interview schedule, notes/activity, job offer, onboarding checklist on HR application detail. DocTypes `HEC Interview Schedule` / `HEC Application Note` / `HEC Job Offer`; `clinical_phase73e_pipeline.py`.

@@ -187,11 +187,37 @@ def patient_profile_for_user(user=None):
         return {"linked": False, "user": user, "mobile_no": phone, "email": email}
 
     dt = patient_doctype()
-    fields = ["name", "patient_name", "gender", "mobile", "email", "dob", "customer", "status"]
+    fields = [
+        "name",
+        "patient_name",
+        "gender",
+        "mobile",
+        "email",
+        "dob",
+        "customer",
+        "status",
+        "referral_code",
+        "wallet_balance",
+        "profile_image",
+        "referred_by",
+    ]
     available = [f for f in fields if frappe.get_meta(dt).has_field(f)]
     profile = frappe.db.get_value(dt, patient_id, available, as_dict=True) or {}
     profile["linked"] = True
     profile["patient_id"] = patient_id
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+            ensure_patient_wallet_and_code,
+            get_wallet_balance,
+        )
+
+        ensure_patient_wallet_and_code(patient_id)
+        if "wallet_balance" not in profile:
+            profile["wallet_balance"] = get_wallet_balance(patient_id)
+        if not profile.get("referral_code"):
+            profile["referral_code"] = frappe.db.get_value(dt, patient_id, "referral_code")
+    except Exception:
+        pass
     return profile
 
 

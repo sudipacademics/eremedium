@@ -122,6 +122,22 @@ def get_sms_sender_id():
     return frappe.conf.get("sms_sender_id") or _settings_value("sms_sender_id") or "HECLAB"
 
 
+def get_sms_dlt_template_id():
+    return (
+        frappe.conf.get("sms_dlt_template_id")
+        or _settings_value("sms_dlt_template_id")
+        or ""
+    ).strip()
+
+
+def get_sms_msg91_template_id():
+    return (
+        frappe.conf.get("sms_msg91_template_id")
+        or _settings_value("sms_msg91_template_id")
+        or ""
+    ).strip()
+
+
 def get_notification_channel():
     return frappe.conf.get("notification_channel") or _settings_value("notification_channel") or "Test"
 
@@ -167,6 +183,105 @@ def razorpay_test_mode():
     key_id = get_razorpay_key_id() or ""
     key_secret = get_razorpay_key_secret() or ""
     return is_placeholder(key_id) or is_placeholder(key_secret) or not key_secret
+
+
+def get_meta_ad_account_id():
+	return frappe.conf.get("meta_ad_account_id") or _settings_value("meta_ad_account_id")
+
+
+def get_meta_access_token():
+	conf = frappe.conf.get("meta_access_token")
+	if conf:
+		return conf
+	settings = get_health_settings()
+	if settings:
+		try:
+			return settings.get_password("meta_access_token", raise_exception=False)
+		except Exception:
+			pass
+	return None
+
+
+def get_hiring_ads_webhook_secret():
+	conf = frappe.conf.get("hiring_ads_webhook_secret")
+	if conf:
+		return conf
+	settings = get_health_settings()
+	if settings:
+		try:
+			return settings.get_password("hiring_ads_webhook_secret", raise_exception=False)
+		except Exception:
+			pass
+	return None
+
+
+def get_google_ads_customer_id():
+	return frappe.conf.get("google_ads_customer_id") or _settings_value("google_ads_customer_id")
+
+
+def get_google_ads_developer_token():
+	conf = frappe.conf.get("google_ads_developer_token")
+	if conf:
+		return conf
+	settings = get_health_settings()
+	if settings:
+		try:
+			return settings.get_password("google_ads_developer_token", raise_exception=False)
+		except Exception:
+			pass
+	return None
+
+
+def get_google_ads_refresh_token():
+	conf = frappe.conf.get("google_ads_refresh_token")
+	if conf:
+		return conf
+	settings = get_health_settings()
+	if settings:
+		try:
+			return settings.get_password("google_ads_refresh_token", raise_exception=False)
+		except Exception:
+			pass
+	return None
+
+
+def get_google_ads_client_id():
+	return frappe.conf.get("google_ads_client_id") or _settings_value("google_ads_client_id")
+
+
+def get_google_ads_client_secret():
+	conf = frappe.conf.get("google_ads_client_secret")
+	if conf:
+		return conf
+	settings = get_health_settings()
+	if settings:
+		try:
+			return settings.get_password("google_ads_client_secret", raise_exception=False)
+		except Exception:
+			pass
+	return None
+
+
+def hiring_ads_sync_enabled():
+	conf = frappe.conf.get("hiring_ads_sync_enabled")
+	if conf is not None:
+		return bool(conf)
+	settings = get_health_settings()
+	return bool(settings and getattr(settings, "hiring_ads_sync_enabled", 0))
+
+
+def meta_ads_configured():
+	return bool(get_meta_ad_account_id() and get_meta_access_token())
+
+
+def google_ads_configured():
+	return bool(
+		get_google_ads_customer_id()
+		and get_google_ads_developer_token()
+		and get_google_ads_refresh_token()
+		and get_google_ads_client_id()
+		and get_google_ads_client_secret()
+	)
 
 
 def lis_configured():
@@ -220,6 +335,15 @@ def integration_status_payload():
         "backend_base_url": get_backend_base_url(),
         "site_name": frappe.local.site,
         "mobile_home_title": getattr(settings, "mobile_home_title", None) if settings else None,
+        "hiring_ads": {
+            "sync_enabled": hiring_ads_sync_enabled(),
+            "meta_configured": meta_ads_configured(),
+            "google_configured": google_ads_configured(),
+            "meta_account": _mask(get_meta_ad_account_id(), show=4) if get_meta_ad_account_id() else "",
+            "google_customer": _mask(get_google_ads_customer_id(), show=4)
+            if get_google_ads_customer_id()
+            else "",
+        },
     }
 
 

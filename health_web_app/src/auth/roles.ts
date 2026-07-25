@@ -1,3 +1,5 @@
+import { getPortalKind } from '../config/portalHosts';
+
 export const ROLES = {
   FRANCHISEE: 'Franchisee Operator',
   PHLEBOTOMIST: 'Phlebotomist',
@@ -16,24 +18,25 @@ const STAFF_ROLES = [
   ROLES.PATHOLOGIST,
 ];
 
-export function hasAnyRole(roles: string[], required: string[]) {
+export function hasAnyRole(roles: string[] | undefined | null, required: string[]) {
+  if (!Array.isArray(roles) || !required?.length) return false;
   return required.some((role) => roles.includes(role));
 }
 
-export function isStaff(roles: string[]) {
+export function isStaff(roles: string[] | undefined | null) {
   return hasAnyRole(roles, STAFF_ROLES);
 }
 
-export function isFranchisee(roles: string[]) {
-  return roles.includes(ROLES.FRANCHISEE);
+export function isFranchisee(roles: string[] | undefined | null) {
+  return Array.isArray(roles) && roles.includes(ROLES.FRANCHISEE);
 }
 
-export function isPhlebotomist(roles: string[]) {
-  return roles.includes(ROLES.PHLEBOTOMIST);
+export function isPhlebotomist(roles: string[] | undefined | null) {
+  return Array.isArray(roles) && roles.includes(ROLES.PHLEBOTOMIST);
 }
 
-export function isLabTechnician(roles: string[]) {
-  return roles.includes(ROLES.LAB_TECH);
+export function isLabTechnician(roles: string[] | undefined | null) {
+  return Array.isArray(roles) && roles.includes(ROLES.LAB_TECH);
 }
 
 /** Field staff + desk roles eligible for HR self-service (leave / expense). */
@@ -54,22 +57,48 @@ export function isSalesStaff(roles: string[] = []) {
   return hasAnyRole(roles, [ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN, ROLES.SYSTEM_MANAGER]);
 }
 
+/** HR recruiters who manage career portal applications. */
+export function isHrRecruiter(roles: string[] | undefined | null) {
+  return hasAnyRole(roles, [
+    ROLES.ADMIN,
+    ROLES.SYSTEM_MANAGER,
+    'HR Manager',
+    'HR User',
+  ]);
+}
+
+/** Hiring marketing dashboard (HR + sales leadership). */
+export function isHiringMarketer(roles: string[] | undefined | null) {
+  return (
+    isHrRecruiter(roles) ||
+    hasAnyRole(roles, [ROLES.SALES_MANAGER, ROLES.SALES_REP, ROLES.ADMIN, ROLES.SYSTEM_MANAGER])
+  );
+}
+
 export function isProvider(roles: string[] = []) {
   return hasAnyRole(roles, ['Healthcare Provider', 'Doctor', ROLES.PATHOLOGIST]);
 }
 
 /** Patient portal users (non-staff consumer accounts). */
-export function isPatientPortal(roles: string[]) {
-  return !isStaff(roles) && !isFranchisee(roles) && !isPhlebotomist(roles);
+export function isPatientPortal(roles: string[] | undefined | null) {
+  const list = Array.isArray(roles) ? roles : [];
+  return !isStaff(list) && !isFranchisee(list) && !isPhlebotomist(list);
 }
 
 /** Default landing route after login or when visiting /dashboard */
-export function getDefaultDashboardRoute(roles: string[]): string {
-  if (isFranchisee(roles)) return '/dashboard/franchisee';
-  if (isPhlebotomist(roles)) return '/dashboard/phlebotomist';
-  if (isLabTechnician(roles)) return '/dashboard/lab-tech';
-  if (isStaff(roles)) return '/dashboard/staff';
-  return '/dashboard/patient';
+export function getDefaultDashboardRoute(roles: string[] | undefined | null): string {
+  const list = Array.isArray(roles) ? roles : [];
+  if (getPortalKind() === 'careers' && isHrRecruiter(list)) {
+    return '/hr/applications';
+  }
+  if (getPortalKind() === 'careers') {
+    return '/my';
+  }
+  if (isFranchisee(list)) return '/dashboard/franchisee';
+  if (isPhlebotomist(list)) return '/dashboard/phlebotomist';
+  if (isLabTechnician(list)) return '/dashboard/lab-tech';
+  if (isStaff(list)) return '/dashboard/staff';
+  return '/account';
 }
 
 export function dashboardLabel(roles: string[]): string {
@@ -77,5 +106,5 @@ export function dashboardLabel(roles: string[]): string {
   if (isPhlebotomist(roles)) return 'Phlebotomist';
   if (isLabTechnician(roles)) return 'Lab Technician';
   if (isStaff(roles)) return 'Operations';
-  return 'My health';
+  return 'Account';
 }

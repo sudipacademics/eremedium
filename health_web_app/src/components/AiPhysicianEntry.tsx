@@ -8,28 +8,51 @@ type Props = {
   placeholder?: string;
 };
 
-function SuggestionCards({ suggestions }: { suggestions: AiPhysicianSuggestions }) {
+function SuggestionCards({
+  suggestions,
+  emergency,
+}: {
+  suggestions: AiPhysicianSuggestions;
+  emergency?: boolean;
+}) {
+  const packages = suggestions.health_packages || [];
+  const tests = suggestions.individual_tests || [];
+  const workup =
+    packages.length || tests.length
+      ? [...packages, ...tests]
+      : suggestions.diagnostic_workup || [];
+
   return (
-    <div className="ai-suggest-grid">
-      <section className="ai-suggest-block">
-        <h3>Diagnostic workup</h3>
-        <div className="ai-suggest-cards">
-          {(suggestions.diagnostic_workup || []).map((item) => (
-            <article key={item.item_code || item.panel_id} className="ai-suggest-card">
-              <strong>{item.item_name}</strong>
-              {item.rate != null ? <span className="price-sale">₹{Number(item.rate).toFixed(0)}</span> : null}
-              {item.mrp && item.mrp > (item.rate || 0) ? (
-                <span className="price-mrp">MRP ₹{Number(item.mrp).toFixed(0)}</span>
-              ) : null}
-              <p className="muted">{item.reason}</p>
-              <Link className="btn btn-sm" to={item.book_path || '/diagnostics'}>
-                Book
-              </Link>
-            </article>
-          ))}
-          {!suggestions.diagnostic_workup?.length ? <p className="muted">No matching tests found.</p> : null}
-        </div>
-      </section>
+    <div className={`ai-suggest-grid ${emergency ? 'ai-suggest-emergency' : ''}`}>
+      {emergency ? (
+        <p className="ai-emergency-banner">
+          Urgent care may be needed — use the options below or go to the nearest emergency facility.
+        </p>
+      ) : null}
+
+      {workup.length ? (
+        <section className="ai-suggest-block">
+          <h3>{packages.length ? 'Packages & tests' : 'Diagnostic workup'}</h3>
+          <div className="ai-suggest-cards">
+            {workup.map((item) => (
+              <article key={item.item_code || item.panel_id || item.item_name} className="ai-suggest-card">
+                <strong>{item.item_name}</strong>
+                {item.probability_label ? (
+                  <span className="ai-match">{item.probability_label}</span>
+                ) : null}
+                {item.rate != null ? <span className="price-sale">₹{Number(item.rate).toFixed(0)}</span> : null}
+                {item.mrp && item.mrp > (item.rate || 0) ? (
+                  <span className="price-mrp">MRP ₹{Number(item.mrp).toFixed(0)}</span>
+                ) : null}
+                <p className="muted">{item.reason}</p>
+                <Link className="btn btn-sm" to={item.book_path || '/diagnostics'}>
+                  Book
+                </Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="ai-suggest-block">
         <h3>Physician / service booking</h3>
@@ -44,6 +67,9 @@ function SuggestionCards({ suggestions }: { suggestions: AiPhysicianSuggestions 
               </Link>
             </article>
           ))}
+          {!suggestions.physician_services?.length ? (
+            <p className="muted">No matching services right now.</p>
+          ) : null}
         </div>
       </section>
 
@@ -81,9 +107,15 @@ export function AiPhysicianEntry({ placeholder }: Props) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [suggestions, setSuggestions] = useState<AiPhysicianSuggestions | null>(null);
+  const [quickReplies, setQuickReplies] = useState<string[]>([]);
+  const [phase, setPhase] = useState<string>('questions');
+  const [journeyMode, setJourneyMode] = useState<string>('rules');
+  const [turnCount, setTurnCount] = useState(0);
+  const [maxTurns, setMaxTurns] = useState(6);
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openaiNote, setOpenaiNote] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ latitude?: number; longitude?: number }>({});
   const listRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -103,7 +135,24 @@ export function AiPhysicianEntry({ placeholder }: Props) {
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, suggestions, open]);
+  }, [messages, suggestions, quickReplies, open]);
+
+  function applyMeta(turn: AiPhysicianTurn) {
+    setPhase(turn.phase);
+    setJourneyMode(turn.journey_mode || 'rules');
+    setTurnCount(turn.turn_count ?? turn.question_index ?? 0);
+    setMaxTurns(turn.max_turns ?? turn.total_questions ?? 6);
+    setQuickReplies(turn.quick_replies || []);
+    if (turn.suggestions) {
+      setSuggestions(turn.suggestions);
+    }
+    const st = turn.openai_status;
+    if (st?.configured && st.using_fallback && st.last_error_code) {
+      setOpenaiNote(`Guided mode (OpenAI: ${st.last_error_code})`);
+    } else if (turn.journey_mode === 'openai') {
+      setOpenaiNote(null);
+    }
+  }
 
   function applyTurn(turn: AiPhysicianTurn, userText?: string) {
     setSessionId(turn.session_id);
@@ -113,9 +162,7 @@ export function AiPhysicianEntry({ placeholder }: Props) {
       next.push({ role: 'assistant', content: turn.message });
       return next;
     });
-    if (turn.phase === 'suggestions' && turn.suggestions) {
-      setSuggestions(turn.suggestions);
-    }
+    applyMeta(turn);
   }
 
   async function beginChat(text: string) {
@@ -123,8 +170,11 @@ export function AiPhysicianEntry({ placeholder }: Props) {
     if (!symptoms || busy) return;
     setBusy(true);
     setError(null);
+    setOpenaiNote(null);
     setOpen(true);
     setSuggestions(null);
+    setQuickReplies([]);
+    setPhase('questions');
     setMessages([{ role: 'user', content: symptoms }]);
     try {
       const res = await api.startAiPhysicianJourney({
@@ -137,6 +187,7 @@ export function AiPhysicianEntry({ placeholder }: Props) {
         { role: 'user', content: symptoms },
         { role: 'assistant', content: res.data.message },
       ]);
+      applyMeta(res.data);
       setDraft('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to start care chat');
@@ -145,26 +196,31 @@ export function AiPhysicianEntry({ placeholder }: Props) {
     }
   }
 
-  async function sendReply(e?: FormEvent) {
-    e?.preventDefault();
-    const text = reply.trim();
-    if (!text || !sessionId || busy) return;
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || !sessionId || busy) return;
     setBusy(true);
     setError(null);
     setReply('');
+    setQuickReplies([]);
     try {
       const res = await api.aiPhysicianTurn({
         session_id: sessionId,
-        message: text,
+        message: trimmed,
         latitude: coords.latitude,
         longitude: coords.longitude,
       });
-      applyTurn(res.data, text);
+      applyTurn(res.data, trimmed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to continue');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function sendReply(e?: FormEvent) {
+    e?.preventDefault();
+    await sendMessage(reply);
   }
 
   function onHeroSubmit(e: FormEvent) {
@@ -197,7 +253,7 @@ export function AiPhysicianEntry({ placeholder }: Props) {
         .trim();
       if (!said) return;
       if (open && sessionId) {
-        setReply(said);
+        void sendMessage(said);
       } else {
         setDraft(said);
         void beginChat(said);
@@ -219,10 +275,22 @@ export function AiPhysicianEntry({ placeholder }: Props) {
     setSessionId(null);
     setMessages([]);
     setSuggestions(null);
+    setQuickReplies([]);
+    setPhase('questions');
     setReply('');
     setDraft('');
     setError(null);
+    setOpenaiNote(null);
   }
+
+  const progressLabel =
+    journeyMode === 'openai' && phase === 'questions'
+      ? `Guided chat · turn ${Math.max(1, turnCount)} of ~${maxTurns}`
+      : phase === 'emergency'
+        ? 'Urgent guidance'
+        : phase === 'suggestions' || phase === 'refine'
+          ? 'Suggestions ready — ask to refine anytime'
+          : openaiNote || 'Virtual care guide — not a diagnosis';
 
   return (
     <>
@@ -251,11 +319,11 @@ export function AiPhysicianEntry({ placeholder }: Props) {
 
       {open ? (
         <div className="ai-chat-overlay" role="dialog" aria-modal="true" aria-label="AI physician chat">
-          <div className="ai-chat-panel card">
+          <div className={`ai-chat-panel card ${phase === 'emergency' ? 'ai-chat-emergency' : ''}`}>
             <header className="ai-chat-header">
               <div>
                 <strong>AI Physician</strong>
-                <p className="muted">Virtual care guide — not a diagnosis</p>
+                <p className="muted">{progressLabel}</p>
               </div>
               <div className="ai-chat-header-actions">
                 <button type="button" className="btn secondary btn-sm" onClick={resetChat}>
@@ -273,35 +341,50 @@ export function AiPhysicianEntry({ placeholder }: Props) {
                   {m.content}
                 </div>
               ))}
-              {suggestions ? <SuggestionCards suggestions={suggestions} /> : null}
+              {quickReplies.length && !busy ? (
+                <div className="ai-quick-replies" role="group" aria-label="Quick replies">
+                  {quickReplies.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      className="ai-chip"
+                      disabled={busy || !sessionId}
+                      onClick={() => void sendMessage(chip)}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {suggestions ? (
+                <SuggestionCards suggestions={suggestions} emergency={phase === 'emergency'} />
+              ) : null}
             </div>
 
             {error ? <div className="error ai-chat-error">{error}</div> : null}
 
-            {!suggestions ? (
-              <form className="ai-chat-compose" onSubmit={sendReply}>
-                <input
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                  placeholder="Type your answer…"
-                  disabled={busy || !sessionId}
-                />
-                <button
-                  className={`btn secondary ${listening ? 'ai-voice-on' : ''}`}
-                  type="button"
-                  onClick={toggleVoice}
-                >
-                  {listening ? '…' : 'Voice'}
-                </button>
-                <button className="btn" type="submit" disabled={busy || !reply.trim()}>
-                  Send
-                </button>
-              </form>
-            ) : (
-              <p className="muted ai-chat-foot">
-                Choose a test, physician booking, or nearby centre above to continue.
-              </p>
-            )}
+            <form className="ai-chat-compose" onSubmit={sendReply}>
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder={
+                  suggestions
+                    ? 'Ask why, request cheaper options, or refine…'
+                    : 'Type your answer…'
+                }
+                disabled={busy || !sessionId}
+              />
+              <button
+                className={`btn secondary ${listening ? 'ai-voice-on' : ''}`}
+                type="button"
+                onClick={toggleVoice}
+              >
+                {listening ? '…' : 'Voice'}
+              </button>
+              <button className="btn" type="submit" disabled={busy || !reply.trim()}>
+                Send
+              </button>
+            </form>
           </div>
         </div>
       ) : null}

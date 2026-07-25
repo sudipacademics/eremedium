@@ -15,7 +15,14 @@
     "column_break_1",
     "customer",
     "linked_user",
-    "status"
+    "status",
+    "section_referral",
+    "referral_code",
+    "referred_by",
+    "wallet_balance",
+    "profile_image",
+    "referral_bonus_paid",
+    "signup_referral_credited"
   ],
   "fields": [
     {
@@ -81,6 +88,51 @@
       "in_list_view": 1,
       "label": "Status",
       "options": "Active\nInactive"
+    },
+    {
+      "fieldname": "section_referral",
+      "fieldtype": "Section Break",
+      "label": "Refer & Earn"
+    },
+    {
+      "fieldname": "referral_code",
+      "fieldtype": "Data",
+      "label": "Referral Code",
+      "read_only": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "referred_by",
+      "fieldtype": "Link",
+      "label": "Referred By",
+      "options": "Health Patient",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "wallet_balance",
+      "fieldtype": "Currency",
+      "label": "Wallet Balance",
+      "read_only": 1
+    },
+    {
+      "fieldname": "profile_image",
+      "fieldtype": "Attach Image",
+      "label": "Profile Image"
+    },
+    {
+      "default": "0",
+      "fieldname": "referral_bonus_paid",
+      "fieldtype": "Check",
+      "label": "First-Order Referral Bonus Paid",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "signup_referral_credited",
+      "fieldtype": "Check",
+      "label": "Signup Referral Credited",
+      "read_only": 1
     }
   ],
   "index_web_pages_for_search": 1,

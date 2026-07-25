@@ -31,6 +31,8 @@
     "enable_patient_notifications",
     "notification_channel",
     "sms_sender_id",
+    "sms_msg91_template_id",
+    "sms_dlt_template_id",
     "whatsapp_api_key",
     "whatsapp_source_number",
     "section_break_email",
@@ -61,7 +63,20 @@
     "exotel_webhook_secret",
     "exotel_agent_connect_number",
     "telephony_public_base_url",
-    "telephony_openai_api_key"
+    "telephony_openai_api_key",
+    "openai_chat_model",
+    "section_hiring_ads",
+    "hiring_ads_sync_enabled",
+    "meta_ad_account_id",
+    "meta_access_token",
+    "hiring_ads_webhook_secret",
+    "column_break_hiring_ads",
+    "google_ads_customer_id",
+    "google_ads_developer_token",
+    "google_ads_refresh_token",
+    "google_ads_client_id",
+    "google_ads_client_secret",
+    "hire_value_for_roi"
   ],
   "fields": [
     {
@@ -212,6 +227,18 @@
       "fieldname": "sms_sender_id",
       "fieldtype": "Data",
       "label": "SMS Sender ID"
+    },
+    {
+      "description": "MSG91 panel Template ID (hex), e.g. Remedium_OTP_Final. Preferred for OTP — uses Flow API with DLT already mapped in MSG91.",
+      "fieldname": "sms_msg91_template_id",
+      "fieldtype": "Data",
+      "label": "MSG91 Flow Template ID"
+    },
+    {
+      "description": "Numeric DLT Content Template ID from DLT portal export only (not the MSG91 hex id). Used by raw SendHTTP if Flow template is empty.",
+      "fieldname": "sms_dlt_template_id",
+      "fieldtype": "Data",
+      "label": "SMS DLT Template ID (numeric)"
     },
     {
       "fieldname": "whatsapp_api_key",
@@ -395,10 +422,84 @@
       "label": "Telephony Public Base URL"
     },
     {
-      "description": "OpenAI API key for conversational voice agent; rule-based fallback if empty",
+      "description": "OpenAI API key for conversational voice agent + AI Physician polish; rule-based fallback if empty or quota exhausted",
       "fieldname": "telephony_openai_api_key",
       "fieldtype": "Password",
       "label": "Telephony OpenAI API Key"
+    },
+    {
+      "default": "gpt-4o-mini",
+      "description": "Chat Completions model id (must be enabled on the OpenAI project). Default gpt-4o-mini.",
+      "fieldname": "openai_chat_model",
+      "fieldtype": "Data",
+      "label": "OpenAI Chat Model"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_hiring_ads",
+      "fieldtype": "Section Break",
+      "label": "Hiring Ad Analytics"
+    },
+    {
+      "default": "0",
+      "description": "When enabled, daily job pulls Meta/Google campaign metrics into HEC Hiring Campaign",
+      "fieldname": "hiring_ads_sync_enabled",
+      "fieldtype": "Check",
+      "label": "Enable Hiring Ads Sync"
+    },
+    {
+      "description": "Meta ad account id without act_ prefix (e.g. 1234567890)",
+      "fieldname": "meta_ad_account_id",
+      "fieldtype": "Data",
+      "label": "Meta Ad Account ID"
+    },
+    {
+      "fieldname": "meta_access_token",
+      "fieldtype": "Password",
+      "label": "Meta Access Token"
+    },
+    {
+      "description": "Shared secret for lead ingest webhook (header X-Hiring-Ads-Secret)",
+      "fieldname": "hiring_ads_webhook_secret",
+      "fieldtype": "Password",
+      "label": "Hiring Ads Webhook Secret"
+    },
+    {
+      "fieldname": "column_break_hiring_ads",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Google Ads customer id without dashes",
+      "fieldname": "google_ads_customer_id",
+      "fieldtype": "Data",
+      "label": "Google Ads Customer ID"
+    },
+    {
+      "fieldname": "google_ads_developer_token",
+      "fieldtype": "Password",
+      "label": "Google Ads Developer Token"
+    },
+    {
+      "fieldname": "google_ads_refresh_token",
+      "fieldtype": "Password",
+      "label": "Google Ads Refresh Token"
+    },
+    {
+      "fieldname": "google_ads_client_id",
+      "fieldtype": "Data",
+      "label": "Google Ads OAuth Client ID"
+    },
+    {
+      "fieldname": "google_ads_client_secret",
+      "fieldtype": "Password",
+      "label": "Google Ads OAuth Client Secret"
+    },
+    {
+      "default": "50000",
+      "description": "Assumed hire value (INR) used for ROI = (hired * value) / spend",
+      "fieldname": "hire_value_for_roi",
+      "fieldtype": "Currency",
+      "label": "Hire Value for ROI"
     }
   ],
   "issingle": 1,

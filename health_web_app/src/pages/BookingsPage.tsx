@@ -37,24 +37,26 @@ export function BookingsPage() {
 
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <h1>My orders & bookings</h1>
-          <p className="muted">Lab TRFs, pharmacy orders, and doctor appointments</p>
+      <section className="page-intro">
+        <div className="section-head">
+          <div>
+            <h1>My orders</h1>
+            <p className="section-sub">Lab TRFs, doctor appointments, and Rx quote requests — refresh for live status.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link className="btn secondary" to="/journey">
+              Care journey
+            </Link>
+            <button className="btn secondary btn-sm" type="button" onClick={() => void load()} disabled={loading}>
+              Refresh
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link className="btn secondary" to="/journey">
-            Care journey
-          </Link>
-          <button className="btn secondary btn-sm" type="button" onClick={() => void load()} disabled={loading}>
-            Refresh
-          </button>
-        </div>
-      </div>
+      </section>
 
       {error && <div className="error">{error}</div>}
 
-      <section className="card card-wide">
+      <section className="card card-wide orders-section">
         <h2>Doctor appointments</h2>
         {!loading && appointments.length === 0 && <p className="muted">No appointments yet.</p>}
         {appointments.map((a) => (

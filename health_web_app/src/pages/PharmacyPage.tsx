@@ -74,7 +74,7 @@ export function PharmacyPage() {
   return (
     <>
       <section className="hero hero-compact">
-        <h1>Chronic medicine packs</h1>
+        <h1>Chronic medicine subscription</h1>
         <p className="hero-lead">
           Heavy discounts on full monthly medicine packs at wholesale rates for chronic care.
         </p>
@@ -195,4 +195,4 @@ export function PharmacyPage() {
     </>
   );
 }
-
+

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
@@ -11,9 +11,16 @@ export function SignupPage() {
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = (params.get('ref') || params.get('referral_code') || '').trim().toUpperCase();
+    if (ref) setReferralCode(ref);
+  }, []);
 
   if (isAuthenticated && user) {
     return <Navigate to="/account" replace />;
@@ -36,6 +43,7 @@ export function SignupPage() {
         password,
         full_name: fullName,
         ...(mobile ? { mobile } : {}),
+        ...(referralCode.trim() ? { referral_code: referralCode.trim().toUpperCase() } : {}),
       });
       setSuccess(res.message || 'Check your email to verify your account before signing in.');
     } catch (err) {
@@ -75,6 +83,15 @@ export function SignupPage() {
             autoComplete="tel"
           />
         </label>
+        <label>
+          Referral code (optional)
+          <input
+            value={referralCode}
+            onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+            placeholder="e.g. REMABC123"
+            autoComplete="off"
+          />
+        </label>
         <PasswordField
           label="Password"
           name="password"
@@ -106,4 +123,4 @@ export function SignupPage() {
     </>
   );
 }
-
+

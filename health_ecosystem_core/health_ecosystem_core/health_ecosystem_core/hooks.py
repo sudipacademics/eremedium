@@ -36,6 +36,9 @@ scheduler_events = {
     "hourly": [
         "health_ecosystem_core.health_ecosystem_core.clinical_phase27.run_hourly_reminders",
     ],
+    "daily": [
+        "health_ecosystem_core.health_ecosystem_core.clinical_phase73f_ad_sync.run_daily_hiring_ads_sync",
+    ],
 }
 
 fixtures = [

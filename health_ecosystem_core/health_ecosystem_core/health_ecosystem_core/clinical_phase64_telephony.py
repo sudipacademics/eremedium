@@ -149,15 +149,9 @@ def _webhook_secret():
 
 
 def _openai_key():
-	s = _settings()
-	if not s:
-		return ""
-	# Password field — must use get_password; getattr returns encrypted/masked junk.
-	try:
-		key = s.get_password("telephony_openai_api_key", raise_exception=False)
-	except Exception:
-		key = None
-	return (key or "").strip()
+	from health_ecosystem_core.health_ecosystem_core.clinical_openai import get_openai_api_key
+
+	return get_openai_api_key()
 
 
 def _agent_number():
@@ -838,32 +832,15 @@ def _rule_based_ai_reply(user_text, call_sid, phone):
 
 def _openai_chat_turn(messages):
 	"""Call OpenAI Chat Completions with tools; return assistant message dict."""
-	import urllib.request
+	from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_chat_completion
 
-	key = _openai_key()
-	if not key:
-		return None
-	body = json.dumps(
-		{
-			"model": "gpt-4o-mini",
-			"messages": messages,
-			"tools": AI_TOOLS_SPEC,
-			"tool_choice": "auto",
-		}
-	).encode("utf-8")
-	req = urllib.request.Request(
-		"https://api.openai.com/v1/chat/completions",
-		data=body,
-		headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-		method="POST",
+	return openai_chat_completion(
+		messages,
+		tools=AI_TOOLS_SPEC,
+		tool_choice="auto",
+		timeout=45,
+		log_prefix="telephony",
 	)
-	try:
-		with urllib.request.urlopen(req, timeout=45) as resp:
-			data = json.loads(resp.read().decode("utf-8"))
-		return (data.get("choices") or [{}])[0].get("message")
-	except Exception:
-		frappe.log_error(title="telephony_openai", message=frappe.get_traceback())
-		return None
 
 
 def ai_conversation_turn(call_sid=None, user_text=None, phone=None):
@@ -911,9 +888,12 @@ def ai_conversation_turn(call_sid=None, user_text=None, phone=None):
 		_append_transcript(call_sid, user_text, msg["content"])
 		return {"reply": msg["content"], "tool_results": [], "provider": "openai"}
 	# Fallback rule-based
+	from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_runtime_status
+
 	out = _rule_based_ai_reply(user_text, call_sid, phone)
 	_append_transcript(call_sid, user_text, out.get("reply"))
 	out["provider"] = "rules"
+	out["openai_status"] = openai_runtime_status()
 	return out
 
 
@@ -949,6 +929,9 @@ def get_telephony_dashboard_data():
 		order_by="creation desc",
 		limit=50,
 	)
+	from health_ecosystem_core.health_ecosystem_core.clinical_openai import openai_runtime_status
+
+	openai_status = openai_runtime_status()
 	return {
 		"calls": calls,
 		"counts": {
@@ -961,6 +944,7 @@ def get_telephony_dashboard_data():
 		"telephony_enabled": _telephony_enabled(),
 		"agent_configured": bool(_agent_number()),
 		"openai_configured": bool(_openai_key()),
+		"openai_status": openai_status,
 	}
 
 

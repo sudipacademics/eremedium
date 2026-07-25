@@ -107,7 +107,7 @@ export function CircleLandingPage() {
           <h1>{data?.brand || 'Health Circle'}</h1>
           <p className="circle-tagline">
             {data?.tagline ||
-              'Save on labs, pharmacy & home collection — inspired by Apollo 24|7 Circle.'}
+              'Save on labs and home collection with Remedium Health Circle membership.'}
           </p>
           <ul className="circle-hero-list">
             {(data?.hero_points || []).map((p) => (

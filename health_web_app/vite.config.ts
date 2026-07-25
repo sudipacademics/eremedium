@@ -12,6 +12,41 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
+        workbox: {
+          clientsClaim: true,
+          skipWaiting: true,
+          cleanupOutdatedCaches: true,
+          navigateFallback: '/index.html',
+          globPatterns: ['**/*.{js,css,html,ico,svg,jpg,jpeg,png,webp,woff2}'],
+          runtimeCaching: [
+            {
+              // Never keep a stale shell that points at an old JS bundle.
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-navigations',
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              },
+            },
+          ],
+        },
         manifest: {
           name: 'Remedium Health',
           short_name: 'Remedium',
@@ -34,28 +69,6 @@ export default defineConfig(({ mode }) => {
               sizes: '512x512',
               type: 'image/svg+xml',
               purpose: 'maskable',
-            },
-          ],
-        },
-        workbox: {
-          navigateFallback: '/index.html',
-          globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'gstatic-fonts-cache',
-                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
             },
           ],
         },

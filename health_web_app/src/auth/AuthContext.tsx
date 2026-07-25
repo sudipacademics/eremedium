@@ -17,6 +17,8 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (usr: string, pwd: string) => Promise<SessionUser>;
   loginWithOtp: (mobile: string, otp: string) => Promise<SessionUser>;
+  /** Persist a session from an already-verified API response (OTP / OAuth). */
+  applySession: (stored: StoredSession) => SessionUser;
   logout: () => void;
   refreshSession: () => Promise<SessionUser | null>;
   completeOAuthLogin: (sid?: string, loginToken?: string) => Promise<SessionUser>;
@@ -25,11 +27,18 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function normalizeRoles(roles: unknown): string[] {
+  if (!Array.isArray(roles)) return [];
+  return roles
+    .map((r) => (typeof r === 'string' ? r : String((r as { role?: string })?.role || '')))
+    .filter(Boolean);
+}
+
 function toSessionUser(stored: StoredSession): SessionUser {
   return {
     user: stored.user,
     fullName: stored.fullName,
-    roles: stored.roles,
+    roles: normalizeRoles(stored.roles),
     franchisee: stored.franchisee ?? null,
   };
 }
@@ -94,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sid: data.sid,
       user: data.user,
       fullName: data.full_name,
-      roles: data.roles || [],
+      roles: normalizeRoles(data.roles),
       franchisee: data.franchisee ?? null,
     };
     saveSession(stored);
@@ -103,24 +112,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return sessionUser;
   }, []);
 
-  const loginWithOtp = useCallback(async (mobile: string, otp: string) => {
-    const res = await api.verifyOtpLogin(mobile, otp);
-    const data = res.data;
-    if (!data.sid) {
-      throw new Error('OTP verification succeeded but no session was returned');
-    }
-    const stored: StoredSession = {
-      sid: data.sid,
-      user: data.user,
-      fullName: data.full_name,
-      roles: data.roles || [],
-      franchisee: data.franchisee ?? null,
+  const applySession = useCallback((stored: StoredSession) => {
+    const next: StoredSession = {
+      ...stored,
+      roles: normalizeRoles(stored.roles),
     };
-    saveSession(stored);
-    const sessionUser = toSessionUser(stored);
+    saveSession(next);
+    const sessionUser = toSessionUser(next);
     setUser(sessionUser);
     return sessionUser;
   }, []);
+
+  const loginWithOtp = useCallback(
+    async (mobile: string, otp: string) => {
+      const res = await api.verifyOtpLogin(mobile, otp);
+      const data = res.data || ({} as SessionUser);
+      const sid = data.sid;
+      if (!sid) {
+        throw new Error('OTP verification succeeded but no session was returned');
+      }
+      return applySession({
+        sid,
+        user: data.user,
+        fullName: data.full_name || data.fullName || data.user,
+        roles: normalizeRoles(data.roles),
+        franchisee: data.franchisee ?? null,
+      });
+    },
+    [applySession],
+  );
 
   const logout = useCallback(() => {
     clearStoredSession();
@@ -128,25 +148,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const completeOAuthLogin = useCallback(async (sid?: string, loginToken?: string) => {
-    const res = await api.completeOAuthLogin(sid, loginToken);
-    const data = res.data;
-    const nextSid = data.sid || sid || loadSession()?.sid;
-    if (!nextSid) {
-      throw new Error('Google sign-in succeeded but no session was returned');
-    }
-    const stored: StoredSession = {
-      sid: nextSid,
-      user: data.user,
-      fullName: data.fullName || data.full_name || data.user,
-      roles: data.roles || [],
-      franchisee: data.franchisee ?? null,
-    };
-    saveSession(stored);
-    const sessionUser = toSessionUser(stored);
-    setUser(sessionUser);
-    return sessionUser;
-  }, []);
+  const completeOAuthLogin = useCallback(
+    async (sid?: string, loginToken?: string) => {
+      const res = await api.completeOAuthLogin(sid, loginToken);
+      const data = res.data;
+      const nextSid = data.sid || sid || loadSession()?.sid;
+      if (!nextSid) {
+        throw new Error('Google sign-in succeeded but no session was returned');
+      }
+      return applySession({
+        sid: nextSid,
+        user: data.user,
+        fullName: data.fullName || data.full_name || data.user,
+        roles: normalizeRoles(data.roles),
+        franchisee: data.franchisee ?? null,
+      });
+    },
+    [applySession],
+  );
 
   const defaultRoute = useMemo(
     () => getDefaultDashboardRoute(user?.roles ?? []),
@@ -160,12 +179,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(user),
       login,
       loginWithOtp,
+      applySession,
       logout,
       refreshSession,
       completeOAuthLogin,
       defaultRoute,
     }),
-    [user, loading, login, loginWithOtp, logout, refreshSession, completeOAuthLogin, defaultRoute],
+    [
+      user,
+      loading,
+      login,
+      loginWithOtp,
+      applySession,
+      logout,
+      refreshSession,
+      completeOAuthLogin,
+      defaultRoute,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

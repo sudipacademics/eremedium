@@ -14,6 +14,7 @@ PORTAL_SUBDOMAINS = (
     f"partners.{DOMAIN_ROOT}",
     f"collect.{DOMAIN_ROOT}",
     f"reach.{DOMAIN_ROOT}",
+    f"career.{DOMAIN_ROOT}",
     ERP_HOST,
     DOMAIN_ROOT,
 )

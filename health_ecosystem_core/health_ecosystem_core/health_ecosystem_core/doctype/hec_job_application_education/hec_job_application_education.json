@@ -1,0 +1,29 @@
+{
+  "actions": [],
+  "creation": "2026-07-24 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "qualification",
+    "university",
+    "specialization",
+    "year_of_passing",
+    "percentage_cgpa",
+    "additional_qualification"
+  ],
+  "fields": [
+    {"fieldname": "qualification", "fieldtype": "Data", "in_list_view": 1, "label": "Highest Qualification", "reqd": 1},
+    {"fieldname": "university", "fieldtype": "Data", "in_list_view": 1, "label": "University / Board"},
+    {"fieldname": "specialization", "fieldtype": "Data", "in_list_view": 1, "label": "Specialization"},
+    {"fieldname": "year_of_passing", "fieldtype": "Data", "in_list_view": 1, "label": "Year of Passing"},
+    {"fieldname": "percentage_cgpa", "fieldtype": "Data", "label": "Percentage / CGPA"},
+    {"fieldname": "additional_qualification", "fieldtype": "Data", "label": "Additional Qualification"}
+  ],
+  "istable": 1,
+  "modified": "2026-07-24 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Job Application Education",
+  "permissions": [],
+  "states": []
+}

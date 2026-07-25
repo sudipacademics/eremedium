@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, Franchisee, franchiseeLabel, itemRate } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { LocationField } from '../components/LocationField';
@@ -12,6 +12,8 @@ function toLocalDatetime(slot: string) {
 
 export function BookLabPage() {
   const { itemCode = '' } = useParams();
+  const [searchParams] = useSearchParams();
+  const hubFromQuery = (searchParams.get('hub') || '').trim();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [itemName, setItemName] = useState(itemCode);
@@ -43,14 +45,16 @@ export function BookLabPage() {
         setRate(itemRate(detail));
         const list = centreRes.data.franchisees || [];
         setCentres(list);
-        if (list[0]) setFranchiseeId(list[0].name);
+        const preferred = hubFromQuery && list.find((c) => c.name === hubFromQuery);
+        if (preferred) setFranchiseeId(preferred.name);
+        else if (list[0]) setFranchiseeId(list[0].name);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load booking details');
       }
     }
 
     void load();
-  }, [itemCode, isAuthenticated]);
+  }, [itemCode, isAuthenticated, hubFromQuery]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

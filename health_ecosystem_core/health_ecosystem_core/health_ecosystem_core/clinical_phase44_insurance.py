@@ -216,19 +216,26 @@ def submit_insurance_quote_request(
     notes=None,
     sid=None,
 ):
+    """Contact / quote lead — product is optional (advisor follows up)."""
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
 
     product_code = (_parse_request_value("product_code", product_code) or "").strip()
-    if not product_code or not frappe.db.exists("Health Insurance Product", product_code):
-        return _error(_("Select a valid insurance product"), 400)
-
     customer_name = (_parse_request_value("customer_name", customer_name) or "").strip()
     phone = (_parse_request_value("phone", phone) or "").strip()
     if not customer_name or not phone:
         return _error(_("Name and mobile are required"))
 
-    product = frappe.get_doc("Health Insurance Product", product_code)
+    product_name = None
+    insurer = None
+    product = None
+    if product_code:
+        if not frappe.db.exists("Health Insurance Product", product_code):
+            return _error(_("Select a valid insurance product"), 400)
+        product = frappe.get_doc("Health Insurance Product", product_code)
+        product_name = product.product_name
+        insurer = product.insurer
+
     doc = frappe.get_doc(
         {
             "doctype": "Insurance Quote Request",
@@ -236,8 +243,8 @@ def submit_insurance_quote_request(
             "customer_name": customer_name,
             "phone": phone,
             "email": email or frappe.session.user,
-            "product": product.name,
-            "insurer": product.insurer,
+            "product": product.name if product else None,
+            "insurer": insurer,
             "sum_insured": flt(sum_insured),
             "notes": notes,
             "status": "New",
@@ -246,7 +253,11 @@ def submit_insurance_quote_request(
     doc.insert(ignore_permissions=True)
     frappe.db.commit()
     return _success(
-        {"request_id": doc.name, "insurer": product.insurer, "product_name": product.product_name},
+        {
+            "request_id": doc.name,
+            "insurer": insurer,
+            "product_name": product_name,
+        },
         message=_("Quote request submitted — our insurance advisor will contact you within 24 hours"),
     )
 

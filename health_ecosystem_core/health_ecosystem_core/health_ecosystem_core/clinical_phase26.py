@@ -62,8 +62,8 @@ def _discount_percent(entitlements, context):
     return flt(entitlements.get("lab_discount_percent"))
 
 
-def apply_checkout_pricing(user, subtotal, context="lab", promo_code=None):
-    """Membership discount first, then coupon on the reduced amount."""
+def apply_checkout_pricing(user, subtotal, context="lab", promo_code=None, use_wallet=False):
+    """Membership discount first, then coupon on the reduced amount, then wallet."""
     subtotal = flt(subtotal)
     if subtotal <= 0:
         frappe.throw(_("Order total must be greater than zero"))
@@ -90,7 +90,7 @@ def apply_checkout_pricing(user, subtotal, context="lab", promo_code=None):
             promo_code, after_membership, context
         )
 
-    return {
+    pricing = {
         "subtotal": subtotal,
         "membership_active": bool(entitlements.get("active")),
         "membership_plan_code": entitlements.get("plan_code") or "",
@@ -105,10 +105,21 @@ def apply_checkout_pricing(user, subtotal, context="lab", promo_code=None):
         "free_home_collection": bool(entitlements.get("free_home_collection")),
         "entitlements": entitlements,
     }
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+            apply_wallet_to_pricing,
+        )
+
+        pricing = apply_wallet_to_pricing(user, pricing, use_wallet=use_wallet)
+    except Exception:
+        frappe.log_error(title="apply_wallet_to_pricing", message=frappe.get_traceback())
+        pricing.setdefault("wallet_balance", 0)
+        pricing.setdefault("wallet_credit", 0)
+    return pricing
 
 
-def preview_checkout(user, subtotal, context="lab", promo_code=None):
-    return apply_checkout_pricing(user, subtotal, context, promo_code)
+def preview_checkout(user, subtotal, context="lab", promo_code=None, use_wallet=False):
+    return apply_checkout_pricing(user, subtotal, context, promo_code, use_wallet=use_wallet)
 
 
 def persist_membership_on_doc(doc_data, pricing, meta_doctype):

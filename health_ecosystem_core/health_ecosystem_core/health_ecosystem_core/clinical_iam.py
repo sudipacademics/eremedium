@@ -196,7 +196,7 @@ def _ensure_role_perm(doctype, role, perm_map):
     doc.save(ignore_permissions=True)
 
 
-def link_user_to_health_patient(user, patient_name=None, phone=None):
+def link_user_to_health_patient(user, patient_name=None, phone=None, referral_code=None):
     from health_ecosystem_core.health_ecosystem_core.patient_bridge import ensure_patient
 
     patient_id = ensure_patient(
@@ -204,6 +204,17 @@ def link_user_to_health_patient(user, patient_name=None, phone=None):
         phone=phone or frappe.db.get_value("User", user, "mobile_no"),
         user=user,
     )
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+            attribute_referral,
+            ensure_patient_wallet_and_code,
+        )
+
+        ensure_patient_wallet_and_code(patient_id)
+        if referral_code:
+            attribute_referral(patient_id, referral_code)
+    except Exception:
+        frappe.log_error(title="link_user_referral_wallet", message=frappe.get_traceback())
     return patient_id
 
 

@@ -46,6 +46,10 @@ export const API_MODULES = {
   nabl112b: `${CORE}.clinical_phase61_nabl_112b`,
   nablQc: `${CORE}.clinical_phase62_nabl_112a_qc`,
   nablQms: `${CORE}.clinical_phase63_nabl_112a_qms`,
+  careers: `${CORE}.clinical_phase73b_careers`,
+  hiringMarketing: `${CORE}.clinical_phase73d_hiring_marketing`,
+  hiringPipeline: `${CORE}.clinical_phase73e_pipeline`,
+  hiringAdsSync: `${CORE}.clinical_phase73f_ad_sync`,
 } as const;
 
 export type ApiModule = keyof typeof API_MODULES;

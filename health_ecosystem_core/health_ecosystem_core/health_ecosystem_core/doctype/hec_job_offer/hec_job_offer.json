@@ -1,0 +1,41 @@
+{
+  "actions": [],
+  "autoname": "format:HOFFER-{YYYY}-{#####}",
+  "creation": "2026-07-24 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "job_applicant",
+    "designation",
+    "department",
+    "column_break_1",
+    "offer_date",
+    "joining_date",
+    "status",
+    "salary_offered",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "job_applicant", "fieldtype": "Link", "in_list_view": 1, "label": "Job Applicant", "options": "Job Applicant", "reqd": 1},
+    {"fieldname": "designation", "fieldtype": "Data", "in_list_view": 1, "label": "Designation"},
+    {"fieldname": "department", "fieldtype": "Data", "label": "Department"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "offer_date", "fieldtype": "Date", "in_list_view": 1, "label": "Offer Date"},
+    {"fieldname": "joining_date", "fieldtype": "Date", "label": "Joining Date"},
+    {"default": "Draft", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Draft\nSent\nAccepted\nDeclined\nWithdrawn"},
+    {"fieldname": "salary_offered", "fieldtype": "Currency", "label": "Salary Offered"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-24 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Job Offer",
+  "naming_rule": "Expression",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "HR Manager", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

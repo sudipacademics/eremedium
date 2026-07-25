@@ -3,20 +3,32 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { getDefaultDashboardRoute } from '../auth/roles';
+import { saveSession } from '../auth/session';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { PasswordField } from '../components/PasswordField';
-import { isPatientPortalHost, isStaffPortalHost } from '../config/portalHosts';
+import { isCareersPortalHost, isPatientPortalHost, isStaffPortalHost } from '../config/portalHosts';
 
 type LoginMode = 'password' | 'otp';
+
+function normalizeRoles(roles: unknown): string[] {
+  if (!Array.isArray(roles)) return [];
+  return roles
+    .map((r) => (typeof r === 'string' ? r : String((r as { role?: string })?.role || '')))
+    .filter(Boolean);
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithOtp, isAuthenticated, user } = useAuth();
+  const auth = useAuth();
+  const { login, isAuthenticated, user } = auth;
   const patientHost = isPatientPortalHost();
   const staffHost = isStaffPortalHost();
-  const [mode, setMode] = useState<LoginMode>(staffHost ? 'password' : 'otp');
-  const [usr, setUsr] = useState(staffHost ? '' : 'patient_demo@health.local');
+  const careersHost = isCareersPortalHost();
+  // Careers: applicants use OTP by default; HR uses email/password.
+  const passwordFirst = staffHost;
+  const [mode, setMode] = useState<LoginMode>(passwordFirst ? 'password' : 'otp');
+  const [usr, setUsr] = useState(passwordFirst ? '' : careersHost ? '' : 'patient_demo@health.local');
   const [pwd, setPwd] = useState('');
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState('');
@@ -37,7 +49,7 @@ export function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.sendOtp(mobile);
+      const res = await api.sendOtp(mobile.trim());
       setOtpSent(true);
       setOtpHint(res.data.hint || (res.data.test_mode ? 'Test mode: OTP is 123456' : null));
     } catch (err) {
@@ -52,11 +64,35 @@ export function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const sessionUser = await loginWithOtp(mobile, otp);
-      const target = from || getDefaultDashboardRoute(sessionUser.roles);
-      navigate(target, { replace: true });
+      // Call API directly — do not depend on loginWithOtp (stale PWA bundles omitted it).
+      const res = await api.verifyOtpLogin(mobile.trim(), otp.trim());
+      const data = res.data;
+      if (!data?.sid || !data?.user) {
+        throw new Error('OTP verification succeeded but no session was returned');
+      }
+      const roles = normalizeRoles(data.roles);
+      const stored = {
+        sid: data.sid,
+        user: data.user,
+        fullName: data.full_name || data.fullName || data.user,
+        roles,
+        franchisee: data.franchisee ?? null,
+      };
+      if (typeof auth.applySession === 'function') {
+        auth.applySession(stored);
+      } else {
+        saveSession(stored);
+      }
+      const target = from || getDefaultDashboardRoute(roles);
+      // Hard navigation avoids router/context races after OTP login.
+      window.location.assign(target);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OTP verification failed');
+      const raw = err instanceof Error ? err.message : 'OTP verification failed';
+      setError(
+        /is not a function/i.test(raw)
+          ? 'App update required — clear site data for e-remedium.in (or hard-refresh), then try OTP again.'
+          : raw,
+      );
     } finally {
       setLoading(false);
     }
@@ -78,20 +114,26 @@ export function LoginPage() {
   }
 
   return (
-    <>
+    <div className="auth-card">
       <h1>Sign in</h1>
-      {staffHost ? (
+      {careersHost ? (
+        <p className="muted">
+          Applicants: mobile OTP. HR staff: email and password.
+        </p>
+      ) : staffHost ? (
         <p className="muted">
           Staff portal — sign in with your ERPNext email and the password issued by your administrator.
         </p>
       ) : (
-        <p className="muted">Patients can use mobile OTP or Google. Staff can sign in with email and password.</p>
+        <p className="muted">
+          Patients: mobile OTP (MSG91) or Google. Staff: email and password.
+        </p>
       )}
 
-      {patientHost && (
+      {(patientHost || careersHost) && !staffHost && (
         <>
-          <GoogleSignInButton nextPath={from} />
-          <p className="auth-divider muted">or</p>
+          {patientHost ? <GoogleSignInButton nextPath={from} /> : null}
+          {patientHost ? <p className="auth-divider muted">or</p> : null}
 
           <div className="login-mode-toggle">
             <button
@@ -180,7 +222,6 @@ export function LoginPage() {
           Staff demo: <code>system_admin@health.local</code> / <code>AdminChangeMe@123</code>
         </p>
       )}
-    </>
+    </div>
   );
 }
-

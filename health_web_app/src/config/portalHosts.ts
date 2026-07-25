@@ -1,6 +1,6 @@
 /** Host-based portal routing for e-remedium.in subdomains. */
 
-export type PortalKind = 'patient' | 'b2b' | 'collect' | 'sales' | 'erp';
+export type PortalKind = 'patient' | 'b2b' | 'collect' | 'sales' | 'erp' | 'careers';
 
 const PATIENT_WWW = 'www.e-remedium.in';
 
@@ -10,6 +10,7 @@ const HOST_PORTAL: Record<string, PortalKind> = {
   'partners.e-remedium.in': 'b2b',
   'collect.e-remedium.in': 'collect',
   'reach.e-remedium.in': 'sales',
+  'career.e-remedium.in': 'careers',
   'erp.e-remedium.in': 'erp',
 };
 
@@ -31,6 +32,10 @@ export function isPatientPortalHost(hostname = currentHostname()) {
   return getPortalKind(hostname) === 'patient';
 }
 
+export function isCareersPortalHost(hostname = currentHostname()) {
+  return getPortalKind(hostname) === 'careers';
+}
+
 export function isStaffPortalHost(hostname = currentHostname()) {
   const kind = getPortalKind(hostname);
   return kind === 'b2b' || kind === 'collect' || kind === 'sales';
@@ -42,6 +47,14 @@ export function patientPortalBaseUrl() {
     return `${protocol}//${PATIENT_WWW}`;
   }
   return 'https://www.e-remedium.in';
+}
+
+export function careersPortalBaseUrl() {
+  if (typeof window !== 'undefined') {
+    const { protocol } = window.location;
+    return `${protocol}//career.e-remedium.in`;
+  }
+  return 'https://career.e-remedium.in';
 }
 
 export function erpDeskBaseUrl() {
@@ -61,6 +74,8 @@ export function portalHomePath(kind = getPortalKind()): string {
       return '/dashboard/phlebotomist';
     case 'sales':
       return '/sales';
+    case 'careers':
+      return '/careers';
     case 'erp':
       return '/app';
     default:
@@ -87,6 +102,15 @@ export function isPathAllowedOnPortal(pathname: string, kind = getPortalKind()):
   }
   if (kind === 'sales') {
     return pathname === '/' || pathname.startsWith('/sales');
+  }
+  if (kind === 'careers') {
+    return (
+      pathname === '/' ||
+      pathname.startsWith('/careers') ||
+      pathname.startsWith('/jobs') ||
+      pathname.startsWith('/hr') ||
+      pathname.startsWith('/my')
+    );
   }
   if (kind === 'erp') {
     return pathname === '/' || pathname.startsWith('/app');

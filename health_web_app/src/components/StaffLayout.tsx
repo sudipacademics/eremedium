@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, Navigate, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import {
   dashboardLabel,
@@ -23,6 +23,11 @@ export function StaffLayout() {
   const phlebo = isPhlebotomist(roles);
   const labTech = isLabTechnician(roles) && !phlebo;
   const showPatientBottomNav = isMobile && patientPortal && !phlebo && !labTech;
+
+  // Consumer patients use PublicLayout account/home — not the staff sidebar dashboard.
+  if (patientPortal && !phlebo && !labTech) {
+    return <Navigate to="/account/profile" replace />;
+  }
 
   const mobileNavItems = useMemo((): MobileNavItem[] => {
     const items: MobileNavItem[] = [];

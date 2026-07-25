@@ -1,0 +1,50 @@
+{
+  "actions": [],
+  "autoname": "format:HL-{YYYY}-{#####}",
+  "creation": "2026-07-24 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "lead_name",
+    "job_role",
+    "job_opening",
+    "source",
+    "campaign",
+    "column_break_1",
+    "status",
+    "lead_date",
+    "phone",
+    "email",
+    "external_lead_id",
+    "job_applicant",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "lead_name", "fieldtype": "Data", "in_list_view": 1, "label": "Name", "reqd": 1},
+    {"fieldname": "job_role", "fieldtype": "Data", "in_list_view": 1, "label": "Job Role"},
+    {"fieldname": "job_opening", "fieldtype": "Link", "label": "Job Opening", "options": "Job Opening"},
+    {"fieldname": "source", "fieldtype": "Select", "in_list_view": 1, "label": "Source", "options": "Facebook Ads\nInstagram Ads\nGoogle Ads\nLinkedIn Ads\nCareer Website\nOthers"},
+    {"fieldname": "campaign", "fieldtype": "Link", "label": "Campaign", "options": "HEC Hiring Campaign"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"default": "New", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "New\nContacted\nIn Progress\nConverted\nLost"},
+    {"fieldname": "lead_date", "fieldtype": "Date", "in_list_view": 1, "label": "Lead Date"},
+    {"fieldname": "phone", "fieldtype": "Data", "label": "Phone"},
+    {"fieldname": "email", "fieldtype": "Data", "label": "Email", "options": "Email"},
+    {"description": "Meta/Google lead form id for idempotent ingest", "fieldname": "external_lead_id", "fieldtype": "Data", "label": "External Lead ID"},
+    {"fieldname": "job_applicant", "fieldtype": "Link", "label": "Job Applicant", "options": "Job Applicant"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-07-24 12:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Hiring Lead",
+  "naming_rule": "Expression",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "HR Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "lead_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

@@ -239,6 +239,8 @@ export type AiPhysicianCenter = {
   address?: string;
   contact_phone?: string;
   territory_region?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   distance_km?: number | null;
   book_lab_path?: string;
   book_doctor_path?: string;
@@ -256,13 +258,27 @@ export type AiPhysicianSuggestions = {
 
 export type AiPhysicianTurn = {
   session_id: string;
-  phase: 'questions' | 'suggestions' | string;
+  phase: 'questions' | 'suggestions' | 'emergency' | 'refine' | string;
   message: string;
   question?: string | null;
   question_index?: number;
   total_questions?: number;
+  turn_count?: number;
+  max_turns?: number;
   suggestions?: AiPhysicianSuggestions | null;
+  quick_replies?: string[];
   disclaimer?: string;
+  journey_mode?: 'openai' | 'rules' | string;
+  openai_enabled?: boolean;
+  openai_polished?: boolean;
+  openai_status?: {
+    configured?: boolean;
+    ready?: boolean;
+    model?: string;
+    last_error_code?: string | null;
+    last_error_message?: string | null;
+    using_fallback?: boolean;
+  };
 };
 
 export type B2bPortalPayload = {
@@ -472,6 +488,8 @@ export type CheckoutPricing = {
   discount_amount: number;
   final_total: number;
   free_home_collection?: boolean;
+  wallet_balance?: number;
+  wallet_credit?: number;
 };
 
 export type CircleLandingPayload = {
@@ -674,6 +692,14 @@ export type TelephonyDashboard = {
   telephony_enabled?: boolean;
   agent_configured?: boolean;
   openai_configured?: boolean;
+  openai_status?: {
+    configured?: boolean;
+    ready?: boolean;
+    model?: string;
+    last_error_code?: string | null;
+    last_error_message?: string | null;
+    using_fallback?: boolean;
+  };
 };
 
 export type LabAboutSection = {
@@ -704,6 +730,11 @@ export type CatalogItem = {
   mrp?: number;
   discount_percent?: number;
   coupon_label?: string | null;
+  member_tag?: string | null;
+  price_basis?: 'foco' | 'ten_percent' | 'none' | string;
+  foco_rate?: number | null;
+  wallet_earn_percent?: number;
+  wallet_earn_amount?: number;
   image?: string | null;
   item_group?: string;
   sample_type?: string;
@@ -726,8 +757,15 @@ export type LabPanel = {
   panel_name: string;
   description?: string;
   rate: number;
+  mrp?: number | null;
+  discount_percent?: number;
+  price_basis?: string;
+  wallet_earn_percent?: number;
+  wallet_earn_amount?: number;
+  member_tag?: string | null;
+  coupon_label?: string | null;
   test_count?: number;
-  tests: Array<{ item_code: string; item_name: string; rate: number }>;
+  tests: Array<{ item_code: string; item_name: string; rate: number; mrp?: number | null }>;
 };
 
 export type HomeQuickAction = {
@@ -904,6 +942,127 @@ export type AppSettings = {
   portal_base_url?: string;
   oauth_enabled?: boolean;
   oauth_providers?: string[];
+};
+
+export type JobOpeningSummary = {
+  name: string;
+  job_title: string;
+  department?: string | null;
+  location?: string;
+  employment_type?: string;
+  description?: string;
+  status?: string;
+  posted_on?: string | null;
+};
+
+export type JobApplicationSummary = {
+  name: string;
+  applicant_name?: string;
+  email_id?: string;
+  phone_number?: string;
+  job_opening?: string;
+  status?: string;
+  pipeline_stage?: string;
+  source?: string;
+  applied_on?: string | null;
+};
+
+export type JobApplicationDetail = JobApplicationSummary & {
+  opening?: JobOpeningSummary | null;
+  documents?: {
+    resume?: string | null;
+    photo?: string | null;
+    aadhaar?: string | null;
+    other?: string | null;
+  };
+  application?: Record<string, unknown>;
+  stages?: string[];
+};
+
+export type HiringCampaignRow = {
+  name: string;
+  campaign_name: string;
+  platform?: string;
+  job_role_label?: string;
+  impressions?: number;
+  clicks?: number;
+  leads?: number;
+  applications?: number;
+  hired?: number;
+  spend?: number;
+  cpl?: number;
+  roi?: number;
+  status?: string;
+};
+
+export type HiringLeadRow = {
+  name: string;
+  lead_name: string;
+  job_role?: string;
+  source?: string;
+  lead_date?: string;
+  status?: string;
+  campaign?: string;
+};
+
+export type HiringMarketingDashboard = {
+  from_date: string;
+  to_date: string;
+  kpis: Array<{ key: string; label: string; value: number; delta_pct?: number; suffix?: string }>;
+  leads_over_time: Array<{ date: string; leads: number }>;
+  leads_by_source: Array<{ source: string; count: number; pct: number }>;
+  leads_by_role: Array<{ role: string; count: number; pct: number }>;
+  funnel: Array<{ stage: string; count: number; conversion_from_prev?: number }>;
+  campaigns: HiringCampaignRow[];
+  recent_leads: HiringLeadRow[];
+  recent_hires: Array<{
+    name: string;
+    applicant_name?: string;
+    job_role?: string;
+    hired_on?: string | null;
+    stage?: string;
+  }>;
+  overall_hire_rate?: number;
+};
+
+export type ApplicationPipelineBundle = {
+  application: string;
+  interviews: Array<{
+    name: string;
+    interview_type?: string;
+    scheduled_on?: string;
+    duration_minutes?: number;
+    status?: string;
+    interviewer?: string;
+    meeting_link?: string;
+    location?: string;
+    notes?: string;
+  }>;
+  notes: Array<{
+    name: string;
+    note_type?: string;
+    content?: string;
+    created_by_user?: string;
+    created_on?: string | null;
+  }>;
+  offers: Array<{
+    name: string;
+    designation?: string;
+    department?: string;
+    offer_date?: string;
+    joining_date?: string;
+    status?: string;
+    salary_offered?: number;
+    notes?: string;
+  }>;
+  onboarding_todos: Array<{
+    name: string;
+    description?: string;
+    status?: string;
+    date?: string;
+    allocated_to?: string;
+  }>;
+  stages?: string[];
 };
 
 export type OAuthProvider = {
@@ -1469,13 +1628,27 @@ export const api = {
       module: 'otp',
     }),
 
-  verifyOtpLogin: (mobile: string, otp: string) =>
-    request<SessionUser>('verify_otp_and_login', {
+  verifyOtpLogin: async (mobile: string, otp: string) => {
+    const envelope = await request<SessionUser>('verify_otp_and_login', {
       method: 'POST',
       body: { mobile, otp },
       auth: false,
+      cookies: true,
       module: 'otp',
-    }),
+    });
+    const data = envelope.data;
+    if (data?.sid) {
+      saveSession({
+        sid: data.sid,
+        user: data.user,
+        fullName: data.full_name || data.fullName || data.user,
+        roles: Array.isArray(data.roles) ? data.roles : [],
+        franchisee: data.franchisee ?? null,
+        provider: data.provider ?? null,
+      });
+    }
+    return envelope;
+  },
 
   getOAuthProviders: (redirectTo?: string) =>
     request<{ providers: OAuthProvider[]; callback_url?: string; google_redirect_uri?: string }>(
@@ -2243,21 +2416,21 @@ export const api = {
     ),
 
   submitInsuranceQuoteRequest: (body: {
-    product_code: string;
+    product_code?: string;
     customer_name: string;
     phone: string;
     email?: string;
     sum_insured?: number;
     notes?: string;
   }) =>
-    request<{ request_id: string; insurer: string; product_name: string }>(
+    request<{ request_id: string; insurer?: string; product_name?: string }>(
       'submit_insurance_quote_request',
       {
         method: 'POST',
         body: {
-          product_code: body.product_code,
           customer_name: body.customer_name,
           phone: body.phone,
+          ...(body.product_code ? { product_code: body.product_code } : {}),
           ...(body.email ? { email: body.email } : {}),
           ...(body.sum_insured != null ? { sum_insured: body.sum_insured } : {}),
           ...(body.notes ? { notes: body.notes } : {}),
@@ -2267,16 +2440,290 @@ export const api = {
       },
     ),
 
+  listPublishedJobOpenings: (body?: { search?: string; location?: string; limit?: number }) =>
+    request<{ openings: JobOpeningSummary[]; count: number }>('list_published_job_openings', {
+      method: 'POST',
+      body: {
+        ...(body?.search ? { search: body.search } : {}),
+        ...(body?.location ? { location: body.location } : {}),
+        ...(body?.limit != null ? { limit: body.limit } : {}),
+      },
+      auth: false,
+      module: 'careers',
+    }),
+
+  getPublishedJobOpening: (jobOpening: string) =>
+    request<JobOpeningSummary>('get_published_job_opening', {
+      method: 'POST',
+      body: { job_opening: jobOpening },
+      auth: false,
+      module: 'careers',
+    }),
+
+  submitJobApplication: (body: {
+    job_opening: string;
+    full_name: string;
+    email: string;
+    mobile: string;
+    application_json: string;
+    declaration_accepted: number;
+    resume: string;
+    photo?: string;
+    aadhaar?: string;
+    other_document?: string;
+  }) =>
+    request<{ application_id: string; job_opening: string; pipeline_stage: string }>(
+      'submit_job_application',
+      {
+        method: 'POST',
+        body,
+        auth: false,
+        module: 'careers',
+      },
+    ),
+
+  listJobApplications: (body?: { job_opening?: string; stage?: string; source?: string; limit?: number }) =>
+    request<{ applications: JobApplicationSummary[]; stages: string[] }>('list_job_applications', {
+      method: 'POST',
+      body: {
+        ...(body?.job_opening ? { job_opening: body.job_opening } : {}),
+        ...(body?.stage ? { stage: body.stage } : {}),
+        ...(body?.source ? { source: body.source } : {}),
+        ...(body?.limit != null ? { limit: body.limit } : {}),
+      },
+      auth: true,
+      module: 'careers',
+    }),
+
+  getJobApplication: (application: string) =>
+    request<JobApplicationDetail>('get_job_application', {
+      method: 'POST',
+      body: { application },
+      auth: true,
+      module: 'careers',
+    }),
+
+  updateApplicationStage: (body: { application: string; stage?: string; reject?: number }) =>
+    request<{ application_id: string; pipeline_stage: string; status?: string }>(
+      'update_application_stage',
+      {
+        method: 'POST',
+        body: {
+          application: body.application,
+          ...(body.stage ? { stage: body.stage } : {}),
+          ...(body.reject != null ? { reject: body.reject } : {}),
+        },
+        auth: true,
+        module: 'careers',
+      },
+    ),
+
+  getMyCareerHub: () =>
+    request<{
+      profile: Record<string, unknown>;
+      applications: JobApplicationSummary[];
+      claimed: number;
+      user: string;
+    }>('get_my_career_hub', { method: 'POST', auth: true, module: 'careers' }),
+
+  updateMyCareerProfile: (profile: Record<string, unknown>) =>
+    request<{ profile: Record<string, unknown> }>('update_my_career_profile', {
+      method: 'POST',
+      body: { profile_json: JSON.stringify(profile) },
+      auth: true,
+      module: 'careers',
+    }),
+
+  listMyApplications: (limit = 50) =>
+    request<{ applications: JobApplicationSummary[] }>('list_my_applications', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'careers',
+    }),
+
+  getMyApplication: (application: string) =>
+    request<JobApplicationDetail>('get_my_application', {
+      method: 'POST',
+      body: { application },
+      auth: true,
+      module: 'careers',
+    }),
+
+  listMyCareerDocuments: () =>
+    request<{
+      documents: Array<{ application: string; job_opening?: string; label: string; url: string }>;
+    }>('list_my_career_documents', { method: 'POST', auth: true, module: 'careers' }),
+
+  claimMyApplications: () =>
+    request<{ claimed: number }>('claim_my_applications', {
+      method: 'POST',
+      auth: true,
+      module: 'careers',
+    }),
+
+  getHiringMarketingDashboard: (body?: { from_date?: string; to_date?: string }) =>
+    request<HiringMarketingDashboard>('get_hiring_marketing_dashboard', {
+      method: 'POST',
+      body: {
+        ...(body?.from_date ? { from_date: body.from_date } : {}),
+        ...(body?.to_date ? { to_date: body.to_date } : {}),
+      },
+      auth: true,
+      module: 'hiringMarketing',
+    }),
+
+  listHiringCampaigns: () =>
+    request<{ campaigns: HiringCampaignRow[] }>('list_hiring_campaigns', {
+      method: 'POST',
+      auth: true,
+      module: 'hiringMarketing',
+    }),
+
+  listHiringLeads: (limit = 50) =>
+    request<{ leads: HiringLeadRow[] }>('list_hiring_leads', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'hiringMarketing',
+    }),
+
+  getHiringAdsStatus: () =>
+    request<{
+      sync_enabled: boolean;
+      meta_configured: boolean;
+      google_configured: boolean;
+      campaigns_from_ads: number;
+      webhook: string;
+    }>('hiring_ads_status', {
+      method: 'POST',
+      auth: true,
+      module: 'hiringAdsSync',
+    }),
+
+  runHiringAdsSyncNow: () =>
+    request<Record<string, unknown>>('run_hiring_ads_sync_now', {
+      method: 'POST',
+      auth: true,
+      module: 'hiringAdsSync',
+    }),
+
+  importHiringCampaignsCsv: (csv_text: string) =>
+    request<{ campaigns: string[]; count: number }>('import_campaigns_csv', {
+      method: 'POST',
+      body: { csv_text },
+      auth: true,
+      module: 'hiringAdsSync',
+    }),
+
+  importHiringLeadsCsv: (csv_text: string) =>
+    request<{ count: number }>('import_leads_csv', {
+      method: 'POST',
+      body: { csv_text },
+      auth: true,
+      module: 'hiringAdsSync',
+    }),
+
+  getApplicationPipeline: (application: string) =>
+    request<ApplicationPipelineBundle>('get_application_pipeline', {
+      method: 'POST',
+      body: { application },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  scheduleInterview: (body: {
+    application: string;
+    scheduled_on: string;
+    interview_type?: string;
+    duration_minutes?: number;
+    meeting_link?: string;
+    location?: string;
+    notes?: string;
+  }) =>
+    request<{ interview_id: string; pipeline_stage?: string | null }>('schedule_interview', {
+      method: 'POST',
+      body: {
+        application: body.application,
+        scheduled_on: body.scheduled_on,
+        ...(body.interview_type ? { interview_type: body.interview_type } : {}),
+        ...(body.duration_minutes != null ? { duration_minutes: body.duration_minutes } : {}),
+        ...(body.meeting_link ? { meeting_link: body.meeting_link } : {}),
+        ...(body.location ? { location: body.location } : {}),
+        ...(body.notes ? { notes: body.notes } : {}),
+        move_to_interview: 1,
+      },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  updateInterviewStatus: (interview: string, status: string) =>
+    request<{ interview_id: string; status: string }>('update_interview_status', {
+      method: 'POST',
+      body: { interview, status },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  addApplicationNote: (application: string, content: string) =>
+    request<{ note_id: string }>('add_application_note', {
+      method: 'POST',
+      body: { application, content, note_type: 'Note' },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  createJobOffer: (body: {
+    application: string;
+    designation?: string;
+    department?: string;
+    joining_date?: string;
+    salary_offered?: number;
+    notes?: string;
+    send?: number;
+  }) =>
+    request<{ offer_id: string; status: string; pipeline_stage: string }>('create_job_offer', {
+      method: 'POST',
+      body: {
+        application: body.application,
+        ...(body.designation ? { designation: body.designation } : {}),
+        ...(body.department ? { department: body.department } : {}),
+        ...(body.joining_date ? { joining_date: body.joining_date } : {}),
+        ...(body.salary_offered != null ? { salary_offered: body.salary_offered } : {}),
+        ...(body.notes ? { notes: body.notes } : {}),
+        send: body.send ?? 1,
+      },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  startApplicantOnboarding: (application: string, employee?: string) =>
+    request<{ pipeline_stage: string; todos: string[] }>('start_applicant_onboarding', {
+      method: 'POST',
+      body: {
+        application,
+        ...(employee ? { employee } : {}),
+      },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
   getCircleLanding: () =>
     request<CircleLandingPayload>('get_circle_landing', { method: 'POST', auth: true }),
 
-  previewCheckoutPrice: (subtotal: number, context: 'pharmacy' | 'lab' | 'consult', promoCode?: string) =>
+  previewCheckoutPrice: (
+    subtotal: number,
+    context: 'pharmacy' | 'lab' | 'consult',
+    promoCode?: string,
+    useWallet?: boolean,
+  ) =>
     request<CheckoutPricing>('preview_checkout_price', {
       method: 'POST',
       body: {
         subtotal,
         context,
         ...(promoCode ? { promo_code: promoCode } : {}),
+        ...(useWallet ? { use_wallet: 1 } : {}),
       },
       auth: true,
     }),
@@ -2556,12 +3003,68 @@ export const api = {
     password: string;
     full_name: string;
     mobile?: string;
+    referral_code?: string;
   }) =>
     request<{ email: string; verification_sent: boolean }>('register_patient', {
       method: 'POST',
       body,
       auth: false,
       module: 'email',
+    }),
+
+  getPatientProfile: () =>
+    request<Record<string, unknown>>('get_patient_profile', {
+      method: 'POST',
+      auth: true,
+    }),
+
+  getPatientWallet: (limit?: number) =>
+    request<Record<string, unknown>>('get_patient_wallet', {
+      method: 'POST',
+      body: limit ? { limit } : {},
+      auth: true,
+    }),
+
+  getMyReferral: () =>
+    request<{
+      linked?: boolean;
+      referral_code?: string;
+      wallet_balance?: number;
+      referred_count?: number;
+      share_text?: string;
+      share_url?: string;
+      signup_credit?: number;
+      first_order_bonus?: number;
+    }>('get_my_referral', {
+      method: 'POST',
+      auth: true,
+    }),
+
+  updatePatientProfile: (body: {
+    patient_name?: string;
+    mobile?: string;
+    email?: string;
+    dob?: string;
+    gender?: string;
+    profile_image?: string;
+    profile_image_filename?: string;
+    new_password?: string;
+  }) =>
+    request<Record<string, unknown>>('update_patient_profile', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  applyPatientWalletCredit: (body: {
+    reference_doctype: string;
+    reference_name: string;
+    amount: number;
+  }) =>
+    request<Record<string, unknown>>('apply_patient_wallet_credit', {
+      method: 'POST',
+      body,
+      auth: true,
     }),
 
   verifyEmail: (token: string) =>

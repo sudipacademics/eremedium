@@ -51,6 +51,7 @@ scheduler_events = {
     ],
     "daily": [
         "health_ecosystem_core.health_ecosystem_core.clinical_phase28_ops.run_daily_ops_emails",
+        "health_ecosystem_core.health_ecosystem_core.clinical_phase73f_ad_sync.run_daily_hiring_ads_sync",
     ],
     "weekly": [
         "health_ecosystem_core.health_ecosystem_core.clinical_phase28_ops.run_weekly_ops_emails",

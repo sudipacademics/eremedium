@@ -1,51 +1,66 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, InsuranceProduct } from '../api';
+import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 
+/** Illustrative daily costs for the promo hero (not a live quote). */
+const CIGARETTE_PER_DAY = 25;
+const INSURANCE_PER_DAY = 18;
+
 export function InsuranceLandingPage() {
-  const { isAuthenticated } = useAuth();
-  const [products, setProducts] = useState<InsuranceProduct[]>([]);
+  const { user, isAuthenticated } = useAuth();
+  const [agentNote, setAgentNote] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({
-    product_code: '',
     full_name: '',
     phone: '',
+    email: '',
     city: '',
-    sum_insured: '',
+    interest: 'Family health cover',
+    message: '',
   });
 
   useEffect(() => {
     api
       .getInsuranceLanding()
-      .then((res) => {
-        setProducts(res.data.products || []);
-        if (res.data.products?.[0]?.product_code) {
-          setForm((f) => ({ ...f, product_code: res.data.products[0].product_code }));
-        }
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load insurance products'))
-      .finally(() => setLoading(false));
+      .then((res) => setAgentNote(res.data.agent_note || ''))
+      .catch(() => {
+        /* landing copy is static; ignore API failures for hero */
+      });
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setForm((f) => ({
+      ...f,
+      full_name: f.full_name || user.fullName || '',
+      email: f.email || (user.user.includes('@') ? user.user : ''),
+    }));
+  }, [user]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!isAuthenticated) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
+      const notes = [
+        form.interest ? `Interest: ${form.interest}` : '',
+        form.city ? `City: ${form.city}` : '',
+        form.message ? form.message : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
       await api.submitInsuranceQuoteRequest({
-        product_code: form.product_code,
         customer_name: form.full_name,
         phone: form.phone,
-        ...(form.city ? { notes: `City: ${form.city}` } : {}),
-        ...(form.sum_insured ? { sum_insured: Number(form.sum_insured) } : {}),
+        ...(form.email ? { email: form.email } : {}),
+        ...(notes ? { notes } : {}),
       });
-      setSuccess('Quote request submitted. Our advisor will contact you shortly.');
+      setSuccess('Thanks — our insurance advisor will contact you within 24 hours.');
+      setForm((f) => ({ ...f, message: '' }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit request');
     } finally {
@@ -53,103 +68,149 @@ export function InsuranceLandingPage() {
     }
   }
 
+  const savings = CIGARETTE_PER_DAY - INSURANCE_PER_DAY;
+
   return (
-    <>
-      <section className="hero hero-compact">
-        <h1>Health insurance</h1>
-        <p>Compare GIC / LIC-style mediclaim plans and request a personalised quote.</p>
+    <div className="insurance-page">
+      <section className="insurance-hero">
+        <div className="insurance-hero-copy">
+          <p className="brand-kicker">Health insurance</p>
+          <h1>
+            Protect your family for less than the cost of a cigarette
+          </h1>
+          <p className="hero-lead">
+            A basic health cover can work out to about ₹{INSURANCE_PER_DAY}/day — roughly ₹{savings}{' '}
+            less than one cigarette (~₹{CIGARETTE_PER_DAY}). Skip the smoke. Keep the safety net.
+          </p>
+          <div className="insurance-compare">
+            <article className="insurance-compare-card is-smoke">
+              <span className="insurance-compare-label">1 cigarette</span>
+              <strong>≈ ₹{CIGARETTE_PER_DAY}</strong>
+              <span>per day habit</span>
+            </article>
+            <div className="insurance-compare-vs" aria-hidden="true">
+              vs
+            </div>
+            <article className="insurance-compare-card is-cover">
+              <span className="insurance-compare-label">Health cover</span>
+              <strong>≈ ₹{INSURANCE_PER_DAY}</strong>
+              <span>per day (illustrative)</span>
+            </article>
+          </div>
+          <p className="muted insurance-disclaimer">
+            Figures are indicative for awareness — not a premium quote. Final cost depends on age,
+            sum insured, and underwriting.
+          </p>
+          <a className="btn" href="#insurance-contact">
+            Contact us for a quote
+          </a>
+        </div>
       </section>
 
-      {loading ? <p className="muted">Loading plans…</p> : null}
-      {error ? <div className="error">{error}</div> : null}
-      {success ? <div className="success">{success}</div> : null}
+      {agentNote ? (
+        <p className="muted insurance-agent-note">{agentNote}</p>
+      ) : (
+        <p className="muted insurance-agent-note">
+          We help you explore GIC / LIC health products as a licensed agent. No online policy
+          checkout — an advisor will guide you.
+        </p>
+      )}
 
-      <div className="grid" style={{ gap: 16 }}>
-        {products.map((p) => (
-          <article key={p.product_code} className="card">
-            <h3>{p.product_name}</h3>
-            <p className="muted">
-              {p.insurer} · {p.category}
-            </p>
-            <p>
-              Cover ₹{(p.sum_insured_from || 0).toLocaleString()} – ₹
-              {(p.sum_insured_to || 0).toLocaleString()}
-            </p>
-            {p.premium_from ? <p className="muted">From ₹{p.premium_from.toLocaleString()}/yr</p> : null}
-            {p.highlights?.length ? (
-              <ul>
-                {p.highlights.map((h) => (
-                  <li key={h}>{h}</li>
-                ))}
-              </ul>
-            ) : null}
-            <button
-              className="btn secondary btn-sm"
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, product_code: p.product_code }))}
-            >
-              Select plan
-            </button>
-          </article>
-        ))}
-      </div>
+      <section id="insurance-contact" className="card card-wide insurance-contact-card">
+        <h2>Contact us</h2>
+        <p className="muted">
+          Tell us how to reach you. We will call back with options that fit your family — not a
+          shopping cart of policies.
+        </p>
 
-      <section className="card card-wide" style={{ marginTop: 24 }}>
-        <h2>Request a quote</h2>
+        {error ? <div className="error">{error}</div> : null}
+        {success ? <div className="success">{success}</div> : null}
+
         {!isAuthenticated ? (
           <p className="muted">
-            <Link to="/login">Sign in</Link> to submit an insurance quote request.
+            <Link to="/login" state={{ from: '/insurance' }}>
+              Sign in
+            </Link>{' '}
+            to send your details securely, or leave a message after login.
           </p>
-        ) : (
-          <form onSubmit={(e) => void onSubmit(e)} className="form-grid">
-            <label>
-              Plan
-              <select
-                value={form.product_code}
-                onChange={(e) => setForm({ ...form, product_code: e.target.value })}
-                required
-              >
-                {products.map((p) => (
-                  <option key={p.product_code} value={p.product_code}>
-                    {p.product_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Full name
-              <input
-                value={form.full_name}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                required
-              />
-            </label>
-            <label>
-              Phone
-              <input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                required
-              />
-            </label>
-            <label>
-              City
-              <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-            </label>
-            <label>
-              Desired sum insured
-              <input
-                type="number"
-                value={form.sum_insured}
-                onChange={(e) => setForm({ ...form, sum_insured: e.target.value })}
-              />
-            </label>
-            <button className="btn" type="submit" disabled={busy}>
-              {busy ? 'Submitting…' : 'Request quote'}
-            </button>
-          </form>
-        )}
+        ) : null}
+
+        <form
+          className="form insurance-contact-form"
+          onSubmit={(e) => void onSubmit(e)}
+        >
+          <label>
+            Full name *
+            <input
+              value={form.full_name}
+              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              required
+              autoComplete="name"
+            />
+          </label>
+          <label>
+            Mobile *
+            <input
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              required
+              inputMode="tel"
+              autoComplete="tel"
+            />
+          </label>
+          <label>
+            Email
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              autoComplete="email"
+            />
+          </label>
+          <label>
+            City
+            <input
+              value={form.city}
+              onChange={(e) => setForm({ ...form, city: e.target.value })}
+              autoComplete="address-level2"
+            />
+          </label>
+          <label>
+            I am interested in
+            <select
+              value={form.interest}
+              onChange={(e) => setForm({ ...form, interest: e.target.value })}
+            >
+              <option>Family health cover</option>
+              <option>Individual cover</option>
+              <option>Senior citizen plan</option>
+              <option>Critical illness</option>
+              <option>Top-up / super top-up</option>
+              <option>Not sure — advise me</option>
+            </select>
+          </label>
+          <label>
+            Message
+            <textarea
+              rows={4}
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              placeholder="Preferred call time, family size, or questions…"
+            />
+          </label>
+          <button className="btn" type="submit" disabled={busy || !isAuthenticated}>
+            {busy ? 'Sending…' : 'Send contact request'}
+          </button>
+          {!isAuthenticated ? (
+            <p className="muted" style={{ margin: 0 }}>
+              <Link to="/login" state={{ from: '/insurance' }}>
+                Sign in
+              </Link>{' '}
+              required to submit.
+            </p>
+          ) : null}
+        </form>
       </section>
-    </>
+    </div>
   );
 }
