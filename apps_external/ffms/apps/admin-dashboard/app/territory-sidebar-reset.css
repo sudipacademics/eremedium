@@ -1,0 +1,20 @@
+/* The territory detail card lives inside the workspace, not in the Admin navigation. */
+.territory-setup .territory-detail-panel {
+  position: static;
+  inset: auto;
+  width: auto;
+  min-width: 0;
+  padding: 20px;
+  display: block;
+  flex: none;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.territory-setup .territory-detail-panel .panel-head {
+  display: flex;
+}
+
+@media (max-width: 650px) {
+  .territory-setup .territory-detail-panel { padding: 17px; }
+}

@@ -1,0 +1,59 @@
+# RFMS / FFMS on the mother VPS (replaces franchisee-onboarding stub)
+#
+# Usage:
+#   cd /opt/health-ecosystem/docker
+#   docker compose -f docker-compose.yml -f docker-compose.ffms.yml up -d --build rfms
+#
+# Served today as paths on the live domain (www.e-remedium.in/franchise|/onboard|/ffms).
+# When the franchise/onboard/ffms A records exist, rebuild with empty *_BASE_PATH args
+# and switch the *_URL values to the subdomains.
+
+services:
+  rfms:
+    build:
+      context: ../apps_external/ffms
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_RFMS_API_URL: ${NEXT_PUBLIC_RFMS_API_URL:-https://www.e-remedium.in/rfms-api/v1}
+        NEXT_PUBLIC_RFMS_MARKETING_URL: ${NEXT_PUBLIC_RFMS_MARKETING_URL:-https://www.e-remedium.in/franchise}
+        NEXT_PUBLIC_RFMS_PORTAL_URL: ${NEXT_PUBLIC_RFMS_PORTAL_URL:-https://www.e-remedium.in/onboard}
+        NEXT_PUBLIC_RFMS_ADMIN_URL: ${NEXT_PUBLIC_RFMS_ADMIN_URL:-https://www.e-remedium.in/ffms}
+        MARKETING_BASE_PATH: ${MARKETING_BASE_PATH-/franchise}
+        PORTAL_BASE_PATH: ${PORTAL_BASE_PATH-/onboard}
+        ADMIN_BASE_PATH: ${ADMIN_BASE_PATH-/ffms}
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    image: hec-rfms:local
+    restart: unless-stopped
+    mem_limit: 1536m
+    networks:
+      - health_net
+    ports:
+      - "127.0.0.1:8090:8090"
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:3002:3002"
+    environment:
+      RFMS_API_PORT: "8090"
+      RFMS_MARKETING_PORT: "3000"
+      RFMS_PORTAL_PORT: "3001"
+      RFMS_ADMIN_PORT: "3002"
+      RFMS_PUBLIC_BASE_URL: ${RFMS_PUBLIC_BASE_URL:-https://www.e-remedium.in/onboard}
+      RFMS_PUBLIC_ORIGIN: ${RFMS_PUBLIC_ORIGIN:-https://www.e-remedium.in}
+      RFMS_MARKETING_BASE_URL: ${NEXT_PUBLIC_RFMS_MARKETING_URL:-https://www.e-remedium.in/franchise}
+      RFMS_PORTAL_BASE_URL: ${NEXT_PUBLIC_RFMS_PORTAL_URL:-https://www.e-remedium.in/onboard}
+      RFMS_ADMIN_BASE_URL: ${NEXT_PUBLIC_RFMS_ADMIN_URL:-https://www.e-remedium.in/ffms}
+      RFMS_ALLOWED_ORIGINS: ${RFMS_ALLOWED_ORIGINS:-https://www.e-remedium.in,https://franchise.e-remedium.in,https://onboard.e-remedium.in,https://ffms.e-remedium.in}
+      RFMS_LOCAL_DATA_FILE: /data/work/rfms-local-api-data.json
+      RFMS_UPLOADS_DIR: /data/uploads
+      RFMS_OTP_VIA_ERP: ${RFMS_OTP_VIA_ERP:-1}
+      FRAPPE_API_BASE_URL: ${FRAPPE_API_BASE_URL:-http://backend:8000}
+      ONBOARD_HMAC_SECRET: ${ONBOARD_HMAC_SECRET:-hec-onboard-dev-secret-change-me}
+      FRAPPE_CALLBACK_URL: ${FRAPPE_CALLBACK_URL:-http://backend:8000/api/method/health_ecosystem_core.health_ecosystem_core.api.ingest_onboarding_result}
+      FRAPPE_SITE: health.localhost
+    volumes:
+      - rfms_data:/data
+    depends_on:
+      - backend
+
+volumes:
+  rfms_data:

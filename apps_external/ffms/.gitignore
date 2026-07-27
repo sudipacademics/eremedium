@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+vendor
+storage/*.key
+work/isolated
+**/out-isolated
+**/out.__preserve

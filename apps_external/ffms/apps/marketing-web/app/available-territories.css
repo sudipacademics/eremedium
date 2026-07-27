@@ -1,0 +1,251 @@
+.territory-opportunity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.detail-grid article.territory-card.territory-opportunity-panel {
+  padding: 16px 16px 14px;
+  border: 1px solid #e4ecf3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(16, 45, 83, 0.06);
+  overflow: hidden;
+}
+
+.detail-grid article.territory-card.territory-opportunity-panel .territory-opportunity-head h2 {
+  margin: 0;
+}
+
+.territory-opportunity-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding-bottom: 10px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e4ecf3;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.territory-opportunity-head h2 {
+  margin: 0;
+  font: 700 17px/1.25 Manrope, Arial, sans-serif;
+  color: #0a3158;
+  letter-spacing: -0.01em;
+}
+
+.territory-opportunity-subtitle {
+  margin: 0;
+  max-width: none;
+  text-align: left;
+  color: #72839a;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.territory-opportunity-scroll-shell {
+  flex-shrink: 0;
+  border: 1px solid #dfe7ef;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 8px 8px 10px;
+  margin-bottom: 12px;
+}
+
+.territory-opportunity-scroll {
+  height: 236px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #159a8a #edf2f6;
+}
+
+.territory-opportunity-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.territory-opportunity-scroll::-webkit-scrollbar-track {
+  background: #edf2f6;
+  border-radius: 999px;
+}
+
+.territory-opportunity-scroll::-webkit-scrollbar-thumb {
+  background: #159a8a;
+  border-radius: 999px;
+}
+
+.territory-opportunity-card {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+  padding: 2px 8px;
+  border: 1px solid #e8eef4;
+  border-radius: 8px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.territory-opportunity-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e6f4f3;
+  color: #087f85;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.territory-opportunity-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.territory-opportunity-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.territory-opportunity-line strong {
+  flex-shrink: 0;
+  font: 700 12px/1.2 Manrope, Arial, sans-serif;
+  color: #0a3158;
+}
+
+.territory-opportunity-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #72839a;
+}
+
+.territory-opportunity-line em {
+  flex-shrink: 0;
+  font-style: normal;
+  font: 700 11px/1.2 Manrope, Arial, sans-serif;
+  color: #159a8a;
+}
+
+.territory-opportunity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eaf8ee;
+  color: #1a8c45;
+  font: 700 10px/1.2 Manrope, Arial, sans-serif;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.territory-opportunity-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22a855;
+  display: inline-block;
+}
+
+.territory-opportunity-empty {
+  margin: 0;
+  padding: 18px 8px;
+  text-align: center;
+  color: #72839a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.territory-opportunity-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: #f3f8fa;
+  border: 1px solid #e3ebf1;
+  flex-shrink: 0;
+}
+
+.territory-opportunity-foot p {
+  margin: 0;
+  color: #566a80;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.territory-opportunity-shield {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e6f4f3;
+  color: #087f85;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.territory-opportunity-shield svg {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 760px) {
+  .detail-grid article.territory-card.territory-opportunity-panel {
+    padding: 14px 12px 12px;
+  }
+
+  .territory-opportunity-scroll {
+    height: 220px;
+    padding-right: 10px;
+  }
+
+  .territory-opportunity-head {
+    margin-bottom: 16px;
+  }
+
+  .territory-opportunity-head h2 {
+    font-size: 16px;
+  }
+
+  .territory-opportunity-subtitle {
+    font-size: 10px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 560px) {
+  .territory-opportunity-head {
+    margin-bottom: 16px;
+  }
+
+  .territory-opportunity-line {
+    gap: 4px;
+  }
+
+  .territory-opportunity-line strong,
+  .territory-opportunity-line em {
+    font-size: 10px;
+  }
+
+  .territory-opportunity-meta {
+    font-size: 10px;
+  }
+}

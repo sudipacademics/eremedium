@@ -1,0 +1,17 @@
+/* Keep each navigation label readable at every dashboard width. */
+@media (max-width: 1050px) {
+  aside { width: 220px; padding: 20px 12px; }
+  .brand { padding: 0 10px 24px; }
+  .side-card, .copyright { display: none; }
+  nav button { height: auto; padding: 11px 12px; text-align: left; font-size: 14px; }
+  .workspace { margin-left: 220px; width: calc(100% - 220px); }
+}
+
+@media (max-width: 650px) {
+  .app-shell { display: block; }
+  aside { position: static; width: 100%; height: auto; padding: 14px 16px; }
+  .brand { padding: 0 4px 13px; }
+  nav { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  nav button { padding: 10px; font-size: 12px; }
+  .workspace { width: 100%; margin-left: 0; }
+}

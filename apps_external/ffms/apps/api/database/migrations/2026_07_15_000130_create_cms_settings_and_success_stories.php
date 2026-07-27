@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Schema;
+return new class extends Migration { public function up(): void { Schema::create('cms_settings', function(Blueprint $t): void {$t->string('key')->primary();$t->json('value');$t->timestamps();}); Schema::create('success_stories', function(Blueprint $t): void {$t->uuid('id')->primary();$t->string('title');$t->text('youtube_embed_code');$t->boolean('is_published')->default(false);$t->unsignedInteger('sort_order')->default(0);$t->timestamps();});} public function down():void{Schema::dropIfExists('success_stories');Schema::dropIfExists('cms_settings');}};

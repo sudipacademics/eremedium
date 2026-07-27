@@ -1,0 +1,498 @@
+html {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+body.portal-nav-open {
+  overflow: hidden;
+}
+
+img,
+video,
+iframe {
+  max-width: 100%;
+}
+
+.responsive-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+.portal-nav-toggle {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #b7d4dd;
+  border-radius: 10px;
+  background: #fff;
+  color: #087e86;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+
+.portal-nav-toggle-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  margin: 0;
+  transition: transform .18s ease, opacity .18s ease;
+}
+
+.portal-nav-toggle.open .portal-nav-toggle-bar:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.portal-nav-toggle.open .portal-nav-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.portal-nav-toggle.open .portal-nav-toggle-bar:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.dashboard-sidebar-backdrop {
+  display: none;
+}
+
+.dashboard-topbar-row,
+.dashboard-topbar-copy,
+.dashboard-topbar-actions {
+  min-width: 0;
+}
+
+input,
+select,
+textarea,
+button {
+  font-size: 16px;
+}
+
+@media (max-width: 960px) {
+  .portal-nav-toggle {
+    display: inline-flex;
+  }
+
+  .application-header-actions > span {
+    display: none;
+  }
+
+  .application-header-actions {
+    gap: 10px;
+  }
+
+  .portal-logo-frame {
+    width: min(180px, 42vw);
+    height: 58px;
+  }
+
+  .portal-brand-caption {
+    display: none;
+  }
+
+  .application-header {
+    padding: 0 16px;
+    height: auto;
+    min-height: 72px;
+    flex-wrap: wrap;
+  }
+
+  .app-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(300px, 88vw);
+    height: 100dvh;
+    z-index: 100;
+    padding: 18px;
+    transform: translateX(-110%);
+    transition: transform .22s ease;
+    overflow: auto;
+    box-shadow: 16px 0 40px rgba(16, 43, 80, .12);
+  }
+
+  .dashboard-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .dashboard-sidebar nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .dashboard-sidebar nav button {
+    min-height: 44px;
+    text-align: left;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  .dashboard-help {
+    display: block;
+    margin-top: 16px;
+  }
+
+  .dashboard-workspace {
+    min-width: 0;
+  }
+
+  .dashboard-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "menu copy profile"
+      "refresh refresh refresh"
+      "notifications notifications notifications";
+    gap: 10px;
+    padding: 12px 14px;
+    height: auto;
+    min-height: 0;
+    align-items: center;
+  }
+
+  .portal-nav-toggle {
+    grid-area: menu;
+  }
+
+  .dashboard-topbar-copy {
+    display: block;
+    grid-area: copy;
+  }
+
+  .dashboard-topbar-desktop-id {
+    display: none;
+  }
+
+  .dashboard-topbar > .profile-menu-shell {
+    grid-area: profile;
+    justify-self: end;
+  }
+
+  .dashboard-topbar > .dashboard-topbar-refresh {
+    display: inline-flex;
+    grid-area: refresh;
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .dashboard-topbar > .notification-shell {
+    grid-area: notifications;
+    width: 100%;
+  }
+
+  .dashboard-topbar > .notification-shell .dashboard-notification-button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .dashboard-topbar > .dashboard-profile-button,
+  .dashboard-topbar .dashboard-profile-button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .dashboard-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    background: rgba(16, 54, 95, .42);
+    z-index: 95;
+    cursor: pointer;
+  }
+
+  .dashboard-sidebar-backdrop.open {
+    display: block;
+  }
+
+  .dashboard-content {
+    padding: 16px 14px 36px;
+  }
+
+  .dashboard-topbar-copy small {
+    display: block;
+    color: #7a90a8;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .dashboard-topbar-copy strong {
+    display: block;
+    margin-top: 2px;
+    color: #123e70;
+    font-size: 12px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-hero {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 0;
+    padding: 22px 18px;
+  }
+
+  .dashboard-hero h1 {
+    font-size: clamp(24px, 7vw, 31px);
+    line-height: 1.2;
+  }
+
+  .dashboard-hero button,
+  .dashboard-hero a.dashboard-hero-action {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-progress,
+  .dashboard-panel,
+  .dashboard-detail-panel {
+    padding: 16px;
+  }
+
+  .dashboard-progress-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .onboarding-timeline-track {
+    flex-direction: column;
+    overflow: visible;
+    gap: 0;
+    padding: 0;
+  }
+
+  .onboarding-timeline-step {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 10px 0;
+  }
+
+  .onboarding-timeline-node {
+    flex-direction: column;
+    min-height: auto;
+    margin: 0;
+    align-items: center;
+  }
+
+  .onboarding-timeline-connector {
+    left: 50%;
+    right: auto;
+    top: 32px;
+    bottom: -10px;
+    width: 2px;
+    height: calc(100% + 8px);
+    transform: translateX(-50%);
+  }
+
+  .onboarding-timeline-step:last-child .onboarding-timeline-connector {
+    display: none;
+  }
+
+  .onboarding-timeline-copy b {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .dashboard-overview-grid,
+  .dashboard-detail-grid,
+  .application-summary,
+  .portal-form-grid,
+  .account-details,
+  .profile-settings-readonly,
+  .support-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .agreement-document-viewer,
+  .agreement-document-scroll,
+  .agreement-document-viewer.secured .agreement-pdf-pages {
+    min-height: min(60vh, 520px);
+    max-height: min(70vh, 640px);
+  }
+
+  .agreement-document-frame {
+    min-height: min(55vh, 480px);
+  }
+
+  .applicant-territory-details {
+    grid-template-columns: 1fr !important;
+  }
+
+  .payment-card,
+  .applicant-territory-letter,
+  .training-certificate-card,
+  .onboarding-certificate-overview-card,
+  .franchise-webpage-overview-card,
+  .support-contact-shortcuts {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payment-card .payment-action,
+  .applicant-territory-letter button,
+  .training-certificate-card button,
+  .onboarding-certificate-overview-card button,
+  .franchise-webpage-overview-button {
+    width: 100%;
+  }
+
+  .document-upload,
+  .dashboard-document-list > div,
+  .onboarding-file {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  .document-upload label,
+  .document-reupload,
+  .onboarding-file > a,
+  .onboarding-file .document-reupload {
+    justify-self: start;
+  }
+
+  .terms-modal,
+  .account-panel {
+    width: min(640px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+
+  .notification-panel,
+  .profile-menu.applicant-profile-menu {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+    max-width: none;
+    max-height: min(70vh, 520px);
+  }
+
+  .profile-menu.applicant-profile-menu {
+    bottom: auto;
+    top: calc(100% + 8px);
+    left: auto;
+    right: 0;
+    min-width: 180px;
+  }
+}
+
+@media (min-width: 681px) and (max-width: 960px) {
+  .applicant-territory-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .application-page,
+  .profile-login-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .application-intro {
+    position: static;
+  }
+
+  .application-page,
+  .payment-page,
+  .profile-page {
+    padding: 32px 16px 48px;
+  }
+
+  .video-kyc-room,
+  .applicant-field-visit {
+    grid-template-columns: 1fr !important;
+  }
+
+  .profile-link {
+    width: 100%;
+  }
+
+  .application-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (min-width: 961px) {
+  .dashboard-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .portal-nav-toggle,
+  .dashboard-topbar-copy {
+    display: none;
+  }
+
+  .dashboard-topbar > .dashboard-topbar-refresh {
+    display: inline-flex;
+    width: auto;
+    min-height: 0;
+  }
+
+  .dashboard-topbar-desktop-id {
+    display: block;
+    order: 1;
+    flex: 1;
+  }
+
+  .dashboard-topbar > .dashboard-topbar-refresh {
+    order: 2;
+  }
+
+  .dashboard-topbar > .notification-shell {
+    order: 3;
+    width: auto;
+  }
+
+  .dashboard-topbar > .notification-shell .dashboard-notification-button {
+    width: auto;
+    min-height: 0;
+  }
+
+  .dashboard-topbar > .profile-menu-shell {
+    order: 4;
+  }
+}

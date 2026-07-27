@@ -1,0 +1,66 @@
+/* National Highway map surface: marker positions are stored as percentages of
+   this exact image, so the live territory data remains aligned at every zoom. */
+.territory-map-card .map-controls { gap: 7px; }
+.territory-map-card .map-controls .map-reset {
+  width: auto;
+  min-width: 38px;
+  padding: 0 8px;
+  color: #155c7e;
+  font: 800 11px 'DM Sans', Arial, sans-serif;
+}
+
+.territory-map-card .territory-map-layout {
+  grid-template-columns: minmax(460px, 1.55fr) minmax(290px, .75fr);
+}
+
+.territory-map-card .territory-map-viewport {
+  min-height: 560px;
+  background: #eff7fb;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.territory-map-card .territory-map-viewport.dragging { cursor: grabbing; }
+.territory-map-card .territory-map-stage {
+  width: min(405px, 70%);
+  aspect-ratio: 1800 / 2539;
+  overflow: visible;
+  transform-origin: center;
+  transition: transform .16s ease-out;
+  will-change: transform;
+}
+.territory-map-card .territory-map-viewport.dragging .territory-map-stage { transition: none; }
+.territory-map-card .actual-west-bengal > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 20px rgba(12, 55, 83, .18));
+}
+
+.territory-map-card .territory-marker-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(202, 225, 232, .9);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .92);
+  padding: 3px 5px;
+  box-shadow: 0 3px 10px rgba(5, 43, 72, .12);
+}
+.territory-map-card .territory-marker.selected .territory-marker-label { color: #073c70; }
+.territory-map-card .territory-marker.occupied .territory-dot { box-shadow: 0 0 0 4px rgba(221, 83, 77, .14), 0 2px 8px rgba(10, 43, 75, .28); }
+.territory-map-card .territory-marker.reserved .territory-dot { box-shadow: 0 0 0 4px rgba(228, 151, 32, .14), 0 2px 8px rgba(10, 43, 75, .28); }
+
+@media (max-width: 1100px) {
+  .territory-map-card .territory-map-viewport { min-height: 520px; }
+  .territory-map-card .territory-map-stage { width: min(380px, 72%); }
+}
+
+@media (max-width: 650px) {
+  .territory-map-card .territory-map-head { align-items: stretch; flex-direction: column; }
+  .territory-map-card .map-controls { align-self: flex-start; }
+  .territory-map-card .territory-map-viewport { min-height: 460px; }
+  .territory-map-card .territory-map-stage { width: min(320px, 78%); }
+}

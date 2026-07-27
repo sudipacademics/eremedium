@@ -1,0 +1,11 @@
+.google-territory-map .territory-map-layout { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .75fr); }
+.google-map-canvas { min-height: 500px; background: #edf5f7; }
+.google-map-live { align-self: flex-start; border: 1px solid #a8dede; border-radius: 999px; background: #e9f9f8; color: #087d83; padding: 6px 9px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.google-map-info { display: grid; gap: 4px; min-width: 190px; color: #163d61; font: 12px 'DM Sans', Arial, sans-serif; }
+.google-map-info strong { font: 800 14px Manrope; }
+.google-map-info span, .google-map-info small { color: #607a93; }
+.google-map-info b { color: #087d83; font-size: 11px; }
+.google-map-error { margin: 14px 24px 0; border: 1px solid #efaaa5; border-radius: 8px; background: #fff5f4; color: #ad382d; padding: 10px 12px; font-size: 12px; }
+
+@media (max-width: 1100px) { .google-map-canvas { min-height: 420px; } }
+@media (max-width: 650px) { .google-map-canvas { min-height: 360px; } .google-map-live { font-size: 10px; } }
