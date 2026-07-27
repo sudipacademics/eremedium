@@ -75,3 +75,24 @@ def verify_otp_and_login(mobile=None, otp=None):
         },
         message="Authenticated",
     )
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_otp(mobile=None, otp=None):
+    """Verify OTP only (no Frappe session). Used by RFMS/FFMS login after MSG91 delivery."""
+    frappe.flags.ignore_csrf = True
+    mobile = _parse_request_value("mobile", mobile)
+    otp = _parse_request_value("otp", otp)
+
+    ok, err = verify_otp_code(mobile, otp)
+    if not ok:
+        return _error(err, 401)
+
+    return _success(
+        {
+            "mobile": normalize_mobile(mobile),
+            "verified": True,
+            "test_mode": otp_test_mode(),
+        },
+        message="OTP verified",
+    )

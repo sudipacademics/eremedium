@@ -25,6 +25,7 @@ ALLOWED_PUBLIC_METHODS = {
     "update_password_on_first_login",
     "validate_session",
     "send_otp",
+    "verify_otp",
     "verify_otp_and_login",
 }
 
