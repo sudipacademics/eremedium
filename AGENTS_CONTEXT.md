@@ -70,7 +70,8 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 
 - **Scope:** expand `Franchisee Profile` with commercials/GPS/bank/docs; import ops sheet into profiles; opening wallet = `max(0, deposit − ₹80,000 fee)` via Phase 23 `Franchisee Wallet Transaction` (`payment_reference=OPENING-RECHARGE`). No second wallet DocType.
 - **Code:** `clinical_franchisee_import.py`; `get_franchisee_dashboard` returns wallet + hub fields; `search_franchisees` includes lat/lng/category/wallet.
-- **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Users default password `HubChangeMe@123`.
+- **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Prefer **`docker/scripts/hot-deploy-phase81-hub.sh`** until `hec_job_application_education` module is restored (full migrate still fails on that DocType). Users default password `HubChangeMe@123`.
+- **Live 2026-07-28:** hot deploy OK; sheet import **21 updated / 0 errors**; `search_franchisees` HTTP 200 with wallet/category fields. Geocode skipped (`GEOCODE=0`); re-run import with `GEOCODE=1` for GPS.
 - **Parked still:** real FFMS officer IDs; applicant KYC/first payment e2e.
 
 ## RFMS officer login (2026-07-28)
