@@ -12,6 +12,7 @@ import { CompanyLogo, type CompanyProfile } from './company-profile';
 
 type LoginKind = 'Officer' | 'Applicant';
 const REMEMBER_KEY = 'rfms_marketing_login_email';
+const OFFICER_REMEMBER_KEY = 'rfms_marketing_officer_login_id';
 const API_BASE = RFMS_API_BASE;
 
 function networkErrorMessage(error: unknown, fallback: string) {
@@ -174,6 +175,7 @@ export function LoginPanel({
   const [mobileMode, setMobileMode] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [mobile, setMobile] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -183,9 +185,14 @@ export function LoginPanel({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(REMEMBER_KEY);
-    if (stored) {
-      setEmail(stored);
+    const storedOfficer = localStorage.getItem(OFFICER_REMEMBER_KEY);
+    const storedEmail = localStorage.getItem(REMEMBER_KEY);
+    if (storedOfficer) {
+      setLoginId(storedOfficer);
+      setRememberMe(true);
+    } else if (storedEmail) {
+      setEmail(storedEmail);
+      setLoginId(storedEmail);
       setRememberMe(true);
     }
   }, []);
@@ -214,29 +221,38 @@ export function LoginPanel({
 
   async function handleCredentialSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (rememberMe && email.trim()) localStorage.setItem(REMEMBER_KEY, email.trim());
-    else localStorage.removeItem(REMEMBER_KEY);
     setBusy(true);
     setError('');
     setMessage('');
     try {
       if (kind === 'Officer') {
-        const response = await fetch(`${API_BASE}/auth/otp/request`, {
+        const identifier = loginId.trim();
+        if (rememberMe && identifier) localStorage.setItem(OFFICER_REMEMBER_KEY, identifier);
+        else localStorage.removeItem(OFFICER_REMEMBER_KEY);
+        const response = await fetch(`${API_BASE}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, role_type: 'officer' }),
+          body: JSON.stringify({ login_id: identifier, password, role_type: 'officer' }),
         });
-        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { challenge_id?: string; masked_mobile?: string; test_mode?: boolean }; error?: { message?: string } } | null;
-        if (!response.ok || !payload?.success || !payload.data?.challenge_id) {
-          throw new Error(payload?.error?.message ?? 'Unable to send OTP.');
+        const payload = await response.json().catch(() => null) as {
+          success?: boolean;
+          data?: { token?: string; user?: { name?: string; role?: string; allowed_pages?: string[] } };
+          error?: { message?: string };
+        } | null;
+        if (!response.ok || !payload?.success || !payload.data?.token || !payload.data.user?.name || !payload.data.user?.role) {
+          throw new Error(payload?.error?.message ?? 'Unable to sign in.');
         }
-        setChallengeId(payload.data.challenge_id);
-        setMessage(payload.data.test_mode
-          ? `OTP sent to ${payload.data.masked_mobile ?? 'the registered mobile number'}. Test mode: use 123456.`
-          : `OTP sent to ${payload.data.masked_mobile ?? 'the registered mobile number'} via SMS.`);
-        setOtp(true);
+        const allowedPages = Array.isArray(payload.data.user.allowed_pages) ? payload.data.user.allowed_pages : [];
+        window.location.href = buildOfficerAuthRedirect(RFMS_ADMIN_ORIGIN, {
+          token: payload.data.token,
+          name: payload.data.user.name,
+          role: payload.data.user.role,
+          allowedPages,
+        });
         return;
       }
+      if (rememberMe && email.trim()) localStorage.setItem(REMEMBER_KEY, email.trim());
+      else localStorage.removeItem(REMEMBER_KEY);
       const response = await fetch(`${API_BASE}/applicant/auth/otp/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,7 +268,7 @@ export function LoginPanel({
         : `OTP sent to ${payload.data.masked_mobile ?? 'your registered mobile number'} via SMS.`);
       setOtp(true);
     } catch (requestError) {
-      setError(networkErrorMessage(requestError, 'Unable to send OTP.'));
+      setError(networkErrorMessage(requestError, kind === 'Officer' ? 'Unable to sign in.' : 'Unable to send OTP.'));
     } finally {
       setBusy(false);
     }
@@ -261,7 +277,7 @@ export function LoginPanel({
   async function handleMobileSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (kind !== 'Applicant') {
-      setError('Officer sign-in uses email and password. Switch to email login.');
+      setError('Officer sign-in uses company ID and password.');
       return;
     }
     setBusy(true);
@@ -299,26 +315,8 @@ export function LoginPanel({
     setError('');
     try {
       if (kind === 'Officer') {
-        const response = await fetch(`${API_BASE}/auth/otp/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ challenge_id: challengeId, otp: otpValue }),
-        });
-        const payload = await response.json().catch(() => null) as {
-          success?: boolean;
-          data?: { token?: string; user?: { name?: string; role?: string; allowed_pages?: string[] } };
-          error?: { message?: string };
-        } | null;
-        if (!response.ok || !payload?.success || !payload.data?.token || !payload.data.user?.name || !payload.data.user?.role) {
-          throw new Error(payload?.error?.message ?? 'Unable to verify OTP.');
-        }
-        const allowedPages = Array.isArray(payload.data.user.allowed_pages) ? payload.data.user.allowed_pages : [];
-        window.location.href = buildOfficerAuthRedirect(RFMS_ADMIN_ORIGIN, {
-          token: payload.data.token,
-          name: payload.data.user.name,
-          role: payload.data.user.role,
-          allowedPages,
-        });
+        setError('Officer OTP login is disabled. Sign in with your company ID and password.');
+        setOtp(false);
         return;
       }
       const response = await fetch(`${API_BASE}/applicant/auth/otp/verify`, {
@@ -454,7 +452,7 @@ export function LoginPanel({
                 {busy ? 'Verifying...' : 'Verify and continue'}
               </button>
             </form>
-          ) : mobileMode ? (
+          ) : mobileMode && kind === 'Applicant' ? (
             <form className="login-form" onSubmit={handleMobileSubmit}>
               <label className="login-field">
                 <span>Mobile number</span>
@@ -478,20 +476,38 @@ export function LoginPanel({
             </form>
           ) : (
             <form className="login-form" onSubmit={handleCredentialSubmit}>
-              <label className="login-field">
-                <span>Email ID</span>
-                <div className="login-input-wrap">
-                  <MailIcon />
-                  <input
-                    required
-                    type="email"
-                    autoComplete="email"
-                    placeholder="Enter your email ID"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </div>
-              </label>
+              {kind === 'Officer' ? (
+                <label className="login-field">
+                  <span>Company ID</span>
+                  <div className="login-input-wrap">
+                    <UserIcon />
+                    <input
+                      required
+                      type="text"
+                      autoComplete="username"
+                      placeholder="e.g. RFMS-0001"
+                      value={loginId}
+                      onChange={(event) => setLoginId(event.target.value)}
+                    />
+                  </div>
+                  <small>Use the company ID issued by Remedium Lab. No OTP is required.</small>
+                </label>
+              ) : (
+                <label className="login-field">
+                  <span>Email ID</span>
+                  <div className="login-input-wrap">
+                    <MailIcon />
+                    <input
+                      required
+                      type="email"
+                      autoComplete="email"
+                      placeholder="Enter your email ID"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                    />
+                  </div>
+                </label>
+              )}
 
               <label className="login-field">
                 <span className="login-label-row">
@@ -513,12 +529,14 @@ export function LoginPanel({
 
               <button type="submit" className="login-primary" disabled={busy}>
                 <LockIcon />
-                {busy ? 'Sending OTP...' : 'Login & Send OTP'}
+                {kind === 'Officer'
+                  ? (busy ? 'Signing in...' : 'Sign in')
+                  : (busy ? 'Sending OTP...' : 'Login & Send OTP')}
               </button>
             </form>
           )}
 
-          {!otp ? (
+          {!otp && kind === 'Applicant' ? (
             <>
               <div className="login-divider" role="presentation">
                 <span>or</span>
