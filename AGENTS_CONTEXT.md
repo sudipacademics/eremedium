@@ -66,6 +66,13 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - Masked calls need Settings: telephony_enabled + exotel_sid + exotel_api_key + exotel_api_token + exotel_virtual_number; staff `mobile_no`
 - Canonical code: `C:\develop\My_Lab_System`; compose on server: `/opt/health-ecosystem/docker`
 
+## Phase 81 — Franchisee Hub sheet + wallet (2026-07-28)
+
+- **Scope:** expand `Franchisee Profile` with commercials/GPS/bank/docs; import ops sheet into profiles; opening wallet = `max(0, deposit − ₹80,000 fee)` via Phase 23 `Franchisee Wallet Transaction` (`payment_reference=OPENING-RECHARGE`). No second wallet DocType.
+- **Code:** `clinical_franchisee_import.py`; `get_franchisee_dashboard` returns wallet + hub fields; `search_franchisees` includes lat/lng/category/wallet.
+- **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Users default password `HubChangeMe@123`.
+- **Parked still:** real FFMS officer IDs; applicant KYC/first payment e2e.
+
 ## RFMS officer login (2026-07-28)
 
 - Officer sign-in at `/ffms`: **company ID (`employee_id`) + password only**. No OTP.

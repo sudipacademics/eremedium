@@ -10,6 +10,10 @@ class FranchiseeProfile(Document):
             self.franchisee_type = "Pulse"
         if not self.get("commission_base"):
             self.commission_base = "Franchisee Rate"
+        if self.franchisee_fee in (None, ""):
+            self.franchisee_fee = 80000
+        if self.wallet_balance in (None, ""):
+            self.wallet_balance = 0
 
     def on_update(self):
         if frappe.flags.in_import or frappe.flags.in_migrate:

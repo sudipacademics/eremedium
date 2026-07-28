@@ -9,16 +9,36 @@
     "franchise_name",
     "branch_code",
     "owner_name",
+    "category",
+    "ownership",
     "territory_region",
     "franchisee_type",
     "commission_percentage_rate",
     "commission_base",
     "active_status",
+    "sheet_status",
     "column_break_1",
     "linked_user",
     "contact_phone",
     "contact_email",
+    "local_agent",
+    "final_documentation",
+    "section_address",
     "address",
+    "latitude",
+    "longitude",
+    "section_bank",
+    "bank_account",
+    "ifsc",
+    "section_commercials",
+    "deposit_amount",
+    "franchisee_fee",
+    "wallet_balance",
+    "total_amount",
+    "due_amount",
+    "section_docs",
+    "pdd_url",
+    "agreement_url",
     "section_scf",
     "scf_ownership_type",
     "nabl_declared",
@@ -49,6 +69,18 @@
       "in_list_view": 1,
       "label": "Owner Name",
       "reqd": 1
+    },
+    {
+      "fieldname": "category",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Category"
+    },
+    {
+      "fieldname": "ownership",
+      "fieldtype": "Data",
+      "label": "Ownership"
     },
     {
       "fieldname": "territory_region",
@@ -97,6 +129,11 @@
       "search_index": 1
     },
     {
+      "fieldname": "sheet_status",
+      "fieldtype": "Data",
+      "label": "Sheet Status"
+    },
+    {
       "fieldname": "column_break_1",
       "fieldtype": "Column Break"
     },
@@ -118,9 +155,99 @@
       "options": "Email"
     },
     {
+      "fieldname": "local_agent",
+      "fieldtype": "Data",
+      "label": "Local Agent"
+    },
+    {
+      "fieldname": "final_documentation",
+      "fieldtype": "Data",
+      "label": "Final Documentation"
+    },
+    {
+      "fieldname": "section_address",
+      "fieldtype": "Section Break",
+      "label": "Address / GPS"
+    },
+    {
       "fieldname": "address",
       "fieldtype": "Small Text",
       "label": "Address"
+    },
+    {
+      "fieldname": "latitude",
+      "fieldtype": "Float",
+      "label": "Latitude",
+      "precision": "7"
+    },
+    {
+      "fieldname": "longitude",
+      "fieldtype": "Float",
+      "label": "Longitude",
+      "precision": "7"
+    },
+    {
+      "fieldname": "section_bank",
+      "fieldtype": "Section Break",
+      "label": "Bank"
+    },
+    {
+      "fieldname": "bank_account",
+      "fieldtype": "Data",
+      "label": "Bank Account"
+    },
+    {
+      "fieldname": "ifsc",
+      "fieldtype": "Data",
+      "label": "IFSC"
+    },
+    {
+      "fieldname": "section_commercials",
+      "fieldtype": "Section Break",
+      "label": "Commercials / Wallet"
+    },
+    {
+      "fieldname": "deposit_amount",
+      "fieldtype": "Currency",
+      "label": "Deposit Amount"
+    },
+    {
+      "default": "80000",
+      "fieldname": "franchisee_fee",
+      "fieldtype": "Currency",
+      "label": "Franchisee Fee"
+    },
+    {
+      "default": "0",
+      "fieldname": "wallet_balance",
+      "fieldtype": "Currency",
+      "label": "Wallet Balance",
+      "read_only": 1
+    },
+    {
+      "fieldname": "total_amount",
+      "fieldtype": "Currency",
+      "label": "Total Amount"
+    },
+    {
+      "fieldname": "due_amount",
+      "fieldtype": "Currency",
+      "label": "Due Amount"
+    },
+    {
+      "fieldname": "section_docs",
+      "fieldtype": "Section Break",
+      "label": "Documents"
+    },
+    {
+      "fieldname": "pdd_url",
+      "fieldtype": "Data",
+      "label": "PDD"
+    },
+    {
+      "fieldname": "agreement_url",
+      "fieldtype": "Data",
+      "label": "Agreement"
     },
     {
       "collapsible": 1,
@@ -151,7 +278,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2024-01-01 00:00:00.000000",
+  "modified": "2026-07-28 12:00:00.000000",
   "modified_by": "Administrator",
   "module": "Health Ecosystem Core",
   "name": "Franchisee Profile",

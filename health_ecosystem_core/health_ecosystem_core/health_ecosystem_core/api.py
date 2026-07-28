@@ -1216,6 +1216,24 @@ def get_franchisee_dashboard(franchisee_id=None):
         limit=100,
     )
 
+    wallet_entries = []
+    if frappe.db.exists("DocType", "Franchisee Wallet Transaction"):
+        wallet_entries = frappe.get_all(
+            "Franchisee Wallet Transaction",
+            filters={"franchisee": franchisee_id},
+            fields=[
+                "name",
+                "transaction_type",
+                "amount",
+                "balance_after",
+                "payment_reference",
+                "remarks",
+                "creation",
+            ],
+            order_by="creation desc",
+            limit=20,
+        )
+
     return _success(
         {
             "franchisee": {
@@ -1223,7 +1241,19 @@ def get_franchisee_dashboard(franchisee_id=None):
                 "franchise_name": profile.franchise_name,
                 "branch_code": profile.branch_code,
                 "commission_rate": profile.commission_percentage_rate,
+                "category": getattr(profile, "category", None),
+                "address": profile.address,
+                "latitude": getattr(profile, "latitude", None),
+                "longitude": getattr(profile, "longitude", None),
+                "contact_phone": profile.contact_phone,
+                "contact_email": profile.contact_email,
+                "deposit_amount": getattr(profile, "deposit_amount", None),
+                "franchisee_fee": getattr(profile, "franchisee_fee", None),
+                "wallet_balance": getattr(profile, "wallet_balance", None),
+                "due_amount": getattr(profile, "due_amount", None),
             },
+            "wallet_balance": flt(getattr(profile, "wallet_balance", 0)),
+            "wallet_entries": wallet_entries,
             "today_total_bookings": total_bookings,
             "today_revenue": total_revenue,
             "today_commission": commission_earned,
@@ -3967,12 +3997,16 @@ def _search_franchisees_impl(q=None, limit=200):
             "territory_region",
             "address",
             "contact_phone",
+            "latitude",
+            "longitude",
+            "category",
+            "wallet_balance",
         ],
         order_by="franchise_name asc",
         limit=limit,
     )
 
-    return _success({"franchisees": franchisees})
+    return _success({"franchisees": franchisees, "count": len(franchisees)})
 
 
 @frappe.whitelist(allow_guest=True)

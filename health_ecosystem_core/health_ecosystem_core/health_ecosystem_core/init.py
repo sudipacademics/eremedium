@@ -792,6 +792,13 @@ def run_phase80_smoke(franchisee_id=None):
     return smoke_phase80(franchisee_id=franchisee_id)
 
 
+def run_phase81_import_franchise_sheet(csv_path=None, geocode=0):
+    """bench --site SITE execute …init.run_phase81_import_franchise_sheet — Franchisee Hub CSV import."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_franchisee_import import import_franchise_csv
+
+    return import_franchise_csv(csv_path=csv_path or "/tmp/franchise-sheet.csv", geocode=bool(int(geocode or 0)))
+
+
 def run_phase27b_seed_demo():
     """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase27b_seed_demo"""
     from health_ecosystem_core.health_ecosystem_core.clinical_phase27b import seed_demo_commissions, setup_phase27b
