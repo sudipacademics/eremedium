@@ -8,6 +8,7 @@ import { SiteNav } from './site-nav';
 import './company-profile.css';
 import './information-page.css';
 import './site.css';
+import './responsive.css';
 
 export type InformationPageKind = 'disclaimer' | 'terms' | 'privacy' | 'contact';
 

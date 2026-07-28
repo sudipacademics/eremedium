@@ -18,36 +18,23 @@ function displayError(error: unknown, fallback: string) {
 }
 
 export function AdminLogin({ onAuthenticated }: { onAuthenticated: (session: { token: string; name: string; role: string; allowedPages: AdminPage[] }) => void }) {
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
-  const [challengeId, setChallengeId] = useState('');
-  const [otp, setOtp] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function requestOtp(event: FormEvent<HTMLFormElement>) {
+  async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
+    setMessage('');
     try {
-      const response = await fetch(`${API_BASE}/auth/otp/request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, role_type: 'officer' }) });
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login_id: loginId.trim(), password, role_type: 'officer' }),
+      });
       const payload = await response.json();
-      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to send OTP.');
-      setChallengeId(payload.data.challenge_id);
-      setMessage('OTP sent to the registered mobile number.');
-    } catch (requestError) {
-      setMessage(displayError(requestError, 'Unable to send OTP.'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyOtp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      const response = await fetch(`${API_BASE}/auth/otp/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId, otp }) });
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to verify OTP.');
+      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to sign in.');
       const allowedPages = Array.isArray(payload.data.user?.allowed_pages) ? payload.data.user.allowed_pages as string[] : [];
       const session: AdminSession = { token: payload.data.token, name: payload.data.user.name, role: payload.data.user.role, allowedPages };
       sessionStorage.setItem('rfms_auth_token', session.token);
@@ -56,11 +43,49 @@ export function AdminLogin({ onAuthenticated }: { onAuthenticated: (session: { t
       sessionStorage.setItem('rfms_allowed_pages', JSON.stringify(allowedPages));
       onAuthenticated({ token: session.token, name: session.name, role: session.role, allowedPages: allowedPages as AdminPage[] });
     } catch (requestError) {
-      setMessage(displayError(requestError, 'Unable to verify OTP.'));
+      setMessage(displayError(requestError, 'Unable to sign in.'));
     } finally {
       setBusy(false);
     }
   }
 
-  return <main className="admin-login-page"><section className="admin-login-card"><div className="admin-login-brand"><span>R</span><div><b>Remedium Lab</b><small>Franchise Management System</small></div></div><h1>Officer sign in</h1><p>Use your registered email, password and mobile OTP to access RFMS operations.</p>{challengeId ? <form onSubmit={verifyOtp}><label>One-time password<input value={otp} onChange={(event) => setOtp(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" placeholder="6-digit OTP" required /></label><button disabled={busy}>{busy ? 'Verifying...' : 'Verify and continue'}</button><button className="login-link" type="button" onClick={() => { setChallengeId(''); setOtp(''); setMessage(''); }}>Use another account</button></form> : <form onSubmit={requestOtp}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button disabled={busy}>{busy ? 'Sending OTP...' : 'Continue with OTP'}</button></form>}{message ? <small className="login-message">{message}</small> : null}</section></main>;
+  return (
+    <main className="admin-login-page">
+      <section className="admin-login-card">
+        <div className="admin-login-brand">
+          <span>R</span>
+          <div>
+            <b>Remedium Lab</b>
+            <small>Franchise Management System</small>
+          </div>
+        </div>
+        <h1>Officer sign in</h1>
+        <p>Use the company ID and password issued by Remedium Lab. No OTP is required.</p>
+        <form onSubmit={signIn}>
+          <label>
+            Company ID
+            <input
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              autoComplete="username"
+              placeholder="e.g. RFMS-0001"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          <button disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
+        </form>
+        {message ? <small className="login-message">{message}</small> : null}
+      </section>
+    </main>
+  );
 }

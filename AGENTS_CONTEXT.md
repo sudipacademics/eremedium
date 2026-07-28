@@ -66,6 +66,24 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - Masked calls need Settings: telephony_enabled + exotel_sid + exotel_api_key + exotel_api_token + exotel_virtual_number; staff `mobile_no`
 - Canonical code: `C:\develop\My_Lab_System`; compose on server: `/opt/health-ecosystem/docker`
 
+## RFMS officer login (2026-07-28)
+
+- Officer sign-in at `/ffms`: **company ID (`employee_id`) + password only**. No OTP.
+- API: `POST /api/v1/auth/login` with `{ login_id, password }`. Legacy `/auth/otp/*` returns `OTP_DISABLED`.
+- Company ID examples from seed: `RFMS-0001` (admin), `RFMS-0005` (consultant), etc. Email also accepted as alias for existing accounts.
+- **Parked (do not start unless asked):** (1) issue real officer IDs in User Management vs seed logins; (2) full applicant KYC + first-payment path on a fresh handoff.
+
+## Phase 80 — FFMS ↔ Reach handoff (2026-07-27)
+
+- **Flow:** Reach `submit_sales_onboarding` → `create_onboarding_session` (HMAC) → `https://www.e-remedium.in/onboard/hec-session?token=…` → FFMS creates a **CRM lead only** (no FOFO/FOCO auto-pick) → applicant lands on the portal form (prefilled contact/territory) → **user selects FOFO or FOCO** → KYC/payment → later `ingest_onboarding_result` updates Franchisee Profile.
+- **Code:** `clinical_phase80_onboarding_bridge.py`; API wrappers in `api.py`; Reach CTA on `/sales/onboard` (`Start e-Aadhaar / e-agreement`); RFMS `ensureHecLinkedLead` + portal prefill query params (`hec_lead`, `hec_fp`, …).
+- **Secrets:** `site_config.onboard_hmac_secret` must match RFMS `ONBOARD_HMAC_SECRET`; `onboard_base_url=https://www.e-remedium.in/onboard`.
+- **Apply / smoke:** `docker/scripts/apply-phase80-bridge.sh`; `docker/smoke-ffms-reach.sh` (L1–L5). Live smoke 2026-07-27: **13/13 passed** (`FFMS_REACH_SMOKE_OK`).
+- **Lead-only handoff smoke (2026-07-28):** `docker/scripts/smoke-reach-lead-handoff.sh` — mint → `/onboard/hec-session` 302 with `hec_lead`/`hec_fp` (no applicant token, no FOFO in URL) → CRM lead `source=reach_sales` + blank `franchise_model` → portal “Select FOFO or FOCO”. Live: **REACH_LEAD_HANDOFF_OK** (15/15).
+- **Note:** full `safe-update-app.sh` migrate may still hit unrelated DocType import drift (`hec_job_application_education`); Phase 80 was hot-copied via apply script. Prefer apply script until that DocType module is reconciled.
+- **Portal header:** applicant portal only (logo + chips). Marketing nav belongs on `/franchise/`, not `/onboard/`.
+- **SW trap (2026-07-27):** www SPA `sw.js` `NavigationRoute` was serving `/index.html` for `/onboard/*`, so Reach “Start e-Aadhaar” looked like the marketing home. Fix: `navigateFallbackDenylist` in `health_web_app/vite.config.ts` + `docker/ffms-www-paths.sh` / `docker/scripts/patch-sw-ffms-denylist.sh`. After dist deploy, re-run the SW patch (or rebuild web so denylist is baked in). Verify anytime: `bash docker/scripts/verify-ffms-paths-sw.sh` on the server (or SCP then run). **Live check 2026-07-28:** denylist OK, nginx `^~ /franchise|/onboard|/ffms` OK, public `/franchise/` + `/onboard/` return FFMS HTML (not homepage), ports 3000–3002 up. If a browser still shows the patient home, hard-refresh / unregister SW for `www.e-remedium.in` — server truth is correct.
+
 ## Source of truth & apps↔site-packages reconciliation (2026-07-21)
 
 - **Package nesting (important):** the repo root shares the app name, so there is one extra level.

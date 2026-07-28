@@ -173,6 +173,8 @@ import {
   loadUploadBytes,
   sendOtpViaErp,
   verifyOtpViaErp,
+  sendEmailOtpViaErp,
+  verifyEmailOtpViaErp,
   rfmsOtpUsesErp,
   rfmsDevOtpEnabled,
 } from './hec-frappe-bridge.mjs';
@@ -460,9 +462,15 @@ function supportAssignableNames() {
   return assignableOfficerNames(ensureOfficersArray(), 'support');
 }
 
-function accountFor(email, password) {
-  const normalizedEmail = text(email, 160).toLowerCase();
-  const officer = ensureOfficersArray().find((item) => item.email === normalizedEmail);
+function accountFor(loginId, password) {
+  const identifier = text(loginId, 160).trim();
+  if (!identifier) return null;
+  const normalized = identifier.toLowerCase();
+  const officer = ensureOfficersArray().find((item) => {
+    const employeeId = String(item.employee_id || '').trim().toLowerCase();
+    const email = String(item.email || '').trim().toLowerCase();
+    return employeeId === normalized || email === normalized;
+  });
   if (!officer || officer.status !== 'active' || !officerPasswordMatches(officer, password)) return null;
   return {
     id: officer.id,
@@ -471,6 +479,47 @@ function accountFor(email, password) {
     role: normalizeRole(officer.role),
     mobile: officer.mobile,
     email: officer.email,
+  };
+}
+
+async function issueOfficerSession(account, { via = 'password' } = {}) {
+  const token = randomUUID();
+  const role = normalizeRole(account.role);
+  const session = {
+    token,
+    user_id: account.id,
+    employee_id: account.employee_id,
+    email: account.email,
+    name: account.name,
+    role,
+    mobile: account.mobile,
+  };
+  tokens.set(token, session);
+  database.sessions = [...database.sessions.filter((item) => item.mobile !== account.mobile && item.email !== account.email && item.user_id !== account.id), session].slice(-50);
+  const officer = ensureOfficersArray().find((item) => item.id === account.id);
+  if (officer) {
+    officer.last_login_at = new Date().toISOString();
+    officer.updated_at = officer.last_login_at;
+  }
+  database.admin_audit_log = appendAdminAuditLog(ensureAdminAuditLog(), {
+    action: 'user_login',
+    actor_name: account.name,
+    actor_role: role,
+    target_user_id: account.id,
+    target_user_name: account.name,
+    details: `${account.name} (${roleLabel(role)}) signed in to the admin portal with company ID${via === 'password' ? '' : ` via ${via}`}.`,
+  });
+  await saveDatabase();
+  return {
+    token,
+    user: {
+      id: account.id,
+      employee_id: account.employee_id,
+      name: account.name,
+      role,
+      email: account.email,
+      allowed_pages: pagesForRole(role),
+    },
   };
 }
 
@@ -602,6 +651,36 @@ async function confirmMobileOtp(mobile, otp) {
   throw new Error('The OTP is incorrect or expired.');
 }
 
+function maskedOfficerEmail(email) {
+  const value = text(email, 160).toLowerCase();
+  const [local, domain] = value.split('@');
+  if (!local || !domain) return '';
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${'*'.repeat(Math.max(local.length - visible.length, 2))}@${domain}`;
+}
+
+async function dispatchEmailOtp(email) {
+  const recipient = text(email, 160).toLowerCase();
+  if (!recipient || !isEmail(recipient)) {
+    throw new Error('A valid registered email address is required to send OTP.');
+  }
+  if (rfmsOtpUsesErp()) {
+    return sendEmailOtpViaErp(recipient);
+  }
+  return { email: recipient, expires_in: 300, test_mode: true, hint: 'Test mode: use OTP 123456', channel: 'email' };
+}
+
+async function confirmEmailOtp(email, otp) {
+  const recipient = text(email, 160).toLowerCase();
+  const code = text(otp, 10);
+  if (rfmsOtpUsesErp()) {
+    await verifyEmailOtpViaErp(recipient, code);
+    return true;
+  }
+  if (rfmsDevOtpEnabled() && code === '123456') return true;
+  throw new Error('The OTP is incorrect or expired.');
+}
+
 function otpDeliveryMeta(dispatchResult) {
   const meta = {
     expires_in_seconds: Number(dispatchResult?.expires_in || 300),
@@ -638,77 +717,65 @@ async function applicantSession(application) {
   return session;
 }
 
+function findLeadByHecFranchisee(fp) {
+  const key = String(fp || '').trim();
+  if (!key) return null;
+  return (database.leads || []).find((item) => String(item.hec_franchisee_profile || '').trim() === key) || null;
+}
+
 function findApplicationByHecFranchisee(fp) {
   const key = String(fp || '').trim();
   if (!key) return null;
   return (database.applications || []).find((item) => String(item.hec_franchisee_profile || '').trim() === key) || null;
 }
 
-async function ensureHecLinkedApplication(claims) {
-  database.applications = Array.isArray(database.applications) ? database.applications : [];
-  let application = findApplicationByHecFranchisee(claims.fp);
-  if (application) {
-    application.hec_session_id = claims.sid || application.hec_session_id || '';
-    application.hec_lead_id = claims.lead || application.hec_lead_id || '';
-    if (claims.phone && !application.mobile) application.mobile = String(claims.phone).replace(/\D/g, '').slice(-10);
-    if (claims.email && !application.email) application.email = String(claims.email);
-    if (claims.name && (!application.full_name || application.full_name === 'HEC Franchisee')) {
-      application.full_name = String(claims.name);
-    }
-    application.updated_at = new Date().toISOString();
-    await saveDatabase();
-    return application;
-  }
+/** Reach HMAC handoff: create/update an FFMS CRM lead only — applicant chooses FOFO/FOCO on the form. */
+async function ensureHecLinkedLead(claims) {
+  database.leads = Array.isArray(database.leads) ? database.leads : [];
   const now = new Date().toISOString();
-  const mobile = String(claims.phone || '').replace(/\D/g, '').slice(-10) || '9999999999';
-  const email = String(claims.email || '').trim() || `hec-${String(claims.fp).toLowerCase().replace(/[^a-z0-9]+/g, '-')}@hec.local`;
-  application = {
-    id: randomUUID(),
-    application_number: applicationNumber(),
-    full_name: String(claims.name || claims.fp || 'HEC Franchisee'),
-    email,
-    mobile,
-    date_of_birth: '1990-01-01',
-    pan_number: 'AAAAA0000A',
-    aadhaar_number: '000000000000',
-    address: String(claims.branch || 'Pending address'),
-    city: 'Kolkata',
-    district: 'Kolkata',
-    pincode: '700001',
-    franchise_model: 'FOFO',
-    preferred_location: String(claims.branch || 'Pending'),
-    business_experience: 'Created via HEC sales onboarding handoff.',
-    user_id: `hec-${String(claims.fp).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}`,
-    account_password_salt: '',
-    account_password_hash: '',
-    terms_model: 'FOFO',
-    terms_text: database.company_profile?.fofo_terms || '',
-    terms_accepted_at: '',
-    documents: {},
-    document_verifications: {},
-    review_notes: 'Seeded from mother ERP (Franchisee Profile) via HMAC session.',
-    review_history: [],
-    payment_terms: {},
-    video_kyc_sessions: [],
-    video_kyc_current_session_id: '',
-    field_visit: null,
-    onboarding_documents: [],
-    branding_signage: null,
-    hr_process: null,
-    payments: paymentPlan('FOFO'),
-    stage: 'payment_1_due',
-    visible_to_admin: true,
+  const mobile = String(claims.phone || '').replace(/\D/g, '').slice(-10);
+  const email = String(claims.email || '').trim().toLowerCase();
+  const name = String(claims.name || claims.fp || 'Reach applicant').trim();
+  const territory = String(claims.branch || claims.fp || '').trim();
+  let lead = findLeadByHecFranchisee(claims.fp);
+  if (!lead && email) {
+    lead = database.leads.find((item) => String(item.email || '').toLowerCase() === email) || null;
+  }
+  if (!lead && mobile) {
+    lead = database.leads.find((item) => String(item.mobile || '').replace(/\D/g, '').slice(-10) === mobile) || null;
+  }
+  if (lead) {
+    lead.name = name || lead.name;
+    if (email) lead.email = email;
+    if (mobile) lead.mobile = mobile;
+    if (territory && !lead.territory_query) lead.territory_query = territory;
+    lead.hec_franchisee_profile = String(claims.fp);
+    lead.hec_session_id = String(claims.sid || lead.hec_session_id || '');
+    lead.hec_lead_id = String(claims.lead || lead.hec_lead_id || '');
+    lead.source = lead.source === 'website' ? lead.source : 'reach_sales';
+    lead.updated_at = now;
+    addLeadActivity(lead, 'note', `Reach sales handoff refreshed for Franchisee Profile ${claims.fp}. Applicant will choose FOFO/FOCO on the portal.`, 'Reach sales');
+    await saveDatabase();
+    return lead;
+  }
+  lead = leadRecord({
+    name,
+    email: email || `reach-${String(claims.fp).toLowerCase().replace(/[^a-z0-9]+/g, '-')}@hec.local`,
+    mobile: mobile || '0000000000',
+    franchise_model: '',
+    territory_query: territory || 'To be confirmed by applicant',
+    notes: `Created from Reach sales HMAC handoff for Franchisee Profile ${claims.fp}. Franchise model left for applicant selection.`,
+    source: 'reach_sales',
+    stage: 'new',
+    priority: 'hot',
+    assigned_to: 'Unassigned',
     hec_franchisee_profile: String(claims.fp),
     hec_session_id: String(claims.sid || ''),
     hec_lead_id: String(claims.lead || ''),
-    hec_branch_code: String(claims.branch || ''),
-    created_at: now,
-    updated_at: now,
-  };
-  database.applications.push(application);
-  applicationReviewHistory(application, 'hec_session_linked', `Linked to ERP Franchisee Profile ${claims.fp} via sales HMAC handoff.`, { headers: {} });
+  });
+  database.leads.unshift(lead);
   await saveDatabase();
-  return application;
+  return lead;
 }
 
 async function pushHecResultToFrappe(application, { status, aadhaarRef = '', notes = '' }) {
@@ -1264,7 +1331,7 @@ function territoryAllotmentConflicts(application, latitude, longitude, radiusKm)
 }
 
 const leadStages = new Set(['new', 'contacted', 'no_response', 'qualified', 'follow_up', 'application_started', 'won', 'lost', 'disqualified', 'completed']);
-const leadSources = new Set(['website', 'meta_ads', 'manual', 'csv_upload', 'appointment']);
+const leadSources = new Set(['website', 'meta_ads', 'manual', 'csv_upload', 'appointment', 'reach_sales']);
 const leadPriorities = new Set(['hot', 'warm', 'normal', 'low']);
 const leadActivityTypes = new Set(['created', 'imported', 'call', 'whatsapp', 'email', 'note', 'follow_up', 'stage_change', 'owner_change', 'claim']);
 
@@ -1291,7 +1358,7 @@ function leadActivity(value, createdAt = new Date().toISOString()) {
 }
 
 function sourceLabel(source) {
-  return ({ website: 'Website enquiry', meta_ads: 'Meta Ads', manual: 'Manual entry', csv_upload: 'CSV upload', appointment: 'Appointment conversion' })[source] ?? 'Manual entry';
+  return ({ website: 'Website enquiry', meta_ads: 'Meta Ads', manual: 'Manual entry', csv_upload: 'CSV upload', appointment: 'Appointment conversion', reach_sales: 'Reach sales handoff' })[source] ?? 'Manual entry';
 }
 
 function leadRecord(value, id = randomUUID()) {
@@ -1309,8 +1376,10 @@ function leadRecord(value, id = randomUUID()) {
           ? 'Lead imported from CSV upload.'
           : sourceName === 'appointment'
             ? 'Lead created from a completed business consultation appointment.'
+          : sourceName === 'reach_sales'
+            ? 'Lead created from Reach sales handoff. Applicant will choose FOFO or FOCO on the portal.'
           : 'Lead created manually in RFMS CRM.';
-    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : 'RFMS officer', message: initialMessage }, createdAt));
+    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' || sourceName === 'reach_sales' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : sourceName === 'reach_sales' ? 'Reach sales' : 'RFMS officer', message: initialMessage }, createdAt));
     if (notes) history.push(leadActivity({ type: 'note', actor: 'Lead source', message: notes }, createdAt));
   }
   const model = text(source.franchise_model, 10).toUpperCase();
@@ -1319,7 +1388,8 @@ function leadRecord(value, id = randomUUID()) {
     name: text(source.name, 120),
     email: text(source.email, 160).toLowerCase(),
     mobile: text(source.mobile, 20),
-    franchise_model: ['FOFO', 'FOCO'].includes(model) ? model : 'FOFO',
+    // Leave blank until the applicant chooses FOFO/FOCO on the portal form.
+    franchise_model: ['FOFO', 'FOCO'].includes(model) ? model : '',
     territory_query: text(source.territory_query, 200),
     notes,
     source: sourceName,
@@ -1330,6 +1400,9 @@ function leadRecord(value, id = randomUUID()) {
     next_follow_up_at: text(source.next_follow_up_at, 60),
     last_contacted_at: text(source.last_contacted_at, 60),
     activity_history: history.slice(-100),
+    hec_franchisee_profile: text(source.hec_franchisee_profile, 120),
+    hec_session_id: text(source.hec_session_id, 120),
+    hec_lead_id: text(source.hec_lead_id, 120),
     created_at: createdAt,
     updated_at: text(source.updated_at, 60) || createdAt,
   };
@@ -3730,15 +3803,22 @@ async function handle(request, response) {
       });
     }
 
-    // Mother ERP HMAC handoff → applicant portal session
+    // Mother ERP HMAC handoff → create FFMS lead, open application form (applicant picks FOFO/FOCO)
     if (request.method === 'GET' && (route === '/hec-session' || route === '/api/v1/hec-session')) {
       try {
         const token = text(url.searchParams.get('token') ?? '', 4000);
         if (!token) return failure(request, response, 'VALIDATION_ERROR', 'token query parameter is required.', 400);
         const claims = verifyHecToken(token);
-        const application = await ensureHecLinkedApplication(claims);
-        const session = await applicantSession(application);
-        const redirectTo = `${portalBaseUrl}/?rfms_applicant_token=${encodeURIComponent(session.token)}`;
+        const lead = await ensureHecLinkedLead(claims);
+        const params = new URLSearchParams({
+          hec_lead: lead.id,
+          hec_fp: String(claims.fp || ''),
+        });
+        if (lead.name) params.set('name', lead.name);
+        if (lead.email && !String(lead.email).includes('@hec.local')) params.set('email', lead.email);
+        if (lead.mobile && lead.mobile !== '0000000000') params.set('mobile', lead.mobile);
+        if (lead.territory_query) params.set('location', lead.territory_query);
+        const redirectTo = `${portalBaseUrl}/?${params.toString()}`;
         cors(request, response);
         response.writeHead(302, { Location: redirectTo });
         response.end();
@@ -3779,58 +3859,34 @@ async function handle(request, response) {
       return success(request, response, { model: ['FOFO', 'FOCO'].includes(model) ? model : '', pincodes: records });
     }
 
-    if (request.method === 'POST' && route === '/api/v1/auth/otp/request') {
+    if (request.method === 'POST' && route === '/api/v1/auth/login') {
       const body = await readJson(request);
-      const account = accountFor(body.email, body.password);
-      if (!account || body.role_type !== 'officer') return failure(request, response, 'INVALID_CREDENTIALS', 'Invalid email, password, or account type.');
-      try {
-        const delivery = await dispatchMobileOtp(account.mobile);
-        const challengeId = randomUUID();
-        challenges.set(challengeId, { account, mobile: delivery.mobile, expires_at: Date.now() + 300_000 });
-        return success(request, response, {
-          challenge_id: challengeId,
-          masked_mobile: maskedApplicantMobile(delivery.mobile),
-          ...otpDeliveryMeta(delivery),
-        });
-      } catch (otpError) {
-        return failure(request, response, 'OTP_SEND_FAILED', otpError instanceof Error ? otpError.message : 'Could not send OTP.', 502);
+      const loginId = text(body.login_id ?? body.employee_id ?? body.email ?? body.username ?? '', 160);
+      const account = accountFor(loginId, body.password);
+      if (!account || (body.role_type && body.role_type !== 'officer')) {
+        return failure(request, response, 'INVALID_CREDENTIALS', 'Invalid company ID or password.', 401);
       }
+      return success(request, response, await issueOfficerSession(account, { via: 'password' }));
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/auth/otp/request') {
+      return failure(
+        request,
+        response,
+        'OTP_DISABLED',
+        'Officer OTP login is disabled. Sign in with your company ID and password.',
+        410,
+      );
     }
 
     if (request.method === 'POST' && route === '/api/v1/auth/otp/verify') {
-      const body = await readJson(request);
-      const challenge = challenges.get(body.challenge_id);
-      if (!challenge || challenge.expires_at < Date.now()) return failure(request, response, 'OTP_INVALID', 'The OTP is incorrect or expired.');
-      try {
-        await confirmMobileOtp(challenge.mobile, body.otp);
-      } catch (otpError) {
-        return failure(request, response, 'OTP_INVALID', otpError instanceof Error ? otpError.message : 'The OTP is incorrect or expired.', 401);
-      }
-      challenges.delete(body.challenge_id);
-      const account = challenge.account;
-      const token = randomUUID();
-      const role = normalizeRole(account.role);
-      const session = { token, user_id: account.id, employee_id: account.employee_id, email: account.email, name: account.name, role, mobile: account.mobile };
-      tokens.set(token, session);
-      database.sessions = [...database.sessions.filter((item) => item.mobile !== account.mobile), session].slice(-50);
-      const officer = ensureOfficersArray().find((item) => item.id === account.id);
-      if (officer) {
-        officer.last_login_at = new Date().toISOString();
-        officer.updated_at = officer.last_login_at;
-      }
-      database.admin_audit_log = appendAdminAuditLog(ensureAdminAuditLog(), {
-        action: 'user_login',
-        actor_name: account.name,
-        actor_role: role,
-        target_user_id: account.id,
-        target_user_name: account.name,
-        details: `${account.name} (${roleLabel(role)}) signed in to the admin portal.`,
-      });
-      await saveDatabase();
-      return success(request, response, {
-        token,
-        user: { id: account.id, employee_id: account.employee_id, name: account.name, role, email: account.email, allowed_pages: pagesForRole(role) },
-      });
+      return failure(
+        request,
+        response,
+        'OTP_DISABLED',
+        'Officer OTP login is disabled. Sign in with your company ID and password.',
+        410,
+      );
     }
 
     if (request.method === 'GET' && route === '/api/v1/auth/me') {
@@ -4402,6 +4458,22 @@ async function handle(request, response) {
       }
       if (database.applications.some((item) => item.email?.toLowerCase() === application.email || item.user_id?.toLowerCase() === application.user_id)) {
         return failure(request, response, 'ACCOUNT_EXISTS', 'That email address or applicant user ID is already registered. Sign in to your applicant profile instead.', 409);
+      }
+      const hecLeadId = text(body.hec_lead_id, 120);
+      const hecFranchisee = text(body.hec_franchisee_profile, 120);
+      if (hecLeadId) application.hec_lead_id = hecLeadId;
+      if (hecFranchisee) application.hec_franchisee_profile = hecFranchisee;
+      const linkedLead = hecLeadId
+        ? (database.leads || []).find((item) => item.id === hecLeadId)
+        : hecFranchisee
+          ? findLeadByHecFranchisee(hecFranchisee)
+          : null;
+      if (linkedLead) {
+        linkedLead.stage = 'application_started';
+        linkedLead.franchise_model = model;
+        linkedLead.updated_at = application.updated_at;
+        if (hecFranchisee) linkedLead.hec_franchisee_profile = hecFranchisee;
+        addLeadActivity(linkedLead, 'note', `Applicant started ${model} application ${application.application_number} from the franchise portal.`, 'Applicant portal');
       }
       database.applications.push(application);
       contactVerificationTokens.get(text(body.mobile_verification_token, 100)).used = true;

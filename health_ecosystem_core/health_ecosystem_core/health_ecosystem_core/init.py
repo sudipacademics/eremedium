@@ -778,6 +778,20 @@ def run_phase27b_setup():
     return setup_phase27b()
 
 
+def run_phase80_setup(secret=None, base_url=None):
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase80_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase80_onboarding_bridge import setup_phase80
+
+    return setup_phase80(secret=secret, base_url=base_url)
+
+
+def run_phase80_smoke(franchisee_id=None):
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase80_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase80_onboarding_bridge import smoke_phase80
+
+    return smoke_phase80(franchisee_id=franchisee_id)
+
+
 def run_phase27b_seed_demo():
     """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase27b_seed_demo"""
     from health_ecosystem_core.health_ecosystem_core.clinical_phase27b import seed_demo_commissions, setup_phase27b

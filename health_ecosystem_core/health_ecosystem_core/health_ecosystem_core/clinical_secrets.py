@@ -138,6 +138,15 @@ def get_sms_msg91_template_id():
     ).strip()
 
 
+def get_msg91_email_otp_template_id():
+    """MSG91 SendOTP template with email delivery enabled (falls back to Flow template id)."""
+    return (
+        frappe.conf.get("msg91_email_otp_template_id")
+        or _settings_value("msg91_email_otp_template_id")
+        or get_sms_msg91_template_id()
+    ).strip()
+
+
 def get_notification_channel():
     return frappe.conf.get("notification_channel") or _settings_value("notification_channel") or "Test"
 

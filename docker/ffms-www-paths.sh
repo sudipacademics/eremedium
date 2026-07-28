@@ -107,7 +107,7 @@ PY
 
 # The patient SPA service worker owns scope "/" — stop it serving its shell on FFMS paths.
 python3 - "$SW" <<'PY'
-import sys, os
+import sys, os, re
 
 path = sys.argv[1]
 if not os.path.exists(path):
@@ -115,31 +115,51 @@ if not os.path.exists(path):
     raise SystemExit(0)
 
 src = open(path, encoding='utf-8').read()
-if 'FFMS_DENYLIST' in src:
-    print('sw=present')
-    raise SystemExit(0)
+deny_items = (r'/^\/franchise(\/|$)/,/^\/onboard(\/|$)/,/^\/ffms(\/|$)/,'
+              r'/^\/rfms-api(\/|$)/,/^\/uploads(\/|$)/,/^\/api(\/|$)/')
+changed = False
 
-needle = 'createHandlerBoundToURL("/index.html")'
-if needle not in src:
-    print('sw=needle_missing')
-    raise SystemExit(0)
-
-items = (r'/^\/franchise(\/|$)/,/^\/onboard(\/|$)/,/^\/ffms(\/|$)/,'
-         r'/^\/rfms-api(\/|$)/,/^\/uploads(\/|$)/')
-
-i = src.index(needle) + len(needle)
-tail = src[i:i + 2]
-if tail.startswith(')'):
-    src = src[:i] + ',/*FFMS_DENYLIST*/{denylist:[' + items + ']}' + src[i:]
-elif tail.startswith(',{'):
-    j = i + 2
-    src = src[:j] + '/*FFMS_DENYLIST*/denylist:[' + items + '],' + src[j:]
+if 'createHandlerBoundToURL("/index.html"),{denylist:' in src or 'FFMS_DENYLIST' in src:
+    print('sw=navigation_denylist_present')
 else:
-    print('sw=unexpected_shape:' + tail)
-    raise SystemExit(0)
+    needle = 'createHandlerBoundToURL("/index.html")'
+    if needle not in src:
+        print('sw=needle_missing')
+        raise SystemExit(0)
+    i = src.index(needle) + len(needle)
+    tail = src[i:i + 2]
+    if tail.startswith(')'):
+        src = src[:i] + ',/*FFMS_DENYLIST*/{denylist:[' + deny_items + ']}' + src[i:]
+    elif tail.startswith(',{'):
+        j = i + 2
+        src = src[:j] + '/*FFMS_DENYLIST*/denylist:[' + deny_items + '],' + src[j:]
+    else:
+        print('sw=unexpected_shape:' + tail)
+        raise SystemExit(0)
+    changed = True
+    print('sw=navigation_denylist_patched')
 
-open(path, 'w', encoding='utf-8').write(src)
-print('sw=patched')
+if 'FFMS_NAV_GUARD' in src or 'url:s})=>"navigate"===e.mode&&!' in src:
+    print('sw=navigate_networkfirst_ok')
+elif '({request:e})=>"navigate"===e.mode,new e.NetworkFirst({cacheName:"html-navigations"' in src:
+    src2, n = re.subn(
+        r'e\.registerRoute\(\(\{request:e\}\)=>"navigate"===e\.mode,new e\.NetworkFirst\(\{cacheName:"html-navigations",networkTimeoutSeconds:5,plugins:\[new e\.ExpirationPlugin\(\{maxEntries:8,maxAgeSeconds:86400\}\)\]\}\),"GET"\),?',
+        '/*FFMS_NAV_GUARD*/',
+        src,
+        count=1,
+    )
+    if n:
+        src = src2
+        changed = True
+        print('sw=navigate_networkfirst_removed')
+    else:
+        print('sw=navigate_networkfirst_shape_unmatched')
+else:
+    print('sw=navigate_networkfirst_ok')
+
+if changed:
+    open(path, 'w', encoding='utf-8').write(src)
+print('sw=done')
 PY
 
 # Sales "Start e-Aadhaar / e-agreement" should open the live path build.

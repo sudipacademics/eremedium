@@ -7,7 +7,9 @@ export function SalesOnboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [startingSession, setStartingSession] = useState(false);
   const [franchiseeId, setFranchiseeId] = useState<string | null>(null);
+  const [sessionUrl, setSessionUrl] = useState<string | null>(null);
 
   const [leadId, setLeadId] = useState('');
   const [franchiseName, setFranchiseName] = useState('');
@@ -36,11 +38,30 @@ export function SalesOnboardPage() {
     setTerritory(lead.city || territory);
   }
 
+  async function startEAgreement(targetFranchiseeId: string) {
+    setStartingSession(true);
+    setError(null);
+    try {
+      const session = await api.createOnboardingSession({
+        franchisee_id: targetFranchiseeId,
+        ...(leadId ? { lead_id: leadId } : {}),
+      });
+      setSessionUrl(session.data.url);
+      setMessage(`Franchisee ${targetFranchiseeId} ready. Opening FFMS e-Aadhaar / e-agreement portal…`);
+      window.open(session.data.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to start e-agreement session');
+    } finally {
+      setStartingSession(false);
+    }
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     setMessage(null);
+    setSessionUrl(null);
     try {
       const res = await api.submitSalesOnboarding({
         ...(leadId ? { lead_id: leadId } : {}),
@@ -66,14 +87,32 @@ export function SalesOnboardPage() {
   return (
     <>
       <h1>Onboard franchisee</h1>
-      <p className="muted">Complete franchise registration — creates Franchisee Profile and B2B wallet.</p>
+      <p className="muted">
+        Complete franchise registration — creates Franchisee Profile and B2B wallet, then hand off to FFMS for e-Aadhaar /
+        e-agreement.
+      </p>
 
       {message ? (
         <div className="success">
           {message}
           {franchiseeId ? (
-            <div style={{ marginTop: 8 }}>
-              <Link to="/sales/franchisees">View franchisee stats →</Link>
+            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={startingSession}
+                  onClick={() => void startEAgreement(franchiseeId)}
+                >
+                  {startingSession ? 'Opening…' : 'Start e-Aadhaar / e-agreement'}
+                </button>
+                <Link to="/sales/franchisees">View franchisee stats →</Link>
+              </div>
+              {sessionUrl ? (
+                <p className="muted" style={{ margin: 0, wordBreak: 'break-all' }}>
+                  Portal link: <a href={sessionUrl} target="_blank" rel="noreferrer">{sessionUrl}</a>
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

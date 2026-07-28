@@ -253,6 +253,98 @@ export async function verifyOtpViaErp(mobile, otp) {
   };
 }
 
+/**
+ * Send Email OTP via MSG91 (ERP). MSG91 generates and emails the code.
+ */
+export async function sendEmailOtpViaErp(email) {
+  const recipient = String(email || '').trim().toLowerCase();
+  if (!recipient || !recipient.includes('@')) {
+    throw new Error('Enter a valid email address.');
+  }
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const form = new URLSearchParams();
+  form.set('email', recipient);
+  const raw = Buffer.from(form.toString());
+  const response = await postForm(
+    frappeMethodUrl('health_ecosystem_core.health_ecosystem_core.otp_auth.send_email_otp'),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      'X-Frappe-Site': site,
+      Host: site,
+    },
+    raw,
+  );
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `Email OTP send failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : {};
+  return {
+    email: String(data.email || recipient),
+    expires_in: Number(data.expires_in || 300),
+    test_mode: Boolean(data.test_mode),
+    hint: data.hint ? String(data.hint) : '',
+    channel: 'email',
+  };
+}
+
+/**
+ * Verify MSG91 Email OTP through ERP (no Frappe session).
+ */
+export async function verifyEmailOtpViaErp(email, otp) {
+  const recipient = String(email || '').trim().toLowerCase();
+  const code = String(otp || '').trim();
+  if (!recipient || !recipient.includes('@')) {
+    throw new Error('Invalid email for OTP verification.');
+  }
+  if (!/^\d{4,8}$/.test(code)) {
+    throw new Error('Enter the OTP from your email.');
+  }
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const form = new URLSearchParams();
+  form.set('email', recipient);
+  form.set('otp', code);
+  const raw = Buffer.from(form.toString());
+  const response = await postForm(
+    frappeMethodUrl('health_ecosystem_core.health_ecosystem_core.otp_auth.verify_email_otp'),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      'X-Frappe-Site': site,
+      Host: site,
+    },
+    raw,
+  );
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status === 401 || err) {
+    throw new Error(err || 'The OTP is incorrect or expired.');
+  }
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(err || `Email OTP verify failed (${response.status})`);
+  }
+  return {
+    email: String(message?.data?.email || recipient),
+    verified: true,
+    test_mode: Boolean(message?.data?.test_mode),
+    channel: 'email',
+  };
+}
+
 /** Local/dev fallback when ERP OTP bridge is disabled. */
 export function rfmsOtpUsesErp() {
   const flag = String(process.env.RFMS_OTP_VIA_ERP ?? '1').trim().toLowerCase();

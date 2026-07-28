@@ -16,8 +16,8 @@ PHASE27B_DOCTYPES = (
 DEFAULT_REVENUE_SHARE_RATE = 2.5
 DEFAULT_ONBOARDING_BONUS = 15000
 
-REMEDIUM_PUBLIC_SITE = "https://lab.remediumhealth.co.in/"
-REMEDIUM_FRANCHISE_PAGE = "https://lab.remediumhealth.co.in/franchise/"
+REMEDIUM_PUBLIC_SITE = "https://www.e-remedium.in/"
+REMEDIUM_FRANCHISE_PAGE = "https://www.e-remedium.in/franchise/"
 REMEDIUM_BROCHURE_PDF = (
     "https://lab.remediumhealth.co.in/wp-content/uploads/2026/02/Foco-Brochure-2026_compressed.pdf"
 )

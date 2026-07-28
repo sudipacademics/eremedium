@@ -50,12 +50,12 @@ type FranchiseWebpageSummary = { id: string; slug: string; enabled: boolean; pub
 type Application = { id: string; application_number: string; franchisee_id?: string; franchisee_id_issued_at?: string; full_name: string; email: string; mobile: string; user_id?: string; address?: string; city?: string; district?: string; pincode?: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; territory_label?: string; territory_pincode?: string; territory_allotment?: TerritoryAllotment | null; territory_allotments?: TerritoryAllotment[]; stage: string; terms_accepted?: boolean; payment_terms?: Record<string, { terms_text?: string; terms_version?: number; accepted_at?: string; accepted_by?: string }>; documents: Partial<Record<DocumentKey, UploadedDocument>>; document_verifications?: Partial<Record<DocumentKey, DocumentVerification>>; video_kyc_sessions?: VideoKycSession[]; video_kyc_current_session_id?: string; field_visit?: FieldVisit | null; onboarding_documents?: OnboardingDocument[]; branding_signage?: BrandingSignage | null; hr_process?: HrProcess | null; agreement_workflow?: AgreementWorkflow | null; training?: TrainingSummary | null; onboarding_certificate?: OnboardingCertificateSummary | null; franchise_webpage?: FranchiseWebpageSummary | null; support?: { unread_replies: number; open_tickets: number }; payments: Payment[] };
 type AgreementWorkflow = { status: string; status_label?: string; reference_number?: string; view_document?: { name: string; url: string; mime?: string } | null; permissions?: { can_view?: boolean; can_download?: boolean; can_accept_esign?: boolean; can_request_corrections?: boolean; view_only?: boolean }; document?: { draft_body?: string; body?: string; sent_to_applicant_at?: string; uploaded_file?: { url: string; name: string } | null; aadhaar_signed_file?: { url: string; name: string } | null; executed_file?: { url: string; name: string } | null } | null; applicant?: { terms_accepted_at?: string; correction_request?: string; correction_requested_at?: string; correction_decision?: string; correction_decision_at?: string; correction_response?: string; esign_completed_at?: string; esign_reference?: string } | null; executed?: { agreement_url?: string; executed_at?: string; qr_reference?: string } | null };
 type TerritoryPin = { pincode: string; area: string; subdivision: string; district: string; state: string; fofo: { available: number }; foco: { available: number } };
-type Draft = { full_name: string; mobile: string; email: string; date_of_birth: string; pan_number: string; aadhaar_number: string; address: string; city: string; district: string; pincode: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; business_experience: string; user_id: string; account_password: string; account_password_confirmation: string };
+type Draft = { full_name: string; mobile: string; email: string; date_of_birth: string; pan_number: string; aadhaar_number: string; address: string; city: string; district: string; pincode: string; franchise_model: '' | 'FOFO' | 'FOCO'; preferred_location: string; business_experience: string; user_id: string; account_password: string; account_password_confirmation: string; hec_lead_id?: string; hec_franchisee_profile?: string };
 type ContactChannel = 'mobile' | 'email';
 type ContactVerification = { mobileToken: string; emailToken: string; termsAccepted?: boolean };
 type PortalView = 'application' | 'payment' | 'profile-login' | 'profile';
 
-const EMPTY_DRAFT: Draft = { full_name: '', mobile: '', email: '', date_of_birth: '', pan_number: '', aadhaar_number: '', address: '', city: '', district: '', pincode: '', franchise_model: 'FOFO', preferred_location: '', business_experience: '', user_id: '', account_password: '', account_password_confirmation: '' };
+const EMPTY_DRAFT: Draft = { full_name: '', mobile: '', email: '', date_of_birth: '', pan_number: '', aadhaar_number: '', address: '', city: '', district: '', pincode: '', franchise_model: '', preferred_location: '', business_experience: '', user_id: '', account_password: '', account_password_confirmation: '' };
 
 function money(value: number) { return `₹${value.toLocaleString('en-IN')}`; }
 function paymentReceiptUrl(applicationId: string, paymentKey: string) { return `${API_BASE}/applications/public/${encodeURIComponent(applicationId)}/payments/${encodeURIComponent(paymentKey)}/receipt`; }
@@ -92,11 +92,19 @@ function asDataUrl(file: File): Promise<string> { return new Promise((resolve, r
 function normaliseCompany(value: unknown) { const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}; const savedLogo = typeof source.logo_url === 'string' && source.logo_url.trim() ? source.logo_url.trim() : DEFAULT_COMPANY.logo_url; return { company_name: typeof source.company_name === 'string' && source.company_name.trim() ? source.company_name.trim() : DEFAULT_COMPANY.company_name, logo_url: savedLogo.startsWith('/') ? `${RFMS_MARKETING_ORIGIN}${savedLogo}` : savedLogo, fofo_terms: typeof source.fofo_terms === 'string' && source.fofo_terms.trim() ? source.fofo_terms.trim() : DEFAULT_COMPANY.fofo_terms, foco_terms: typeof source.foco_terms === 'string' && source.foco_terms.trim() ? source.foco_terms.trim() : DEFAULT_COMPANY.foco_terms, foco_phase_2_terms: typeof source.foco_phase_2_terms === 'string' && source.foco_phase_2_terms.trim() ? source.foco_phase_2_terms.trim() : DEFAULT_COMPANY.foco_phase_2_terms, foco_phase_3_terms: typeof source.foco_phase_3_terms === 'string' && source.foco_phase_3_terms.trim() ? source.foco_phase_3_terms.trim() : DEFAULT_COMPANY.foco_phase_3_terms }; }
 function isLegacyCanvasLogo(logoUrl: string) {
   const value = logoUrl.trim().toLowerCase();
-  return value.endsWith('/remedium-lab-logo.png') || value.endsWith('remedium-lab-logo.png');
+  return value.includes('remedium-lab-logo.png')
+    || value.includes('/uploads/company-logo-')
+    || /company-logo-[a-z0-9.-]+\.(png|jpe?g|webp)(?:\?|$)/i.test(value);
 }
 function portalLogoImageProps(logoUrl: string) {
   return {
     className: isLegacyCanvasLogo(logoUrl) ? 'legacy-canvas-logo' : undefined,
+    onLoad: (event: SyntheticEvent<HTMLImageElement>) => {
+      const image = event.currentTarget;
+      if (image.naturalWidth > 0 && image.naturalHeight > 0 && image.naturalWidth / image.naturalHeight >= 1.7) {
+        image.classList.add('legacy-canvas-logo');
+      }
+    },
     onError: (event: SyntheticEvent<HTMLImageElement>) => {
       event.currentTarget.src = DEFAULT_COMPANY.logo_url;
       event.currentTarget.classList.add('legacy-canvas-logo');
@@ -326,7 +334,21 @@ function profileSteps(application: Application) {
 }
 
 function BrandHeader({ company, application, onProfile }: { company: typeof DEFAULT_COMPANY; application: Application | null; onProfile: () => void }) {
-  return <header className="application-header"><a href={RFMS_MARKETING_ORIGIN} className="app-brand" aria-label={`${company.company_name} home`}><span className="portal-logo-frame"><img src={company.logo_url} alt={`${company.company_name} logo`} {...portalLogoImageProps(company.logo_url)} /></span><span className="portal-brand-caption">Franchise applicant portal</span></a><div className="application-header-actions">{application ? <button className="profile-link" type="button" onClick={onProfile}>My application profile</button> : null}<span>{application?.application_number ?? 'Secure franchise application'}</span></div></header>;
+  const marketingHome = RFMS_MARKETING_ORIGIN.replace(/\/$/, '');
+  return (
+    <header className="application-header">
+      <a href={marketingHome} className="app-brand" aria-label={`${company.company_name} home`}>
+        <span className="portal-logo-frame">
+          <img src={company.logo_url} alt={`${company.company_name} logo`} {...portalLogoImageProps(company.logo_url)} />
+        </span>
+      </a>
+      <div className="application-header-actions">
+        <span className="header-chip">Franchise applicant portal</span>
+        <span className="header-chip header-chip-muted">{application?.application_number ?? 'Secure franchise application'}</span>
+        {application ? <button className="profile-link" type="button" onClick={onProfile}>My application profile</button> : null}
+      </div>
+    </header>
+  );
 }
 
 function DocumentUpload({ item, document, busy, onUpload }: { item: typeof DOCUMENTS[number]; document?: UploadedDocument; busy: boolean; onUpload: (key: DocumentKey, event: ChangeEvent<HTMLInputElement>) => void }) {
@@ -1948,10 +1970,18 @@ function LegacyVerifiedApplicationForm({ company, draft, documents, uploading, s
 }
 
 function TerritoryPinField({ draft, pins, loading, setField }: { draft: Draft; pins: TerritoryPin[]; loading: boolean; setField: <K extends keyof Draft>(key: K, value: Draft[K]) => void }) {
-  const applicable = pins.filter((pin) => draft.franchise_model === 'FOFO' ? pin.fofo.available > 0 : pin.foco.available > 0);
+  const modelSelected = draft.franchise_model === 'FOFO' || draft.franchise_model === 'FOCO';
+  const applicable = !modelSelected ? [] : pins.filter((pin) => draft.franchise_model === 'FOFO' ? pin.fofo.available > 0 : pin.foco.available > 0);
   const selected = applicable.find((pin) => pin.pincode === draft.pincode);
   const availabilityLabel = (pin: TerritoryPin) => draft.franchise_model === 'FOFO' ? `${pin.fofo.available} FOFO available` : `${pin.foco.available} FOCO available`;
-  return <label className="territory-pin-field">Franchise territory PIN code<select required value={draft.pincode} onChange={(event) => setField('pincode', event.target.value)} disabled={loading || !applicable.length}><option value="">{loading ? 'Loading available PIN codes...' : applicable.length ? 'Select available PIN code' : `No ${draft.franchise_model} PIN is currently available`}</option>{applicable.map((pin) => <option key={pin.pincode} value={pin.pincode}>{pin.pincode} — {pin.area}, {pin.district} ({availabilityLabel(pin)})</option>)}</select><small>{selected ? `${selected.area}, ${selected.subdivision}, ${selected.district}. Availability is reserved from this exact PIN after payment.` : 'Only PIN codes configured as available by the franchise team can be selected.'}</small></label>;
+  const emptyLabel = !modelSelected
+    ? 'Select FOFO or FOCO first'
+    : loading
+      ? 'Loading available PIN codes...'
+      : applicable.length
+        ? 'Select available PIN code'
+        : `No ${draft.franchise_model} PIN is currently available`;
+  return <label className="territory-pin-field">Franchise territory PIN code<select required value={draft.pincode} onChange={(event) => setField('pincode', event.target.value)} disabled={loading || !modelSelected || !applicable.length}><option value="">{emptyLabel}</option>{applicable.map((pin) => <option key={pin.pincode} value={pin.pincode}>{pin.pincode} — {pin.area}, {pin.district} ({availabilityLabel(pin)})</option>)}</select><small>{selected ? `${selected.area}, ${selected.subdivision}, ${selected.district}. Availability is reserved from this exact PIN after payment.` : modelSelected ? 'Only PIN codes configured as available by the franchise team can be selected.' : 'Choose a franchise model to see available PIN codes.'}</small></label>;
 }
 
 function ApplicationForm({ company, draft, documents, uploading, submitting, message, error, setField, onUpload, onSubmit, territoryPins, territoryPinsLoading }: { company: typeof DEFAULT_COMPANY; draft: Draft; documents: Partial<Record<DocumentKey, UploadedDocument>>; uploading: DocumentKey | null; submitting: boolean; message: string; error: string; setField: <K extends keyof Draft>(key: K, value: Draft[K]) => void; onUpload: (key: DocumentKey, event: ChangeEvent<HTMLInputElement>) => void; onSubmit: (event: FormEvent<HTMLFormElement>, verification: ContactVerification) => void; territoryPins: TerritoryPin[]; territoryPinsLoading: boolean }) {
@@ -1961,6 +1991,7 @@ function ApplicationForm({ company, draft, documents, uploading, submitting, mes
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const completeDocumentCount = DOCUMENTS.filter((item) => documents[item.key]).length;
+  const modelSelected = draft.franchise_model === 'FOFO' || draft.franchise_model === 'FOCO';
   const selectedTerms = draft.franchise_model === 'FOCO' ? company.foco_terms : company.fofo_terms;
 
   function updateMobile(value: string) {
@@ -1993,6 +2024,10 @@ function ApplicationForm({ company, draft, documents, uploading, submitting, mes
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!modelSelected) {
+      setContactError('Select FOFO or FOCO before submitting the application.');
+      return;
+    }
     if (!verification.mobileToken || !verification.emailToken) {
       setContactError('Verify both the mobile number and email address with their OTPs before submitting the application.');
       return;
@@ -2029,8 +2064,8 @@ function ApplicationForm({ company, draft, documents, uploading, submitting, mes
           <label className="span-two">Residential address<textarea required value={draft.address} onChange={(event) => setField('address', event.target.value)} placeholder="House / street / locality" /></label>
           <label>City / town<input required value={draft.city} onChange={(event) => setField('city', event.target.value)} /></label>
           <label>District<input required value={draft.district} onChange={(event) => setField('district', event.target.value)} /></label>
+          <label>Franchise model<select required value={draft.franchise_model} onChange={(event) => updateModel(event.target.value as Draft['franchise_model'])}><option value="">Select FOFO or FOCO</option><option value="FOFO">FOFO — Franchise Owned, Franchise Operated</option><option value="FOCO">FOCO — Franchise Owned, Company Operated</option></select></label>
           <TerritoryPinField draft={draft} pins={territoryPins} loading={territoryPinsLoading} setField={setField} />
-          <label>Franchise model<select value={draft.franchise_model} onChange={(event) => updateModel(event.target.value as Draft['franchise_model'])}><option value="FOFO">FOFO — Franchise Owned, Franchise Operated</option><option value="FOCO">FOCO — Franchise Owned, Company Operated</option></select></label>
           <label className="span-two">Preferred territory / location<input required value={draft.preferred_location} onChange={(event) => setField('preferred_location', event.target.value)} placeholder="e.g. Newtown, Kolkata" /></label>
           <label className="span-two">Business experience<textarea value={draft.business_experience} onChange={(event) => setField('business_experience', event.target.value)} placeholder="Tell us about your work, healthcare or business experience (optional)." /></label>
         </div>
@@ -2043,12 +2078,12 @@ function ApplicationForm({ company, draft, documents, uploading, submitting, mes
         <div className="section-heading"><div><h2>KYC documents</h2><p>All four files are required to continue: a photo, PAN card, Aadhaar card and Voter ID.</p></div><span>{completeDocumentCount}/4 required</span></div>
         <div className="document-grid">{DOCUMENTS.map((item) => <DocumentUpload key={item.key} item={item} document={documents[item.key]} busy={uploading === item.key} onUpload={onUpload} />)}</div>
       </section>
-      <section className="fee-preview"><h2>{draft.franchise_model} payment summary</h2>{draft.franchise_model === 'FOFO' ? <p><b>{money(45000)}</b> one-time franchise fee, payable after completing this application.</p> : <div><p><b>Phase 1: {money(10000)}</b> — document verification and location allotment</p><p><b>Phase 2: {money(110000)}</b> — onboarding process</p><p><b>Phase 3: {money(200000)}</b> — final agreement and onboarding</p></div>}</section>
-      <section className={`terms-consent ${termsAccepted ? 'accepted' : ''}`}><div><b>{draft.franchise_model} franchise terms &amp; conditions</b><span>Open the terms, read them and accept them before submitting your application or making a payment.</span></div><label><input type="checkbox" checked={termsAccepted} onChange={(event) => { if (!event.target.checked) setTermsAccepted(false); else setTermsOpen(true); }} />I have read and accepted the {draft.franchise_model} franchise terms.</label><button type="button" onClick={() => setTermsOpen(true)}>{termsAccepted ? 'Review accepted terms' : 'Read terms & conditions'}</button></section>
+      <section className="fee-preview"><h2>{modelSelected ? `${draft.franchise_model} payment summary` : 'Payment summary'}</h2>{!modelSelected ? <p>Select FOFO or FOCO to see the fee schedule.</p> : draft.franchise_model === 'FOFO' ? <p><b>{money(45000)}</b> one-time franchise fee, payable after completing this application.</p> : <div><p><b>Phase 1: {money(10000)}</b> — document verification and location allotment</p><p><b>Phase 2: {money(110000)}</b> — onboarding process</p><p><b>Phase 3: {money(200000)}</b> — final agreement and onboarding</p></div>}</section>
+      <section className={`terms-consent ${termsAccepted ? 'accepted' : ''}`}><div><b>{modelSelected ? `${draft.franchise_model} franchise terms & conditions` : 'Franchise terms & conditions'}</b><span>{modelSelected ? 'Open the terms, read them and accept them before submitting your application or making a payment.' : 'Select FOFO or FOCO first, then read and accept the matching terms.'}</span></div><label><input type="checkbox" checked={termsAccepted} disabled={!modelSelected} onChange={(event) => { if (!event.target.checked) setTermsAccepted(false); else setTermsOpen(true); }} />I have read and accepted the {modelSelected ? `${draft.franchise_model} ` : ''}franchise terms.</label><button type="button" disabled={!modelSelected} onClick={() => setTermsOpen(true)}>{termsAccepted ? 'Review accepted terms' : 'Read terms & conditions'}</button></section>
       {message ? <p className="portal-message success" role="status">{message}</p> : null}{error ? <p className="portal-message error" role="alert">{error}</p> : null}{contactError ? <p className="portal-message error" role="alert">{contactError}</p> : null}
-      <button className="submit-application" disabled={submitting || uploading !== null || !termsAccepted}>{submitting ? 'Saving application...' : !termsAccepted ? `Accept ${draft.franchise_model} terms to continue` : 'Submit application and continue to payment'}</button>
+      <button className="submit-application" disabled={submitting || uploading !== null || !modelSelected || !termsAccepted}>{submitting ? 'Saving application...' : !modelSelected ? 'Select FOFO or FOCO to continue' : !termsAccepted ? `Accept ${draft.franchise_model} terms to continue` : 'Submit application and continue to payment'}</button>
       <p className="application-note">Your application is sent to the RFMS Admin dashboard after the first payment is successfully recorded.</p>
-    </form>{termsOpen ? <FranchiseTermsModal title={`${draft.franchise_model} franchise`} terms={selectedTerms} onClose={() => setTermsOpen(false)} onAccept={() => { setTermsAccepted(true); setTermsOpen(false); setContactError(''); }} /> : null}
+    </form>{termsOpen && modelSelected ? <FranchiseTermsModal title={`${draft.franchise_model} franchise`} terms={selectedTerms} onClose={() => setTermsOpen(false)} onAccept={() => { setTermsAccepted(true); setTermsOpen(false); setContactError(''); }} /> : null}
   </section>;
 }
 
@@ -2070,7 +2105,54 @@ export default function Portal() {
   const loadApplication = useCallback(async () => { const id = window.localStorage.getItem(STORAGE_KEY); if (!id) return; try { const response = await fetch(`${API_BASE}/applications/public/${id}`); const payload = await response.json(); if (response.ok && payload?.success) { setApplication(payload.data as Application); setView('payment'); } else window.localStorage.removeItem(STORAGE_KEY); } catch { /* The sign-in route remains available without a locally saved application. */ } }, []);
   const loadProfile = useCallback(async (token: string, showRefresh = false) => { if (!token) return false; if (showRefresh) setRefreshing(true); try { const response = await fetch(`${API_BASE}/applicant/profile`, { headers: { Authorization: `Bearer ${token}` } }); const payload = await response.json(); if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Please sign in again to refresh your profile.'); setApplication(payload.data as Application); setProfileToken(token); setError(''); setView('profile'); return true; } catch (profileError) { window.localStorage.removeItem(AUTH_TOKEN_KEY); setProfileToken(''); setView('profile-login'); if (showRefresh) setError(profileError instanceof Error ? profileError.message : 'Please sign in again to refresh your profile.'); return false; } finally { if (showRefresh) setRefreshing(false); } }, []);
 
-  useEffect(() => { const params = new URLSearchParams(window.location.search); const model = params.get('model'); if (model === 'FOFO' || model === 'FOCO') setDraft((current) => ({ ...current, franchise_model: model })); const handoffToken = params.get('rfms_applicant_token'); if (handoffToken) { window.localStorage.setItem(AUTH_TOKEN_KEY, handoffToken); params.delete('rfms_applicant_token'); const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`; window.history.replaceState({}, '', next || '/'); void loadProfile(handoffToken); } else { const savedToken = window.localStorage.getItem(AUTH_TOKEN_KEY) ?? ''; if (savedToken) void loadProfile(savedToken); else if (params.get('view') === 'profile') setView('profile-login'); else void loadApplication(); } void fetch(`${API_BASE}/content/settings`).then(async (response) => ({ response, payload: await response.json() })).then(({ response, payload }) => { if (response.ok && payload?.success) setCompany(normaliseCompany(payload.data)); }).catch(() => undefined); }, [loadApplication, loadProfile]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const model = params.get('model');
+    if (model === 'FOFO' || model === 'FOCO') setDraft((current) => ({ ...current, franchise_model: model }));
+    const hecLead = params.get('hec_lead');
+    const hecFp = params.get('hec_fp');
+    const prefillName = params.get('name');
+    const prefillEmail = params.get('email');
+    const prefillMobile = params.get('mobile');
+    const prefillLocation = params.get('location');
+    if (hecLead || hecFp || prefillName || prefillEmail || prefillMobile || prefillLocation) {
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.localStorage.removeItem(STORAGE_KEY);
+      setApplication(null);
+      setProfileToken('');
+      setDraft((current) => ({
+        ...current,
+        full_name: prefillName?.trim() || current.full_name,
+        email: prefillEmail?.trim() || current.email,
+        mobile: prefillMobile?.trim() || current.mobile,
+        preferred_location: prefillLocation?.trim() || current.preferred_location,
+        franchise_model: model === 'FOFO' || model === 'FOCO' ? model : '',
+        hec_lead_id: hecLead || current.hec_lead_id,
+        hec_franchisee_profile: hecFp || current.hec_franchisee_profile,
+      }));
+      setView('application');
+      setMessage('Reach sales handoff received. Choose FOFO or FOCO and complete your application.');
+      ['hec_lead', 'hec_fp', 'name', 'email', 'mobile', 'location', 'model'].forEach((key) => params.delete(key));
+      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+      window.history.replaceState({}, '', next || '/');
+      void fetch(`${API_BASE}/content/settings`).then(async (response) => ({ response, payload: await response.json() })).then(({ response, payload }) => { if (response.ok && payload?.success) setCompany(normaliseCompany(payload.data)); }).catch(() => undefined);
+      return;
+    }
+    const handoffToken = params.get('rfms_applicant_token');
+    if (handoffToken) {
+      window.localStorage.setItem(AUTH_TOKEN_KEY, handoffToken);
+      params.delete('rfms_applicant_token');
+      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+      window.history.replaceState({}, '', next || '/');
+      void loadProfile(handoffToken);
+    } else {
+      const savedToken = window.localStorage.getItem(AUTH_TOKEN_KEY) ?? '';
+      if (savedToken) void loadProfile(savedToken);
+      else if (params.get('view') === 'profile') setView('profile-login');
+      else void loadApplication();
+    }
+    void fetch(`${API_BASE}/content/settings`).then(async (response) => ({ response, payload: await response.json() })).then(({ response, payload }) => { if (response.ok && payload?.success) setCompany(normaliseCompany(payload.data)); }).catch(() => undefined);
+  }, [loadApplication, loadProfile]);
   useEffect(() => { let active = true; setTerritoryPinsLoading(true); void fetch(`${API_BASE}/territories/pincodes`).then(async (response) => ({ response, payload: await response.json() })).then(({ response, payload }) => { if (active && response.ok && payload?.success) setTerritoryPins(Array.isArray(payload.data?.pincodes) ? payload.data.pincodes as TerritoryPin[] : []); }).catch(() => { if (active) setTerritoryPins([]); }).finally(() => { if (active) setTerritoryPinsLoading(false); }); return () => { active = false; }; }, []);
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((current) => ({ ...current, [key]: value })); }
   function showView(next: PortalView) { setView(next); const url = new URL(window.location.href); if (next === 'profile-login') url.searchParams.set('view', 'profile'); else url.searchParams.delete('view'); window.history.replaceState({}, '', url); }

@@ -85,17 +85,31 @@ button {
     display: inline-flex;
   }
 
-  .application-header-actions > span {
+  .application-header-actions > span,
+  .header-chip:not(.header-chip-muted) {
     display: none;
   }
 
   .application-header-actions {
-    gap: 10px;
+    gap: 8px;
   }
 
   .portal-logo-frame {
-    width: min(180px, 42vw);
-    height: 58px;
+    width: clamp(180px, 46vw, 240px);
+    height: 72px;
+    padding: 6px 10px;
+  }
+
+  .portal-logo-frame img,
+  .portal-logo-frame img.legacy-canvas-logo {
+    position: static;
+    transform: none;
+    object-fit: contain;
+    object-position: left center;
+  }
+
+  .portal-header-nav {
+    display: none;
   }
 
   .portal-brand-caption {
@@ -103,10 +117,14 @@ button {
   }
 
   .application-header {
-    padding: 0 16px;
+    padding: 12px 16px;
+    min-height: 84px;
     height: auto;
-    min-height: 72px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+  }
+
+  .application-page {
+    grid-template-columns: 1fr !important;
   }
 
   .app-dashboard {
@@ -444,12 +462,12 @@ button {
   }
 
   .profile-link {
-    width: 100%;
+    width: auto;
   }
 
   .application-header-actions {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
   }
 }
 

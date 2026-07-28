@@ -11,6 +11,7 @@ import { AvailableTerritorySection } from './available-territories';
 import './franchise-detail.css';
 import './company-profile.css';
 import './site.css';
+import './responsive.css';
 
 function applyHref(url: string, model: 'FOFO' | 'FOCO') {
   const value = url.trim();

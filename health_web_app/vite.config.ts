@@ -17,11 +17,25 @@ export default defineConfig(({ mode }) => {
           skipWaiting: true,
           cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
+          // FFMS + ERP paths on the same www host must hit nginx upstreams, not the SPA shell.
+          navigateFallbackDenylist: [
+            /^\/onboard(?:\/|$)/,
+            /^\/franchise(?:\/|$)/,
+            /^\/ffms(?:\/|$)/,
+            /^\/rfms-api(?:\/|$)/,
+            /^\/uploads(?:\/|$)/,
+            /^\/api(?:\/|$)/,
+            /^\/assets(?:\/|$)/,
+            /^\/files(?:\/|$)/,
+          ],
           globPatterns: ['**/*.{js,css,html,ico,svg,jpg,jpeg,png,webp,woff2}'],
           runtimeCaching: [
             {
               // Never keep a stale shell that points at an old JS bundle.
-              urlPattern: ({ request }) => request.mode === 'navigate',
+              // Skip FFMS/ERP paths — same denylist as navigateFallback.
+              urlPattern: ({ request, url }) =>
+                request.mode === 'navigate' &&
+                !/^\/(onboard|franchise|ffms|rfms-api|uploads|api|assets|files)(\/|$)/.test(url.pathname),
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'html-navigations',

@@ -27,6 +27,9 @@ ALLOWED_PUBLIC_METHODS = {
     "send_otp",
     "verify_otp",
     "verify_otp_and_login",
+    "send_email_otp",
+    "verify_email_otp",
+    "ingest_onboarding_result",
 }
 
 MACHINE_METHODS = {
@@ -2544,6 +2547,59 @@ def submit_sales_onboarding(sid=None, **kwargs):
         return _success(row, message=_("Franchisee onboarded"))
     except frappe.ValidationError as exc:
         return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_onboarding_session(sid=None, franchisee_id=None, lead_id=None, ttl_seconds=None):
+    """Sales/ops: mint HMAC one-time URL for FFMS applicant portal (/onboard/hec-session)."""
+    denied = _require_sales_access(sid)
+    if denied:
+        roles = set(frappe.get_roles())
+        if not roles.intersection({"System Manager", "Health System Admin", "Sales Manager"}):
+            return denied
+    franchisee_id = (_parse_request_value("franchisee_id", franchisee_id) or "").strip()
+    lead_id = (_parse_request_value("lead_id", lead_id) or "").strip()
+    ttl_raw = _parse_request_value("ttl_seconds", ttl_seconds)
+    ttl_seconds = cint(ttl_raw) if ttl_raw not in (None, "") else None
+    if not franchisee_id:
+        return _error(_("franchisee_id is required"))
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase80_onboarding_bridge import (
+            mint_onboarding_token,
+        )
+
+        row = mint_onboarding_token(
+            franchisee_id=franchisee_id,
+            lead_id=lead_id,
+            ttl_seconds=ttl_seconds,
+        )
+        return _success(row, message=_("Onboarding session created"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_onboarding_session", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create onboarding session"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ingest_onboarding_result(hec_payload=None, **kwargs):
+    """FFMS callback: HMAC-signed agreement/onboarding completion onto Franchisee Profile."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase80_onboarding_bridge import (
+            _parse_ingest_payload,
+            ingest_onboarding_result_payload,
+        )
+
+        payload = _parse_ingest_payload(hec_payload, **kwargs)
+        row = ingest_onboarding_result_payload(payload)
+        return _success(row, message=_("Onboarding result ingested"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ingest_onboarding_result", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to ingest onboarding result"))
 
 
 @frappe.whitelist(allow_guest=True)

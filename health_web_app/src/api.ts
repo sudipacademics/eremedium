@@ -2807,6 +2807,15 @@ export const api = {
       auth: true,
     }),
 
+  createOnboardingSession: (body: { franchisee_id: string; lead_id?: string; ttl_seconds?: number }) =>
+    request<{
+      session_id: string;
+      token: string;
+      url: string;
+      expires_at: number;
+      franchisee_id: string;
+    }>('create_onboarding_session', { method: 'POST', body, auth: true }),
+
   getSalesFranchiseeStats: (period?: 'month' | 'all') =>
     request<SalesFranchiseeStats>('get_sales_franchisee_stats', {
       method: 'POST',

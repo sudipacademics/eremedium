@@ -32,6 +32,7 @@
     "notification_channel",
     "sms_sender_id",
     "sms_msg91_template_id",
+    "msg91_email_otp_template_id",
     "sms_dlt_template_id",
     "whatsapp_api_key",
     "whatsapp_source_number",
@@ -233,6 +234,12 @@
       "fieldname": "sms_msg91_template_id",
       "fieldtype": "Data",
       "label": "MSG91 Flow Template ID"
+    },
+    {
+      "description": "MSG91 SendOTP template id with Email delivery enabled (used for RFMS officer login). Leave blank to reuse MSG91 Flow Template ID.",
+      "fieldname": "msg91_email_otp_template_id",
+      "fieldtype": "Data",
+      "label": "MSG91 Email OTP Template ID"
     },
     {
       "description": "Numeric DLT Content Template ID from DLT portal export only (not the MSG91 hex id). Used by raw SendHTTP if Flow template is empty.",

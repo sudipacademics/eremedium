@@ -19,6 +19,7 @@ import './territory-checker.css';
 import './public-content.css';
 import './company-profile.css';
 import './hero-slider.css';
+import './responsive.css';
 
 const SUPPORT_STAGES = [
   ['Discovery', 'We understand your opportunity.', 'Discovery discussion'],
