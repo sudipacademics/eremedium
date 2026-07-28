@@ -72,7 +72,7 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - **Code:** `clinical_franchisee_import.py`; `get_franchisee_dashboard` returns wallet + hub fields; `search_franchisees` includes lat/lng/category/wallet.
 - **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Prefer **`docker/scripts/hot-deploy-phase81-hub.sh`** until `hec_job_application_education` module is restored (full migrate still fails on that DocType). Users default password `HubChangeMe@123`.
 - **Live 2026-07-28:** hot deploy OK; sheet import **21 updated / 0 errors**; `search_franchisees` HTTP 200 with wallet/category fields. Geocode skipped (`GEOCODE=0`); re-run import with `GEOCODE=1` for GPS.
-- **Parked still:** real FFMS officer IDs; applicant KYC/first payment e2e.
+- **Google Maps (FFMS admin):** rebuilds must pass `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (from `apps_external/ffms/.env.local` into `docker/.env`). Use `docker/scripts/rebuild-rfms-with-maps-key.sh`. GCP project still needs **Billing enabled** or Maps returns `REQUEST_DENIED`.
 
 ## RFMS officer login (2026-07-28)
 
@@ -80,6 +80,7 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - API: `POST /api/v1/auth/login` with `{ login_id, password }`. Legacy `/auth/otp/*` returns `OTP_DISABLED`.
 - Company ID examples from seed: `RFMS-0001` (admin), `RFMS-0005` (consultant), etc. Email also accepted as alias for existing accounts.
 - **Parked (do not start unless asked):** (1) issue real officer IDs in User Management vs seed logins; (2) full applicant KYC + first-payment path on a fresh handoff.
+- **RFMS rebuilds:** use `docker/scripts/rebuild-rfms-with-maps-key.sh` (or officer-login script) so `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is not dropped.
 
 ## Phase 80 — FFMS ↔ Reach handoff (2026-07-27)
 
