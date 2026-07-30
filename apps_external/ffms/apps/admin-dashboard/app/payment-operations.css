@@ -13,6 +13,10 @@
 .payment-detail-summary section { border:1px solid #d7e5ed; border-radius:12px; background:#fbfdff; padding:14px; }
 .payment-detail-summary span { display:block; color:#71889f; font-size:11px; }
 .payment-detail-summary b { display:block; margin-top:6px; color:#153f6c; font:800 22px Manrope,sans-serif; }
+.payment-hub-status { display:grid; gap:4px; border:1px solid #cfe3e9; border-radius:12px; background:#f7fcfc; padding:12px 14px; }
+.payment-hub-status b { color:#0a6374; font-size:13px; }
+.payment-hub-status span { color:#55728a; font-size:12px; line-height:1.45; }
+.payment-hub-error { color:#a83232 !important; }
 .payment-phase-list { display:grid; gap:12px; }
 .payment-phase-card { display:grid; gap:14px; border:1px solid #d7e5ed; border-radius:13px; background:#fff; padding:16px; }
 .payment-phase-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }

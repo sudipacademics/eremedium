@@ -358,6 +358,185 @@ export function rfmsDevOtpEnabled() {
   return !rfmsOtpUsesErp();
 }
 
+export function rfmsContactOtpUsesErp() {
+  const flag = String(process.env.RFMS_CONTACT_OTP_VIA_ERP ?? '1').trim().toLowerCase();
+  return !['0', 'false', 'off', 'no'].includes(flag);
+}
+
+export function rfmsGatewaySimulate() {
+  const flag = String(process.env.RFMS_GATEWAY_SIMULATE ?? '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(flag);
+}
+
+function signCanonical(canonical) {
+  const hmacSecret = secret();
+  if (!hmacSecret) throw new Error('ONBOARD_HMAC_SECRET is not configured');
+  return createHmac('sha256', hmacSecret).update(canonical).digest('hex');
+}
+
+async function postSignedHecMethod(methodPath, canonical) {
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const signature = signCanonical(canonical);
+  const form = new URLSearchParams();
+  form.set('hec_payload', canonical);
+  const raw = Buffer.from(form.toString());
+  const response = await postForm(
+    frappeMethodUrl(methodPath),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      'X-Onboard-Signature': signature,
+      'X-Frappe-Site': site,
+      Host: site,
+    },
+    raw,
+  );
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status === 401 || (err && /signature|authenticated/i.test(err))) {
+    throw new Error(err || 'ERP bridge authentication failed.');
+  }
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `ERP bridge call failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : message;
+  return data && typeof data === 'object' ? data : {};
+}
+
+/** Safe public config from mother ERP (never includes Razorpay/MSG91 secrets). */
+export async function fetchRfmsIntegrationConfig() {
+  const canonical = JSON.stringify({
+    action: 'get_rfms_integration_config',
+    ts: String(Math.floor(Date.now() / 1000)),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.get_rfms_integration_config',
+    canonical,
+  );
+}
+
+export async function createRfmsRazorpayOrderViaErp({
+  amount,
+  applicationId = '',
+  paymentKey = '',
+  receipt = '',
+  currency = 'INR',
+} = {}) {
+  const canonical = JSON.stringify({
+    action: 'create_rfms_razorpay_order',
+    amount: String(Number(amount) || 0),
+    application_id: String(applicationId || ''),
+    currency: String(currency || 'INR'),
+    payment_key: String(paymentKey || ''),
+    receipt: String(receipt || '').slice(0, 40),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.create_rfms_razorpay_order',
+    canonical,
+  );
+}
+
+export async function verifyRfmsRazorpayPaymentViaErp({
+  applicationId = '',
+  razorpayOrderId = '',
+  razorpayPaymentId = '',
+  razorpaySignature = '',
+} = {}) {
+  const canonical = JSON.stringify({
+    action: 'verify_rfms_razorpay_payment',
+    application_id: String(applicationId || ''),
+    razorpay_order_id: String(razorpayOrderId || ''),
+    razorpay_payment_id: String(razorpayPaymentId || ''),
+    razorpay_signature: String(razorpaySignature || ''),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.verify_rfms_razorpay_payment',
+    canonical,
+  );
+}
+
+/** Phase 85c: create/update Franchisee Profile + opening wallet after paid milestone. */
+export async function activateRfmsPaidFranchiseeViaErp({
+  applicationId = '',
+  applicationNumber = '',
+  depositAmount = 0,
+  district = '',
+  email = '',
+  franchiseModel = '',
+  franchiseeProfile = '',
+  fullName = '',
+  mobile = '',
+  paymentKey = '',
+  pincode = '',
+  preferredLocation = '',
+} = {}) {
+  const amount = Number(depositAmount) || 0;
+  const amountCanonical = Number.isInteger(amount) ? String(amount) : String(Number(amount.toFixed(2)));
+  const canonical = JSON.stringify({
+    action: 'activate_rfms_paid_franchisee',
+    application_id: String(applicationId || ''),
+    application_number: String(applicationNumber || ''),
+    deposit_amount: amountCanonical,
+    district: String(district || ''),
+    email: String(email || '').toLowerCase(),
+    franchise_model: String(franchiseModel || '').toUpperCase(),
+    franchisee_profile: String(franchiseeProfile || ''),
+    full_name: String(fullName || ''),
+    mobile: String(mobile || ''),
+    payment_key: String(paymentKey || ''),
+    pincode: String(pincode || ''),
+    preferred_location: String(preferredLocation || ''),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.activate_rfms_paid_franchisee',
+    canonical,
+  );
+}
+
+/** Phase 85c — create/update ERP Franchisee Profile + opening wallet after a paid RFMS milestone. */
+export async function activateRfmsPaidFranchiseeViaErp({
+  applicationId = '',
+  applicationNumber = '',
+  fullName = '',
+  email = '',
+  mobile = '',
+  franchiseModel = '',
+  preferredLocation = '',
+  district = '',
+  pincode = '',
+  paymentKey = '',
+  depositAmount = 0,
+  hecFranchiseeProfile = '',
+} = {}) {
+  const amount = Number(depositAmount) || 0;
+  const amountCanonical = Number.isInteger(amount) ? String(amount) : String(amount);
+  const canonical = JSON.stringify({
+    action: 'activate_rfms_paid_franchisee',
+    application_id: String(applicationId || ''),
+    application_number: String(applicationNumber || ''),
+    deposit_amount: amountCanonical,
+    district: String(district || ''),
+    email: String(email || '').toLowerCase(),
+    franchise_model: String(franchiseModel || '').toUpperCase(),
+    full_name: String(fullName || ''),
+    hec_franchisee_profile: String(hecFranchiseeProfile || ''),
+    mobile: String(mobile || ''),
+    payment_key: String(paymentKey || ''),
+    pincode: String(pincode || ''),
+    preferred_location: String(preferredLocation || ''),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.activate_rfms_paid_franchisee',
+    canonical,
+  );
+}
+
 export async function loadUploadBytes(uploadsDirectory, fileUrl) {
   if (!fileUrl) return null;
   const match = String(fileUrl).match(/\/uploads\/([A-Za-z0-9._-]+)$/);
@@ -367,4 +546,77 @@ export async function loadUploadBytes(uploadsDirectory, fileUrl) {
   } catch {
     return null;
   }
+}
+
+function getJson(urlString, headers = {}) {
+  const u = new URL(urlString);
+  const lib = u.protocol === 'https:' ? https : http;
+  const port = u.port || (u.protocol === 'https:' ? 443 : 80);
+  return new Promise((resolve, reject) => {
+    const req = lib.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port,
+        path: `${u.pathname}${u.search}`,
+        method: 'GET',
+        headers: { Accept: 'application/json', ...headers },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode || 0,
+            text: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** WB district → subdivision → block/PIN hierarchy from mother ERP. */
+export async function fetchWbGeoHierarchy() {
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const response = await getJson(frappeMethodUrl('health_ecosystem_core.health_ecosystem_core.api.get_wb_geo_hierarchy'), {
+    'X-Frappe-Site': site,
+    Host: site,
+  });
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `WB geo hierarchy failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : message;
+  return data && typeof data === 'object' ? data : { districts: [], count: 0 };
+}
+
+export async function resolveWbPincodeViaErp(pincode) {
+  const pin = String(pincode || '').replace(/\D/g, '').slice(0, 6);
+  if (!/^\d{6}$/.test(pin)) throw new Error('Enter a valid 6-digit PIN code.');
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const url = `${frappeMethodUrl('health_ecosystem_core.health_ecosystem_core.api.resolve_wb_pincode')}?pincode=${encodeURIComponent(pin)}`;
+  const response = await getJson(url, { 'X-Frappe-Site': site, Host: site });
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `PIN resolve failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : message;
+  return data && typeof data === 'object' ? data : { pincode: pin, matches: [], count: 0 };
 }

@@ -6,6 +6,10 @@ const PAYMENT_HISTORY_TYPES = new Set([
   'foco_phase_2_payment_pending_manager_unlock',
   'foco_phase_2_terms_accepted',
   'foco_phase_3_terms_accepted',
+  'franchisee_hub_activated',
+  'franchisee_hub_activation_failed',
+  'payment_verified',
+  'gateway_payment_received',
 ]);
 
 const PAYMENT_KEY_HISTORY = {
@@ -231,6 +235,10 @@ export function paymentDetailForApplication(application, role, options = {}) {
     applicant_name: application.full_name,
     franchise_model: application.franchise_model,
     stage: application.stage,
+    hec_franchisee_profile: application.hec_franchisee_profile ?? '',
+    hec_hub_activated_at: application.hec_hub_activated_at ?? '',
+    hec_wallet_recharge: application.hec_wallet_recharge ?? null,
+    hec_hub_activation_error: application.hec_hub_activation_error ?? '',
     summary: {
       total_paid: paidTotal,
       total_pending: pendingTotal,

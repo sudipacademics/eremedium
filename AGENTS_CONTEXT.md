@@ -66,21 +66,80 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - Masked calls need Settings: telephony_enabled + exotel_sid + exotel_api_key + exotel_api_token + exotel_virtual_number; staff `mobile_no`
 - Canonical code: `C:\develop\My_Lab_System`; compose on server: `/opt/health-ecosystem/docker`
 
+## Phase 85b + 85c — Territory capacity ops + paid→hub activation (2026-07-30)
+
+- **85a (done earlier):** Applicant workflow UX (webpage routes, certificate/receipt QR, email OTP) — treated complete; not reopened here.
+- **85b Territory capacity ops:** Officer bulk FOFO/FOCO availability edit, CSV export, near-full alerts.
+  - API: `GET /api/v1/territories/capacities` (+ `?format=csv`), `GET /api/v1/territories/capacity-alerts?threshold=1`, `PATCH /api/v1/territories/capacities/bulk`.
+  - Helpers: `apps_external/ffms/apps/local-api/territory-capacity-workflow.mjs`.
+  - UI: Territory module → **Capacity operations** panel (`territory-capacity-ops.tsx`).
+- **85c Paid → Franchisee Profile / hub wallet:** After verified paid milestone, RFMS HMAC-calls ERP `activate_rfms_paid_franchisee`.
+  - Triggers: FOFO `fofo_one_time_fee`; FOCO `security_deposit` or FOCO full payment. Disable with `RFMS_HUB_ACTIVATE_ON_PAY=0`.
+  - Wallet: Phase 81 rule `max(0, deposit − ₹80,000)` via `OPENING-RECHARGE` (idempotent). Lead-only Phase 80 handoff unchanged.
+  - HEC: `clinical_phase85_rfms_activation.py` + API whitelist. Bridge: `activateRfmsPaidFranchiseeViaErp`.
+  - Admin Payments detail shows hub activation / ERP profile / wallet recharge (fail-soft; payment still succeeds if ERP down).
+- **Deploy:** `docker/scripts/hot-deploy-phase85.sh` (+ `REBUILD_UI=1` for admin). Smoke: `smoke-phase85b-capacity.sh`.
+- **Operator:** hard-refresh `/ffms` Territory (Capacity operations) and Payments detail after paid FOFO/FOCO milestone.
+
+## Phase 84 — WB geo master (ERP) → RFMS map + Reach sales (2026-07-29)
+
+- **Goal:** ERPNext holds the West Bengal Administrative & Postal Directory (V2) as geographic SoR; RFMS keeps operational FOFO/FOCO capacity (no auto-open of every PIN); Reach rolls up sales by district.
+- **Data:** `docker/data/wb-postal-directory-v2.json` (~341 rows). DocType `HEC WB Postal Locality`.
+- **HEC:** `clinical_phase84_wb_geo.py` — import + `get_wb_geo_hierarchy` / `resolve_wb_pincode` / `get_territorial_sales_summary`. Lead fields: `district`, `subdivision`, `pincode`.
+- **RFMS:** `GET /api/v1/geo/wb-hierarchy` (1h cache), `GET /api/v1/geo/pincode/:pin`. Territory Setup picklists from ERP; PIN add warns if unknown. Google map default filter **Active** (capacity or allocation) + All/Available/Reserved/Occupied.
+- **Reach:** leads/onboard geo pickers; Reports territorial table + bar; team map colours/labels by district.
+- **Deploy:** hot-copy (skip full migrate while `hec_job_application_education` broken). Scripts: `hot-deploy-phase84-wb-geo.sh`, `import-wb-postal-directory.sh`, `smoke-phase84-wb-geo.sh`.
+- **Operator:** Desk confirm row count on `HEC WB Postal Locality` (341); hard-refresh `/ffms` Territory → Active map; on Reach `/sales` create lead with district/PIN and open Reports territorial section. Smoke PIN sample: `700135` (Rajarhat).
+- **Live 2026-07-29:** `PHASE84_OK` / `PHASE84_HOT_DEPLOY_DONE` — import 341 rows / 23 districts; RFMS hierarchy + PIN resolve OK; admin rebuilt with Active map filters; Reach dist deployed with geo pickers + territorial reports.
+
+## Phase 83 — HEC secrets hub + RFMS↔ERPNext bridge (2026-07-29)
+
+- **Goal:** Mother ERPNext holds Razorpay + MSG91 secrets and the Google Maps **browser** key. RFMS never stores Razorpay secret / MSG91 authkey; it fetches safe config and proxies OTP + Razorpay create/verify over the Phase 80 HMAC bridge.
+- **HEC:** `google_maps_api_key` on Health Ecosystem Settings; `clinical_phase83_rfms_bridge.py` + API methods `get_rfms_integration_config`, `create_rfms_razorpay_order`, `verify_rfms_razorpay_payment`.
+- **RFMS:** `hec-frappe-bridge.mjs` config/order/verify helpers; `GET /api/v1/integrations/public-config`; officer `GET /api/v1/admin/integrations/maps-key`; gateway `initiate`/`complete` via ERP (simulate only when `RFMS_GATEWAY_SIMULATE=1` or ERP test mode without key_id). Default `RFMS_CONTACT_OTP_VIA_ERP=1` (mobile + email).
+- **UI:** Portal uses Razorpay Checkout.js when `key_id` + `razorpay_order_id` returned; admin Maps prefers runtime key from ERP over baked `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+- **Deploy:** hot-copy (skip full migrate while `hec_job_application_education` broken). Scripts: `docker/scripts/hot-deploy-phase83.sh`, `docker/scripts/smoke-phase83-erp-bridge.sh`.
+- **Live 2026-07-29:** `PHASE83_OK` / `PHASE83_HOT_DEPLOY_DONE` — ERP config returns Razorpay key_id + MSG91 flags (no secrets); RFMS `public-config` 200; contact OTP live MSG91 path. Portal/admin rebuilt for Checkout.js + runtime Maps.
+- **Operator verify 2026-07-29:** Desk Maps field had a `GOCSPX-…` OAuth client secret by mistake (was briefly on public-config) — replaced with browser `AIza…` key from RFMS env. **Rotate that Google OAuth client secret** in GCP. Maps geocode now **OK**. Live Razorpay `gateway/initiate` via ERP: `PHASE83_GATEWAY_INIT_OK`. Scripts: `verify-phase83-operator.sh`, `test-phase83-gateway-init.sh`.
+- **Operator:** hard-refresh `/ffms` and `/onboard`. Manual Checkout pay still needed for full paid→officer path (cannot automate live card).
+
+## Phase 82b — Real officer company IDs (2026-07-29)
+
+- **Scope:** User Management issues permanent company IDs (`RFMS-NNNN`) for staff login instead of typing free-form IDs / relying only on seed `RFMS-0001…0007`.
+- **API:** `nextOfficerEmployeeId()`; `POST /admin/users` auto-allocates from `RFMS-0008+`; `GET /admin/users/next-employee-id` preview; PATCH refuses ID changes; format `^RFMS-\d{4,}$`.
+- **UI:** Company ID column; create shows next ID (read-only); edit locks ID; success toast includes issued ID.
+- **Seed hygiene:** empty officers table still bootstraps demo accounts; missing-seed append only when `RFMS_SEED_OFFICERS=1`.
+- **Smoke:** `docker/scripts/smoke-phase82b-officer-ids.sh`. **Live 2026-07-29:** `PHASE82B_OK` (issued `RFMS-0008`/`RFMS-0009`, login OK, ID immutable). Admin UI rebuilt (`PHASE82B_UI_DONE`).
+
+## Phase 82 UI — receipt download + agreement PDF worker (2026-07-29)
+
+- **Admin receipt download:** Payments panel was calling `origin + /api/v1/...` and missing live `/rfms-api/v1`. Fixed in `payment-operations.tsx` via `resolveReceiptApiUrl` against `RFMS_API_BASE`.
+- **Agreement PDF viewer:** portal used `window.location.origin/pdf.worker.min.mjs` (hits www root HTML). Now `appPath('/pdf.worker.min.mjs')` → `/onboard/pdf.worker.min.mjs`.
+- **Note:** `/rfms-api/v1/receipts/verify/RCP-…` returns JSON metadata for QR validation; PDF download is the admin/public `.../payments/{key}/receipt` route.
+- **Deploy:** `docker/scripts/deploy-phase82-ui-fixes.sh` + `rebuild-rfms-with-maps-key.sh`. Live: `PHASE82_UI_DEPLOY_DONE`, `MAPS_KEY_BAKED_OK`.
+
+## Phase 82a — Fresh FOFO/FOCO applicant path (2026-07-28)
+
+- **Scope:** Reach mint → `/onboard/hec-session` lead-only handoff → applicant picks FOFO/FOCO → contact OTP + KYC docs → submit → first payment (simulated gateway) → officer sees app in `/ffms` Applicants (`visible_to_admin=true` only after payment).
+- **Fixes:** public KYC contact OTP defaults via ERP when `RFMS_CONTACT_OTP_VIA_ERP=1` (Phase 83); `123456` when ERP `otp_test_mode` / flag off; ERP send failure still falls back when `RFMS_OTP_DEV_FALLBACK=1`; `territoryAllocation` no longer invents FOFO for blank model.
+- **Smoke:** `docker/scripts/smoke-phase82a-fresh-applicant.sh` (API E2E). Deploy API: SCP `server.mjs` → `/tmp/phase82a-server.mjs`, SCP smoke + `hot-deploy-phase82a.sh`, then `bash docker/scripts/hot-deploy-phase82a.sh`. **Live 2026-07-28:** `PHASE82A_OK` — mint → OTP → FOFO app → gateway pay → officer `/applications` sees applicant; lead `franchise_model=FOFO`.
+- **Superseded by Phase 83:** live Razorpay/MSG91 bridge + Maps key from HEC (see Phase 83). Officer company IDs: see Phase 82b.
+
 ## Phase 81 — Franchisee Hub sheet + wallet (2026-07-28)
 
 - **Scope:** expand `Franchisee Profile` with commercials/GPS/bank/docs; import ops sheet into profiles; opening wallet = `max(0, deposit − ₹80,000 fee)` via Phase 23 `Franchisee Wallet Transaction` (`payment_reference=OPENING-RECHARGE`). No second wallet DocType.
 - **Code:** `clinical_franchisee_import.py`; `get_franchisee_dashboard` returns wallet + hub fields; `search_franchisees` includes lat/lng/category/wallet.
 - **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Prefer **`docker/scripts/hot-deploy-phase81-hub.sh`** until `hec_job_application_education` module is restored (full migrate still fails on that DocType). Users default password `HubChangeMe@123`.
 - **Live 2026-07-28:** hot deploy OK; sheet import **21 updated / 0 errors**; `search_franchisees` HTTP 200 with wallet/category fields. Geocode skipped (`GEOCODE=0`); re-run import with `GEOCODE=1` for GPS.
-- **Google Maps (FFMS admin):** rebuilds must pass `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (from `apps_external/ffms/.env.local` into `docker/.env`). Use `docker/scripts/rebuild-rfms-with-maps-key.sh`. GCP project still needs **Billing enabled** or Maps returns `REQUEST_DENIED`.
+- **Google Maps (FFMS admin):** prefer runtime key from HEC via RFMS `/admin/integrations/maps-key` (Phase 83). Bake `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` only as offline/dev fallback (`rebuild-rfms-with-maps-key.sh`). GCP project still needs **Billing enabled** or Maps returns `REQUEST_DENIED`.
 
 ## RFMS officer login (2026-07-28)
 
 - Officer sign-in at `/ffms`: **company ID (`employee_id`) + password only**. No OTP.
 - API: `POST /api/v1/auth/login` with `{ login_id, password }`. Legacy `/auth/otp/*` returns `OTP_DISABLED`.
 - Company ID examples from seed: `RFMS-0001` (admin), `RFMS-0005` (consultant), etc. Email also accepted as alias for existing accounts.
-- **Parked (do not start unless asked):** (1) issue real officer IDs in User Management vs seed logins; (2) full applicant KYC + first-payment path on a fresh handoff.
-- **RFMS rebuilds:** use `docker/scripts/rebuild-rfms-with-maps-key.sh` (or officer-login script) so `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is not dropped.
+- **Integrations:** Razorpay/MSG91/Maps hub is Phase 83 (ERP Settings). Officer IDs: see Phase 82b.
+- **RFMS rebuilds:** use `docker/scripts/rebuild-rfms-with-maps-key.sh` when baking a Maps fallback key; runtime key from HEC is preferred after Phase 83.
 
 ## Phase 80 — FFMS ↔ Reach handoff (2026-07-27)
 

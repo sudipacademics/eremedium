@@ -79,6 +79,10 @@ type PaymentDetail = {
   applicant_name: string;
   franchise_model: 'FOFO' | 'FOCO';
   stage: string;
+  hec_franchisee_profile?: string;
+  hec_hub_activated_at?: string;
+  hec_wallet_recharge?: number | null;
+  hec_hub_activation_error?: string;
   summary: { total_paid: number; total_pending: number; total_due: number; phases_total: number; phases_paid: number };
   payments: PaymentPhaseDetail[];
   history: { id: string; type: string; message: string; actor: string; created_at: string }[];
@@ -116,8 +120,14 @@ function isOfficerSessionExpired(response: Response) {
   return true;
 }
 
+function resolveReceiptApiUrl(path: string) {
+  const value = path.startsWith('/') ? path : `/${path}`;
+  const normalized = value.startsWith('/api/v1/') ? value.slice('/api/v1'.length) : value;
+  return `${API_BASE}${normalized}`;
+}
+
 async function downloadReceipt(path: string, token: string, filename: string) {
-  const response = await fetch(`${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`, {
+  const response = await fetch(resolveReceiptApiUrl(path), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (isOfficerSessionExpired(response)) throw new Error('Your session has expired. Sign in again.');
@@ -184,6 +194,23 @@ function PaymentDetailModal({
         <section><span>Pending balance</span><b>{formatAmount(detail.summary.total_pending)}</b></section>
         <section><span>Phases paid</span><b>{detail.summary.phases_paid}/{detail.summary.phases_total}</b></section>
         <section><span>Verification</span><b>{detail.summary.phases_paid === detail.summary.phases_total ? 'Complete' : 'In progress'}</b></section>
+      </div>
+
+      <div className="payment-hub-status">
+        <b>Franchisee hub</b>
+        {detail.hec_hub_activated_at ? (
+          <span>
+            Activated {displayDate(detail.hec_hub_activated_at)}
+            {detail.hec_franchisee_profile ? ` · ${detail.hec_franchisee_profile}` : ''}
+            {detail.hec_wallet_recharge != null ? ` · wallet ₹${Number(detail.hec_wallet_recharge).toLocaleString('en-IN')}` : ''}
+          </span>
+        ) : detail.hec_hub_activation_error ? (
+          <span className="payment-hub-error">Activation pending / failed: {detail.hec_hub_activation_error}</span>
+        ) : detail.hec_franchisee_profile ? (
+          <span>Linked ERP profile {detail.hec_franchisee_profile} — wallet activation awaits paid milestone.</span>
+        ) : (
+          <span>Not activated yet. FOFO activates on one-time fee; FOCO on security deposit / full payment.</span>
+        )}
       </div>
 
       {canManageUnlocks && detail.permissions.can_unlock_phase_2 ? <div className="payment-unlock-panel">

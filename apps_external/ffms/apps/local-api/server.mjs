@@ -84,6 +84,7 @@ import {
   assignableTeamMembers,
   appendAdminAuditLog,
   createOfficerUser,
+  nextOfficerEmployeeId,
   normalizeRole,
   officerUserRecord,
   officerUserSummary,
@@ -177,7 +178,22 @@ import {
   verifyEmailOtpViaErp,
   rfmsOtpUsesErp,
   rfmsDevOtpEnabled,
+  rfmsContactOtpUsesErp,
+  rfmsGatewaySimulate,
+  fetchRfmsIntegrationConfig,
+  createRfmsRazorpayOrderViaErp,
+  verifyRfmsRazorpayPaymentViaErp,
+  activateRfmsPaidFranchiseeViaErp,
+  fetchWbGeoHierarchy,
+  resolveWbPincodeViaErp,
 } from './hec-frappe-bridge.mjs';
+import {
+  applyBulkPinAvailability,
+  capacityCsv,
+  DEFAULT_NEAR_FULL_THRESHOLD,
+  flattenCapacityRows,
+  nearFullCapacityAlerts,
+} from './territory-capacity-workflow.mjs';
 
 const marketingPort = Number(process.env.RFMS_MARKETING_PORT ?? 3000);
 const portalPort = Number(process.env.RFMS_PORTAL_PORT ?? 3001);
@@ -209,6 +225,54 @@ const challenges = new Map();
 const applicantChallenges = new Map();
 const contactOtpChallenges = new Map();
 const contactVerificationTokens = new Map();
+const INTEGRATION_CONFIG_TTL_MS = 60_000;
+let integrationConfigCache = { at: 0, value: null };
+const WB_GEO_TTL_MS = 3_600_000;
+let wbGeoCache = { at: 0, value: null };
+
+async function getRfmsIntegrationConfigCached({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && integrationConfigCache.value && now - integrationConfigCache.at < INTEGRATION_CONFIG_TTL_MS) {
+    return integrationConfigCache.value;
+  }
+  try {
+    const value = await fetchRfmsIntegrationConfig();
+    integrationConfigCache = { at: now, value: value && typeof value === 'object' ? value : {} };
+    return integrationConfigCache.value;
+  } catch (error) {
+    if (integrationConfigCache.value) return integrationConfigCache.value;
+    throw error;
+  }
+}
+
+function publicIntegrationConfigPayload(config = {}) {
+  return {
+    razorpay_key_id: String(config.razorpay_key_id || ''),
+    razorpay_test_mode: Boolean(config.razorpay_test_mode),
+    razorpay_configured: Boolean(config.razorpay_configured),
+    otp_provider: String(config.otp_provider || ''),
+    otp_test_mode: Boolean(config.otp_test_mode),
+    contact_otp_via_erp: Boolean(config.contact_otp_via_erp),
+    google_maps_api_key: String(config.google_maps_api_key || ''),
+    google_maps_configured: Boolean(config.google_maps_configured),
+    gateway_simulate: rfmsGatewaySimulate(),
+  };
+}
+
+async function getWbGeoHierarchyCached({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && wbGeoCache.value && now - wbGeoCache.at < WB_GEO_TTL_MS) {
+    return wbGeoCache.value;
+  }
+  try {
+    const value = await fetchWbGeoHierarchy();
+    wbGeoCache = { at: now, value: value && typeof value === 'object' ? value : { districts: [], count: 0 } };
+    return wbGeoCache.value;
+  } catch (error) {
+    if (wbGeoCache.value) return wbGeoCache.value;
+    throw error;
+  }
+}
 const tokens = new Map();
 const uploadsDirectory = path.resolve(process.env.RFMS_UPLOADS_DIR ?? path.join(process.cwd(), 'work', 'rfms-uploads'));
 const defaultCompanyProfile = {
@@ -300,10 +364,14 @@ async function loadDatabase() {
     database.admin_audit_log = Array.isArray(database.admin_audit_log) ? database.admin_audit_log : [];
     database.notifications = Array.isArray(database.notifications) ? database.notifications : [];
     let needsOfficersMigration = !Array.isArray(storedData.officers) || !storedData.officers.length;
+    const seedOfficersFlag = String(process.env.RFMS_SEED_OFFICERS ?? '').trim().toLowerCase();
+    const allowSeedAppend = ['1', 'true', 'on', 'yes'].includes(seedOfficersFlag);
     if (!database.officers.length) {
+      // Bootstrap only when the officers table is empty (first boot / wipe).
       database.officers = seedLegacyOfficerAccounts(officerAccounts, officerPasswordDetails);
       needsOfficersMigration = true;
-    } else {
+    } else if (allowSeedAppend) {
+      // Dev-only: re-inject missing demo accounts. Production creates staff via User Management.
       const knownEmails = new Set(database.officers.map((item) => item.email));
       for (const account of officerAccounts) {
         if (!knownEmails.has(String(account.email).toLowerCase())) {
@@ -635,7 +703,15 @@ async function dispatchMobileOtp(mobile) {
     throw new Error('A valid registered 10-digit mobile number is required to send OTP.');
   }
   if (rfmsOtpUsesErp()) {
-    return sendOtpViaErp(normalized);
+    try {
+      return await sendOtpViaErp(normalized);
+    } catch (error) {
+      // Dev/smoke fallback when MSG91/ERP is unreachable; production keeps the real failure.
+      if (rfmsDevOtpEnabled()) {
+        return { mobile: normalized, expires_in: 300, test_mode: true, hint: 'Test mode: use OTP 123456' };
+      }
+      throw error;
+    }
   }
   return { mobile: normalized, expires_in: 300, test_mode: true, hint: 'Test mode: use OTP 123456' };
 }
@@ -665,7 +741,14 @@ async function dispatchEmailOtp(email) {
     throw new Error('A valid registered email address is required to send OTP.');
   }
   if (rfmsOtpUsesErp()) {
-    return sendEmailOtpViaErp(recipient);
+    try {
+      return await sendEmailOtpViaErp(recipient);
+    } catch (error) {
+      if (rfmsDevOtpEnabled()) {
+        return { email: recipient, expires_in: 300, test_mode: true, hint: 'Test mode: use OTP 123456', channel: 'email' };
+      }
+      throw error;
+    }
   }
   return { email: recipient, expires_in: 300, test_mode: true, hint: 'Test mode: use OTP 123456', channel: 'email' };
 }
@@ -1028,7 +1111,8 @@ function territoryAllocation(value) {
     application_number: text(source.application_number, 80),
     applicant_name: text(source.applicant_name, 120),
     pincode: text(source.pincode, 10).replace(/\D/g, '').slice(0, 6),
-    franchise_model: ['FOFO', 'FOCO'].includes(franchiseModel) ? franchiseModel : 'FOFO',
+    // Never invent FOFO for blank/invalid model — callers must pass FOFO or FOCO.
+    franchise_model: ['FOFO', 'FOCO'].includes(franchiseModel) ? franchiseModel : '',
     status,
     created_at: text(source.created_at, 60) || new Date().toISOString(),
     updated_at: text(source.updated_at, 60) || new Date().toISOString(),
@@ -1077,8 +1161,9 @@ function territoryRecord(value, id = randomUUID()) {
   const fallbackPin = validPincodes[0] ?? '';
   const allocations = (Array.isArray(source.allocations) ? source.allocations : []).map((item) => {
     const allocation = territoryAllocation(item);
+    if (!allocation.franchise_model) return null;
     return { ...allocation, pincode: validPincodes.includes(allocation.pincode) ? allocation.pincode : fallbackPin };
-  });
+  }).filter(Boolean);
   const legacyRadius = boundedInteger(source.radius_km, 8, 1, 100);
   const fofoRadius = boundedInteger(source.fofo_radius_km, legacyRadius, 1, 100);
   const focoRadius = boundedInteger(source.foco_radius_km, legacyRadius, 1, 100);
@@ -1883,7 +1968,17 @@ function qrBch(value, polynomial) { let shifted = value; while (shifted.toString
 
 function receiptQrMatrix(payload) {
   const data = Buffer.from(payload, 'utf8');
-  const configuration = [{ version: 1, dataCodewords: 19, ecCodewords: 7, size: 21, alignment: [] }, { version: 2, dataCodewords: 34, ecCodewords: 10, size: 25, alignment: [6, 18] }, { version: 3, dataCodewords: 55, ecCodewords: 15, size: 29, alignment: [6, 22] }, { version: 4, dataCodewords: 80, ecCodewords: 20, size: 33, alignment: [6, 26] }].find((item) => data.length <= item.dataCodewords - 2);
+  // Byte-mode ECC-L capacities. Versions 5–6 cover production verify URLs
+  // (e.g. https://www.e-remedium.in/rfms-api/v1/.../TRN-RFMS-2026-0015 ≈ 85 bytes).
+  // Versions 7+ need version-info blocks this encoder does not emit yet.
+  const configuration = [
+    { version: 1, dataCodewords: 19, ecCodewords: 7, size: 21, alignment: [] },
+    { version: 2, dataCodewords: 34, ecCodewords: 10, size: 25, alignment: [6, 18] },
+    { version: 3, dataCodewords: 55, ecCodewords: 15, size: 29, alignment: [6, 22] },
+    { version: 4, dataCodewords: 80, ecCodewords: 20, size: 33, alignment: [6, 26] },
+    { version: 5, dataCodewords: 108, ecCodewords: 26, size: 37, alignment: [6, 30] },
+    { version: 6, dataCodewords: 136, ecCodewords: 30, size: 41, alignment: [6, 34] },
+  ].find((item) => data.length <= item.dataCodewords - 2);
   if (!configuration) return null;
   const bits = [0, 1, 0, 0, ...Array.from({ length: 8 }, (_, index) => (data.length >> (7 - index)) & 1)];
   for (const byte of data) for (let bit = 7; bit >= 0; bit -= 1) bits.push((byte >> bit) & 1);
@@ -2223,6 +2318,16 @@ function trainingCertificateVerifyHtml(entry) {
   const { application, certificate } = entry;
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Training Certificate Verification</title><style>body{font-family:Segoe UI,Arial,sans-serif;background:#f4f8fc;color:#13365f;margin:0;padding:32px}.card{max-width:720px;margin:0 auto;background:#fff;border:1px solid #d6e5ee;border-radius:16px;padding:24px}h1{margin:0 0 8px;font-size:24px}.valid{display:inline-block;background:#ddf8ee;color:#08785e;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700}dl{display:grid;grid-template-columns:180px 1fr;gap:10px 16px;margin-top:20px}dt{color:#66809b;font-size:12px;text-transform:uppercase}dd{margin:0;font-weight:600}</style></head><body><main class="card"><span class="valid">Authentic certificate</span><h1>Remedium Lab training certificate</h1><p>This certificate was issued through the Remedium Franchise Management System.</p><dl><dt>Certificate number</dt><dd>${escape(certificate.certificate_number)}</dd><dt>Applicant name</dt><dd>${escape(application.full_name)}</dd><dt>Business name</dt><dd>${escape(certificate.business_name)}</dd><dt>Franchise address</dt><dd>${escape(certificate.franchise_address)}</dd><dt>Application number</dt><dd>${escape(application.application_number)}</dd>${franchiseeIdForApplication(application) ? `<dt>Franchisee ID</dt><dd>${escape(franchiseeIdForApplication(application))}</dd>` : ''}<dt>Training completed</dt><dd>${escape(receiptDate(certificate.issued_at))}</dd></dl></main></body></html>`;
+}
+
+function paymentReceiptVerifyHtml(entry) {
+  const { application, payment } = entry;
+  const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const amount = Number(payment.amount || 0);
+  const amountLabel = Number.isFinite(amount)
+    ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount)
+    : String(payment.amount ?? '');
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment Receipt Verification</title><style>body{font-family:Segoe UI,Arial,sans-serif;background:#f4f8fc;color:#13365f;margin:0;padding:32px}.card{max-width:720px;margin:0 auto;background:#fff;border:1px solid #d6e5ee;border-radius:16px;padding:24px}h1{margin:0 0 8px;font-size:24px}.valid{display:inline-block;background:#ddf8ee;color:#08785e;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700}dl{display:grid;grid-template-columns:minmax(120px,180px) 1fr;gap:10px 16px;margin-top:20px}dt{color:#66809b;font-size:12px;text-transform:uppercase}dd{margin:0;font-weight:600}@media(max-width:560px){body{padding:16px}dl{grid-template-columns:1fr}}</style></head><body><main class="card"><span class="valid">Authentic payment receipt</span><h1>Remedium Lab payment receipt</h1><p>This receipt was issued through the Remedium Franchise Management System.</p><dl><dt>Receipt number</dt><dd>${escape(payment.receipt_number)}</dd><dt>Transaction number</dt><dd>${escape(receiptTransactionNumber(payment))}</dd><dt>Applicant name</dt><dd>${escape(application.full_name)}</dd><dt>Application number</dt><dd>${escape(application.application_number)}</dd><dt>Franchise model</dt><dd>${escape(application.franchise_model)}</dd><dt>Payment purpose</dt><dd>${escape(payment.purpose || payment.label || payment.key)}</dd><dt>Amount paid</dt><dd>${escape(amountLabel)}</dd><dt>Proposed location</dt><dd>${escape(application.preferred_location)}</dd><dt>Paid on</dt><dd>${escape(receiptDate(payment.paid_at))}</dd><dt>Status</dt><dd>PAID</dd></dl></main></body></html>`;
 }
 
 function pdfGoldenDoubleBorder() {
@@ -2984,6 +3089,7 @@ function applicationSummary(application) {
     territory_allotment: currentTerritoryAllotment,
     territory_allotments: territoryAllotments,
     stage: application.stage,
+    visible_to_admin: Boolean(application.visible_to_admin),
     terms_accepted: Boolean(application.terms_accepted_at),
     payment_terms: application.payment_terms && typeof application.payment_terms === 'object' ? application.payment_terms : {},
     documents,
@@ -3004,6 +3110,10 @@ function applicationSummary(application) {
       const webpage = franchiseWebpageByApplicationId(application.id);
       return webpage ? franchiseWebpageRecord(webpage, resolveUploadUrl) : null;
     })(),
+    hec_franchisee_profile: application.hec_franchisee_profile ?? '',
+    hec_hub_activated_at: application.hec_hub_activated_at ?? '',
+    hec_wallet_recharge: application.hec_wallet_recharge ?? null,
+    hec_hub_activation_error: application.hec_hub_activation_error ?? '',
     support: {
       unread_replies: applicantSupportUnreadCount(ensureSupportTicketsArray(), application.id),
       open_tickets: ensureSupportTicketsArray().filter((item) => item.application_id === application.id && item.status !== 'closed').length,
@@ -3432,7 +3542,77 @@ function applyApplicationStageAfterPayment(application, payment, request, focoFu
   } else if (payment.key === 'security_deposit') {
     application.stage = 'payment_3_received';
     applicationReviewHistory(application, 'foco_phase_3_payment_received', 'FOCO security deposit received. Final agreement and onboarding can now proceed.', request);
-  } else application.stage = 'payment_3_received';
+  }   else application.stage = 'payment_3_received';
+}
+
+function hubActivationMilestone(application, payment) {
+  if (!payment || payment.status !== 'paid') return false;
+  if (String(process.env.RFMS_HUB_ACTIVATE_ON_PAY || '1').trim() === '0') return false;
+  if (application.hec_hub_activated_at) return false;
+  const key = String(payment.key || '');
+  if (application.franchise_model === 'FOFO') return key === 'fofo_one_time_fee';
+  if (payment.foco_full_payment) return true;
+  return key === 'security_deposit';
+}
+
+function depositAmountForHubActivation(application, payment) {
+  if (payment?.foco_full_payment) {
+    const deposit = application.payments?.find((item) => item.key === 'security_deposit');
+    return Number(deposit?.amount ?? payment.amount) || 0;
+  }
+  if (payment?.key === 'security_deposit' || payment?.key === 'fofo_one_time_fee') {
+    return Number(payment.amount) || 0;
+  }
+  return Number(payment?.amount) || 0;
+}
+
+async function maybeActivateFranchiseeHub(application, payment, request) {
+  if (!hubActivationMilestone(application, payment)) return null;
+  try {
+    const result = await activateRfmsPaidFranchiseeViaErp({
+      applicationId: application.id,
+      applicationNumber: application.application_number,
+      depositAmount: depositAmountForHubActivation(application, payment),
+      district: application.district || '',
+      email: application.email || '',
+      franchiseModel: application.franchise_model || '',
+      franchiseeProfile: application.hec_franchisee_profile || '',
+      fullName: application.full_name || '',
+      mobile: application.mobile || '',
+      paymentKey: payment.key || '',
+      pincode: application.pincode || '',
+      preferredLocation: application.preferred_location || '',
+    });
+    const franchiseeId = String(result?.franchisee_id || '').trim();
+    if (franchiseeId) application.hec_franchisee_profile = franchiseeId;
+    application.hec_hub_activated_at = new Date().toISOString();
+    application.hec_wallet_recharge = Number(result?.wallet_recharge) || 0;
+    application.hec_hub_activation_error = '';
+    applicationReviewHistory(
+      application,
+      'franchisee_hub_activated',
+      `Franchisee hub ${franchiseeId || 'profile'} activated${result?.wallet_recharge ? ` with opening wallet ₹${result.wallet_recharge}` : ''}.`,
+      request,
+    );
+    workflowNotify({
+      module: 'payments',
+      action: 'franchisee_hub_activated',
+      title: 'Franchisee hub activated',
+      message: `${application.full_name} · hub ${franchiseeId || 'created'} after ${payment.label || payment.key}.`,
+      actor: workflowActor(request),
+      href: `admin:Payments:${application.id}`,
+      entityType: 'application',
+      entityId: application.id,
+      applicationId: application.id,
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Franchisee hub activation failed.';
+    application.hec_hub_activation_error = message.slice(0, 500);
+    console.error('[phase85c] hub activation failed', application.application_number, message);
+    applicationReviewHistory(application, 'franchisee_hub_activation_failed', message, request);
+    return null;
+  }
 }
 
 async function finalizeVerifiedPayment(application, payment, request, couponResult = null) {
@@ -3468,6 +3648,7 @@ async function finalizeVerifiedPayment(application, payment, request, couponResu
   });
   application.updated_at = new Date().toISOString();
   if (payment.key === 'application_fee') automaticallyReserveMatchingTerritory(application);
+  await maybeActivateFranchiseeHub(application, payment, request);
 }
 
 function paymentsPendingVerification(application, payment) {
@@ -3520,6 +3701,7 @@ async function verifyPaymentRecord(application, payment, request) {
   });
   application.updated_at = new Date().toISOString();
   if (primary.key === 'application_fee' || primary.foco_full_payment) automaticallyReserveMatchingTerritory(application);
+  await maybeActivateFranchiseeHub(application, primary, request);
   return { payment: primary, verified_count: targets.length };
 }
 
@@ -3791,7 +3973,7 @@ async function handle(request, response) {
   try {
     await syncApplicationsFromDiskIfChanged();
     const franchiseSiteMatch = route.match(/^\/franchise-sites\/([^/]+)$/);
-    if (franchiseSiteMatch && request.method === 'GET') return serveFranchiseWebpagePublic(request, response, franchiseSiteMatch[1]);
+    if (franchiseSiteMatch && ['GET', 'HEAD'].includes(request.method ?? 'GET')) return serveFranchiseWebpagePublic(request, response, franchiseSiteMatch[1]);
     if (route.startsWith('/uploads/')) return serveUpload(request, response, route);
     if (request.method === 'GET' && route === '/api/v1/health') {
       return success(request, response, {
@@ -3800,7 +3982,78 @@ async function handle(request, response) {
         isolated: staticOutputSuffix === 'isolated',
         agreement_execution_routes: { manual_execute: true, save_executed: true },
         hec_bridge: Boolean(process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET),
+        phase83_erp_bridge: true,
+        phase84_wb_geo: true,
       });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/integrations/public-config') {
+      try {
+        const config = await getRfmsIntegrationConfigCached();
+        return success(request, response, publicIntegrationConfigPayload(config));
+      } catch (error) {
+        return failure(
+          request,
+          response,
+          'INTEGRATION_CONFIG_UNAVAILABLE',
+          error instanceof Error ? error.message : 'Unable to load ERP integration config.',
+          502,
+        );
+      }
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/geo/wb-hierarchy') {
+      try {
+        const force = String(url.searchParams.get('refresh') || '') === '1';
+        const data = await getWbGeoHierarchyCached({ force });
+        return success(request, response, data);
+      } catch (error) {
+        return failure(
+          request,
+          response,
+          'WB_GEO_UNAVAILABLE',
+          error instanceof Error ? error.message : 'Unable to load West Bengal geo hierarchy from ERP.',
+          502,
+        );
+      }
+    }
+
+    if (request.method === 'GET' && route.startsWith('/api/v1/geo/pincode/')) {
+      try {
+        const pin = decodeURIComponent(route.slice('/api/v1/geo/pincode/'.length)).replace(/\D/g, '').slice(0, 6);
+        if (!/^\d{6}$/.test(pin)) {
+          return failure(request, response, 'VALIDATION_ERROR', 'Enter a valid 6-digit PIN code.', 400);
+        }
+        const data = await resolveWbPincodeViaErp(pin);
+        return success(request, response, data);
+      } catch (error) {
+        return failure(
+          request,
+          response,
+          'WB_PIN_RESOLVE_FAILED',
+          error instanceof Error ? error.message : 'Unable to resolve PIN against ERP directory.',
+          502,
+        );
+      }
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/integrations/maps-key') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can load Maps configuration.', 403);
+      try {
+        const config = await getRfmsIntegrationConfigCached();
+        return success(request, response, {
+          google_maps_api_key: String(config.google_maps_api_key || ''),
+          google_maps_configured: Boolean(config.google_maps_configured),
+        });
+      } catch (error) {
+        return failure(
+          request,
+          response,
+          'MAPS_CONFIG_UNAVAILABLE',
+          error instanceof Error ? error.message : 'Unable to load Google Maps key from ERP.',
+          502,
+        );
+      }
     }
 
     // Mother ERP HMAC handoff → create FFMS lead, open application form (applicant picks FOFO/FOCO)
@@ -4359,15 +4612,39 @@ async function handle(request, response) {
       if (!validContact(channel, value)) {
         return failure(request, response, 'CONTACT_INVALID', channel === 'mobile' ? 'Enter a valid 10-digit Indian mobile number.' : 'Enter a valid email address.');
       }
-      if (channel === 'mobile') {
+      // Default RFMS_CONTACT_OTP_VIA_ERP=1: mobile + email OTP through mother ERP (MSG91 / email).
+      if (rfmsContactOtpUsesErp()) {
         try {
-          const delivery = await dispatchMobileOtp(value);
+          if (channel === 'mobile') {
+            const delivery = await dispatchMobileOtp(value);
+            const challengeId = randomUUID();
+            const viaErp = rfmsOtpUsesErp() && !delivery?.test_mode;
+            contactOtpChallenges.set(challengeId, {
+              channel,
+              value: delivery.mobile || normalizeApplicantMobile(value),
+              expires_at: Date.now() + 300_000,
+              via_erp: viaErp,
+            });
+            return success(request, response, {
+              challenge_id: challengeId,
+              channel,
+              masked_destination: maskedContact(channel, delivery.mobile || value),
+              ...otpDeliveryMeta(delivery),
+            });
+          }
+          const delivery = await dispatchEmailOtp(value);
           const challengeId = randomUUID();
-          contactOtpChallenges.set(challengeId, { channel, value: delivery.mobile, expires_at: Date.now() + 300_000, via_erp: true });
+          const viaErp = rfmsOtpUsesErp() && !delivery?.test_mode;
+          contactOtpChallenges.set(challengeId, {
+            channel,
+            value: delivery.email || text(value, 160).toLowerCase(),
+            expires_at: Date.now() + 300_000,
+            via_erp: viaErp,
+          });
           return success(request, response, {
             challenge_id: challengeId,
             channel,
-            masked_destination: maskedContact(channel, delivery.mobile),
+            masked_destination: maskedContact(channel, delivery.email || value),
             ...otpDeliveryMeta(delivery),
           });
         } catch (otpError) {
@@ -4375,11 +4652,12 @@ async function handle(request, response) {
         }
       }
       const challengeId = randomUUID();
-      contactOtpChallenges.set(challengeId, { channel, value, expires_at: Date.now() + 300_000, via_erp: false });
+      const destination = channel === 'mobile' ? normalizeApplicantMobile(value) : value;
+      contactOtpChallenges.set(challengeId, { channel, value: destination, expires_at: Date.now() + 300_000, via_erp: false });
       return success(request, response, {
         challenge_id: challengeId,
         channel,
-        masked_destination: maskedContact(channel, value),
+        masked_destination: maskedContact(channel, destination),
         expires_in_seconds: 300,
         test_mode: true,
         development_otp: '123456',
@@ -4394,8 +4672,9 @@ async function handle(request, response) {
         return failure(request, response, 'OTP_INVALID', 'The OTP is incorrect or has expired.', 401);
       }
       try {
-        if (challenge.channel === 'mobile' && challenge.via_erp !== false && rfmsOtpUsesErp()) {
-          await confirmMobileOtp(challenge.value, body.otp);
+        if (challenge.via_erp && rfmsOtpUsesErp()) {
+          if (challenge.channel === 'email') await confirmEmailOtp(challenge.value, body.otp);
+          else await confirmMobileOtp(challenge.value, body.otp);
         } else if (text(body.otp, 10) !== '123456') {
           throw new Error('The OTP is incorrect or has expired.');
         }
@@ -4504,6 +4783,14 @@ async function handle(request, response) {
       const receiptNumber = decodeURIComponent(receiptVerificationMatch[1]);
       const entry = database.applications.flatMap((application) => application.payments.map((payment) => ({ application, payment }))).find(({ payment }) => payment.status === 'paid' && payment.receipt_number === receiptNumber);
       if (!entry) return failure(request, response, 'RECEIPT_NOT_FOUND', 'This receipt could not be validated.', 404);
+      const accept = String(request.headers.accept ?? '');
+      const wantsJson = url.searchParams.get('format') === 'json' || (accept.includes('application/json') && !accept.includes('text/html'));
+      if (!wantsJson) {
+        cors(request, response);
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        response.end(paymentReceiptVerifyHtml(entry));
+        return;
+      }
       return success(request, response, {
         valid: true,
         receipt_number: entry.payment.receipt_number,
@@ -4771,6 +5058,52 @@ async function handle(request, response) {
       });
       if (!pricingResult.valid) return failure(request, response, pricingResult.code, pricingResult.message, 422);
       ensureGatewayOrders(database);
+
+      let provider = 'simulate';
+      let razorpayOrderId = '';
+      let razorpayKeyId = '';
+      let razorpayTestMode = true;
+      let simulateReason = '';
+
+      if (rfmsGatewaySimulate()) {
+        provider = 'simulate';
+        simulateReason = 'RFMS_GATEWAY_SIMULATE';
+      } else {
+        try {
+          const erpOrder = await createRfmsRazorpayOrderViaErp({
+            amount: pricingResult.pricing.final_amount,
+            applicationId: application.id,
+            paymentKey: focoFull ? 'application_fee' : payment.key,
+            receipt: `RFMS-${String(application.application_number || application.id).replace(/[^A-Za-z0-9]/g, '').slice(-20)}`,
+            currency: 'INR',
+          });
+          razorpayOrderId = String(erpOrder.order_id || erpOrder.id || '');
+          razorpayKeyId = String(erpOrder.razorpay_key_id || erpOrder.key_id || '');
+          razorpayTestMode = Boolean(erpOrder.test_mode);
+          if (!razorpayOrderId) throw new Error('ERP did not return a Razorpay order id.');
+          // Simulate checkout UI only when ERP is in test mode without a usable key_id.
+          if (razorpayTestMode && !razorpayKeyId) {
+            provider = 'simulate';
+            simulateReason = 'erp_test_mode_missing_key';
+          } else {
+            provider = 'razorpay';
+          }
+        } catch (gatewayError) {
+          if (rfmsGatewaySimulate() || String(process.env.RFMS_GATEWAY_FALLBACK_SIMULATE ?? '').trim() === '1') {
+            provider = 'simulate';
+            simulateReason = gatewayError instanceof Error ? gatewayError.message : 'erp_order_failed';
+          } else {
+            return failure(
+              request,
+              response,
+              'GATEWAY_INIT_FAILED',
+              gatewayError instanceof Error ? gatewayError.message : 'Unable to create payment gateway order.',
+              502,
+            );
+          }
+        }
+      }
+
       const order = createGatewayOrder(database, application, {
         payment_key: focoFull ? 'application_fee' : payment.key,
         foco_full: focoFull,
@@ -4779,6 +5112,10 @@ async function handle(request, response) {
         discount_amount: pricingResult.pricing.discount_amount,
         coupon_code: pricingResult.pricing.coupon_code,
         coupon_id: pricingResult.couponResult?.coupon?.id ?? pricingResult.pricing.coupon_id ?? '',
+        provider,
+        razorpay_order_id: razorpayOrderId,
+        razorpay_key_id: razorpayKeyId,
+        razorpay_test_mode: razorpayTestMode,
       });
       await saveDatabase();
       return success(request, response, {
@@ -4788,6 +5125,13 @@ async function handle(request, response) {
         original_amount: order.original_amount,
         discount_amount: order.discount_amount,
         coupon_code: order.coupon_code,
+        provider: order.provider,
+        simulate: order.provider === 'simulate',
+        simulate_reason: simulateReason || undefined,
+        key_id: order.razorpay_key_id || undefined,
+        razorpay_order_id: order.razorpay_order_id || undefined,
+        razorpay_test_mode: Boolean(order.razorpay_test_mode),
+        currency: 'INR',
         checkout_url: `${portalBaseUrl}/?rfms_gateway=${encodeURIComponent(order.id)}&application=${encodeURIComponent(application.id)}`,
         return_url: `${portalBaseUrl}/`,
       });
@@ -4802,10 +5146,44 @@ async function handle(request, response) {
       ensureGatewayOrders(database);
       const order = database.payment_gateway_orders.find((item) => item.id === orderId && item.application_id === application.id);
       if (!order || order.status !== 'pending') return failure(request, response, 'GATEWAY_ORDER_INVALID', 'This payment session is no longer available.', 409);
+
+      const isSimulate = order.provider === 'simulate' || rfmsGatewaySimulate();
+      let razorpayPaymentId = text(body.razorpay_payment_id || body.payment_id, 120);
+      let razorpayOrderId = text(body.razorpay_order_id, 120) || String(order.razorpay_order_id || '');
+      let razorpaySignature = text(body.razorpay_signature || body.signature, 200);
+
+      if (!isSimulate) {
+        try {
+          const verified = await verifyRfmsRazorpayPaymentViaErp({
+            applicationId: application.id,
+            razorpayOrderId,
+            razorpayPaymentId,
+            razorpaySignature,
+          });
+          if (!verified?.verified && !verified?.test_mode) {
+            return failure(request, response, 'GATEWAY_VERIFY_FAILED', 'Payment signature verification failed.', 401);
+          }
+          razorpayPaymentId = String(verified.razorpay_payment_id || razorpayPaymentId);
+          razorpayOrderId = String(verified.razorpay_order_id || razorpayOrderId);
+        } catch (verifyError) {
+          return failure(
+            request,
+            response,
+            'GATEWAY_VERIFY_FAILED',
+            verifyError instanceof Error ? verifyError.message : 'Payment verification failed.',
+            401,
+          );
+        }
+      }
+
       completeGatewayOrder(database, order.id);
       const receiptNumber = `RCP-${Date.now().toString().slice(-8)}`;
       const transactionNumber = `TXN-${Date.now().toString().slice(-10)}-${randomBytes(3).toString('hex').toUpperCase()}`;
-      const gatewayReference = `GW-${transactionNumber.replace(/^TXN-/, '')}`;
+      const gatewayReference = razorpayPaymentId
+        ? `RZP-${razorpayPaymentId}`
+        : `GW-${transactionNumber.replace(/^TXN-/, '')}`;
+      if (razorpayOrderId) order.razorpay_order_id = razorpayOrderId;
+      if (razorpayPaymentId) order.razorpay_payment_id = razorpayPaymentId;
       const pricing = {
         original_amount: order.original_amount,
         discount_amount: order.discount_amount,
@@ -4822,7 +5200,7 @@ async function handle(request, response) {
           receipt_number: receiptNumber,
           transaction_number: transactionNumber,
           gateway_reference: gatewayReference,
-          verified_by: 'Payment gateway',
+          verified_by: isSimulate ? 'Payment gateway (simulate)' : 'Payment gateway',
         }, 'Payment gateway');
         if (couponResult?.coupon?.id) {
           for (const key of ['application_fee', 'franchise_fee', 'security_deposit']) {
@@ -4852,7 +5230,7 @@ async function handle(request, response) {
           receipt_number: receiptNumber,
           transaction_number: transactionNumber,
           gateway_reference: gatewayReference,
-          verified_by: 'Payment gateway',
+          verified_by: isSimulate ? 'Payment gateway (simulate)' : 'Payment gateway',
         });
         await finalizeVerifiedPayment(application, payment, { headers: {} }, couponResult);
       }
@@ -4896,6 +5274,94 @@ async function handle(request, response) {
         .map(activeAllotmentMapRecord)
         .filter(Boolean);
       return success(request, response, { territories, metrics: territoryMetrics(), unassigned_applications: unassignedApplications, franchise_locations: franchiseLocations });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/territories/capacities') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can export territory capacities.', 403);
+      const rows = flattenCapacityRows(publicPinRecords);
+      const wantCsv = String(url.searchParams.get('format') || '').toLowerCase() === 'csv';
+      if (wantCsv) {
+        const body = capacityCsv(rows);
+        response.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="rfms-territory-capacities.csv"',
+          'Cache-Control': 'no-store',
+        });
+        response.end(body);
+        return;
+      }
+      return success(request, response, { rows, count: rows.length, metrics: territoryMetrics() });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/territories/capacity-alerts') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can view capacity alerts.', 403);
+      const threshold = Number(url.searchParams.get('threshold') ?? DEFAULT_NEAR_FULL_THRESHOLD);
+      const rows = flattenCapacityRows(publicPinRecords);
+      const alerts = nearFullCapacityAlerts(rows, threshold);
+      return success(request, response, {
+        alerts,
+        count: alerts.length,
+        threshold: Number.isFinite(threshold) ? Math.max(0, threshold) : DEFAULT_NEAR_FULL_THRESHOLD,
+      });
+    }
+
+    if (request.method === 'PATCH' && route === '/api/v1/territories/capacities/bulk') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can bulk-edit territory capacities.', 403);
+      const body = await readJson(request);
+      const updates = Array.isArray(body?.updates) ? body.updates : [];
+      if (!updates.length) return failure(request, response, 'VALIDATION_ERROR', 'Provide at least one PIN capacity update.');
+      if (updates.length > 500) return failure(request, response, 'VALIDATION_ERROR', 'Bulk capacity updates are limited to 500 PIN rows per request.');
+
+      const updated = [];
+      const errors = [];
+      const touched = new Set();
+
+      for (const raw of updates) {
+        const pincode = pinCode(raw?.pincode);
+        const territoryId = text(raw?.territory_id, 80);
+        const territory = territoryId
+          ? database.territories.find((item) => item.id === territoryId)
+          : database.territories.find((item) => item.pincodes.includes(pincode));
+        if (!territory) {
+          errors.push({ pincode: pincode || String(raw?.pincode || ''), error: 'No territory owns this PIN code.' });
+          continue;
+        }
+        const result = applyBulkPinAvailability(territory, { ...raw, pincode, territory_id: territory.id }, allocationCountsForPin);
+        if (!result.ok) {
+          errors.push({ pincode, territory_id: territory.id, error: result.error });
+          continue;
+        }
+        touched.add(territory.id);
+        updated.push({ pincode, territory_id: territory.id });
+      }
+
+      if (updated.length) await saveDatabase();
+
+      const nearFull = nearFullCapacityAlerts(flattenCapacityRows(publicPinRecords), DEFAULT_NEAR_FULL_THRESHOLD);
+      if (nearFull.length) {
+        workflowNotify({
+          module: 'territory',
+          action: 'near_full',
+          title: 'Territory capacity near full',
+          message: `${nearFull.length} PIN${nearFull.length === 1 ? '' : 's'} at or below ${DEFAULT_NEAR_FULL_THRESHOLD} remaining FOFO/FOCO slot(s).`,
+          actor: workflowActor(request),
+          href: 'admin:Territory',
+          entityType: 'territory',
+          entityId: 'capacity-alerts',
+        });
+      }
+
+      return success(request, response, {
+        updated,
+        errors,
+        updated_count: updated.length,
+        error_count: errors.length,
+        territories: [...touched].map((id) => {
+          const territory = database.territories.find((item) => item.id === id);
+          return territory ? territorySummary(territory) : null;
+        }).filter(Boolean),
+        alerts: nearFull.slice(0, 50),
+      });
     }
 
     if (request.method === 'POST' && route === '/api/v1/territories') {
@@ -7180,6 +7646,11 @@ async function handle(request, response) {
     if (request.method === 'GET' && route === '/api/v1/admin/users') {
       if (!requirePermission(request, response, 'user_management')) return;
       return success(request, response, ensureOfficersArray().map(officerUserSummary).sort((a, b) => a.name.localeCompare(b.name)));
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/users/next-employee-id') {
+      if (!requirePermission(request, response, 'user_management')) return;
+      return success(request, response, { employee_id: nextOfficerEmployeeId(ensureOfficersArray()) });
     }
 
     if (request.method === 'POST' && route === '/api/v1/admin/users') {

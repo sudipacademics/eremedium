@@ -30,6 +30,11 @@ ALLOWED_PUBLIC_METHODS = {
     "send_email_otp",
     "verify_email_otp",
     "ingest_onboarding_result",
+    "get_rfms_integration_config",
+    "create_rfms_razorpay_order",
+    "verify_rfms_razorpay_payment",
+    "get_wb_geo_hierarchy",
+    "resolve_wb_pincode",
 }
 
 MACHINE_METHODS = {
@@ -2630,6 +2635,134 @@ def ingest_onboarding_result(hec_payload=None, **kwargs):
     except Exception as exc:
         frappe.log_error(title="ingest_onboarding_result", message=frappe.get_traceback())
         return _error(str(exc) or _("Unable to ingest onboarding result"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_rfms_integration_config(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: public Razorpay key_id, OTP flags, Google Maps browser key."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            get_rfms_integration_config_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = get_rfms_integration_config_payload(payload)
+        return _success(row, message=_("RFMS integration config"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="get_rfms_integration_config", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load RFMS integration config"))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_rfms_razorpay_order(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: create Razorpay order for franchise payment (secret stays on ERP)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            create_rfms_razorpay_order_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = create_rfms_razorpay_order_payload(payload)
+        return _success(row, message=_("RFMS Razorpay order created"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_rfms_razorpay_order", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create RFMS Razorpay order"))
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_rfms_razorpay_payment(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: verify Razorpay checkout signature using ERP secret."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            verify_rfms_razorpay_payment_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = verify_rfms_razorpay_payment_payload(payload)
+        return _success(row, message=_("RFMS Razorpay payment verified"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="verify_rfms_razorpay_payment", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to verify RFMS Razorpay payment"))
+
+
+@frappe.whitelist(allow_guest=True)
+def activate_rfms_paid_franchisee(hec_payload=None, **kwargs):
+    """Phase 85c: RFMS HMAC bridge — create/update Franchisee Profile + opening wallet after paid milestone."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            activate_rfms_paid_franchisee_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = activate_rfms_paid_franchisee_payload(payload)
+        return _success(row, message=_("RFMS franchisee hub activated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="activate_rfms_paid_franchisee", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to activate RFMS franchisee hub"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_wb_geo_hierarchy():
+    """West Bengal district → subdivision → block/PIN hierarchy (Phase 84)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import get_wb_geo_hierarchy_payload
+
+        return _success(get_wb_geo_hierarchy_payload(), message=_("WB geo hierarchy"))
+    except Exception as exc:
+        frappe.log_error(title="get_wb_geo_hierarchy", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WB geo hierarchy"))
+
+
+@frappe.whitelist(allow_guest=True)
+def resolve_wb_pincode(pincode=None):
+    """Resolve a PIN code to WB postal localities."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import resolve_wb_pincode_payload
+
+        return _success(resolve_wb_pincode_payload(pincode or frappe.form_dict.get("pincode")), message=_("WB pincode resolved"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="resolve_wb_pincode", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to resolve pincode"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_territorial_sales_summary(sid=None, period=None):
+    """Reach: leads/visits/franchisees rolled up by district."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import (
+            get_territorial_sales_summary_payload,
+        )
+
+        return _success(
+            get_territorial_sales_summary_payload(frappe.session.user, period or "month"),
+            message=_("Territorial sales summary"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_territorial_sales_summary", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load territorial sales summary"))
 
 
 @frappe.whitelist(allow_guest=True)
