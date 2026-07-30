@@ -309,6 +309,120 @@ function Header({ title, text, action, onClick }: { title: string; text: string;
   return <div className="panel-head"><div><h2>{title}</h2><p>{text}</p></div><button onClick={onClick}>{action}</button></div>;
 }
 
+type PaymentVoucher = {
+  id: string;
+  voucher_number: string;
+  type: string;
+  status: string;
+  application_id: string;
+  application_number: string;
+  applicant_name: string;
+  franchise_model: string;
+  preferred_location: string;
+  vendor_name: string;
+  vendor_shop_name: string;
+  vendor_phone: string;
+  amount: number;
+  invoice?: { name?: string; url?: string } | null;
+  created_at: string;
+  created_by: string;
+  paid_at?: string;
+  paid_by?: string;
+  remarks?: string;
+};
+
+type VoucherMetrics = { pending_payment: number; pending_amount: number; paid: number; total: number };
+
+function PaymentVouchersPanel({ token, search, notify, reloadSignal }: { token: string; search: string; notify: (message: string) => void; reloadSignal: number }) {
+  const [vouchers, setVouchers] = useState<PaymentVoucher[]>([]);
+  const [metrics, setMetrics] = useState<VoucherMetrics>({ pending_payment: 0, pending_amount: 0, paid: 0, total: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+
+  const visible = useMemo(() => vouchers.filter((item) => `${item.voucher_number} ${item.applicant_name} ${item.application_number} ${item.vendor_name} ${item.vendor_shop_name} ${item.status}`.toLowerCase().includes(search.toLowerCase())), [vouchers, search]);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const response = await fetch(`${API_BASE}/admin/payment-vouchers`, { headers: { Authorization: `Bearer ${token}` } });
+      if (isOfficerSessionExpired(response)) return;
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { vouchers?: PaymentVoucher[]; metrics?: VoucherMetrics }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data?.vouchers) throw new Error(payload?.error?.message ?? 'Unable to load payment vouchers.');
+      setVouchers(payload.data.vouchers);
+      setMetrics(payload.data.metrics ?? { pending_payment: 0, pending_amount: 0, paid: 0, total: 0 });
+    } catch (requestError) {
+      setError(networkErrorMessage(requestError, 'Unable to load payment vouchers.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load, reloadSignal]);
+
+  async function markPaid(voucher: PaymentVoucher) {
+    setBusy(voucher.id);
+    try {
+      const response = await fetch(`${API_BASE}/admin/payment-vouchers/${voucher.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_paid' }),
+      });
+      if (isOfficerSessionExpired(response)) return;
+      const payload = await response.json().catch(() => null) as { success?: boolean; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to mark this voucher as paid.');
+      notify(`Payment voucher ${voucher.voucher_number} marked as paid.`);
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to mark this voucher as paid.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return <>
+    <div className="module-summary">
+      <section><span>Pending vouchers</span><b>{metrics.pending_payment}</b><small>Awaiting vendor payout</small></section>
+      <section><span>Pending amount</span><b>{formatAmount(metrics.pending_amount)}</b><small>Branding installation payables</small></section>
+      <section><span>Paid vouchers</span><b>{metrics.paid}</b><small>Settled by accounts</small></section>
+      <section><span>Total vouchers</span><b>{metrics.total}</b><small>Generated from branding approvals</small></section>
+    </div>
+    <section className="panel data-panel">
+      <Header title="Branding payment vouchers" text={loading ? 'Loading payment vouchers…' : `Showing ${visible.length} voucher${visible.length === 1 ? '' : 's'}`} action="Refresh" onClick={() => void load()} />
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Voucher</th>
+              <th>Application</th>
+              <th>Vendor</th>
+              <th>Amount</th>
+              <th>Bill</th>
+              <th>Created</th>
+              <th>Status</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {error ? <tr><td className="empty" colSpan={8}>{error}</td></tr> : null}
+            {!error ? visible.map((voucher) => <tr key={voucher.id}>
+              <td><b>{voucher.voucher_number}</b><br /><small>Branding installation</small></td>
+              <td>{voucher.application_number}<br /><small>{voucher.applicant_name}</small></td>
+              <td>{voucher.vendor_name || '—'}{voucher.vendor_shop_name ? <><br /><small>{voucher.vendor_shop_name}</small></> : null}{voucher.vendor_phone ? <><br /><small>{voucher.vendor_phone}</small></> : null}</td>
+              <td>{formatAmount(voucher.amount)}</td>
+              <td>{voucher.invoice?.url ? <a href={`${API_ORIGIN}${voucher.invoice.url.startsWith('/') ? voucher.invoice.url : `/${voucher.invoice.url}`}`} target="_blank" rel="noreferrer">{voucher.invoice.name || 'View bill'}</a> : '—'}</td>
+              <td>{displayDate(voucher.created_at)}<br /><small>{voucher.created_by}</small></td>
+              <td>{voucher.status === 'paid' ? `Paid${voucher.paid_at ? ` · ${displayDate(voucher.paid_at)}` : ''}` : voucher.status.replaceAll('_', ' ')}</td>
+              <td>{voucher.status === 'pending_payment' ? <button className="row-action" type="button" disabled={busy === voucher.id} onClick={() => void markPaid(voucher)}>{busy === voucher.id ? 'Saving…' : 'Mark paid'}</button> : null}</td>
+            </tr>) : null}
+            {!loading && !error && visible.length === 0 ? <tr><td className="empty" colSpan={8}>No branding payment vouchers yet. They appear when a manager approves vendor branding work.</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </>;
+}
+
 export function PaymentOperationsModule({ token, search, notify, viewerRole }: { token: string; search: string; notify: (message: string) => void; viewerRole: string }) {
   const [rows, setRows] = useState<PaymentLedgerRow[]>([]);
   const [metrics, setMetrics] = useState<LedgerMetrics>({ open_items: 0, completed_this_month: 0, verification_rate: 0 });
@@ -319,7 +433,7 @@ export function PaymentOperationsModule({ token, search, notify, viewerRole }: {
   const [detail, setDetail] = useState<PaymentDetail | null>(null);
   const [detailError, setDetailError] = useState('');
   const [busy, setBusy] = useState('');
-  const [activeTab, setActiveTab] = useState<'ledger' | 'coupons'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'coupons' | 'vouchers'>('ledger');
 
   const visibleRows = useMemo(() => rows.filter((row) => `${row.applicant_name} ${row.application_number} ${row.franchise_model} ${row.payment_phase} ${row.transaction_id} ${row.current_status_label}`.toLowerCase().includes(search.toLowerCase())), [rows, search]);
 
@@ -489,10 +603,11 @@ export function PaymentOperationsModule({ token, search, notify, viewerRole }: {
 
     <div className="payment-ops-tabs">
       <button type="button" className={activeTab === 'ledger' ? 'active' : ''} onClick={() => setActiveTab('ledger')}>Work queue</button>
+      <button type="button" className={activeTab === 'vouchers' ? 'active' : ''} onClick={() => setActiveTab('vouchers')}>Payment vouchers</button>
       {canManageCoupons ? <button type="button" className={activeTab === 'coupons' ? 'active' : ''} onClick={() => setActiveTab('coupons')}>Coupon codes</button> : null}
     </div>
 
-    {activeTab === 'coupons' && canManageCoupons ? <CouponOperationsPanel token={token} search={search} notify={notify} viewerRole={viewerRole} reloadSignal={reload} /> : <>
+    {activeTab === 'coupons' && canManageCoupons ? <CouponOperationsPanel token={token} search={search} notify={notify} viewerRole={viewerRole} reloadSignal={reload} /> : activeTab === 'vouchers' ? <PaymentVouchersPanel token={token} search={search} notify={notify} reloadSignal={reload} /> : <>
     <div className="module-summary">
       <section><span>Open items</span><b>{metrics.open_items}</b><small>Requires team attention</small></section>
       <section><span>Pending verification</span><b>{metrics.pending_verification ?? 0}</b><small>Offline submissions awaiting review</small></section>

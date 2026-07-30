@@ -52,10 +52,11 @@ type VideoKycEvidence = { id: string; url: string; name: string; captured_at: st
 type VideoKycSession = { id: string; attempt: number; status: 'assigned' | 'in_progress' | 'completed' | 'reassigned'; assigned_at: string; assigned_by: string; started_at: string; started_by: string; applicant_joined_at: string; completed_at: string; completed_by: string; remarks: string; reassigned_from: string; screenshots: VideoKycEvidence[]; history: ApplicationReviewActivity[]; application_id?: string; application_number?: string; applicant_name?: string; applicant_email?: string; applicant_mobile?: string; franchise_model?: 'FOFO' | 'FOCO'; preferred_location?: string; pincode?: string };
 type OnboardingDocumentFile = { id: string; slot: number; name: string; url: string; status: 'pending' | 'verified' | 'reupload_requested' | 'rejected' | 'superseded'; remarks?: string; submitted_at?: string; reviewed_at?: string; reviewed_by?: string; history?: ApplicationReviewActivity[] };
 type OnboardingDocument = { id: string; title: string; description?: string; required_count: number; requested_at?: string; requested_by?: string; files: OnboardingDocumentFile[] };
-type FieldVisitReport = { visit_date?: string; site_address?: string; google_maps_url?: string; inspection_summary?: string; property_condition?: string; documents_observed?: string; recommendation?: string; officer_remarks?: string; submitted_at?: string; submitted_by?: string };
+type FieldVisitPhoto = { id?: string; url: string; name: string; uploaded_at?: string };
+type FieldVisitReport = { visit_date?: string; site_address?: string; google_maps_url?: string; inspection_summary?: string; property_condition?: string; documents_observed?: string; recommendation?: string; officer_remarks?: string; site_photos?: FieldVisitPhoto[]; submitted_at?: string; submitted_by?: string };
 type FieldVisit = { id: string; status: 'assigned' | 'submitted' | 'approved' | 'rejected'; officer_name: string; officer_phone: string; assigned_at?: string; assigned_by?: string; submitted_at?: string; approved_at?: string; approved_by?: string; manager_remarks?: string; report?: FieldVisitReport | null; history?: ApplicationReviewActivity[] };
 type WorkflowUpload = { id?: string; name: string; title?: string; url: string; uploaded_at?: string };
-type BrandingSignage = { status: 'not_started' | 'vendor_assigned' | 'submitted' | 'approved' | 'rejected' | 'revision_requested'; vendor?: { name: string; shop_name: string; address: string; phone: string } | null; materials?: WorkflowUpload[]; completion_details?: string; photographs?: WorkflowUpload[]; submitted_at?: string; submitted_by?: string; manager_remarks?: string; approved_at?: string; approved_by?: string; installation_cost?: number; invoice?: WorkflowUpload | null; history?: ApplicationReviewActivity[] };
+type BrandingSignage = { status: 'not_started' | 'vendor_assigned' | 'submitted' | 'approved' | 'rejected' | 'revision_requested'; vendor?: { name: string; shop_name: string; address: string; phone: string } | null; materials?: WorkflowUpload[]; completion_details?: string; photographs?: WorkflowUpload[]; submitted_at?: string; submitted_by?: string; manager_remarks?: string; approved_at?: string; approved_by?: string; installation_cost?: number; invoice?: WorkflowUpload | null; payment_voucher_id?: string; payment_voucher_number?: string; history?: ApplicationReviewActivity[] };
 type HrEmployee = { id: string; name: string; designation: string; phone: string; joining_date: string; details?: string; offer_letter?: WorkflowUpload | null };
 type HrProcess = { status: 'not_started' | 'assigned' | 'submitted' | 'approved' | 'rejected' | 'revision_requested'; employees?: HrEmployee[]; submitted_at?: string; submitted_by?: string; manager_remarks?: string; approved_at?: string; approved_by?: string; history?: ApplicationReviewActivity[] };
 type TerritoryAllotment = { id: string; version: number; letter_number: string; territory_id: string; registered_territory_label: string; final_territory: string; radius_km: number; franchise_address: string; district: string; subdivision?: string; state: string; pincode: string; preferred_location?: string; latitude?: number | null; longitude?: number | null; google_maps_url: string; effective_date: string; conflict_override?: boolean; issued_at: string; issued_by: string; status: string; history?: ApplicationReviewActivity[] };
@@ -105,7 +106,28 @@ function resolveUploadUrl(url?: string | null) {
   return `${API_ORIGIN}${value.startsWith('/') ? value : `/${value}`}`;
 }
 function asDataUrl(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Unable to read this file.')); reader.onerror = () => reject(new Error('Unable to read this file.')); reader.readAsDataURL(file); }); }
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? '';
+const BAKED_GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? '';
+let runtimeGoogleMapsApiKey = BAKED_GOOGLE_MAPS_API_KEY;
+let allocationGoogleMapsLoader: Promise<void> | null = null;
+
+async function resolveAllocationGoogleMapsKey(token: string): Promise<string> {
+  try {
+    const response = await fetch(`${API_BASE}/admin/integrations/maps-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const result = await response.json() as { success?: boolean; data?: { google_maps_api_key?: string } };
+      const key = String(result?.data?.google_maps_api_key || '').trim();
+      if (key) {
+        runtimeGoogleMapsApiKey = key;
+        return key;
+      }
+    }
+  } catch {
+    // Keep bake/fallback.
+  }
+  return BAKED_GOOGLE_MAPS_API_KEY || runtimeGoogleMapsApiKey;
+}
 const pages: Page[] = ['Overview', 'Leads', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'Franchisee Webpage Index', 'Franchisee Directory', 'Support', 'Content CMS', 'User Management'];
 const applicants = [
   ['Ananya Ghosh', 'RFMS-2026-0148', 'FOFO', 'Document review', 'Arindam Das'],
@@ -234,9 +256,38 @@ function FieldVisitOfficerPortal({ secureToken }: { secureToken: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [photos, setPhotos] = useState<File[]>([]);
   const [form, setForm] = useState({ visit_date: new Date().toISOString().slice(0, 10), site_address: '', google_maps_url: '', inspection_summary: '', property_condition: '', documents_observed: '', recommendation: '', officer_remarks: '' });
-  useEffect(() => { let current = true; void (async () => { try { const response = await fetch(`${API_BASE}/field-visits/${secureToken}`); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application_number: string; applicant_name: string; franchise_model: string; preferred_location: string; pincode: string; field_visit: FieldVisit }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to open this Field Visit link.'); if (current) { setRecord(payload.data); if (payload.data.field_visit.report) setForm((state) => ({ ...state, ...payload.data!.field_visit.report })); } } catch (loadError) { if (current) setError(loadError instanceof Error ? loadError.message : 'Unable to open this Field Visit link.'); } finally { if (current) setLoading(false); } })(); return () => { current = false; }; }, [secureToken]);
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(''); setMessage(''); try { const response = await fetch(`${API_BASE}/field-visits/${secureToken}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { message?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to submit the Field Visit report.'); setMessage(payload.data?.message ?? 'Field Visit report submitted to the franchise manager.'); } catch (submitError) { setError(networkErrorMessage(submitError, 'Unable to submit the Field Visit report.')); } finally { setBusy(false); } }
+  useEffect(() => { let current = true; void (async () => { try { const response = await fetch(`${API_BASE}/field-visits/${secureToken}`); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application_number: string; applicant_name: string; franchise_model: string; preferred_location: string; pincode: string; field_visit: FieldVisit }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to open this Field Visit link.'); if (current) { setRecord(payload.data); if (payload.data.field_visit.report) { const { site_photos: _photos, ...reportFields } = payload.data.field_visit.report; setForm((state) => ({ ...state, ...reportFields })); } } } catch (loadError) { if (current) setError(loadError instanceof Error ? loadError.message : 'Unable to open this Field Visit link.'); } finally { if (current) setLoading(false); } })(); return () => { current = false; }; }, [secureToken]);
+  function choosePhotos(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith('image/')).slice(0, 12);
+    if (!selected.length) { setError('Choose PNG, JPG or WEBP site photographs.'); return; }
+    setPhotos(selected); setError('');
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(''); setMessage('');
+    try {
+      const existingPhotos = record?.field_visit.report?.site_photos ?? [];
+      if (!photos.length && !existingPhotos.length) {
+        throw new Error('Upload at least one site photograph with the Field Visit report.');
+      }
+      const sitePhotos = photos.length
+        ? await Promise.all(photos.map((file) => compressImageFile(file)))
+        : undefined;
+      const response = await fetch(`${API_BASE}/field-visits/${secureToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, ...(sitePhotos ? { site_photos: sitePhotos } : {}) }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { message?: string; field_visit?: FieldVisit }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to submit the Field Visit report.');
+      if (payload.data?.field_visit) setRecord((current) => current ? { ...current, field_visit: payload.data!.field_visit! } : current);
+      setPhotos([]);
+      setMessage(payload.data?.message ?? 'Field Visit report submitted to the franchise manager.');
+    } catch (submitError) {
+      setError(networkErrorMessage(submitError, 'Unable to submit the Field Visit report.'));
+    } finally { setBusy(false); }
+  }
   function createLinkFromAddress() {
     const query = [form.site_address, record?.preferred_location, record?.pincode].filter(Boolean).join(', ');
     if (!query) { setError('Enter the site address or use the proposed location before creating a Google Maps link.'); return; }
@@ -259,6 +310,7 @@ function FieldVisitOfficerPortal({ secureToken }: { secureToken: string }) {
   if (loading) return <main className="field-visit-portal"><section><p>Secure Field Visit</p><h1>Opening assigned visit...</h1></section></main>;
   if (!record) return <main className="field-visit-portal"><section><p>Secure Field Visit</p><h1>Link unavailable</h1><span>{error || 'This report link is invalid or no longer available.'}</span></section></main>;
   const locked = record.field_visit.status === 'approved';
+  const savedPhotos = record.field_visit.report?.site_photos ?? [];
   return <main className="field-visit-portal"><section className="field-visit-portal-card">
     <header><div><p>Secure Field Visit report</p><h1>{locked ? 'Final report locked' : 'Submit your inspection report'}</h1><span>Assigned to {record.field_visit.officer_name} · {record.field_visit.officer_phone}</span></div><b>{record.field_visit.status.replace('_', ' ')}</b></header>
     <div className="field-visit-application"><div><small>Applicant</small><b>{record.applicant_name}</b></div><div><small>Application</small><b>{record.application_number}</b></div><div><small>Franchise model</small><b>{record.franchise_model}</b></div><div><small>Proposed location</small><b>{record.preferred_location}{record.pincode ? ` · ${record.pincode}` : ''}</b></div></div>
@@ -271,21 +323,115 @@ function FieldVisitOfficerPortal({ secureToken }: { secureToken: string }) {
       <label>Documents observed<textarea value={form.documents_observed} onChange={(event) => setForm((current) => ({ ...current, documents_observed: event.target.value }))} placeholder="Property or local documents seen" /></label>
       <label>Recommendation<textarea value={form.recommendation} onChange={(event) => setForm((current) => ({ ...current, recommendation: event.target.value }))} placeholder="Recommendation for the franchise manager" /></label>
       <label>Officer remarks<textarea value={form.officer_remarks} onChange={(event) => setForm((current) => ({ ...current, officer_remarks: event.target.value }))} placeholder="Additional observations" /></label>
+      <label className="field-visit-full">Upload site photos (maximum 12)<input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} new photograph${photos.length === 1 ? '' : 's'} selected for upload.` : savedPhotos.length ? `${savedPhotos.length} photograph${savedPhotos.length === 1 ? '' : 's'} already on this report. Choose new files only if you need to replace them.` : 'Upload clear photographs of the site exterior, interior and key facilities. Required for manager verification.'}</small></label>
+      {savedPhotos.length ? <div className="field-visit-photo-grid field-visit-full">{savedPhotos.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}
       <div className="field-visit-full"><button disabled={busy}>{busy ? 'Submitting report...' : 'Submit Field Visit report'}</button></div>
     </form>}
+    {locked && savedPhotos.length ? <div className="field-visit-photo-grid">{savedPhotos.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}
     {message ? <p className="field-visit-success">{message}</p> : null}{error ? <p className="field-visit-error" role="alert">{error}</p> : null}
   </section></main>;
 }
 
 function BrandingVendorPortal({ secureToken }: { secureToken: string }) {
   const [record, setRecord] = useState<{ application_number: string; applicant_name: string; franchise_model: string; preferred_location: string; branding_signage: BrandingSignage } | null>(null);
-  const [details, setDetails] = useState(''); const [photos, setPhotos] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState('');
-  useEffect(() => { let active = true; void (async () => { try { const response = await fetch(`${API_BASE}/branding-vendor/${secureToken}`); const payload = await response.json().catch(() => null) as { success?: boolean; data?: typeof record; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to open this secure vendor link.'); if (active) { setRecord(payload.data); setDetails(payload.data.branding_signage.completion_details ?? ''); } } catch (loadError) { if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to open this secure vendor link.'); } })(); return () => { active = false; }; }, [secureToken]);
-  function choosePhotos(event: ChangeEvent<HTMLInputElement>) { const selected = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith('image/')).slice(0, 6); if (!selected.length) { setError('Choose PNG, JPG or WEBP photographs.'); return; } setPhotos(selected); setError(''); }
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(''); try { const response = await fetch(`${API_BASE}/branding-vendor/${secureToken}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completion_details: details, photographs: await Promise.all(photos.map((file) => compressImageFile(file))) }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { message?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to submit branding evidence.'); setMessage(payload.data?.message ?? 'Branding evidence submitted for manager review.'); setPhotos([]); } catch (submitError) { setError(networkErrorMessage(submitError, 'Unable to submit branding evidence.')); } finally { setBusy(false); } }
+  const [details, setDetails] = useState('');
+  const [amount, setAmount] = useState('');
+  const [bill, setBill] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/branding-vendor/${secureToken}`);
+        const payload = await response.json().catch(() => null) as { success?: boolean; data?: typeof record; error?: { message?: string } } | null;
+        if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to open this secure vendor link.');
+        if (active) {
+          setRecord(payload.data);
+          setDetails(payload.data.branding_signage.completion_details ?? '');
+          setAmount(payload.data.branding_signage.installation_cost ? String(payload.data.branding_signage.installation_cost) : '');
+        }
+      } catch (loadError) {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to open this secure vendor link.');
+      }
+    })();
+    return () => { active = false; };
+  }, [secureToken]);
+  function choosePhotos(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith('image/')).slice(0, 6);
+    if (!selected.length) { setError('Choose PNG, JPG or WEBP photographs.'); return; }
+    setPhotos(selected); setError('');
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const total = Number(amount);
+      if (!Number.isFinite(total) || total <= 0) throw new Error('Enter the total branding amount in INR.');
+      const existingPhotos = record?.branding_signage.photographs?.length ?? 0;
+      if (!photos.length && !existingPhotos) throw new Error('Upload at least one completed-installation photograph.');
+      if (!bill && !record?.branding_signage.invoice) throw new Error('Upload the branding bill/invoice.');
+      const response = await fetch(`${API_BASE}/branding-vendor/${secureToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          completion_details: details,
+          installation_cost: total,
+          invoice_name: bill?.name ?? '',
+          invoice_data_url: bill ? await asDataUrl(bill) : '',
+          photographs: photos.length ? await Promise.all(photos.map((file) => compressImageFile(file))) : [],
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { message?: string; branding_signage?: BrandingSignage }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to submit branding evidence.');
+      setMessage(payload.data?.message ?? 'Branding evidence, amount and bill submitted for manager review.');
+      setPhotos([]);
+      setBill(null);
+      if (payload.data?.branding_signage && record) {
+        setRecord({ ...record, branding_signage: payload.data.branding_signage });
+        setAmount(payload.data.branding_signage.installation_cost ? String(payload.data.branding_signage.installation_cost) : amount);
+      }
+    } catch (submitError) {
+      setError(networkErrorMessage(submitError, 'Unable to submit branding evidence.'));
+    } finally {
+      setBusy(false);
+    }
+  }
   if (!record) return <main className="secure-submission-page"><section><p>Secure Branding Signage</p><h1>{error ? 'Link unavailable' : 'Opening vendor workspace...'}</h1>{error ? <span>{error}</span> : null}</section></main>;
-  const locked = record.branding_signage.status === 'approved'; const vendor = record.branding_signage.vendor;
-  return <main className="secure-submission-page"><section className="secure-submission-card"><header><div><p>Secure Branding Signage</p><h1>{locked ? 'Branding installation approved' : 'Submit completed branding work'}</h1><span>{vendor?.shop_name || 'Approved branding vendor'} · {record.application_number}</span></div><b>{record.branding_signage.status.replaceAll('_', ' ')}</b></header><div className="secure-application-grid"><div><small>Applicant</small><b>{record.applicant_name}</b></div><div><small>Franchise model</small><b>{record.franchise_model}</b></div><div><small>Proposed location</small><b>{record.preferred_location}</b></div></div>{record.branding_signage.materials?.length ? <section className="secure-assets"><b>Approved branding materials</b>{record.branding_signage.materials.map((asset) => <a key={asset.id || asset.url} href={resolveUploadUrl(asset.url)} target="_blank" rel="noreferrer">{asset.title}</a>)}</section> : null}{locked ? <p className="field-visit-success">The manager has approved this installation. The record is now locked and available to the applicant.</p> : <form onSubmit={submit}><label className="secure-full">Completion details<textarea required value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Describe completed signage, wall branding, vinyl work and installation notes" /></label><label className="secure-full">Installation photographs (maximum 6)<input required type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} photograph${photos.length === 1 ? '' : 's'} selected` : 'Upload clear completed-work photographs.'}</small></label><button disabled={busy || !photos.length}>{busy ? 'Submitting...' : 'Submit branding work for review'}</button></form>}{message ? <p className="field-visit-success">{message}</p> : null}{error ? <p className="field-visit-error">{error}</p> : null}</section></main>;
+  const locked = record.branding_signage.status === 'approved';
+  const vendor = record.branding_signage.vendor;
+  const needsRevision = record.branding_signage.status === 'rejected' || record.branding_signage.status === 'revision_requested';
+  const hasExistingPhotos = Boolean(record.branding_signage.photographs?.length);
+  const hasExistingBill = Boolean(record.branding_signage.invoice);
+  return <main className="secure-submission-page"><section className="secure-submission-card">
+    <header>
+      <div>
+        <p>Secure Branding Signage</p>
+        <h1>{locked ? 'Branding installation approved' : needsRevision ? 'Revise amount, bill and branding work' : 'Submit completed branding work'}</h1>
+        <span>{vendor?.shop_name || 'Approved branding vendor'} · {record.application_number}</span>
+      </div>
+      <b>{record.branding_signage.status.replaceAll('_', ' ')}</b>
+    </header>
+    <div className="secure-application-grid">
+      <div><small>Applicant</small><b>{record.applicant_name}</b></div>
+      <div><small>Franchise model</small><b>{record.franchise_model}</b></div>
+      <div><small>Proposed location</small><b>{record.preferred_location}</b></div>
+    </div>
+    {needsRevision && record.branding_signage.manager_remarks ? <p className="field-visit-error">Manager note: {record.branding_signage.manager_remarks}</p> : null}
+    {record.branding_signage.materials?.length ? <section className="secure-assets"><b>Approved branding materials</b>{record.branding_signage.materials.map((asset) => <a key={asset.id || asset.url} href={resolveUploadUrl(asset.url)} target="_blank" rel="noreferrer">{asset.title}</a>)}</section> : null}
+    {locked ? <p className="field-visit-success">The manager has approved this installation. The record is now locked and available to the applicant.</p> : <form onSubmit={submit}>
+      <label className="secure-full">Completion details<textarea required value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Describe completed signage, wall branding, vinyl work and installation notes" /></label>
+      <label className="secure-full">Submit total amount (INR)<input required type="number" min="1" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Final branding installation amount" /><small>Enter the total amount payable for the completed branding work.</small></label>
+      <label className="secure-full">Upload bill / invoice<input required={!hasExistingBill} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setBill(event.target.files?.[0] ?? null)} /><small>{bill ? bill.name : hasExistingBill ? `Current bill on file: ${record.branding_signage.invoice?.name}. Upload a revised bill only if needed.` : 'Upload the final bill or invoice (PDF or image).'}</small></label>
+      {hasExistingBill && !bill ? <p><a href={resolveUploadUrl(record.branding_signage.invoice?.url)} target="_blank" rel="noreferrer">View current bill</a></p> : null}
+      <label className="secure-full">Installation photographs (maximum 6)<input required={!hasExistingPhotos} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} photograph${photos.length === 1 ? '' : 's'} selected` : hasExistingPhotos ? `${record.branding_signage.photographs?.length} photograph(s) already on file. Upload replacements only if needed.` : 'Upload clear completed-work photographs.'}</small></label>
+      <button disabled={busy || (!photos.length && !hasExistingPhotos) || (!bill && !hasExistingBill) || !amount}>{busy ? 'Submitting...' : needsRevision ? 'Resubmit amount, bill and branding work' : 'Submit branding work for review'}</button>
+    </form>}
+    {message ? <p className="field-visit-success">{message}</p> : null}
+    {error ? <p className="field-visit-error">{error}</p> : null}
+  </section></main>;
 }
 
 type HrDraftEmployee = { name: string; designation: string; phone: string; joining_date: string; details: string; offer_letter: File | null };
@@ -588,7 +734,7 @@ function FieldVisitReviewSection({ application, token, eligible, onApplicationUp
   }
   if (!eligible && !visit) return <section className="application-review-section field-visit-review"><div className="application-review-section-head"><div><h3>Field Visit</h3><p>Complete Video KYC before a Field Visit Officer can be assigned.</p></div><span>Video KYC required</span></div></section>;
   if (!visit) return <section className="application-review-section field-visit-review"><div className="application-review-section-head"><div><h3>Field Visit</h3><p>Video KYC is complete. Assign an officer and give them the secure report link; no manager account is needed for the submission.</p></div><span>Ready to assign</span></div><div className="field-visit-assign-grid"><label>Field Visit Officer name<input value={officerName} onChange={(event) => setOfficerName(event.target.value)} placeholder="Officer full name" /></label><label>Officer contact number<input value={officerPhone} onChange={(event) => setOfficerPhone(event.target.value)} placeholder="10-digit mobile number" /></label><button type="button" disabled={busy === 'assign'} onClick={() => void assign()}>{busy === 'assign' ? 'Assigning...' : 'Assign Field Visit'}</button></div>{error ? <p className="application-review-error">{error}</p> : null}</section>;
-  const field = (key: keyof FieldVisitReport, label: string, large = false) => <label className={large ? 'field-visit-report-wide' : ''}>{label}<textarea value={report[key] ?? ''} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, [key]: event.target.value }))} /></label>;
+  const field = (key: Exclude<keyof FieldVisitReport, 'site_photos'>, label: string, large = false) => <label className={large ? 'field-visit-report-wide' : ''}>{label}<textarea value={report[key] ?? ''} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, [key]: event.target.value }))} /></label>;
   const googleMapsUrl = report.google_maps_url?.trim() ?? '';
   return <section className={`application-review-section field-visit-review ${visit.status}`}>
     <div className="application-review-section-head"><div><h3>Field Visit</h3><p>Officer: <b>{visit.officer_name}</b> · {visit.officer_phone}. {visit.status === 'approved' ? 'Final report is locked and available to the applicant.' : 'Review, edit and approve the submitted report or ask the officer to submit a corrected version.'}</p></div><span>{applicationStage(visit.status)}</span></div>
@@ -598,6 +744,7 @@ function FieldVisitReviewSection({ application, token, eligible, onApplicationUp
       <label>Site address<textarea value={report.site_address ?? ''} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, site_address: event.target.value }))} /></label>
       <label className="field-visit-report-wide">Google Maps location link<input type="url" value={googleMapsUrl} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, google_maps_url: event.target.value }))} placeholder="No Google Maps location was submitted" /><span className="field-visit-map-actions">{googleMapsUrl ? <><a href={googleMapsUrl} target="_blank" rel="noreferrer">Open Google Maps</a><button type="button" onClick={() => void copyGoogleMapsLink()}>Copy Google Maps link</button></> : <small>No location link was submitted by the officer.</small>}</span></label>
       {field('inspection_summary', 'Inspection summary', true)}{field('property_condition', 'Property condition')}{field('documents_observed', 'Documents observed')}{field('recommendation', 'Officer recommendation')}{field('officer_remarks', 'Officer remarks')}
+      {(report.site_photos?.length || visit.report?.site_photos?.length) ? <div className="field-visit-report-wide field-visit-site-photos"><b>Site photographs for verification</b><div className="field-visit-photo-grid">{(report.site_photos?.length ? report.site_photos : visit.report?.site_photos ?? []).map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div><small>{(report.site_photos?.length || visit.report?.site_photos?.length || 0)} photograph{(report.site_photos?.length || visit.report?.site_photos?.length || 0) === 1 ? '' : 's'} submitted by the Field Visit Officer.</small></div> : visit.report ? <p className="field-visit-report-wide field-visit-photos-empty">No site photographs were attached to this report.</p> : null}
     </div> : <div className="field-visit-awaiting">Awaiting the assigned officer's Field Visit report.</div>}
     <label className="field-visit-manager-note">Manager remarks<textarea value={managerRemarks} disabled={visit.status === 'approved'} onChange={(event) => setManagerRemarks(event.target.value)} placeholder="Add review notes, correction instructions or approval remarks." /></label>
     {visit.status === 'approved' ? <button type="button" className="field-visit-final-pdf" disabled={busy === 'download'} onClick={() => void downloadReport()}>{busy === 'download' ? 'Preparing PDF...' : 'Download final Field Visit PDF'}</button> : visit.report ? <div className="field-visit-review-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void save('save')}>{busy === 'save' ? 'Saving...' : 'Save review edits'}</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void save('reject')}>{busy === 'reject' ? 'Saving...' : 'Request corrected report'}</button><button type="button" disabled={Boolean(busy)} onClick={() => void save('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve final report'}</button></div> : null}
@@ -704,15 +851,13 @@ function TerritoryAllotmentSection({ application, token, onApplicationUpdated, n
 
 type AllocationPoint = { lat: number; lng: number };
 
-let allocationGoogleMapsLoader: Promise<void> | null = null;
-
-function loadAllocationGoogleMaps() {
+function loadAllocationGoogleMaps(apiKey: string) {
   if (typeof window === 'undefined' || (window as any).google?.maps) return Promise.resolve();
-  if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error('Google Maps is not configured. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to .env.local and restart run-admin.cmd.'));
+  if (!apiKey) return Promise.reject(new Error('Google Maps is not configured. Paste the browser Maps key in Health Ecosystem Settings (ERP), or set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY for local fallback.'));
   if (allocationGoogleMapsLoader) return allocationGoogleMapsLoader;
   allocationGoogleMapsLoader = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error('Google Maps could not be loaded. Check the browser-restricted key and Maps JavaScript API configuration.'));
@@ -742,7 +887,7 @@ function kilometresToMetres(value: number) {
   return Number.isFinite(value) && value > 0 ? value * 1000 : 0;
 }
 
-function TerritoryAllocationMap({ point, radiusKm, franchises, onPointChange }: { point: AllocationPoint | null; radiusKm: number; franchises: NearbyFranchise[]; onPointChange: (point: AllocationPoint) => void }) {
+function TerritoryAllocationMap({ token, point, radiusKm, franchises, onPointChange }: { token: string; point: AllocationPoint | null; radiusKm: number; franchises: NearbyFranchise[]; onPointChange: (point: AllocationPoint) => void }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const clickListenerRef = useRef<any>(null);
@@ -756,7 +901,9 @@ function TerritoryAllocationMap({ point, radiusKm, franchises, onPointChange }: 
   useEffect(() => { onPointChangeRef.current = onPointChange; }, [onPointChange]);
   useEffect(() => {
     let cancelled = false;
-    void loadAllocationGoogleMaps().then(() => {
+    void resolveAllocationGoogleMapsKey(token)
+      .then((apiKey) => loadAllocationGoogleMaps(apiKey))
+      .then(() => {
       if (cancelled || !canvasRef.current || mapRef.current) return;
       const google = (window as any).google;
       const map = new google.maps.Map(canvasRef.current, {
@@ -769,7 +916,7 @@ function TerritoryAllocationMap({ point, radiusKm, franchises, onPointChange }: 
       mapRef.current = map; setReady(true);
     }).catch((loadError: unknown) => { if (!cancelled) setMapError(loadError instanceof Error ? loadError.message : 'Google Maps could not be loaded.'); });
     return () => { cancelled = true; clickListenerRef.current?.remove?.(); artifactsRef.current.forEach((artifact) => artifact.setMap?.(null)); artifactsRef.current = []; proposedCircleRef.current = null; };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -884,7 +1031,7 @@ function EnhancedTerritoryAllotmentSection({ application, token, onApplicationUp
         <label className="territory-allotment-map">Google Maps location link<input type="url" value={form.google_maps_url} onChange={(event) => setForm((value) => ({ ...value, google_maps_url: event.target.value }))} placeholder="Created automatically when you pin the location, or paste an approved link" /><span><button type="button" className="secondary" onClick={createGoogleMapsLink}>Create link from franchise address</button>{form.google_maps_url ? <a href={form.google_maps_url} target="_blank" rel="noreferrer">Open selected Google Maps location</a> : null}</span></label>
         {!options.length ? <p className="application-review-error territory-field-wide">No registered territory currently covers applicant PIN code {application.pincode || '—'}. Create PIN-wise capacity in Territory first.</p> : null}{selected ? <section className="territory-allotment-capacity territory-field-wide"><b>{selected.label}</b><span>Registered PIN {form.pincode}: {selected.available_units} {application.franchise_model} unit{selected.available_units === 1 ? '' : 's'} currently available · {selected.subdivision || 'Subdivision not recorded'}, {selected.district}</span></section> : null}
         <section className="registered-pin-territories territory-field-wide"><header><div><b>Registered PIN Code Territory</b><span>RFMS capacity is calculated from the applicant’s registered PIN. Select the coverage record that will reserve the next {application.franchise_model} unit.</span></div><span>{options.length} matching record{options.length === 1 ? '' : 's'}</span></header><div className="registered-pin-grid">{options.map((item) => <button type="button" key={item.id} className={`registered-pin-card ${item.id === form.territory_id ? 'selected' : ''} ${item.registered_pin_status || item.status || 'available'}`} onClick={() => setForm((value) => ({ ...value, territory_id: item.id, final_territory: value.final_territory || item.label, subdivision: value.subdivision || item.subdivision || '' }))}><span>{item.registered_pin_status === 'occupied' ? 'Occupied' : item.available_units > 0 ? 'Available' : 'No capacity'}</span><b>{item.label}</b><small>{item.subdivision || 'Subdivision not recorded'} · {item.district}</small><em>PIN {form.pincode} · {item.available_units} {application.franchise_model} available</em></button>)}</div><div className="registered-franchise-list">{registeredFranchises.length ? registeredFranchises.map((franchise) => <article key={franchise.application_id}><span className={franchise.status === 'occupied' ? 'occupied' : 'reserved'}>{franchise.status === 'occupied' ? 'Occupied' : 'Reserved'}</span><b>{franchise.franchise_name}</b><small>{franchise.subdivision || 'Subdivision not recorded'}, {franchise.district || 'District not recorded'} · PIN {franchise.pincode}{franchise.coordinates_available ? ` · ${franchise.radius_km} km mapped coverage` : ' · exact map point not yet recorded'}</small></article>) : <p>No issued franchise territory is recorded for this PIN code yet.</p>}</div></section>
-        <div className="territory-field-wide"><TerritoryAllocationMap point={mapPoint} radiusKm={Number.isFinite(radius) && radius >= 0.1 ? radius : 0} franchises={nearbyFranchises} onPointChange={(point) => setForm((value) => ({ ...value, latitude: point.lat.toFixed(6), longitude: point.lng.toFixed(6), google_maps_url: allocationMapLink(point) }))} /></div>
+        <div className="territory-field-wide"><TerritoryAllocationMap token={token} point={mapPoint} radiusKm={Number.isFinite(radius) && radius >= 0.1 ? radius : 0} franchises={nearbyFranchises} onPointChange={(point) => setForm((value) => ({ ...value, latitude: point.lat.toFixed(6), longitude: point.lng.toFixed(6), google_maps_url: allocationMapLink(point) }))} /></div>
         {conflicts.length ? <section className="territory-conflict-warning territory-field-wide"><div><b>Coverage conflict detected</b><span>The proposed {radius} km radius overlaps {conflicts.length} active franchise territory{conflicts.length === 1 ? '' : 'ies'}.</span></div><ul>{conflicts.map((franchise) => <li key={franchise.application_id}><b>{franchise.franchise_name}</b> · {franchise.distance_km.toFixed(2)} km away · {franchise.radius_km} km existing radius · {franchise.subdivision || franchise.district}</li>)}</ul><label><input type="checkbox" checked={form.conflict_override} onChange={(event) => setForm((value) => ({ ...value, conflict_override: event.target.checked }))} /> I confirm that company policy permits this recorded overlap exception.</label></section> : mapPoint ? <section className="territory-conflict-clear territory-field-wide"><b>No map conflict detected</b><span>The selected point and {radius} km coverage do not overlap any existing allocation with a recorded GPS point.</span></section> : <section className="territory-conflict-neutral territory-field-wide"><b>Set an exact map pin for live conflict validation</b><span>You can click the Google Map or enter GPS coordinates. The official letter can still record an approved address if coordinates are not available.</span></section>}
       </div>}
       <footer><p>The official letter includes the company performance, compliance and operational-requirements territory-change clause. Any permitted overlap is saved in the application audit history.</p><div><button type="button" className="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" disabled={busy || loadingOptions || !options.length} onClick={() => void saveAllotment()}>{busy ? 'Issuing letter...' : current ? 'Issue updated letter' : 'Confirm allocation and issue letter'}</button></div></footer>{error ? <p className="application-review-error">{error}</p> : null}
@@ -908,10 +1055,10 @@ function BrandingSignageReviewSection({ application, token, onApplicationUpdated
   const [vendor, setVendor] = useState({ name: branding?.vendor?.name ?? '', shop_name: branding?.vendor?.shop_name ?? '', address: branding?.vendor?.address ?? '', phone: branding?.vendor?.phone ?? '' }); const [asset, setAsset] = useState({ title: '', url: '' }); const [materialFile, setMaterialFile] = useState<File | null>(null); const [link, setLink] = useState(''); const [remarks, setRemarks] = useState(branding?.manager_remarks ?? ''); const [cost, setCost] = useState(String(branding?.installation_cost ?? '')); const [invoice, setInvoice] = useState<File | null>(null); const [busy, setBusy] = useState(''); const [error, setError] = useState('');
   useEffect(() => { if (!branding || branding.status === 'approved') return; let active = true; void (async () => { try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { headers: { Authorization: `Bearer ${token}` } }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { vendor_submission_url?: string } } | null; if (active && response.ok && payload?.success) setLink(payload.data?.vendor_submission_url ?? ''); } catch { /* A manager can regenerate the link below. */ } })(); return () => { active = false; }; }, [application.id, branding?.status, token]);
   async function saveSetup() { setBusy('setup'); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ vendor_name: vendor.name, vendor_shop_name: vendor.shop_name, vendor_address: vendor.address, vendor_phone: vendor.phone, materials: asset.title && asset.url ? [asset] : [], material_title: materialFile?.name ?? '', material_name: materialFile?.name ?? '', material_data_url: materialFile ? await asDataUrl(materialFile) : '' }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; vendor_submission_url?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save Branding Signage details.'); onApplicationUpdated(payload.data.application); setLink(payload.data.vendor_submission_url ?? ''); setAsset({ title: '', url: '' }); setMaterialFile(null); notify('Branding vendor workspace saved. Share the secure vendor link.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save Branding Signage details.'); } finally { setBusy(''); } }
-  async function review(action: 'save' | 'approve' | 'reject' | 'request_correction') { setBusy(action); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, manager_remarks: remarks, installation_cost: cost === '' ? undefined : Number(cost), invoice_name: invoice?.name ?? '', invoice_data_url: invoice ? await asDataUrl(invoice) : '' }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; vendor_submission_url?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save the Branding Signage review.'); onApplicationUpdated(payload.data.application); setLink(payload.data.vendor_submission_url ?? link); setInvoice(null); notify(action === 'approve' ? 'Branding Signage approved and published to the applicant portal.' : action === 'request_correction' ? 'Vendor was asked to correct the branding evidence.' : 'Branding Signage review saved.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save the Branding Signage review.'); } finally { setBusy(''); } }
+  async function review(action: 'save' | 'approve' | 'reject' | 'request_correction') { setBusy(action); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, manager_remarks: remarks, installation_cost: cost === '' ? undefined : Number(cost), invoice_name: invoice?.name ?? '', invoice_data_url: invoice ? await asDataUrl(invoice) : '' }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; vendor_submission_url?: string; payment_voucher?: { voucher_number?: string } | null }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save the Branding Signage review.'); onApplicationUpdated(payload.data.application); setLink(payload.data.vendor_submission_url ?? link); setInvoice(null); const voucherNumber = payload.data.payment_voucher?.voucher_number; notify(action === 'approve' ? (voucherNumber ? `Branding approved. Payment voucher ${voucherNumber} created for the accountant.` : 'Branding Signage approved and published to the applicant portal.') : action === 'reject' ? 'Branding submission rejected. Vendor can revise amount and bill from the same secure link.' : action === 'request_correction' ? 'Vendor was asked to correct the branding amount, bill or evidence.' : 'Branding Signage review saved.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save the Branding Signage review.'); } finally { setBusy(''); } }
   if (!unlocked) return <section className="application-review-section workflow-module locked"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>Available after Territory Allotment and the required payment. FOFO unlocks after its one-time payment; FOCO unlocks after Phase 2.</p></div><span>Payment gate</span></div></section>;
   const submitted = branding?.status === 'submitted' || branding?.status === 'revision_requested' || branding?.status === 'rejected';
-  return <section className="application-review-section workflow-module branding-module"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>Share approved assets, assign a vendor, verify completed installation evidence and retain the final invoice.</p></div><span>{branding ? branding.status.replaceAll('_', ' ') : 'Ready to set up'}</span></div>{!branding || !branding.vendor ? <div className="workflow-setup-grid"><label>Vendor name<input value={vendor.name} onChange={(event) => setVendor((current) => ({ ...current, name: event.target.value }))} /></label><label>Shop name<input value={vendor.shop_name} onChange={(event) => setVendor((current) => ({ ...current, shop_name: event.target.value }))} /></label><label>Contact number<input value={vendor.phone} onChange={(event) => setVendor((current) => ({ ...current, phone: event.target.value }))} /></label><label className="workflow-wide">Vendor address<textarea value={vendor.address} onChange={(event) => setVendor((current) => ({ ...current, address: event.target.value }))} /></label><label>Material title<input value={asset.title} onChange={(event) => setAsset((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Exterior signage artwork" /></label><label>Material link<input type="url" value={asset.url} onChange={(event) => setAsset((current) => ({ ...current, url: event.target.value }))} placeholder="https://..." /></label><label className="workflow-wide">Or upload approved material<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)} /></label><button type="button" disabled={busy === 'setup'} onClick={() => void saveSetup()}>{busy === 'setup' ? 'Saving...' : 'Assign vendor and create secure link'}</button></div> : <><div className="workflow-assignment"><div><b>{branding.vendor.name} · {branding.vendor.shop_name}</b><small>{branding.vendor.phone} · {branding.vendor.address}</small></div>{branding.status !== 'approved' ? <button type="button" className="secondary" onClick={() => void navigator.clipboard?.writeText(link).then(() => notify('Secure vendor link copied.')).catch(() => setError('Copy the secure link manually.'))}>Copy secure vendor link</button> : null}</div>{link ? <label className="secure-link-field">Vendor submission link<input readOnly value={link} /></label> : null}{branding.materials?.length ? <div className="workflow-assets">{branding.materials.map((item) => <a key={item.id || item.url} href={resolveUploadUrl(item.url)} target="_blank" rel="noreferrer">{item.title}</a>)}</div> : null}{branding.photographs?.length ? <div className="branding-photo-grid">{branding.photographs.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}{submitted ? <><label className="workflow-wide">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Approval note or correction instructions" /></label><div className="workflow-review-grid"><label>Installation cost (INR)<input type="number" min="0" value={cost} onChange={(event) => setCost(event.target.value)} /></label><label>Final invoice<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setInvoice(event.target.files?.[0] ?? null)} /></label></div><div className="workflow-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void review('save')}>Save review</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void review('request_correction')}>Request correction</button><button type="button" className="danger" disabled={Boolean(busy)} onClick={() => void review('reject')}>Reject</button><button type="button" disabled={Boolean(busy)} onClick={() => void review('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve branding work'}</button></div></> : branding.status === 'approved' ? <p className="workflow-final">Approved {branding.approved_at ? displayDate(branding.approved_at) : ''}. Branding evidence, invoice and cost are now visible to the applicant.</p> : <p className="workflow-awaiting">Awaiting the vendor’s completed-installation submission through the secure link.</p>}</>}{error ? <p className="application-review-error">{error}</p> : null}</section>;
+  return <section className="application-review-section workflow-module branding-module"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>Share approved assets, assign a vendor, verify completed installation evidence, total amount and bill. Approval creates an accountant payment voucher.</p></div><span>{branding ? branding.status.replaceAll('_', ' ') : 'Ready to set up'}</span></div>{!branding || !branding.vendor ? <div className="workflow-setup-grid"><label>Vendor name<input value={vendor.name} onChange={(event) => setVendor((current) => ({ ...current, name: event.target.value }))} /></label><label>Shop name<input value={vendor.shop_name} onChange={(event) => setVendor((current) => ({ ...current, shop_name: event.target.value }))} /></label><label>Contact number<input value={vendor.phone} onChange={(event) => setVendor((current) => ({ ...current, phone: event.target.value }))} /></label><label className="workflow-wide">Vendor address<textarea value={vendor.address} onChange={(event) => setVendor((current) => ({ ...current, address: event.target.value }))} /></label><label>Material title<input value={asset.title} onChange={(event) => setAsset((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Exterior signage artwork" /></label><label>Material link<input type="url" value={asset.url} onChange={(event) => setAsset((current) => ({ ...current, url: event.target.value }))} placeholder="https://..." /></label><label className="workflow-wide">Or upload approved material<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)} /></label><button type="button" disabled={busy === 'setup'} onClick={() => void saveSetup()}>{busy === 'setup' ? 'Saving...' : 'Assign vendor and create secure link'}</button></div> : <><div className="workflow-assignment"><div><b>{branding.vendor.name} · {branding.vendor.shop_name}</b><small>{branding.vendor.phone} · {branding.vendor.address}</small></div>{branding.status !== 'approved' ? <button type="button" className="secondary" onClick={() => void navigator.clipboard?.writeText(link).then(() => notify('Secure vendor link copied.')).catch(() => setError('Copy the secure link manually.'))}>Copy secure vendor link</button> : null}</div>{link ? <label className="secure-link-field">Vendor submission link<input readOnly value={link} /></label> : null}{branding.materials?.length ? <div className="workflow-assets">{branding.materials.map((item) => <a key={item.id || item.url} href={resolveUploadUrl(item.url)} target="_blank" rel="noreferrer">{item.title}</a>)}</div> : null}{branding.photographs?.length ? <div className="branding-photo-grid">{branding.photographs.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}{(branding.installation_cost || branding.invoice) ? <div className="workflow-assignment"><div><b>Vendor total amount: {branding.installation_cost ? `₹${Number(branding.installation_cost).toLocaleString('en-IN')}` : '—'}</b><small>{branding.completion_details || 'No completion notes'}</small></div>{branding.invoice ? <a href={resolveUploadUrl(branding.invoice.url)} target="_blank" rel="noreferrer">View vendor bill</a> : <span>No bill uploaded</span>}</div> : null}{submitted ? <><label className="workflow-wide">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Approval note or correction instructions for amount, bill or photographs" /></label><div className="workflow-review-grid"><label>Override amount (INR, optional)<input type="number" min="0" value={cost} onChange={(event) => setCost(event.target.value)} placeholder={branding.installation_cost ? String(branding.installation_cost) : '0'} /></label><label>Replace bill (optional)<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setInvoice(event.target.files?.[0] ?? null)} /></label></div><div className="workflow-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void review('save')}>Save review</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void review('request_correction')}>Request correction</button><button type="button" className="danger" disabled={Boolean(busy)} onClick={() => void review('reject')}>Reject</button><button type="button" disabled={Boolean(busy)} onClick={() => void review('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve branding work'}</button></div></> : branding.status === 'approved' ? <p className="workflow-final">Approved {branding.approved_at ? displayDate(branding.approved_at) : ''}. {branding.payment_voucher_number ? `Payment voucher ${branding.payment_voucher_number} was created for the accountant.` : 'Branding evidence, invoice and cost are now visible to the applicant.'}</p> : <p className="workflow-awaiting">Awaiting the vendor’s completed-installation submission, total amount and bill through the secure link.</p>}</>}{error ? <p className="application-review-error">{error}</p> : null}</section>;
 }
 
 function HrProcessReviewSection({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
@@ -1308,13 +1455,21 @@ function VideoKycDashboard({ token, search, notify }: { token: string; search: s
   </section>;
 }
 
+function attachVideoElement(video: HTMLVideoElement | null, stream: MediaStream | null) {
+  if (!video || !stream) return;
+  if (video.srcObject !== stream) video.srcObject = stream;
+  void video.play().catch(() => undefined);
+}
+
 function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { token: string; session: VideoKycSession; onClose: () => void; onChanged: (session: VideoKycSession) => void; notify: (message: string) => void }) {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
   const processedSignals = useRef(new Set<string>());
+  const offerSentRef = useRef(false);
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [captureBusy, setCaptureBusy] = useState(false);
@@ -1336,18 +1491,33 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
   const stopRoom = useCallback(() => {
     peerRef.current?.close(); peerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+    remoteStreamRef.current = null;
+    offerSentRef.current = false;
+    processedSignals.current = new Set();
+    pendingCandidates.current = [];
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setLive(false);
   }, []);
+
+  const publishOffer = useCallback(async () => {
+    const peer = peerRef.current;
+    if (!peer || offerSentRef.current || peer.signalingState !== 'stable') return;
+    offerSentRef.current = true;
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    await sendSignal('offer', offer);
+  }, [sendSignal]);
 
   const applySignal = useCallback(async (entry: { id: string; type: string; signal: unknown }) => {
     if (processedSignals.current.has(entry.id) || !peerRef.current) return;
     processedSignals.current.add(entry.id);
     const peer = peerRef.current;
     if (entry.type === 'answer') {
-      await peer.setRemoteDescription(entry.signal as RTCSessionDescriptionInit);
-      for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate);
+      if (peer.signalingState === 'have-local-offer') {
+        await peer.setRemoteDescription(entry.signal as RTCSessionDescriptionInit);
+        for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate);
+      }
     } else if (entry.type === 'candidate') {
       if (peer.remoteDescription) await peer.addIceCandidate(entry.signal as RTCIceCandidateInit); else pendingCandidates.current.push(entry.signal as RTCIceCandidateInit);
     }
@@ -1355,18 +1525,41 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
 
   useEffect(() => () => stopRoom(), [stopRoom]);
   useEffect(() => {
+    attachVideoElement(localVideoRef.current, streamRef.current);
+    attachVideoElement(remoteVideoRef.current, remoteStreamRef.current);
+  }, [live, currentSession.applicant_joined_at]);
+
+  useEffect(() => {
     if (!live || currentSession.status !== 'in_progress') return;
     let active = true;
+    const sessionId = currentSession.id;
     const poll = async () => {
       try {
-        const response = await fetch(`${API_BASE}/video-kyc/${currentSession.id}/signals`, { headers: { Authorization: `Bearer ${token}` } });
-        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { signals?: { id: string; type: string; signal: unknown }[] } } | null;
-        if (active && response.ok && payload?.success) for (const signal of payload.data?.signals ?? []) await applySignal(signal);
+        const response = await fetch(`${API_BASE}/video-kyc/${sessionId}/signals`, { headers: { Authorization: `Bearer ${token}` } });
+        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { signals?: { id: string; type: string; signal: unknown }[]; session?: VideoKycSession } } | null;
+        if (!active || !response.ok || !payload?.success) return;
+        if (payload.data?.session) {
+          const remoteSession = payload.data.session;
+          setCurrentSession((previous) => {
+            if (previous.applicant_joined_at === remoteSession.applicant_joined_at && previous.status === remoteSession.status && previous.screenshots.length === (remoteSession.screenshots?.length ?? 0)) {
+              return previous;
+            }
+            const merged = { ...previous, ...remoteSession };
+            onChanged(merged);
+            return merged;
+          });
+          if (remoteSession.applicant_joined_at && !offerSentRef.current) {
+            await publishOffer();
+          }
+        }
+        for (const signal of payload.data?.signals ?? []) await applySignal(signal);
+        attachVideoElement(localVideoRef.current, streamRef.current);
+        attachVideoElement(remoteVideoRef.current, remoteStreamRef.current);
       } catch { /* The next poll retries while the room is open. */ }
     };
-    void poll(); const timer = window.setInterval(() => void poll(), 1500);
+    void poll(); const timer = window.setInterval(() => void poll(), 1200);
     return () => { active = false; window.clearInterval(timer); };
-  }, [applySignal, currentSession.id, currentSession.status, live, token]);
+  }, [applySignal, currentSession.id, currentSession.status, live, onChanged, publishOffer, token]);
 
   async function startRoom() {
     setBusy(true); setError('');
@@ -1375,16 +1568,25 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
       if (!started?.session) throw new Error('Video KYC session could not be started.');
       const mergedSession = { ...currentSession, ...started.session };
       setCurrentSession(mergedSession); onChanged(mergedSession);
-      const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      offerSentRef.current = false;
+      processedSignals.current = new Set();
+      pendingCandidates.current = [];
+      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
       streamRef.current = media;
-      if (localVideoRef.current) localVideoRef.current.srcObject = media;
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
       peerRef.current = peer;
       media.getTracks().forEach((track) => peer.addTrack(track, media));
-      peer.ontrack = (event) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]; };
+      peer.ontrack = (event) => {
+        const remote = event.streams[0] || new MediaStream([event.track]);
+        remoteStreamRef.current = remote;
+        attachVideoElement(remoteVideoRef.current, remote);
+      };
       peer.onicecandidate = (event) => { if (event.candidate) void sendSignal('candidate', event.candidate.toJSON()).catch(() => undefined); };
-      const offer = await peer.createOffer(); await peer.setLocalDescription(offer); await sendSignal('offer', offer);
-      setLive(true); notify('Video KYC is live. The applicant can now join from their portal.');
+      setLive(true);
+      // Wait a frame so local <video> is painted, then mirror the manager camera.
+      window.requestAnimationFrame(() => attachVideoElement(localVideoRef.current, media));
+      if (mergedSession.applicant_joined_at) await publishOffer();
+      notify('Video KYC is live. Waiting for the applicant to join — then both cameras connect.');
     } catch (roomError) {
       stopRoom(); setError(roomError instanceof Error ? roomError.message : 'Unable to start the camera or Video KYC room.');
     } finally { setBusy(false); }

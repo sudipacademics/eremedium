@@ -186,6 +186,8 @@ import {
   activateRfmsPaidFranchiseeViaErp,
   fetchWbGeoHierarchy,
   resolveWbPincodeViaErp,
+  fetchFranchiseWhatsappThreadViaErp,
+  sendFranchiseWhatsappReplyViaErp,
 } from './hec-frappe-bridge.mjs';
 import {
   applyBulkPinAvailability,
@@ -194,6 +196,15 @@ import {
   flattenCapacityRows,
   nearFullCapacityAlerts,
 } from './territory-capacity-workflow.mjs';
+import {
+  AD_LEAD_SOURCES,
+  adLeadIsAcceptable,
+  adLeadPayloadFromRow,
+  findExistingAdLead,
+  franchiseAdsStatus,
+  normaliseAdSource,
+  recordFranchiseAdsIngest,
+} from './leads-ads-workflow.mjs';
 
 const marketingPort = Number(process.env.RFMS_MARKETING_PORT ?? 3000);
 const portalPort = Number(process.env.RFMS_PORTAL_PORT ?? 3001);
@@ -313,7 +324,7 @@ const westBengalTerritorySeeds = () => [
   { id: 'wb-purba-bardhaman', state: 'West Bengal', district: 'Purba Bardhaman', subdivision: 'Bardhaman Sadar North', area: 'Bardhaman Central', pin_capacities: [{ pincode: '713101', fofo_available: 2, foco_available: 1 }], fofo_radius_km: 7, foco_radius_km: 14, map_x: 52, map_y: 71, map_projection_version: 'nh-map-r12-v2', allocations: [] },
   { id: 'wb-darjeeling-siliguri', state: 'West Bengal', district: 'Darjeeling', subdivision: 'Siliguri', area: 'Siliguri North', pin_capacities: [{ pincode: '734001', fofo_available: 2, foco_available: 1 }, { pincode: '734004', fofo_available: 2, foco_available: 1 }], fofo_radius_km: 7, foco_radius_km: 15, map_x: 45, map_y: 20, map_projection_version: 'nh-map-r12-v2', allocations: [] },
 ];
-let database = { stories: [], franchisees: [], franchise_webpages: [], leads: [], appointments: [], territories: westBengalTerritorySeeds(), company_profile: defaultCompanyProfile, hero_slides: defaultHeroSlides(), training_videos: defaultTrainingVideos(), marketing_pages: defaultMarketingPages(), support_tickets: [], support_settings: defaultSupportSettingsFromCompany(defaultCompanyProfile), officers: [], admin_audit_log: [], notifications: [], sessions: [], franchisee_directory_api: null, partner_api_audit_log: [] };
+let database = { stories: [], franchisees: [], franchise_webpages: [], leads: [], appointments: [], territories: westBengalTerritorySeeds(), company_profile: defaultCompanyProfile, hero_slides: defaultHeroSlides(), training_videos: defaultTrainingVideos(), marketing_pages: defaultMarketingPages(), support_tickets: [], support_settings: defaultSupportSettingsFromCompany(defaultCompanyProfile), officers: [], admin_audit_log: [], notifications: [], sessions: [], franchisee_directory_api: null, partner_api_audit_log: [], payment_vouchers: [] };
 let databaseFileMtimeMs = 0;
 
 async function syncApplicationsFromDiskIfChanged() {
@@ -392,6 +403,7 @@ async function loadDatabase() {
     }
     ensureFranchiseeDirectoryApiSettings(database);
     database.partner_api_audit_log = Array.isArray(database.partner_api_audit_log) ? database.partner_api_audit_log : [];
+    database.payment_vouchers = Array.isArray(database.payment_vouchers) ? database.payment_vouchers : [];
     ensureCouponsArray(database);
     ensureGatewayOrders(database);
     database.marketing_pages = normalizeMarketingPages(database.marketing_pages);
@@ -427,7 +439,7 @@ async function saveDatabase() {
 function cors(request, response) {
   const origin = request.headers.origin;
   if (origin && allowedOrigins.has(origin)) response.setHeader('Access-Control-Allow-Origin', origin);
-  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Franchise-Ads-Secret, X-WhatsApp-Cloud-Secret');
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   response.setHeader('Vary', 'Origin');
 }
@@ -1416,7 +1428,7 @@ function territoryAllotmentConflicts(application, latitude, longitude, radiusKm)
 }
 
 const leadStages = new Set(['new', 'contacted', 'no_response', 'qualified', 'follow_up', 'application_started', 'won', 'lost', 'disqualified', 'completed']);
-const leadSources = new Set(['website', 'meta_ads', 'manual', 'csv_upload', 'appointment', 'reach_sales']);
+const leadSources = new Set(['website', 'meta_ads', 'google_ads', 'whatsapp_ads', 'manual', 'csv_upload', 'appointment', 'reach_sales']);
 const leadPriorities = new Set(['hot', 'warm', 'normal', 'low']);
 const leadActivityTypes = new Set(['created', 'imported', 'call', 'whatsapp', 'email', 'note', 'follow_up', 'stage_change', 'owner_change', 'claim']);
 
@@ -1443,7 +1455,16 @@ function leadActivity(value, createdAt = new Date().toISOString()) {
 }
 
 function sourceLabel(source) {
-  return ({ website: 'Website enquiry', meta_ads: 'Meta Ads', manual: 'Manual entry', csv_upload: 'CSV upload', appointment: 'Appointment conversion', reach_sales: 'Reach sales handoff' })[source] ?? 'Manual entry';
+  return ({
+    website: 'Website enquiry',
+    meta_ads: 'Meta Ads',
+    google_ads: 'Google Ads',
+    whatsapp_ads: 'WhatsApp Ads',
+    manual: 'Manual entry',
+    csv_upload: 'CSV upload',
+    appointment: 'Appointment conversion',
+    reach_sales: 'Reach sales handoff',
+  })[source] ?? 'Manual entry';
 }
 
 function leadRecord(value, id = randomUUID()) {
@@ -1457,6 +1478,10 @@ function leadRecord(value, id = randomUUID()) {
       ? 'Website franchise enquiry received.'
       : sourceName === 'meta_ads'
         ? `Meta Ads lead imported${text(source.campaign_name, 180) ? ` from campaign: ${text(source.campaign_name, 180)}.` : '.'}`
+      : sourceName === 'google_ads'
+        ? `Google Ads lead imported${text(source.campaign_name, 180) ? ` from campaign: ${text(source.campaign_name, 180)}.` : '.'}`
+      : sourceName === 'whatsapp_ads'
+        ? `WhatsApp Ads lead imported${text(source.campaign_name, 180) ? ` from campaign: ${text(source.campaign_name, 180)}.` : '.'}`
         : sourceName === 'csv_upload'
           ? 'Lead imported from CSV upload.'
           : sourceName === 'appointment'
@@ -1464,7 +1489,7 @@ function leadRecord(value, id = randomUUID()) {
           : sourceName === 'reach_sales'
             ? 'Lead created from Reach sales handoff. Applicant will choose FOFO or FOCO on the portal.'
           : 'Lead created manually in RFMS CRM.';
-    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' || sourceName === 'reach_sales' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : sourceName === 'reach_sales' ? 'Reach sales' : 'RFMS officer', message: initialMessage }, createdAt));
+    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' || sourceName === 'reach_sales' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : sourceName === 'reach_sales' ? 'Reach sales' : sourceName.endsWith('_ads') ? 'Ads webhook' : 'RFMS officer', message: initialMessage }, createdAt));
     if (notes) history.push(leadActivity({ type: 'note', actor: 'Lead source', message: notes }, createdAt));
   }
   const model = text(source.franchise_model, 10).toUpperCase();
@@ -1479,6 +1504,17 @@ function leadRecord(value, id = randomUUID()) {
     notes,
     source: sourceName,
     campaign_name: text(source.campaign_name, 180),
+    campaign_id: text(source.campaign_id, 80),
+    ad_id: text(source.ad_id, 80),
+    adset_id: text(source.adset_id, 80),
+    form_id: text(source.form_id, 80),
+    platform: text(source.platform, 40),
+    external_lead_id: text(source.external_lead_id, 120),
+    utm_source: text(source.utm_source, 80),
+    utm_medium: text(source.utm_medium, 80),
+    utm_campaign: text(source.utm_campaign, 120),
+    gclid: text(source.gclid, 120),
+    raw_source_payload: text(source.raw_source_payload, 4000),
     stage: leadStage(source.stage),
     priority: leadPriorities.has(text(source.priority, 20).toLowerCase()) ? text(source.priority, 20).toLowerCase() : 'normal',
     assigned_to: text(source.assigned_to, 120) || 'Unassigned',
@@ -1488,6 +1524,18 @@ function leadRecord(value, id = randomUUID()) {
     hec_franchisee_profile: text(source.hec_franchisee_profile, 120),
     hec_session_id: text(source.hec_session_id, 120),
     hec_lead_id: text(source.hec_lead_id, 120),
+    whatsapp_conversation_id: text(source.whatsapp_conversation_id, 120),
+    whatsapp_last_at: text(source.whatsapp_last_at, 60),
+    whatsapp_messages: Array.isArray(source.whatsapp_messages)
+      ? source.whatsapp_messages.slice(-200).map((item) => ({
+        id: text(item?.id, 80) || randomUUID(),
+        direction: text(item?.direction, 10) === 'Out' ? 'Out' : 'In',
+        body: text(item?.body, 4000),
+        meta_message_id: text(item?.meta_message_id, 140),
+        status: text(item?.status, 40) || 'received',
+        created_at: text(item?.created_at, 60) || createdAt,
+      }))
+      : [],
     created_at: createdAt,
     updated_at: text(source.updated_at, 60) || createdAt,
   };
@@ -1503,6 +1551,140 @@ function addLeadActivity(lead, type, message, actor) {
 
 function leadIsValid(lead) {
   return Boolean(lead.name && isEmail(lead.email) && lead.mobile && ['FOFO', 'FOCO'].includes(lead.franchise_model) && lead.territory_query);
+}
+
+function franchiseAdsWebhookSecret() {
+  return String(process.env.FRANCHISE_ADS_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET || '').trim();
+}
+
+function whatsappCloudSecret() {
+  return String(process.env.WHATSAPP_CLOUD_WEBHOOK_SECRET || process.env.FRANCHISE_ADS_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET || '').trim();
+}
+
+function requireWhatsappCloudSecret(request, response) {
+  const expected = whatsappCloudSecret();
+  if (!expected) {
+    failure(request, response, 'NOT_CONFIGURED', 'WhatsApp Cloud webhook secret is not configured on RFMS.', 503);
+    return false;
+  }
+  const provided = String(request.headers['x-whatsapp-cloud-secret'] || '').trim();
+  if (!provided || provided.length !== expected.length) {
+    failure(request, response, 'UNAUTHORIZED', 'Invalid WhatsApp Cloud webhook secret.', 401);
+    return false;
+  }
+  try {
+    if (!timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+      failure(request, response, 'UNAUTHORIZED', 'Invalid WhatsApp Cloud webhook secret.', 401);
+      return false;
+    }
+  } catch {
+    failure(request, response, 'UNAUTHORIZED', 'Invalid WhatsApp Cloud webhook secret.', 401);
+    return false;
+  }
+  return true;
+}
+
+function appendLeadWhatsappMessage(lead, message) {
+  const entry = {
+    id: text(message?.id, 80) || randomUUID(),
+    direction: text(message?.direction, 10) === 'Out' ? 'Out' : 'In',
+    body: text(message?.body, 4000),
+    meta_message_id: text(message?.meta_message_id, 140),
+    status: text(message?.status, 40) || (text(message?.direction, 10) === 'Out' ? 'sent' : 'received'),
+    created_at: text(message?.created_at, 60) || new Date().toISOString(),
+  };
+  lead.whatsapp_messages = Array.isArray(lead.whatsapp_messages) ? lead.whatsapp_messages : [];
+  if (entry.meta_message_id && lead.whatsapp_messages.some((item) => item.meta_message_id === entry.meta_message_id)) {
+    return entry;
+  }
+  lead.whatsapp_messages.push(entry);
+  lead.whatsapp_messages = lead.whatsapp_messages.slice(-200);
+  lead.whatsapp_last_at = entry.created_at;
+  if (message?.conversation_id) lead.whatsapp_conversation_id = text(message.conversation_id, 120);
+  return entry;
+}
+
+function findLeadByMobileDigits(mobile) {
+  const digits = String(mobile || '').replace(/\D/g, '').slice(-10);
+  if (!digits) return null;
+  return (database.leads || []).find((lead) => String(lead.mobile || '').replace(/\D/g, '').slice(-10) === digits) || null;
+}
+
+function requireFranchiseAdsSecret(request, response) {
+  const expected = franchiseAdsWebhookSecret();
+  if (!expected) {
+    failure(request, response, 'NOT_CONFIGURED', 'Franchise ads webhook secret is not configured on RFMS.', 503);
+    return false;
+  }
+  const provided = String(request.headers['x-franchise-ads-secret'] || '').trim();
+  if (!provided || provided.length !== expected.length) {
+    failure(request, response, 'UNAUTHORIZED', 'Invalid franchise ads webhook secret.', 401);
+    return false;
+  }
+  try {
+    if (!timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+      failure(request, response, 'UNAUTHORIZED', 'Invalid franchise ads webhook secret.', 401);
+      return false;
+    }
+  } catch {
+    failure(request, response, 'UNAUTHORIZED', 'Invalid franchise ads webhook secret.', 401);
+    return false;
+  }
+  return true;
+}
+
+function ingestAdLeadsIntoCrm(rows, defaults = {}) {
+  const imported = [];
+  const updated = [];
+  const skipped = [];
+  for (const row of rows.slice(0, 1000)) {
+    const payload = adLeadPayloadFromRow(row, defaults);
+    if (!adLeadIsAcceptable(payload)) {
+      skipped.push({ name: payload.name || 'Unnamed lead', reason: 'Missing name, mobile or email' });
+      continue;
+    }
+    const existing = findExistingAdLead(database.leads, payload);
+    if (existing) {
+      Object.assign(existing, {
+        name: payload.name || existing.name,
+        email: payload.email || existing.email,
+        mobile: payload.mobile || existing.mobile,
+        territory_query: payload.territory_query || existing.territory_query,
+        notes: payload.notes || existing.notes,
+        source: payload.source || existing.source,
+        campaign_name: payload.campaign_name || existing.campaign_name,
+        campaign_id: payload.campaign_id || existing.campaign_id,
+        ad_id: payload.ad_id || existing.ad_id,
+        adset_id: payload.adset_id || existing.adset_id,
+        form_id: payload.form_id || existing.form_id,
+        platform: payload.platform || existing.platform,
+        external_lead_id: payload.external_lead_id || existing.external_lead_id,
+        utm_source: payload.utm_source || existing.utm_source,
+        utm_medium: payload.utm_medium || existing.utm_medium,
+        utm_campaign: payload.utm_campaign || existing.utm_campaign,
+        gclid: payload.gclid || existing.gclid,
+        hec_lead_id: payload.hec_lead_id || existing.hec_lead_id,
+        raw_source_payload: payload.raw_source_payload || existing.raw_source_payload,
+        updated_at: new Date().toISOString(),
+      });
+      if (payload.franchise_model && ['FOFO', 'FOCO'].includes(payload.franchise_model)) {
+        existing.franchise_model = payload.franchise_model;
+      }
+      addLeadActivity(existing, 'imported', `Ad lead updated from ${sourceLabel(payload.source)}.`, 'Ads webhook');
+      updated.push(existing);
+      continue;
+    }
+    const lead = leadRecord({
+      ...payload,
+      franchise_model: ['FOFO', 'FOCO'].includes(payload.franchise_model) ? payload.franchise_model : '',
+      assigned_to: payload.assigned_to || 'Unassigned',
+      stage: payload.stage || 'new',
+      priority: payload.priority || 'normal',
+    });
+    database.leads.unshift(lead);
+    imported.push(lead);
+  }
+  return { imported, updated, skipped };
 }
 
 const appointmentStatuses = new Set(['requested', 'scheduled', 'completed', 'no_show', 'cancelled', 'converted_to_lead']);
@@ -2530,6 +2712,101 @@ function onboardedFranchiseeApplications() {
     .sort((first, second) => String(onboardingCompletedAt(second)).localeCompare(String(onboardingCompletedAt(first))));
 }
 
+function coordinatesFromGoogleMapsUrl(url) {
+  const raw = String(url ?? '').trim();
+  if (!raw) return null;
+  const patterns = [
+    /[?&](?:q|query)=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/i,
+    /@(-?\d+\.?\d*),(-?\d+\.?\d*)/,
+    /!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/,
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (!match) continue;
+    const latitude = optionalGeoCoordinate(match[1], -90, 90).value;
+    const longitude = optionalGeoCoordinate(match[2], -180, 180).value;
+    if (latitude !== null && longitude !== null) return { latitude, longitude };
+  }
+  return null;
+}
+
+function directionsUrlForCentre({ googleMapsUrl, latitude, longitude }) {
+  const maps = googleMapsLocationUrl(googleMapsUrl);
+  if (maps) return maps;
+  if (latitude !== null && longitude !== null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+  }
+  return '';
+}
+
+function publicOnboardedCentreRecord(application) {
+  const helpers = franchiseeDirectoryHelpers();
+  const listItem = franchiseeDirectoryListItem(application, helpers);
+  const allotment = territoryAllotmentSummary(application.territory_allotment);
+  let latitude = optionalGeoCoordinate(allotment?.latitude, -90, 90).value;
+  let longitude = optionalGeoCoordinate(allotment?.longitude, -180, 180).value;
+  const googleMapsUrl = listItem.google_map_location_url || '';
+  if ((latitude === null || longitude === null) && googleMapsUrl) {
+    const parsed = coordinatesFromGoogleMapsUrl(googleMapsUrl);
+    if (parsed) {
+      latitude = parsed.latitude;
+      longitude = parsed.longitude;
+    }
+  }
+  const address = allotment?.franchise_address
+    || application.address
+    || [listItem.district, listItem.pincode].filter(Boolean).join(' · ');
+  const directionsUrl = directionsUrlForCentre({ googleMapsUrl, latitude, longitude });
+  return {
+    franchisee_id: listItem.franchisee_id || application.id,
+    application_id: listItem.application_id,
+    application_number: listItem.application_number,
+    franchise_name: listItem.business_name || listItem.franchisee_name || application.full_name || 'Remedium centre',
+    franchise_model: listItem.franchise_model || application.franchise_model || '',
+    address,
+    contact_phone: application.mobile || '',
+    territory_region: listItem.territory || [listItem.district, listItem.pincode].filter(Boolean).join(' · '),
+    district: listItem.district || '',
+    pincode: listItem.pincode || '',
+    latitude,
+    longitude,
+    google_map_location_url: googleMapsUrl,
+    directions_url: directionsUrl,
+    webpage_url: listItem.webpage_url || '',
+    onboarding_completed_at: listItem.onboarding_date || '',
+    book_lab_path: `/diagnostics?hub=${encodeURIComponent(listItem.franchisee_id || application.id)}`,
+    book_doctor_path: '/appointments/book',
+  };
+}
+
+function listPublicOnboardedCentres({ latitude = null, longitude = null, radiusKm = null } = {}) {
+  const centres = onboardedFranchiseeApplications().map((application) => publicOnboardedCentreRecord(application));
+  const hasOrigin = latitude !== null && longitude !== null
+    && Number.isFinite(latitude) && Number.isFinite(longitude);
+  const radius = radiusKm === null || radiusKm === undefined || radiusKm === '' ? null : Number(radiusKm);
+  const withDistance = centres.map((centre) => {
+    if (!hasOrigin || centre.latitude === null || centre.longitude === null) {
+      return { ...centre, distance_km: null };
+    }
+    return {
+      ...centre,
+      distance_km: Math.round(geoDistanceKm(latitude, longitude, centre.latitude, centre.longitude) * 100) / 100,
+    };
+  });
+  const filtered = withDistance.filter((centre) => {
+    if (!hasOrigin || radius === null || !Number.isFinite(radius) || radius <= 0) return true;
+    if (centre.distance_km === null) return true;
+    return centre.distance_km <= radius;
+  });
+  filtered.sort((first, second) => {
+    if (first.distance_km !== null && second.distance_km !== null) return first.distance_km - second.distance_km;
+    if (first.distance_km !== null) return -1;
+    if (second.distance_km !== null) return 1;
+    return String(first.franchise_name).localeCompare(String(second.franchise_name));
+  });
+  return filtered;
+}
+
 function partnerApiToken(request) {
   const header = String(request.headers['x-rfms-api-token'] ?? request.headers.authorization ?? '').trim();
   if (header.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
@@ -3407,6 +3684,14 @@ function fieldVisitSummary(visit) {
       visit_date: report.visit_date || '', site_address: report.site_address || '', google_maps_url: googleMapsLocationUrl(report.google_maps_url), inspection_summary: report.inspection_summary || '',
       property_condition: report.property_condition || '', documents_observed: report.documents_observed || '',
       recommendation: report.recommendation || '', officer_remarks: report.officer_remarks || '',
+      site_photos: Array.isArray(report.site_photos)
+        ? report.site_photos.slice(-12).map((item) => ({
+          id: text(item.id, 80),
+          name: text(item.name, 240),
+          url: resolveUploadUrl(item.url),
+          uploaded_at: text(item.uploaded_at, 60),
+        }))
+        : [],
       submitted_at: report.submitted_at || '', submitted_by: report.submitted_by || '',
     } : null,
     history: Array.isArray(visit.history) ? visit.history.slice(-50) : [],
@@ -3428,8 +3713,101 @@ function brandingSignageSummary(record) {
     manager_remarks: text(record.manager_remarks, 3000), approved_at: text(record.approved_at, 60), approved_by: text(record.approved_by, 120),
     installation_cost: Number(record.installation_cost) || 0,
     invoice: record.invoice && typeof record.invoice === 'object' ? { name: text(record.invoice.name, 240), url: resolveUploadUrl(record.invoice.url), uploaded_at: text(record.invoice.uploaded_at, 60) } : null,
+    payment_voucher_id: text(record.payment_voucher_id, 80),
+    payment_voucher_number: text(record.payment_voucher_number, 80),
     history: Array.isArray(record.history) ? record.history.slice(-50) : [],
   };
+}
+
+function ensurePaymentVouchersArray() {
+  if (!Array.isArray(database.payment_vouchers)) database.payment_vouchers = [];
+  return database.payment_vouchers;
+}
+
+function nextPaymentVoucherNumber() {
+  const year = new Date().getFullYear();
+  const prefix = `PV-BRAND-${year}-`;
+  const existing = ensurePaymentVouchersArray()
+    .map((item) => String(item.voucher_number || ''))
+    .filter((value) => value.startsWith(prefix))
+    .map((value) => Number(value.slice(prefix.length)))
+    .filter((value) => Number.isFinite(value));
+  const next = (existing.length ? Math.max(...existing) : 0) + 1;
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+function paymentVoucherSummary(voucher) {
+  if (!voucher || typeof voucher !== 'object') return null;
+  return {
+    id: text(voucher.id, 80),
+    voucher_number: text(voucher.voucher_number, 80),
+    type: text(voucher.type, 60) || 'branding_installation',
+    status: text(voucher.status, 40) || 'pending_payment',
+    application_id: text(voucher.application_id, 80),
+    application_number: text(voucher.application_number, 80),
+    applicant_name: text(voucher.applicant_name, 160),
+    franchise_model: text(voucher.franchise_model, 10),
+    preferred_location: text(voucher.preferred_location, 240),
+    vendor_name: text(voucher.vendor_name, 120),
+    vendor_shop_name: text(voucher.vendor_shop_name, 160),
+    vendor_phone: text(voucher.vendor_phone, 30),
+    amount: Number(voucher.amount) || 0,
+    currency: 'INR',
+    invoice: voucher.invoice && typeof voucher.invoice === 'object'
+      ? { name: text(voucher.invoice.name, 240), url: resolveUploadUrl(voucher.invoice.url), uploaded_at: text(voucher.invoice.uploaded_at, 60) }
+      : null,
+    branding_status: text(voucher.branding_status, 40),
+    created_at: text(voucher.created_at, 60),
+    created_by: text(voucher.created_by, 120),
+    paid_at: text(voucher.paid_at, 60),
+    paid_by: text(voucher.paid_by, 120),
+    remarks: text(voucher.remarks, 3000),
+  };
+}
+
+function createBrandingPaymentVoucher(application, branding, actor) {
+  const vouchers = ensurePaymentVouchersArray();
+  const existing = vouchers.find((item) => item.application_id === application.id && item.type === 'branding_installation' && item.status !== 'cancelled');
+  if (existing) {
+    existing.amount = Number(branding.installation_cost) || existing.amount || 0;
+    existing.invoice = branding.invoice || existing.invoice || null;
+    existing.vendor_name = branding.vendor?.name || existing.vendor_name || '';
+    existing.vendor_shop_name = branding.vendor?.shop_name || existing.vendor_shop_name || '';
+    existing.vendor_phone = branding.vendor?.phone || existing.vendor_phone || '';
+    existing.branding_status = branding.status;
+    existing.updated_at = new Date().toISOString();
+    branding.payment_voucher_id = existing.id;
+    branding.payment_voucher_number = existing.voucher_number;
+    return existing;
+  }
+  const voucher = {
+    id: randomUUID(),
+    voucher_number: nextPaymentVoucherNumber(),
+    type: 'branding_installation',
+    status: 'pending_payment',
+    application_id: application.id,
+    application_number: application.application_number,
+    applicant_name: application.full_name,
+    franchise_model: application.franchise_model,
+    preferred_location: application.preferred_location,
+    vendor_name: branding.vendor?.name || '',
+    vendor_shop_name: branding.vendor?.shop_name || '',
+    vendor_phone: branding.vendor?.phone || '',
+    amount: Number(branding.installation_cost) || 0,
+    invoice: branding.invoice || null,
+    branding_status: branding.status,
+    created_at: new Date().toISOString(),
+    created_by: actor || 'System',
+    paid_at: '',
+    paid_by: '',
+    remarks: `Pay branding vendor for application ${application.application_number}.`,
+    updated_at: new Date().toISOString(),
+  };
+  vouchers.unshift(voucher);
+  database.payment_vouchers = vouchers.slice(0, 2000);
+  branding.payment_voucher_id = voucher.id;
+  branding.payment_voucher_number = voucher.voucher_number;
+  return voucher;
 }
 
 function hrProcessSummary(record) {
@@ -3984,6 +4362,8 @@ async function handle(request, response) {
         hec_bridge: Boolean(process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET),
         phase83_erp_bridge: true,
         phase84_wb_geo: true,
+        phase86_franchise_ads: Boolean(process.env.FRANCHISE_ADS_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET),
+        phase87_whatsapp_cloud: Boolean(process.env.WHATSAPP_CLOUD_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET),
       });
     }
 
@@ -4459,26 +4839,51 @@ async function handle(request, response) {
       const visit = application?.field_visit;
       if (!application || !visit) return failure(request, response, 'FIELD_VISIT_LINK_INVALID', 'This Field Visit submission link is invalid or has expired.', 404);
       if (visit.status === 'approved') return failure(request, response, 'FIELD_VISIT_LOCKED', 'The manager has approved this Field Visit report and it is locked.', 409);
-      const body = await readJson(request);
+      const body = await readJson(request, 18_000_000);
       const visitDate = text(body.visit_date, 10);
       const inspectionSummary = text(body.inspection_summary, 5000);
       if (!isIsoDate(visitDate) || !inspectionSummary) return failure(request, response, 'VALIDATION_ERROR', 'Enter the visit date and a complete inspection summary before submitting the report.', 400);
       const suppliedGoogleMapsUrl = text(body.google_maps_url, 1000);
       const googleMapsUrl = googleMapsLocationUrl(suppliedGoogleMapsUrl);
       if (suppliedGoogleMapsUrl && !googleMapsUrl) return failure(request, response, 'VALIDATION_ERROR', 'Enter a valid Google Maps location link.', 400);
+      const incomingPhotos = Array.isArray(body.site_photos)
+        ? body.site_photos
+        : (Array.isArray(body.photographs) ? body.photographs : null);
+      let sitePhotos = Array.isArray(visit.report?.site_photos) ? visit.report.site_photos.slice(-12) : [];
+      if (Array.isArray(incomingPhotos) && incomingPhotos.length) {
+        if (incomingPhotos.length > 12) return failure(request, response, 'VALIDATION_ERROR', 'Upload a maximum of 12 site photographs.', 400);
+        const files = [];
+        for (const photo of incomingPhotos.slice(0, 12)) {
+          if (!String(photo?.data_url || '').startsWith('data:image/')) {
+            return failure(request, response, 'PHOTO_INVALID', 'Site photographs must be PNG, JPG or WEBP images.', 400);
+          }
+          const file = await storeApplicationUpload(application, 'field-visit-photo', photo.data_url, photo.name || 'site-photo.jpg');
+          if (!file) return failure(request, response, 'PHOTO_INVALID', 'One of the site photographs is invalid or exceeds 5 MB.', 400);
+          files.push(file);
+        }
+        sitePhotos = files;
+      }
       const now = new Date().toISOString();
       visit.report = {
         visit_date: visitDate, site_address: text(body.site_address, 700), inspection_summary: inspectionSummary,
         google_maps_url: googleMapsUrl,
         property_condition: text(body.property_condition, 3000), documents_observed: text(body.documents_observed, 3000),
         recommendation: text(body.recommendation, 3000), officer_remarks: text(body.officer_remarks, 3000),
+        site_photos: sitePhotos,
         submitted_at: now, submitted_by: visit.officer_name,
       };
       visit.status = 'submitted'; visit.submitted_at = now;
-      fieldVisitAudit(application, visit, 'field_visit_report_submitted', `Field Visit report submitted by ${visit.officer_name}${googleMapsUrl ? ' with a Google Maps location link.' : '.'}`, { headers: {} }, visit.officer_name);
+      fieldVisitAudit(
+        application,
+        visit,
+        'field_visit_report_submitted',
+        `Field Visit report submitted by ${visit.officer_name}${googleMapsUrl ? ' with a Google Maps location link' : ''}${sitePhotos.length ? ` and ${sitePhotos.length} site photograph${sitePhotos.length === 1 ? '' : 's'}` : ''}.`,
+        { headers: {} },
+        visit.officer_name,
+      );
       application.updated_at = now;
       await saveDatabase();
-      return success(request, response, { message: 'Your Field Visit report was submitted to the franchise manager for review.', status: visit.status });
+      return success(request, response, { message: 'Your Field Visit report was submitted to the franchise manager for review.', status: visit.status, field_visit: fieldVisitSummary(visit) });
     }
 
     const publicBrandingVendorMatch = route.match(/^\/api\/v1\/branding-vendor\/([A-Za-z0-9_-]+)$/);
@@ -4495,19 +4900,43 @@ async function handle(request, response) {
       if (branding.status === 'approved') return failure(request, response, 'BRANDING_LOCKED', 'The manager has approved this Branding Signage work and it is locked.', 409);
       const body = await readJson(request, 24_000_000);
       const photographs = Array.isArray(body.photographs) ? body.photographs.slice(0, 6) : [];
-      if (!photographs.length) return failure(request, response, 'PHOTOS_REQUIRED', 'Upload at least one and no more than six completed-installation photographs.', 400);
-      const files = [];
-      for (const photo of photographs) {
-        if (!String(photo?.data_url || '').startsWith('data:image/')) return failure(request, response, 'PHOTO_INVALID', 'Branding evidence must be a PNG, JPG or WEBP image.', 400);
-        const file = await storeApplicationUpload(application, 'branding-photo', photo.data_url, photo.name);
-        if (!file) return failure(request, response, 'PHOTO_INVALID', 'One of the branding photographs is invalid or exceeds 5 MB.', 400);
-        files.push(file);
+      const existingPhotos = Array.isArray(branding.photographs) ? branding.photographs : [];
+      let files = existingPhotos;
+      if (photographs.length) {
+        files = [];
+        for (const photo of photographs) {
+          if (!String(photo?.data_url || '').startsWith('data:image/')) return failure(request, response, 'PHOTO_INVALID', 'Branding evidence must be a PNG, JPG or WEBP image.', 400);
+          const file = await storeApplicationUpload(application, 'branding-photo', photo.data_url, photo.name);
+          if (!file) return failure(request, response, 'PHOTO_INVALID', 'One of the branding photographs is invalid or exceeds 5 MB.', 400);
+          files.push(file);
+        }
       }
+      if (!files.length) return failure(request, response, 'PHOTOS_REQUIRED', 'Upload at least one and no more than six completed-installation photographs.', 400);
+      const cost = Number(body.installation_cost);
+      if (!Number.isFinite(cost) || cost <= 0) return failure(request, response, 'AMOUNT_REQUIRED', 'Enter the total branding installation amount in INR.', 400);
+      if (body.invoice_data_url) {
+        const invoice = await storeApplicationUpload(application, 'branding-invoice', body.invoice_data_url, body.invoice_name);
+        if (!invoice) return failure(request, response, 'INVOICE_INVALID', 'Upload a valid bill/invoice as PDF, PNG, JPG or WEBP smaller than 5 MB.', 400);
+        branding.invoice = invoice;
+      }
+      if (!branding.invoice) return failure(request, response, 'INVOICE_REQUIRED', 'Upload the branding bill/invoice before submitting for review.', 400);
       const now = new Date().toISOString();
-      branding.photographs = files; branding.completion_details = text(body.completion_details, 5000); branding.status = 'submitted'; branding.submitted_at = now; branding.submitted_by = branding.vendor?.name || 'Branding vendor';
-      applicationWorkflowAudit(application, branding, 'branding_vendor_submitted', `Branding installation evidence submitted by ${branding.submitted_by} (${files.length} photograph${files.length === 1 ? '' : 's'}).`, { headers: {} }, branding.submitted_by);
+      branding.photographs = files;
+      branding.installation_cost = Math.round(cost * 100) / 100;
+      branding.completion_details = text(body.completion_details, 5000);
+      branding.status = 'submitted';
+      branding.submitted_at = now;
+      branding.submitted_by = branding.vendor?.name || 'Branding vendor';
+      applicationWorkflowAudit(
+        application,
+        branding,
+        'branding_vendor_submitted',
+        `Branding installation evidence, total amount ₹${branding.installation_cost.toLocaleString('en-IN')} and bill submitted by ${branding.submitted_by} (${files.length} photograph${files.length === 1 ? '' : 's'}).`,
+        { headers: {} },
+        branding.submitted_by,
+      );
       application.updated_at = now; await saveDatabase();
-      return success(request, response, { message: 'Branding installation evidence was submitted to the franchise manager for review.', status: branding.status });
+      return success(request, response, { message: 'Branding installation evidence, total amount and bill were submitted to the franchise manager for review.', status: branding.status, branding_signage: brandingSignageSummary(branding) });
     }
 
     const publicHrProcessMatch = route.match(/^\/api\/v1\/hr-process\/([A-Za-z0-9_-]+)$/);
@@ -4546,7 +4975,7 @@ async function handle(request, response) {
       if (!record || !videoKycAccess(request, record.application)) return failure(request, response, 'FORBIDDEN', 'You do not have access to this Video KYC session.', 403);
       const participant = videoKycParticipant(request, record.application);
       const signals = Array.isArray(record.session.signals) ? record.session.signals.filter((signal) => signal.from !== participant) : [];
-      return success(request, response, { signals });
+      return success(request, response, { signals, session: videoKycSessionSummary(record.session) });
     }
 
     if (videoKycSignalsMatch && request.method === 'POST') {
@@ -4565,7 +4994,18 @@ async function handle(request, response) {
 
     if (request.method === 'POST' && route === '/api/v1/leads/public') {
       const body = await readJson(request);
-      const lead = leadRecord({ ...body, source: 'website', stage: 'new', assigned_to: 'Unassigned', priority: 'normal' });
+      const lead = leadRecord({
+        ...body,
+        source: 'website',
+        stage: 'new',
+        assigned_to: 'Unassigned',
+        priority: 'normal',
+        utm_source: body.utm_source,
+        utm_medium: body.utm_medium,
+        utm_campaign: body.utm_campaign,
+        gclid: body.gclid,
+        campaign_name: body.campaign_name || body.utm_campaign || '',
+      });
       if (!lead.name || !isEmail(lead.email) || !lead.mobile || !['FOFO', 'FOCO'].includes(lead.franchise_model) || !lead.territory_query) {
         return failure(request, response, 'VALIDATION_ERROR', 'Enter your name, email, phone number, franchise model and preferred territory.');
       }
@@ -5813,6 +6253,7 @@ async function handle(request, response) {
           google_maps_url: googleMapsUrl,
           inspection_summary: text(report.inspection_summary, 5000) || visit.report.inspection_summary, property_condition: text(report.property_condition, 3000),
           documents_observed: text(report.documents_observed, 3000), recommendation: text(report.recommendation, 3000), officer_remarks: text(report.officer_remarks, 3000),
+          site_photos: Array.isArray(visit.report.site_photos) ? visit.report.site_photos : [],
         };
       }
       visit.manager_remarks = text(body.manager_remarks, 3000);
@@ -5878,15 +6319,31 @@ async function handle(request, response) {
       if (branding.status === 'approved') return failure(request, response, 'BRANDING_LOCKED', 'Approved Branding Signage work is locked.', 409);
       const body = await readJson(request, 8_000_000); const action = text(body.action, 30).toLowerCase();
       if (!['save', 'approve', 'reject', 'request_correction'].includes(action)) return failure(request, response, 'VALIDATION_ERROR', 'Choose save, approve, reject or request correction.', 400);
-      if (action === 'approve' && (!Array.isArray(branding.photographs) || !branding.photographs.length)) return failure(request, response, 'BRANDING_EVIDENCE_REQUIRED', 'The vendor must submit at least one branding installation photograph before approval.', 409);
       const now = new Date().toISOString(); branding.manager_remarks = text(body.manager_remarks, 3000); const cost = Number(body.installation_cost); if (Number.isFinite(cost) && cost >= 0) branding.installation_cost = Math.round(cost * 100) / 100;
       if (body.invoice_data_url) { const invoice = await storeApplicationUpload(application, 'branding-invoice', body.invoice_data_url, body.invoice_name); if (!invoice) return failure(request, response, 'INVOICE_INVALID', 'Upload a valid invoice PDF or image smaller than 5 MB.', 400); branding.invoice = invoice; }
-      if (action === 'approve') { branding.status = 'approved'; branding.approved_at = now; branding.approved_by = reviewActor(request); applicationWorkflowAudit(application, branding, 'branding_signage_approved', 'Manager approved the branding installation, cost and completion evidence.', request); }
-      else if (action === 'reject') { branding.status = 'rejected'; applicationWorkflowAudit(application, branding, 'branding_signage_rejected', `Manager rejected the branding installation.${branding.manager_remarks ? ` Note: ${branding.manager_remarks}` : ''}`, request); }
-      else if (action === 'request_correction') { branding.status = 'revision_requested'; applicationWorkflowAudit(application, branding, 'branding_signage_correction_requested', `Manager requested corrected branding evidence.${branding.manager_remarks ? ` Note: ${branding.manager_remarks}` : ''}`, request); }
+      if (action === 'approve') {
+        if (!Array.isArray(branding.photographs) || !branding.photographs.length) return failure(request, response, 'BRANDING_EVIDENCE_REQUIRED', 'The vendor must submit at least one branding installation photograph before approval.', 409);
+        if (!(Number(branding.installation_cost) > 0)) return failure(request, response, 'BRANDING_AMOUNT_REQUIRED', 'The vendor must submit a total installation amount before approval.', 409);
+        if (!branding.invoice) return failure(request, response, 'BRANDING_INVOICE_REQUIRED', 'The vendor must upload a bill/invoice before approval.', 409);
+        branding.status = 'approved'; branding.approved_at = now; branding.approved_by = reviewActor(request);
+        const voucher = createBrandingPaymentVoucher(application, branding, reviewActor(request));
+        applicationWorkflowAudit(application, branding, 'branding_signage_approved', `Manager approved branding installation for ₹${Number(branding.installation_cost).toLocaleString('en-IN')}. Payment voucher ${voucher.voucher_number} created for the accountant.`, request);
+        workflowNotify({
+          module: 'payments',
+          action: 'branding_payment_voucher',
+          title: 'Branding payment voucher ready',
+          message: `${voucher.voucher_number}: pay ₹${Number(voucher.amount).toLocaleString('en-IN')} to ${voucher.vendor_name || 'branding vendor'} for ${application.application_number}.`,
+          actor: { name: reviewActor(request), role: 'manager' },
+          href: 'admin:Payments:vouchers',
+          entityType: 'payment_voucher',
+          entityId: voucher.id,
+        });
+      }
+      else if (action === 'reject') { branding.status = 'rejected'; applicationWorkflowAudit(application, branding, 'branding_signage_rejected', `Manager rejected the branding installation. Vendor may resubmit amount, bill and evidence from the same secure link.${branding.manager_remarks ? ` Note: ${branding.manager_remarks}` : ''}`, request); }
+      else if (action === 'request_correction') { branding.status = 'revision_requested'; applicationWorkflowAudit(application, branding, 'branding_signage_correction_requested', `Manager requested corrected branding amount, bill or evidence. Vendor may resubmit from the same secure link.${branding.manager_remarks ? ` Note: ${branding.manager_remarks}` : ''}`, request); }
       else { applicationWorkflowAudit(application, branding, 'branding_signage_review_saved', 'Manager saved Branding Signage review details.', request); }
       application.updated_at = now; await saveDatabase();
-      return success(request, response, { application: applicationSummary(application), branding_signage: brandingSignageSummary(branding), vendor_submission_url: branding.secure_token && branding.status !== 'approved' ? `${adminBaseUrl}/?branding-vendor=${branding.secure_token}` : '' });
+      return success(request, response, { application: applicationSummary(application), branding_signage: brandingSignageSummary(branding), vendor_submission_url: branding.secure_token && branding.status !== 'approved' ? `${adminBaseUrl}/?branding-vendor=${branding.secure_token}` : '', payment_voucher: branding.payment_voucher_id ? paymentVoucherSummary(ensurePaymentVouchersArray().find((item) => item.id === branding.payment_voucher_id)) : null });
     }
 
     const applicationHrProcessMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/hr-process$/);
@@ -6038,6 +6495,54 @@ async function handle(request, response) {
       if (!session) return;
       const rows = paymentLedgerForApplications(database.applications);
       return success(request, response, { rows, metrics: paymentLedgerMetrics(rows) });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/payment-vouchers') {
+      const session = requirePermission(request, response, 'payments');
+      if (!session) return;
+      const vouchers = ensurePaymentVouchersArray()
+        .map(paymentVoucherSummary)
+        .filter(Boolean)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      const pending = vouchers.filter((item) => item.status === 'pending_payment');
+      return success(request, response, {
+        vouchers,
+        metrics: {
+          pending_payment: pending.length,
+          pending_amount: pending.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+          paid: vouchers.filter((item) => item.status === 'paid').length,
+          total: vouchers.length,
+        },
+      });
+    }
+
+    const adminPaymentVoucherMatch = route.match(/^\/api\/v1\/admin\/payment-vouchers\/([^/]+)$/);
+    if (adminPaymentVoucherMatch && request.method === 'PATCH') {
+      const session = requirePermission(request, response, 'payments');
+      if (!session) return;
+      if (!['super_admin', 'manager', 'accountant'].includes(String(session.role ?? '').replace('franchise_manager', 'manager'))) {
+        return failure(request, response, 'FORBIDDEN', 'Only an administrator, manager or accountant can update payment vouchers.', 403);
+      }
+      const voucher = ensurePaymentVouchersArray().find((item) => item.id === adminPaymentVoucherMatch[1]);
+      if (!voucher) return failure(request, response, 'NOT_FOUND', 'Payment voucher not found.', 404);
+      const body = await readJson(request);
+      const action = text(body.action, 30).toLowerCase();
+      const now = new Date().toISOString();
+      if (action === 'mark_paid') {
+        if (voucher.status === 'paid') return failure(request, response, 'VOUCHER_ALREADY_PAID', 'This payment voucher is already marked as paid.', 409);
+        voucher.status = 'paid';
+        voucher.paid_at = now;
+        voucher.paid_by = reviewActor(request);
+        voucher.remarks = text(body.remarks, 3000) || voucher.remarks || '';
+        voucher.updated_at = now;
+      } else if (action === 'save') {
+        voucher.remarks = text(body.remarks, 3000) || voucher.remarks || '';
+        voucher.updated_at = now;
+      } else {
+        return failure(request, response, 'VALIDATION_ERROR', 'Choose mark_paid or save.', 400);
+      }
+      await saveDatabase();
+      return success(request, response, { voucher: paymentVoucherSummary(voucher) });
     }
 
     const adminPaymentDetailMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/payments\/detail$/);
@@ -7294,20 +7799,44 @@ async function handle(request, response) {
     if (request.method === 'POST' && route === '/api/v1/leads/import') {
       if (!requirePermission(request, response, 'leads')) return;
       const body = await readJson(request, 2_000_000);
-      const source = leadSource(body.source === 'meta_ads' ? 'meta_ads' : 'csv_upload');
+      const rawSource = String(body.source || '').trim().toLowerCase();
+      const source = AD_LEAD_SOURCES.has(rawSource) ? rawSource : leadSource(rawSource === 'meta_ads' ? 'meta_ads' : 'csv_upload');
       const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
       if (!rows.length) return failure(request, response, 'VALIDATION_ERROR', 'Upload a CSV with at least one lead row.');
       const imported = []; const skipped = [];
-      const knownContacts = new Set(database.leads.flatMap((lead) => [lead.email.toLowerCase(), lead.mobile]).filter(Boolean));
+      const ownerDefault = canManageCrm(request) ? crmOwner(body.assigned_to) : leadActor(request);
       for (const row of rows) {
         const requestedOwner = row?.assigned_to || body.assigned_to;
         const owner = canManageCrm(request) ? crmOwner(requestedOwner) : leadActor(request);
-        const lead = leadRecord({ ...row, source, stage: row?.stage ?? 'new', campaign_name: row?.campaign_name ?? body.campaign_name, assigned_to: owner });
-        const duplicate = knownContacts.has(lead.email) || knownContacts.has(lead.mobile);
-        if (!leadIsValid(lead) || duplicate) { skipped.push({ name: lead.name || 'Unnamed lead', reason: duplicate ? 'Duplicate contact' : 'Missing required lead details' }); continue; }
-        database.leads.push(lead); imported.push(lead); knownContacts.add(lead.email); knownContacts.add(lead.mobile);
+        const mapped = {
+          ...row,
+          source,
+          stage: row?.stage ?? 'new',
+          campaign_name: row?.campaign_name ?? body.campaign_name,
+          campaign_id: row?.campaign_id ?? body.campaign_id,
+          ad_id: row?.ad_id ?? body.ad_id,
+          adset_id: row?.adset_id ?? body.adset_id,
+          form_id: row?.form_id ?? body.form_id,
+          external_lead_id: row?.external_lead_id || row?.id || row?.lead_id || '',
+          platform: row?.platform || (source === 'google_ads' ? 'google' : source === 'whatsapp_ads' ? 'whatsapp' : 'meta'),
+          assigned_to: owner || ownerDefault,
+        };
+        if (AD_LEAD_SOURCES.has(source)) {
+          const result = ingestAdLeadsIntoCrm([mapped], { source, campaign_name: body.campaign_name, assigned_to: owner || ownerDefault });
+          imported.push(...result.imported, ...result.updated);
+          skipped.push(...result.skipped);
+          continue;
+        }
+        const lead = leadRecord(mapped);
+        const existing = findExistingAdLead(database.leads, lead);
+        if (!leadIsValid(lead) || existing) {
+          skipped.push({ name: lead.name || 'Unnamed lead', reason: existing ? 'Duplicate contact' : 'Missing required lead details' });
+          continue;
+        }
+        database.leads.push(lead); imported.push(lead);
       }
       if (imported.length) {
+        recordFranchiseAdsIngest(database, { source, count: imported.length, externalLeadId: imported[0]?.external_lead_id || '' });
         workflowNotify({
           module: 'leads',
           action: 'leads_imported',
@@ -7322,6 +7851,220 @@ async function handle(request, response) {
       }
       await saveDatabase();
       return success(request, response, { imported_count: imported.length, skipped_count: skipped.length, skipped, leads: imported }, 201);
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/leads/ingest/ad') {
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 2_000_000);
+      const rows = Array.isArray(body.leads) ? body.leads : (Array.isArray(body.rows) ? body.rows : [body]);
+      const defaults = {
+        source: normaliseAdSource(body.source || rows[0]?.source || 'meta_ads'),
+        campaign_name: body.campaign_name,
+        platform: body.platform,
+        assigned_to: body.assigned_to || 'Unassigned',
+      };
+      const result = ingestAdLeadsIntoCrm(rows.filter(Boolean), defaults);
+      recordFranchiseAdsIngest(database, {
+        source: defaults.source,
+        count: result.imported.length + result.updated.length,
+        externalLeadId: (result.imported[0] || result.updated[0] || {}).external_lead_id || '',
+      });
+      if (result.imported.length || result.updated.length) {
+        workflowNotify({
+          module: 'leads',
+          action: 'leads_imported',
+          title: `${result.imported.length + result.updated.length} ad lead${result.imported.length + result.updated.length === 1 ? '' : 's'} ingested`,
+          message: `Franchise ads ingest (${defaults.source.replaceAll('_', ' ')}) wrote ${result.imported.length} new and ${result.updated.length} updated CRM lead(s).`,
+          actor: { name: 'Franchise ads bridge', role: 'system' },
+          href: 'admin:Leads',
+          entityType: 'lead_import',
+          entityId: String(result.imported.length + result.updated.length),
+        });
+      }
+      await saveDatabase();
+      return success(request, response, {
+        imported_count: result.imported.length,
+        updated_count: result.updated.length,
+        skipped_count: result.skipped.length,
+        skipped: result.skipped,
+        leads: [...result.imported, ...result.updated],
+      }, 201);
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/leads/ads/status') {
+      if (!requirePermission(request, response, 'leads')) return;
+      return success(request, response, franchiseAdsStatus(database));
+    }
+
+    if (request.method === 'POST' && (route === '/api/v1/leads/webhooks/meta' || route === '/api/v1/leads/webhooks/google')) {
+      // Thin public aliases: accept already-enriched payloads (primary path is ERP webhook).
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 2_000_000);
+      const source = route.endsWith('/google') ? 'google_ads' : normaliseAdSource(body.source || 'meta_ads');
+      const rows = Array.isArray(body.leads) ? body.leads : (Array.isArray(body.rows) ? body.rows : [body]);
+      const result = ingestAdLeadsIntoCrm(rows.filter(Boolean), { source, campaign_name: body.campaign_name, platform: body.platform || (source === 'google_ads' ? 'google' : 'meta') });
+      recordFranchiseAdsIngest(database, {
+        source,
+        count: result.imported.length + result.updated.length,
+        externalLeadId: (result.imported[0] || result.updated[0] || {}).external_lead_id || '',
+      });
+      if (result.imported.length || result.updated.length) {
+        workflowNotify({
+          module: 'leads',
+          action: 'leads_imported',
+          title: `${result.imported.length + result.updated.length} webhook lead${result.imported.length + result.updated.length === 1 ? '' : 's'}`,
+          message: `RFMS ${source.replaceAll('_', ' ')} webhook alias ingested leads.`,
+          actor: { name: 'Franchise ads webhook', role: 'system' },
+          href: 'admin:Leads',
+          entityType: 'lead_import',
+          entityId: String(result.imported.length + result.updated.length),
+        });
+      }
+      await saveDatabase();
+      return success(request, response, {
+        imported_count: result.imported.length,
+        updated_count: result.updated.length,
+        skipped_count: result.skipped.length,
+        skipped: result.skipped,
+        leads: [...result.imported, ...result.updated],
+      }, 201);
+    }
+
+    const leadWhatsappMatch = route.match(/^\/api\/v1\/leads\/([^/]+)\/whatsapp$/);
+    if (leadWhatsappMatch && request.method === 'GET') {
+      if (!requirePermission(request, response, 'leads')) return;
+      const lead = database.leads.find((item) => item.id === leadWhatsappMatch[1]);
+      if (!lead) return failure(request, response, 'NOT_FOUND', 'Lead not found.', 404);
+      if (!crmLeadAccess(request, lead)) return failure(request, response, 'LEAD_ASSIGNED', 'This lead is assigned to another CRM employee.', 403);
+      try {
+        const remote = await fetchFranchiseWhatsappThreadViaErp({
+          phone: lead.mobile,
+          rfmsLeadId: lead.id,
+          conversationId: lead.whatsapp_conversation_id || '',
+        });
+        const messages = Array.isArray(remote?.messages) ? remote.messages : (lead.whatsapp_messages || []);
+        if (remote?.conversation?.id) lead.whatsapp_conversation_id = remote.conversation.id;
+        if (messages.length) {
+          lead.whatsapp_messages = messages.map((item) => ({
+            id: item.id || randomUUID(),
+            direction: item.direction === 'Out' ? 'Out' : 'In',
+            body: item.body || '',
+            meta_message_id: item.meta_message_id || '',
+            status: item.status || 'received',
+            created_at: item.created_at || new Date().toISOString(),
+          }));
+          lead.whatsapp_last_at = lead.whatsapp_messages[lead.whatsapp_messages.length - 1]?.created_at || lead.whatsapp_last_at;
+          await saveDatabase();
+        }
+        return success(request, response, {
+          conversation: remote?.conversation || { id: lead.whatsapp_conversation_id || '', phone: lead.mobile, rfms_lead_id: lead.id },
+          messages: lead.whatsapp_messages || [],
+        });
+      } catch (error) {
+        return success(request, response, {
+          conversation: { id: lead.whatsapp_conversation_id || '', phone: lead.mobile, rfms_lead_id: lead.id },
+          messages: lead.whatsapp_messages || [],
+          warning: error instanceof Error ? error.message : 'ERP thread unavailable; showing local cache.',
+        });
+      }
+    }
+
+    if (leadWhatsappMatch && request.method === 'POST') {
+      if (!requirePermission(request, response, 'leads')) return;
+      const lead = database.leads.find((item) => item.id === leadWhatsappMatch[1]);
+      if (!lead) return failure(request, response, 'NOT_FOUND', 'Lead not found.', 404);
+      if (!crmLeadAccess(request, lead)) return failure(request, response, 'LEAD_ASSIGNED', 'This lead is assigned to another CRM employee.', 403);
+      if (lead.stage === 'completed') return failure(request, response, 'LEAD_COMPLETED', 'Completed leads are read-only.', 409);
+      const body = await readJson(request);
+      const message = text(body.message, 4000);
+      if (!message) return failure(request, response, 'VALIDATION_ERROR', 'Enter a WhatsApp reply.');
+      const actor = leadActor(request);
+      try {
+        const remote = await sendFranchiseWhatsappReplyViaErp({
+          phone: lead.mobile,
+          message,
+          rfmsLeadId: lead.id,
+          conversationId: lead.whatsapp_conversation_id || '',
+        });
+        if (remote?.conversation_id) lead.whatsapp_conversation_id = remote.conversation_id;
+        appendLeadWhatsappMessage(lead, {
+          direction: 'Out',
+          body: message,
+          meta_message_id: remote?.meta_id || '',
+          status: 'sent',
+          conversation_id: remote?.conversation_id || lead.whatsapp_conversation_id,
+        });
+        addLeadActivity(lead, 'whatsapp', `WhatsApp reply sent: ${message.slice(0, 240)}`, actor);
+        await saveDatabase();
+        return success(request, response, { lead, messages: lead.whatsapp_messages });
+      } catch (error) {
+        return failure(request, response, 'WHATSAPP_SEND_FAILED', error instanceof Error ? error.message : 'Unable to send WhatsApp reply.', 502);
+      }
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/leads/whatsapp/link') {
+      if (!requireWhatsappCloudSecret(request, response)) return;
+      const body = await readJson(request);
+      let lead = findLeadByMobileDigits(body.phone);
+      if (!lead) {
+        const digits = String(body.phone || '').replace(/\D/g, '').slice(-10);
+        lead = leadRecord({
+          name: text(body.contact_name, 120) || `WhatsApp ${digits}`,
+          email: digits ? `${digits}@wa.franchise.local` : `wa-${randomUUID().slice(0, 8)}@wa.franchise.local`,
+          mobile: digits,
+          source: 'whatsapp_ads',
+          platform: 'whatsapp',
+          assigned_to: 'Unassigned',
+          stage: 'new',
+          whatsapp_conversation_id: body.conversation_id,
+        });
+        database.leads.unshift(lead);
+      }
+      if (body.conversation_id) lead.whatsapp_conversation_id = text(body.conversation_id, 120);
+      if (body.franchise_sales_lead) lead.hec_lead_id = text(body.franchise_sales_lead, 120);
+      await saveDatabase();
+      return success(request, response, { lead_id: lead.id, conversation_id: lead.whatsapp_conversation_id || '' });
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/leads/whatsapp/inbound') {
+      if (!requireWhatsappCloudSecret(request, response)) return;
+      const body = await readJson(request);
+      let lead = null;
+      if (body.rfms_lead_id) lead = database.leads.find((item) => item.id === body.rfms_lead_id) || null;
+      if (!lead) lead = findLeadByMobileDigits(body.phone);
+      if (!lead) {
+        const digits = String(body.phone || '').replace(/\D/g, '').slice(-10);
+        lead = leadRecord({
+          name: text(body.contact_name, 120) || `WhatsApp ${digits}`,
+          email: digits ? `${digits}@wa.franchise.local` : `wa-${randomUUID().slice(0, 8)}@wa.franchise.local`,
+          mobile: digits,
+          source: 'whatsapp_ads',
+          platform: 'whatsapp',
+          assigned_to: 'Unassigned',
+          stage: 'new',
+        });
+        database.leads.unshift(lead);
+      }
+      appendLeadWhatsappMessage(lead, {
+        direction: body.direction === 'Out' ? 'Out' : 'In',
+        body: body.body,
+        meta_message_id: body.meta_message_id,
+        conversation_id: body.conversation_id,
+        status: 'received',
+      });
+      addLeadActivity(lead, 'whatsapp', `WhatsApp ${body.direction === 'Out' ? 'outbound' : 'inbound'}: ${String(body.body || '').slice(0, 240)}`, 'WhatsApp Cloud');
+      await saveDatabase();
+      workflowNotify({
+        module: 'leads',
+        action: 'whatsapp_inbound',
+        title: 'WhatsApp message received',
+        message: `${lead.name}: ${String(body.body || '').slice(0, 120)}`,
+        actor: { name: 'WhatsApp Cloud', role: 'system' },
+        href: `admin:Leads:${lead.id}`,
+        entityType: 'lead',
+        entityId: lead.id,
+      });
+      return success(request, response, { lead_id: lead.id, messages: lead.whatsapp_messages });
     }
 
     const leadMatch = route.match(/^\/api\/v1\/leads\/([^/]+)$/);
@@ -7532,6 +8275,26 @@ async function handle(request, response) {
     }
     if (request.method === 'GET' && route === '/api/v1/content/featured-franchisees') {
       return success(request, response, database.franchisees.filter((item) => item.is_featured).sort((a, b) => a.sort_order - b.sort_order));
+    }
+    if (request.method === 'GET' && route === '/api/v1/public/centres') {
+      const latitudeParam = url.searchParams.get('latitude') ?? url.searchParams.get('lat');
+      const longitudeParam = url.searchParams.get('longitude') ?? url.searchParams.get('lng');
+      const radiusParam = url.searchParams.get('radius_km') ?? url.searchParams.get('radius');
+      const latitude = latitudeParam === null || latitudeParam === '' ? null : optionalGeoCoordinate(latitudeParam, -90, 90).value;
+      const longitude = longitudeParam === null || longitudeParam === '' ? null : optionalGeoCoordinate(longitudeParam, -180, 180).value;
+      if ((latitudeParam || longitudeParam) && (latitude === null || longitude === null)) {
+        return failure(request, response, 'VALIDATION_ERROR', 'Pass both valid latitude and longitude, or omit both.', 400);
+      }
+      const radiusKm = radiusParam === null || radiusParam === '' ? null : Number(radiusParam);
+      if (radiusParam !== null && radiusParam !== '' && !Number.isFinite(radiusKm)) {
+        return failure(request, response, 'VALIDATION_ERROR', 'radius_km must be a number.', 400);
+      }
+      const centres = listPublicOnboardedCentres({ latitude, longitude, radiusKm });
+      return success(request, response, {
+        centres,
+        count: centres.length,
+        source: 'ffms_onboarded',
+      });
     }
     if (request.method === 'GET' && route === '/api/v1/content/hero-slides') {
       return success(request, response, database.hero_slides.filter((slide) => slide.is_published).sort((a, b) => a.sort_order - b.sort_order));
