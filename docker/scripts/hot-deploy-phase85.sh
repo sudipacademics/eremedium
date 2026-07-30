@@ -34,21 +34,25 @@ docker cp "$FFMS/apps/local-api/hec-frappe-bridge.mjs" "$CID:/app/apps/local-api
 docker cp "$FFMS/apps/local-api/server.mjs" "$CID:/app/apps/local-api/server.mjs"
 docker cp "$FFMS/apps/local-api/payments-workflow.mjs" "$CID:/app/apps/local-api/payments-workflow.mjs"
 
-echo "=== Hot-copy HEC activation module into backend apps tree ==="
+echo "=== Hot-copy HEC activation module into backend apps + site-packages ==="
 BCID=$("${COMPOSE[@]}" ps -q backend)
+APPS_PKG="/home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core"
 if [[ -n "$BCID" ]]; then
   docker cp "$HEC/health_ecosystem_core/health_ecosystem_core/clinical_phase85_rfms_activation.py" \
-    "$BCID:/home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core/clinical_phase85_rfms_activation.py" || true
+    "$BCID:$APPS_PKG/clinical_phase85_rfms_activation.py"
   docker cp "$HEC/health_ecosystem_core/health_ecosystem_core/api.py" \
-    "$BCID:/home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core/api.py" || true
-  # Prefer site-packages path used at runtime
-  docker exec "$BCID" bash -lc '
-    SP=$(python -c "import health_ecosystem_core,os; print(os.path.dirname(health_ecosystem_core.__file__))")
-    mkdir -p "$SP/health_ecosystem_core"
-    cp -f /home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core/clinical_phase85_rfms_activation.py "$SP/health_ecosystem_core/" || true
-    cp -f /home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core/api.py "$SP/health_ecosystem_core/" || true
-  ' || true
+    "$BCID:$APPS_PKG/api.py"
+  "${COMPOSE[@]}" exec -T backend bash -lc '
+set -e
+cd /home/frappe/frappe-bench
+APPS=apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core
+SP=$(./env/bin/python -c "import health_ecosystem_core.health_ecosystem_core as m, os; print(os.path.dirname(m.__file__))")
+cp -f "$APPS/clinical_phase85_rfms_activation.py" "$SP/clinical_phase85_rfms_activation.py"
+cp -f "$APPS/api.py" "$SP/api.py"
+./env/bin/python -c "import health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation as m; print(\"import_ok\", m.__file__)"
+'
   "${COMPOSE[@]}" restart backend
+  sleep 12
 fi
 
 echo "=== Restart rfms API ==="

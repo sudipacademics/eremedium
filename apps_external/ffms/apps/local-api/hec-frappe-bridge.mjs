@@ -499,44 +499,6 @@ export async function activateRfmsPaidFranchiseeViaErp({
   );
 }
 
-/** Phase 85c — create/update ERP Franchisee Profile + opening wallet after a paid RFMS milestone. */
-export async function activateRfmsPaidFranchiseeViaErp({
-  applicationId = '',
-  applicationNumber = '',
-  fullName = '',
-  email = '',
-  mobile = '',
-  franchiseModel = '',
-  preferredLocation = '',
-  district = '',
-  pincode = '',
-  paymentKey = '',
-  depositAmount = 0,
-  hecFranchiseeProfile = '',
-} = {}) {
-  const amount = Number(depositAmount) || 0;
-  const amountCanonical = Number.isInteger(amount) ? String(amount) : String(amount);
-  const canonical = JSON.stringify({
-    action: 'activate_rfms_paid_franchisee',
-    application_id: String(applicationId || ''),
-    application_number: String(applicationNumber || ''),
-    deposit_amount: amountCanonical,
-    district: String(district || ''),
-    email: String(email || '').toLowerCase(),
-    franchise_model: String(franchiseModel || '').toUpperCase(),
-    full_name: String(fullName || ''),
-    hec_franchisee_profile: String(hecFranchiseeProfile || ''),
-    mobile: String(mobile || ''),
-    payment_key: String(paymentKey || ''),
-    pincode: String(pincode || ''),
-    preferred_location: String(preferredLocation || ''),
-  });
-  return postSignedHecMethod(
-    'health_ecosystem_core.health_ecosystem_core.api.activate_rfms_paid_franchisee',
-    canonical,
-  );
-}
-
 export async function loadUploadBytes(uploadsDirectory, fileUrl) {
   if (!fileUrl) return null;
   const match = String(fileUrl).match(/\/uploads\/([A-Za-z0-9._-]+)$/);
