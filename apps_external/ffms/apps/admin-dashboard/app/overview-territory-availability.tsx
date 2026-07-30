@@ -117,6 +117,18 @@ function nearbyFranchisesForTerritory(territory: Territory, locations: Franchise
     });
 }
 
+function isActiveTerritory(territory: Territory): boolean {
+  return territory.pin_capacities.some((pin) =>
+    pin.fofo.available > 0 || pin.foco.available > 0
+    || pin.fofo.reserved > 0 || pin.foco.reserved > 0
+    || pin.fofo.occupied > 0 || pin.foco.occupied > 0
+    || pin.fofo.assigned > 0 || pin.foco.assigned > 0)
+    || territory.allocations.length > 0
+    || territory.fofo.available > 0 || territory.foco.available > 0
+    || territory.fofo.reserved > 0 || territory.foco.reserved > 0
+    || territory.fofo.occupied > 0 || territory.foco.occupied > 0;
+}
+
 function occupiedFranchisesForTerritory(territory: Territory, locations: FranchiseLocation[]) {
   return locations.filter((location) => location.territory_id === territory.id);
 }
@@ -125,6 +137,24 @@ function isOfficerSessionExpired(response: Response) {
   if (response.status !== 401 && response.status !== 403) return false;
   window.dispatchEvent(new Event('rfms-session-expired'));
   return true;
+}
+
+function territorySearchHaystack(territory: Territory) {
+  return [
+    territory.area,
+    territory.label,
+    territory.district,
+    territory.subdivision,
+    territory.state,
+    ...(territory.pincodes || []),
+    ...(territory.pin_capacities || []).map((pin) => pin.pincode),
+  ].join(' ').toLowerCase();
+}
+
+function territoryMatchesSearch(territory: Territory, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return territorySearchHaystack(territory).includes(normalized);
 }
 
 function PinRows({ pins }: { pins: PinCapacity[] }) {
@@ -149,6 +179,7 @@ export function OverviewTerritoryAvailability({ token, onOpenTerritory }: { toke
   const [metrics, setMetrics] = useState<Metrics>({ fofo_available: 0, foco_available: 0 });
   const [franchiseLocations, setFranchiseLocations] = useState<FranchiseLocation[]>([]);
   const [selectedId, setSelectedId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -167,7 +198,11 @@ export function OverviewTerritoryAvailability({ token, onOpenTerritory }: { toke
         setTerritories(records);
         setMetrics({ fofo_available: payload.data.metrics?.fofo_available ?? 0, foco_available: payload.data.metrics?.foco_available ?? 0 });
         setFranchiseLocations(Array.isArray(payload.data.franchise_locations) ? payload.data.franchise_locations : []);
-        setSelectedId((currentId) => currentId && records.some((item) => item.id === currentId) ? currentId : records[0]?.id ?? '');
+        setSelectedId((currentId) => {
+          if (currentId && records.some((item) => item.id === currentId)) return currentId;
+          const active = records.find(isActiveTerritory);
+          return active?.id ?? records[0]?.id ?? '';
+        });
       } catch (loadError) {
         if (current) setError(loadError instanceof Error ? loadError.message : 'Unable to load territory availability.');
       } finally {
@@ -177,16 +212,32 @@ export function OverviewTerritoryAvailability({ token, onOpenTerritory }: { toke
     return () => { current = false; };
   }, [token]);
 
+  const activeTerritories = useMemo(
+    () => territories.filter(isActiveTerritory),
+    [territories],
+  );
+  const visibleTerritories = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query) return activeTerritories;
+    // Search across all registered territories so PIN/district lookups are not limited to active rows.
+    return territories.filter((territory) => territoryMatchesSearch(territory, query));
+  }, [activeTerritories, searchQuery, territories]);
   const selected = useMemo(() => territories.find((territory) => territory.id === selectedId) ?? null, [territories, selectedId]);
   const nearbyFranchises = useMemo(() => (selected ? nearbyFranchisesForTerritory(selected, franchiseLocations) : []), [selected, franchiseLocations]);
   const occupiedFranchises = useMemo(() => (selected ? occupiedFranchisesForTerritory(selected, franchiseLocations) : []), [selected, franchiseLocations]);
+
+  useEffect(() => {
+    if (!visibleTerritories.length) return;
+    if (selectedId && visibleTerritories.some((territory) => territory.id === selectedId)) return;
+    setSelectedId(visibleTerritories[0].id);
+  }, [selectedId, visibleTerritories]);
 
   return (
     <section className="panel overview-territory-panel">
       <div className="panel-head">
         <div>
           <h2>Territory availability</h2>
-          <p>Complete West Bengal territory register with live FOFO and FOCO capacity.</p>
+          <p>Active territories have available FOFO/FOCO capacity or an allocation — not every postal PIN.</p>
         </div>
         <button type="button" className="panel-action" onClick={onOpenTerritory}>Open territory setup</button>
       </div>
@@ -209,11 +260,21 @@ export function OverviewTerritoryAvailability({ token, onOpenTerritory }: { toke
       <div className="overview-territory-layout">
         <div className="overview-territory-list-wrap">
           <div className="overview-territory-list-head">
-            <b>{loading ? 'Loading territories…' : `${territories.length} registered territories`}</b>
-            <small>Select a territory to inspect availability</small>
+            <b>{loading ? 'Loading territories…' : searchQuery.trim() ? `${visibleTerritories.length} match${visibleTerritories.length === 1 ? '' : 'es'}` : `${activeTerritories.length} active / ${territories.length} registered`}</b>
+            <small>{searchQuery.trim() ? 'Filtered by territory name, PIN, district or subdivision' : 'Showing active territories (capacity or allocation)'}</small>
+            <label className="overview-territory-search">
+              <span className="sr-only">Search territory</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search territory, PIN, district, subdivision…"
+                autoComplete="off"
+              />
+            </label>
           </div>
-          <div className="overview-territory-list" role="listbox" aria-label="Registered territories">
-            {territories.map((territory) => (
+          <div className="overview-territory-list" role="listbox" aria-label="Territories">
+            {visibleTerritories.map((territory) => (
               <button
                 key={territory.id}
                 type="button"
@@ -228,9 +289,16 @@ export function OverviewTerritoryAvailability({ token, onOpenTerritory }: { toke
                 </div>
                 <small>PIN {territory.pincodes.join(', ') || '—'}</small>
                 <small>{territory.district} · {territory.subdivision}</small>
+                <small>FOFO {territory.fofo.available} · FOCO {territory.foco.available}</small>
               </button>
             ))}
-            {!loading && !error && territories.length === 0 ? <p className="overview-territory-empty">No territories have been registered yet.</p> : null}
+            {!loading && !error && visibleTerritories.length === 0 ? (
+              <p className="overview-territory-empty">
+                {searchQuery.trim()
+                  ? 'No territories match that search. Try another name, PIN, district or subdivision.'
+                  : 'No active territories yet. Open capacity on PINs in Territory setup.'}
+              </p>
+            ) : null}
           </div>
         </div>
 
