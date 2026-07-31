@@ -24,6 +24,17 @@
     "column_break_1",
     "razorpay_key_id",
     "razorpay_key_secret",
+    "section_break_ffms_maps",
+    "google_maps_api_key",
+    "ffms_maps_notes",
+    "section_break_cgpey_esign",
+    "cgpey_api_key",
+    "cgpey_api_secret",
+    "cgpey_merchant_id",
+    "column_break_cgpey",
+    "cgpey_base_url",
+    "cgpey_simulate",
+    "cgpey_esign_notes",
     "section_break_otp",
     "otp_provider",
     "sms_auth_key",
@@ -36,6 +47,16 @@
     "sms_dlt_template_id",
     "whatsapp_api_key",
     "whatsapp_source_number",
+    "section_whatsapp_cloud",
+    "whatsapp_provider",
+    "meta_whatsapp_access_token",
+    "whatsapp_phone_number_id",
+    "whatsapp_business_account_id",
+    "whatsapp_cloud_webhook_secret",
+    "whatsapp_webhook_verify_token",
+    "whatsapp_reuse_meta_ads_token",
+    "whatsapp_franchise_auto_ack",
+    "whatsapp_franchise_auto_ack_message",
     "section_break_email",
     "enable_email_signup",
     "patient_portal_base_url",
@@ -71,6 +92,10 @@
     "meta_ad_account_id",
     "meta_access_token",
     "hiring_ads_webhook_secret",
+    "section_franchise_ads",
+    "franchise_ads_webhook_secret",
+    "franchise_ads_page_ids",
+    "rfms_api_base_url",
     "column_break_hiring_ads",
     "google_ads_customer_id",
     "google_ads_developer_token",
@@ -189,6 +214,74 @@
       "label": "Razorpay Key Secret"
     },
     {
+      "collapsible": 1,
+      "fieldname": "section_break_ffms_maps",
+      "fieldtype": "Section Break",
+      "label": "FFMS / Google Maps"
+    },
+    {
+      "description": "Browser Maps JavaScript API key for RFMS admin territory maps. Restrict in GCP to https://www.e-remedium.in/*",
+      "fieldname": "google_maps_api_key",
+      "fieldtype": "Data",
+      "label": "Google Maps API Key"
+    },
+    {
+      "default": "RFMS loads this key at runtime via the ERP bridge. Enable Maps JavaScript API and billing on the GCP project.",
+      "fieldname": "ffms_maps_notes",
+      "fieldtype": "Small Text",
+      "label": "FFMS Maps Notes",
+      "read_only": 1
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_break_cgpey_esign",
+      "fieldtype": "Section Break",
+      "label": "CGPEY Aadhaar OTP (Agreement eSign)"
+    },
+    {
+      "description": "CGPEY x-api-key for Agreement Accept / Aadhaar OTP eSign in RFMS.",
+      "fieldname": "cgpey_api_key",
+      "fieldtype": "Data",
+      "label": "CGPEY API Key"
+    },
+    {
+      "description": "CGPEY x-api-secret. Stored encrypted. Never expose to the browser.",
+      "fieldname": "cgpey_api_secret",
+      "fieldtype": "Password",
+      "label": "CGPEY API Secret"
+    },
+    {
+      "description": "CGPEY merchantId sent in Aadhaar OTP request body.",
+      "fieldname": "cgpey_merchant_id",
+      "fieldtype": "Data",
+      "label": "CGPEY Merchant ID"
+    },
+    {
+      "fieldname": "column_break_cgpey",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "https://verify.cgpey.com",
+      "description": "Must be https://verify.cgpey.com for Agreement eSign. Do not use docs.cgpey.com (KYC-only) or www.cgpey.com.",
+      "fieldname": "cgpey_base_url",
+      "fieldtype": "Data",
+      "label": "CGPEY Base URL"
+    },
+    {
+      "default": "0",
+      "description": "When checked, RFMS accepts simulated OTP 123456 and does not call CGPEY.",
+      "fieldname": "cgpey_simulate",
+      "fieldtype": "Check",
+      "label": "Simulate CGPEY Aadhaar OTP"
+    },
+    {
+      "default": "Paste CGPEY credentials here. RFMS Agreement Accept uses Aadhaar OTP via the ERP bridge. Secrets are never returned to browser public-config.",
+      "fieldname": "cgpey_esign_notes",
+      "fieldtype": "Small Text",
+      "label": "CGPEY eSign Notes",
+      "read_only": 1
+    },
+    {
       "fieldname": "section_break_otp",
       "fieldtype": "Section Break",
       "label": "OTP / SMS"
@@ -257,6 +350,66 @@
       "fieldtype": "Data",
       "label": "WhatsApp Source Number",
       "description": "Gupshup-approved WhatsApp business number"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_whatsapp_cloud",
+      "fieldtype": "Section Break",
+      "label": "WhatsApp Cloud (Phase 87)"
+    },
+    {
+      "default": "",
+      "description": "Blank = auto Meta when Cloud token + phone number id are set, else Gupshup.",
+      "fieldname": "whatsapp_provider",
+      "fieldtype": "Select",
+      "label": "WhatsApp Provider",
+      "options": "\nMeta\nGupshup"
+    },
+    {
+      "description": "Meta WhatsApp Cloud permanent / system user token (prefer dedicated WA token).",
+      "fieldname": "meta_whatsapp_access_token",
+      "fieldtype": "Password",
+      "label": "Meta WhatsApp Access Token"
+    },
+    {
+      "fieldname": "whatsapp_phone_number_id",
+      "fieldtype": "Data",
+      "label": "WhatsApp Phone Number ID"
+    },
+    {
+      "fieldname": "whatsapp_business_account_id",
+      "fieldtype": "Data",
+      "label": "WhatsApp Business Account ID"
+    },
+    {
+      "description": "Shared secret for RFMS bridge + optional header auth (X-WhatsApp-Cloud-Secret).",
+      "fieldname": "whatsapp_cloud_webhook_secret",
+      "fieldtype": "Password",
+      "label": "WhatsApp Cloud Webhook Secret"
+    },
+    {
+      "description": "Meta hub.verify_token value (defaults to webhook secret when blank).",
+      "fieldname": "whatsapp_webhook_verify_token",
+      "fieldtype": "Data",
+      "label": "WhatsApp Webhook Verify Token"
+    },
+    {
+      "default": "0",
+      "description": "Allow Meta Ads Graph token as WhatsApp Cloud token when dedicated WA token is empty.",
+      "fieldname": "whatsapp_reuse_meta_ads_token",
+      "fieldtype": "Check",
+      "label": "Reuse Meta Ads Token for WhatsApp"
+    },
+    {
+      "default": "0",
+      "fieldname": "whatsapp_franchise_auto_ack",
+      "fieldtype": "Check",
+      "label": "Franchise Auto-Ack New Conversations"
+    },
+    {
+      "fieldname": "whatsapp_franchise_auto_ack_message",
+      "fieldtype": "Small Text",
+      "label": "Franchise Auto-Ack Message"
     },
     {
       "fieldname": "section_break_email",
@@ -470,6 +623,31 @@
       "fieldname": "hiring_ads_webhook_secret",
       "fieldtype": "Password",
       "label": "Hiring Ads Webhook Secret"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_franchise_ads",
+      "fieldtype": "Section Break",
+      "label": "Franchise Ads CRM"
+    },
+    {
+      "description": "Shared secret for franchise Meta/Google lead webhooks (header X-Franchise-Ads-Secret). Also used as Meta hub.verify_token.",
+      "fieldname": "franchise_ads_webhook_secret",
+      "fieldtype": "Password",
+      "label": "Franchise Ads Webhook Secret"
+    },
+    {
+      "description": "Comma-separated Meta Page IDs allowed for franchise leadgen. Blank allows all pages on the token.",
+      "fieldname": "franchise_ads_page_ids",
+      "fieldtype": "Small Text",
+      "label": "Franchise Meta Page IDs"
+    },
+    {
+      "default": "https://www.e-remedium.in/rfms-api/v1",
+      "description": "RFMS local-api base used to dual-write franchise ad leads into the RFMS CRM pool.",
+      "fieldname": "rfms_api_base_url",
+      "fieldtype": "Data",
+      "label": "RFMS API Base URL"
     },
     {
       "fieldname": "column_break_hiring_ads",

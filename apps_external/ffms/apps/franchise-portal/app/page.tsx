@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { ChangeEvent, FormEvent, MouseEvent, SyntheticEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { RFMS_API_BASE, RFMS_MARKETING_ORIGIN, logoutApplicant as secureLogoutApplicant } from '@rfms/utils';
+import { RFMS_API_BASE, RFMS_MARKETING_ORIGIN, appPath, logoutApplicant as secureLogoutApplicant } from '@rfms/utils';
 import './portal.css';
 import './responsive.css';
 import { ApplicantSupportPanel } from './support-panel';
@@ -36,7 +36,7 @@ type VideoKycActivity = { id: string; type: string; message: string; actor: stri
 type VideoKycSession = { id: string; attempt: number; status: 'assigned' | 'in_progress' | 'completed' | 'reassigned'; assigned_at: string; assigned_by: string; started_at: string; started_by: string; applicant_joined_at: string; completed_at: string; completed_by: string; remarks: string; reassigned_from: string; screenshots: VideoKycEvidence[]; history: VideoKycActivity[] };
 type OnboardingDocumentFile = { id: string; slot: number; name: string; url: string; status: 'pending' | 'verified' | 'reupload_requested' | 'rejected' | 'superseded'; remarks?: string; submitted_at?: string; reviewed_at?: string; reviewed_by?: string };
 type OnboardingDocument = { id: string; title: string; description?: string; required_count: number; requested_at?: string; requested_by?: string; files: OnboardingDocumentFile[] };
-type FieldVisitReport = { visit_date?: string; site_address?: string; google_maps_url?: string; inspection_summary?: string; property_condition?: string; documents_observed?: string; recommendation?: string; officer_remarks?: string; submitted_at?: string; submitted_by?: string };
+type FieldVisitReport = { visit_date?: string; site_address?: string; google_maps_url?: string; inspection_summary?: string; property_condition?: string; documents_observed?: string; recommendation?: string; officer_remarks?: string; site_photos?: { id?: string; url: string; name: string; uploaded_at?: string }[]; submitted_at?: string; submitted_by?: string };
 type FieldVisit = { id: string; status: 'assigned' | 'submitted' | 'approved' | 'rejected'; officer_name: string; officer_phone: string; assigned_at?: string; assigned_by?: string; submitted_at?: string; approved_at?: string; approved_by?: string; manager_remarks?: string; report?: FieldVisitReport | null };
 type WorkflowUpload = { id?: string; name: string; url: string; uploaded_at?: string };
 type BrandingSignage = { status: string; completion_details?: string; photographs?: WorkflowUpload[]; submitted_at?: string; manager_remarks?: string; approved_at?: string; installation_cost?: number; invoice?: WorkflowUpload | null };
@@ -495,6 +495,7 @@ function GatewayCheckoutModal({
   amount,
   busy,
   error,
+  simulate,
   onCancel,
   onComplete,
 }: {
@@ -502,6 +503,7 @@ function GatewayCheckoutModal({
   amount: number;
   busy: boolean;
   error: string;
+  simulate?: boolean;
   onCancel: () => void;
   onComplete: () => void;
 }) {
@@ -513,7 +515,11 @@ function GatewayCheckoutModal({
           <h2>Secure checkout</h2>
         </div>
       </header>
-      <p className="payment-gateway-copy">Local testing gateway: no real money is charged. Complete this simulated checkout to return to your payment page with an instant Paid status.</p>
+      <p className="payment-gateway-copy">
+        {simulate
+          ? 'Local testing gateway: no real money is charged. Complete this simulated checkout to return to your payment page with an instant Paid status.'
+          : 'Opening Razorpay Checkout. Complete payment in the Razorpay window to finish this franchise fee.'}
+      </p>
       <dl className="payment-gateway-details">
         <div><dt>Order</dt><dd>{orderNumber}</dd></div>
         <div><dt>Payable amount</dt><dd>{money(amount)}</dd></div>
@@ -521,10 +527,34 @@ function GatewayCheckoutModal({
       {error ? <p className="portal-message error" role="alert">{error}</p> : null}
       <div className="payment-gateway-actions">
         <button type="button" className="secondary" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button type="button" onClick={onComplete} disabled={busy}>{busy ? 'Processing…' : 'Pay now'}</button>
+        {simulate ? (
+          <button type="button" onClick={onComplete} disabled={busy}>{busy ? 'Processing…' : 'Pay now'}</button>
+        ) : (
+          <button type="button" onClick={onComplete} disabled={busy}>{busy ? 'Opening Razorpay…' : 'Continue to Razorpay'}</button>
+        )}
       </div>
     </section>
   </div>;
+}
+
+function loadRazorpayCheckoutScript(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Razorpay is only available in the browser.'));
+  if ((window as unknown as { Razorpay?: unknown }).Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-rfms-razorpay="1"]') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Razorpay Checkout failed to load.')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.dataset.rfmsRazorpay = '1';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Razorpay Checkout failed to load.'));
+    document.body.appendChild(script);
+  });
 }
 
 function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplicationUpdated, onMessage, onError }: { application: Application; company?: typeof DEFAULT_COMPANY; onApplicationUpdated?: (application: Application) => void; onMessage?: (message: string) => void; onError?: (message: string) => void }) {
@@ -561,7 +591,15 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
   const [methodModalOpen, setMethodModalOpen] = useState(false);
   const [offlineMethod, setOfflineMethod] = useState<PaymentMethodKey | ''>('');
   const [focoFullSelected, setFocoFullSelected] = useState(false);
-  const [gatewayOrder, setGatewayOrder] = useState<{ id: string; order_number: string; amount: number } | null>(null);
+  const [gatewayOrder, setGatewayOrder] = useState<{
+    id: string;
+    order_number: string;
+    amount: number;
+    simulate?: boolean;
+    key_id?: string;
+    razorpay_order_id?: string;
+    currency?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (phaseTwoTermsAccepted && phaseTwoTermsError) setPhaseTwoTermsError('');
@@ -815,10 +853,31 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
           foco_full: focoFullSelected,
         }),
       });
-      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { order_id: string; order_number: string; amount: number }; error?: { message?: string } } | null;
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        data?: {
+          order_id: string;
+          order_number: string;
+          amount: number;
+          simulate?: boolean;
+          key_id?: string;
+          razorpay_order_id?: string;
+          currency?: string;
+          provider?: string;
+        };
+        error?: { message?: string };
+      } | null;
       if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to start the payment gateway session.');
       setMethodModalOpen(false);
-      setGatewayOrder({ id: payload.data.order_id, order_number: payload.data.order_number, amount: payload.data.amount });
+      setGatewayOrder({
+        id: payload.data.order_id,
+        order_number: payload.data.order_number,
+        amount: payload.data.amount,
+        simulate: Boolean(payload.data.simulate || payload.data.provider === 'simulate'),
+        key_id: payload.data.key_id,
+        razorpay_order_id: payload.data.razorpay_order_id,
+        currency: payload.data.currency || 'INR',
+      });
     } catch (requestError) {
       setPaymentFlowError(requestError instanceof Error ? requestError.message : 'Unable to start the payment gateway session.');
     } finally {
@@ -826,7 +885,7 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
     }
   }
 
-  async function completeGatewayPayment() {
+  async function finalizeGatewayPayment(extra: Record<string, string> = {}) {
     if (!gatewayOrder) return;
     setPaymentBusy('gateway-complete');
     setPaymentFlowError('');
@@ -834,7 +893,7 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
       const response = await fetch(`${API_BASE}/applications/public/${application.id}/payments/gateway/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: gatewayOrder.id }),
+        body: JSON.stringify({ order_id: gatewayOrder.id, ...extra }),
       });
       const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: Application; receipt?: { receipt_number?: string } }; error?: { message?: string } } | null;
       if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Payment could not be completed.');
@@ -847,6 +906,55 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
       setPaymentFlowError(message);
       onError?.(message);
     } finally {
+      setPaymentBusy('');
+    }
+  }
+
+  async function completeGatewayPayment() {
+    if (!gatewayOrder) return;
+    if (gatewayOrder.simulate || !gatewayOrder.key_id || !gatewayOrder.razorpay_order_id) {
+      await finalizeGatewayPayment();
+      return;
+    }
+    setPaymentBusy('gateway-complete');
+    setPaymentFlowError('');
+    try {
+      await loadRazorpayCheckoutScript();
+      const RazorpayCtor = (window as unknown as {
+        Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+      }).Razorpay;
+      if (!RazorpayCtor) throw new Error('Razorpay Checkout is unavailable.');
+      const amountPaise = Math.round(Number(gatewayOrder.amount || 0) * 100);
+      const checkout = new RazorpayCtor({
+        key: gatewayOrder.key_id,
+        amount: amountPaise,
+        currency: gatewayOrder.currency || 'INR',
+        name: 'Remedium Lab Franchise',
+        description: gatewayOrder.order_number,
+        order_id: gatewayOrder.razorpay_order_id,
+        handler: (response: {
+          razorpay_order_id?: string;
+          razorpay_payment_id?: string;
+          razorpay_signature?: string;
+        }) => {
+          void finalizeGatewayPayment({
+            razorpay_order_id: String(response.razorpay_order_id || gatewayOrder.razorpay_order_id || ''),
+            razorpay_payment_id: String(response.razorpay_payment_id || ''),
+            razorpay_signature: String(response.razorpay_signature || ''),
+          });
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentBusy('');
+            setPaymentFlowError('Payment was cancelled before completion.');
+          },
+        },
+      });
+      checkout.open();
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Unable to open Razorpay Checkout.';
+      setPaymentFlowError(message);
+      onError?.(message);
       setPaymentBusy('');
     }
   }
@@ -998,6 +1106,7 @@ function PaymentSchedule({ application, company = DEFAULT_COMPANY, onApplication
         amount={gatewayOrder.amount}
         busy={paymentBusy === 'gateway-complete'}
         error={paymentFlowError}
+        simulate={Boolean(gatewayOrder.simulate)}
         onCancel={() => { setGatewayOrder(null); setPaymentFlowError(''); if (selectedPayment) setMethodModalOpen(true); }}
         onComplete={() => void completeGatewayPayment()}
       /> : null}
@@ -1171,7 +1280,8 @@ function ApplicantFieldVisitCard({ application, token }: { application: Applicat
     finally { setBusy(false); }
   }
   const status = visit.status === 'approved' ? 'Approved final report' : visit.status === 'submitted' ? 'Officer report submitted' : visit.status === 'rejected' ? 'Report correction requested' : 'Field Visit assigned';
-  return <section className={`applicant-field-visit ${visit.status}`}><div><p>Field Visit</p><h2>{status}</h2><span>{visit.status === 'assigned' ? 'A Field Visit Officer has been assigned to support the next verification stage.' : visit.status === 'approved' ? 'The manager has approved the final report. It is permanently linked to your application.' : 'The franchise team is reviewing the Field Visit report and will update this page.'}</span></div><div className="field-visit-officer"><small>Assigned Field Visit Officer</small><b>{visit.officer_name}</b><a href={`tel:${visit.officer_phone.replace(/[^+0-9]/g, '')}`}>{visit.officer_phone}</a>{visit.assigned_at ? <em>Assigned {new Date(visit.assigned_at).toLocaleDateString('en-IN')}</em> : null}</div>{visit.status === 'approved' ? <button type="button" onClick={() => void downloadReport()} disabled={busy}>{busy ? 'Preparing report...' : 'Download final Field Visit PDF'}</button> : null}{error ? <p className="portal-message error" role="alert">{error}</p> : null}</section>;
+  const sitePhotos = visit.report?.site_photos ?? [];
+  return <section className={`applicant-field-visit ${visit.status}`}><div><p>Field Visit</p><h2>{status}</h2><span>{visit.status === 'assigned' ? 'A Field Visit Officer has been assigned to support the next verification stage.' : visit.status === 'approved' ? 'The manager has approved the final report. It is permanently linked to your application.' : 'The franchise team is reviewing the Field Visit report and will update this page.'}</span></div><div className="field-visit-officer"><small>Assigned Field Visit Officer</small><b>{visit.officer_name}</b><a href={`tel:${visit.officer_phone.replace(/[^+0-9]/g, '')}`}>{visit.officer_phone}</a>{visit.assigned_at ? <em>Assigned {new Date(visit.assigned_at).toLocaleDateString('en-IN')}</em> : null}</div>{visit.status === 'approved' && sitePhotos.length ? <div className="applicant-branding-photos">{sitePhotos.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}{visit.status === 'approved' ? <button type="button" onClick={() => void downloadReport()} disabled={busy}>{busy ? 'Preparing report...' : 'Download final Field Visit PDF'}</button> : null}{error ? <p className="portal-message error" role="alert">{error}</p> : null}</section>;
 }
 
 function ApplicantBrandingAndHr({ application }: { application: Application }) {
@@ -1199,6 +1309,12 @@ function ApplicantTerritoryPanel({ application, token }: { application: Applicat
   return <div className="applicant-territory-allotment"><section className="applicant-territory-letter"><div><p>Official territory allotment</p><h2>{allotment.final_territory}</h2><span>Your approved franchise territory is active from {dateLabel(allotment.effective_date)}.</span></div><button type="button" disabled={busy} onClick={() => void downloadLetter()}>{busy ? 'Preparing letter...' : 'Download Territory Allotment Letter'}</button></section><div className="applicant-territory-details"><div><small>Territory radius</small><b>{allotment.radius_km} km</b></div><div><small>PIN code</small><b>{allotment.pincode}</b></div><div><small>District / State</small><b>{allotment.district}, {allotment.state}</b></div><div><small>Letter reference</small><b>{allotment.letter_number}</b></div></div><section className="applicant-territory-address"><small>Allotted franchise location</small><b>{allotment.franchise_address || [application.address, application.city, application.district, application.pincode].filter(Boolean).join(', ') || 'Recorded in your application'}</b>{allotment.google_maps_url ? <a href={allotment.google_maps_url} target="_blank" rel="noreferrer">Open approved Google Maps location</a> : null}</section>{(application.territory_allotments ?? []).length > 1 ? <section className="applicant-territory-history"><b>Allotment letter history</b>{[...(application.territory_allotments ?? [])].reverse().map((item) => <span key={item.id}>Version {item.version}  · {item.letter_number}  · issued {dateLabel(item.issued_at)}</span>)}</section> : null}{error ? <p className="portal-message error" role="alert">{error}</p> : null}</div>;
 }
 
+function attachApplicantVideo(video: HTMLVideoElement | null, stream: MediaStream | null) {
+  if (!video || !stream) return;
+  if (video.srcObject !== stream) video.srcObject = stream;
+  void video.play().catch(() => undefined);
+}
+
 function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { application: Application; token: string; onApplicationUpdated: (application: Application) => void }) {
   const sessions = [...(application.video_kyc_sessions ?? [])].sort((first, second) => second.attempt - first.attempt);
   const current = sessions.find((session) => session.id === application.video_kyc_current_session_id) ?? sessions.find((session) => ['assigned', 'in_progress'].includes(session.status)) ?? sessions[0] ?? null;
@@ -1206,6 +1322,7 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
   const processedSignals = useRef(new Set<string>());
   const [live, setLive] = useState(false);
@@ -1216,8 +1333,21 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
   const currentId = current?.id ?? '';
   const currentStatus = current?.status ?? '';
 
-  const stopRoom = useCallback(() => { peerRef.current?.close(); peerRef.current = null; streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null; if (localVideoRef.current) localVideoRef.current.srcObject = null; if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null; setLive(false); }, []);
+  const stopRoom = useCallback(() => {
+    peerRef.current?.close(); peerRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+    remoteStreamRef.current = null;
+    processedSignals.current = new Set();
+    pendingCandidates.current = [];
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    setLive(false);
+  }, []);
   useEffect(() => () => stopRoom(), [stopRoom]);
+  useEffect(() => {
+    attachApplicantVideo(localVideoRef.current, streamRef.current);
+    attachApplicantVideo(remoteVideoRef.current, remoteStreamRef.current);
+  }, [live]);
 
   const sendSignal = useCallback(async (type: 'answer' | 'candidate', signal: object) => {
     if (!currentId) return;
@@ -1231,9 +1361,14 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
     processedSignals.current.add(entry.id);
     const peer = peerRef.current;
     if (entry.type === 'offer') {
+      if (peer.signalingState !== 'stable' && peer.signalingState !== 'have-remote-offer') return;
       await peer.setRemoteDescription(entry.signal as RTCSessionDescriptionInit);
       for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate);
-      const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); await sendSignal('answer', answer);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      await sendSignal('answer', answer);
+      attachApplicantVideo(localVideoRef.current, streamRef.current);
+      attachApplicantVideo(remoteVideoRef.current, remoteStreamRef.current);
     } else if (entry.type === 'candidate') {
       if (peer.remoteDescription) await peer.addIceCandidate(entry.signal as RTCIceCandidateInit); else pendingCandidates.current.push(entry.signal as RTCIceCandidateInit);
     }
@@ -1245,11 +1380,14 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
     const poll = async () => {
       try {
         const response = await fetch(`${API_BASE}/video-kyc/${currentId}/signals`, { headers: { Authorization: `Bearer ${token}` } });
-        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { signals?: { id: string; type: string; signal: unknown }[] } } | null;
-        if (active && response.ok && payload?.success) for (const signal of payload.data?.signals ?? []) await processSignal(signal);
+        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { signals?: { id: string; type: string; signal: unknown }[]; session?: VideoKycSession } } | null;
+        if (!active || !response.ok || !payload?.success) return;
+        for (const signal of payload.data?.signals ?? []) await processSignal(signal);
+        attachApplicantVideo(localVideoRef.current, streamRef.current);
+        attachApplicantVideo(remoteVideoRef.current, remoteStreamRef.current);
       } catch { /* Keep trying while this applicant Video KYC page remains open. */ }
     };
-    void poll(); const interval = window.setInterval(() => void poll(), 1500);
+    void poll(); const interval = window.setInterval(() => void poll(), 1200);
     return () => { active = false; window.clearInterval(interval); };
   }, [currentId, currentStatus, live, processSignal, token]);
 
@@ -1266,7 +1404,8 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
         const currentAttemptChanged = latestApplication.video_kyc_current_session_id !== application.video_kyc_current_session_id;
         if (latestSession.status === currentStatus && !currentAttemptChanged) return;
         onApplicationUpdated(latestApplication);
-        if (!['assigned', 'in_progress'].includes(latestSession.status)) {
+        // Only end the live call when THIS joined session closes — not when an older attempt was reassigned.
+        if (live && !['assigned', 'in_progress'].includes(latestSession.status)) {
           stopRoom();
           setNotice(latestSession.status === 'completed' ? 'Video KYC was completed by the manager. The live call has ended.' : 'This Video KYC attempt was reassigned by the manager. The live call has ended; wait for the next request.');
         }
@@ -1275,23 +1414,35 @@ function ApplicantVideoKycPanel({ application, token, onApplicationUpdated }: { 
     void syncSessionStatus();
     const interval = window.setInterval(() => void syncSessionStatus(), 3000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [application.video_kyc_current_session_id, currentId, currentStatus, onApplicationUpdated, stopRoom, token]);
+  }, [application.video_kyc_current_session_id, currentId, currentStatus, live, onApplicationUpdated, stopRoom, token]);
 
   async function joinRoom() {
     if (!current) return;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setNotice('');
     try {
       const response = await fetch(`${API_BASE}/applicant/video-kyc/${current.id}/join`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: Application }; error?: { message?: string } } | null;
       if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'The manager has not started this Video KYC session yet.');
       onApplicationUpdated(payload.data.application);
-      const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); streamRef.current = media;
-      if (localVideoRef.current) localVideoRef.current.srcObject = media;
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); peerRef.current = peer;
+      processedSignals.current = new Set();
+      pendingCandidates.current = [];
+      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+      streamRef.current = media;
+      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+      peerRef.current = peer;
       media.getTracks().forEach((track) => peer.addTrack(track, media));
-      peer.ontrack = (event) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]; };
+      peer.ontrack = (event) => {
+        const remote = event.streams[0] || new MediaStream([event.track]);
+        remoteStreamRef.current = remote;
+        attachApplicantVideo(remoteVideoRef.current, remote);
+      };
       peer.onicecandidate = (event) => { if (event.candidate) void sendSignal('candidate', event.candidate.toJSON()).catch(() => undefined); };
+      // Mount <video> elements first, then attach streams on the next frame.
       setLive(true);
+      window.requestAnimationFrame(() => {
+        attachApplicantVideo(localVideoRef.current, media);
+        attachApplicantVideo(remoteVideoRef.current, remoteStreamRef.current);
+      });
     } catch (joinError) { stopRoom(); setError(joinError instanceof Error ? joinError.message : 'Unable to join Video KYC.'); }
     finally { setBusy(false); }
   }
@@ -1352,7 +1503,7 @@ function AgreementDocumentViewer({ url, title = 'Franchise agreement', token = '
       pagesRef.current?.replaceChildren();
       try {
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+        pdfjs.GlobalWorkerOptions.workerSrc = appPath('/pdf.worker.min.mjs');
         const response = await fetch(url as string, { headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error('Unable to load the agreement document.');
         const bytes = await response.arrayBuffer();
@@ -1544,7 +1695,7 @@ function ApplicantTrainingPanel({ application, token, onApplicationUpdated }: { 
   </div>;
 }
 
-function ApplicantAgreementPanel({ application, token, onApplicationUpdated }: { application: Application; token: string; onApplicationUpdated: (application: Application) => void }) {
+function ApplicantAgreementPanel({ application, token, onApplicationUpdated, onEsignCompleted }: { application: Application; token: string; onApplicationUpdated: (application: Application) => void; onEsignCompleted?: (message: string) => void }) {
   const workflow = application.agreement_workflow;
   const status = workflow?.status ?? 'not_started';
   const statusLabel = agreementStatusForApplicant(application);
@@ -1559,8 +1710,12 @@ function ApplicantAgreementPanel({ application, token, onApplicationUpdated }: {
   const [correction, setCorrection] = useState('');
   const [agreementTerms, setAgreementTerms] = useState('');
   const [termsOpen, setTermsOpen] = useState(false);
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [invitationLink, setInvitationLink] = useState('');
+  const [otpHint, setOtpHint] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const esignReturnHandled = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1575,6 +1730,61 @@ function ApplicantAgreementPanel({ application, token, onApplicationUpdated }: {
     })();
     return () => { cancelled = true; };
   }, [token]);
+
+  useEffect(() => {
+    if (esignReturnHandled.current || !token) return;
+    const params = new URLSearchParams(window.location.search);
+    let resume = params.get('esign_return') === '1';
+    if (!resume) {
+      try {
+        const raw = window.sessionStorage.getItem('rfms_esign_resume');
+        if (raw) {
+          const parsed = JSON.parse(raw) as { at?: number };
+          resume = Boolean(parsed?.at && Date.now() - Number(parsed.at) < 6 * 60 * 60 * 1000);
+        }
+      } catch {
+        resume = false;
+      }
+    }
+    if (!resume) return;
+    if (!['sent_to_applicant', 'applicant_esign_completed', 'company_dsc_completed', 'company_execution_pending', 'executed'].includes(status)) return;
+    esignReturnHandled.current = true;
+    let cancelled = false;
+    void (async () => {
+      setBusy('verify');
+      setError('');
+      try {
+        if (status === 'sent_to_applicant') {
+          const response = await fetch(`${API_BASE}/applicant/agreement/esign/complete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const payload = await response.json().catch(() => null) as { success?: boolean; data?: Application; error?: { message?: string } } | null;
+          if (!response.ok || !payload?.success || !payload.data) {
+            throw new Error(payload?.error?.message ?? 'Unable to finalise Aadhaar eSign after provider return.');
+          }
+          if (!cancelled) {
+            onApplicationUpdated(payload.data);
+            onEsignCompleted?.('Aadhaar eSign completed. Your signed agreement is with the franchise manager for company DSC or manual signing.');
+          }
+        } else if (!cancelled) {
+          onEsignCompleted?.('Aadhaar eSign is already recorded. The franchise manager can complete company DSC or manual signing.');
+        }
+        try { window.sessionStorage.removeItem('rfms_esign_resume'); } catch { /* ignore */ }
+        const url = new URL(window.location.href);
+        ['esign_return', 'esign_ref', 'application'].forEach((key) => url.searchParams.delete(key));
+        url.searchParams.set('view', 'profile');
+        url.searchParams.set('section', 'agreement');
+        window.history.replaceState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
+      } catch (requestError) {
+        if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Unable to finalise Aadhaar eSign after provider return.');
+      } finally {
+        if (!cancelled) setBusy('');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, status, onApplicationUpdated, onEsignCompleted]);
 
   function openTermsModal() {
     setTermsOpen(true);
@@ -1603,14 +1813,93 @@ function ApplicantAgreementPanel({ application, token, onApplicationUpdated }: {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ terms_accepted: true }),
       });
-      const payload = await response.json().catch(() => null) as { success?: boolean; data?: Application; error?: { message?: string } } | null;
-      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to complete Aadhaar eSign.');
-      onApplicationUpdated(payload.data);
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        data?: {
+          status?: string;
+          message?: string;
+          invitation_link?: string;
+          return_url?: string;
+          docket_id?: string;
+          redirect_same_tab?: boolean;
+          simulated?: boolean;
+          application?: Application;
+        } | Application;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to start Aadhaar eSign.');
+      const data = payload.data as {
+        status?: string;
+        message?: string;
+        invitation_link?: string;
+        return_url?: string;
+        docket_id?: string;
+        redirect_same_tab?: boolean;
+        simulated?: boolean;
+        application?: Application;
+      };
+      if (data.application) onApplicationUpdated(data.application);
+      const signingUrl = String(data.invitation_link || '').trim();
+      if (signingUrl && !data.simulated) {
+        try {
+          window.sessionStorage.setItem('rfms_esign_resume', JSON.stringify({
+            at: Date.now(),
+            docket_id: data.docket_id || '',
+            return_url: data.return_url || '',
+          }));
+        } catch {
+          /* sessionStorage may be unavailable in strict privacy modes */
+        }
+        // Same-tab redirect to provider signing route (avoids popup blockers).
+        window.location.assign(signingUrl);
+        return;
+      }
+      if (data.status === 'esign_redirect' || data.status === 'esign_pending' || data.docket_id || data.simulated) {
+        setInvitationLink(signingUrl);
+        setOtpHint(
+          data.simulated
+            ? (data.message || 'Simulated eSign started. Confirm completion below for local testing.')
+            : (data.message || 'CGPEY sent a signing SMS (idto.ai). Open that SMS link, finish Aadhaar eSign, then confirm here.'),
+        );
+        setOtpOpen(true);
+        setError('');
+        return;
+      }
+      if ('id' in (payload.data as Application) && (payload.data as Application).id) {
+        onApplicationUpdated(payload.data as Application);
+      }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to complete Aadhaar eSign.');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to start Aadhaar eSign.');
     } finally {
       setBusy('');
     }
+  }
+
+  async function completeEsign() {
+    setBusy('verify'); setError('');
+    try {
+      const response = await fetch(`${API_BASE}/applicant/agreement/esign/complete`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: Application; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to confirm Aadhaar eSign completion.');
+      onApplicationUpdated(payload.data);
+      setOtpOpen(false);
+      setInvitationLink('');
+      setOtpHint('');
+      try { window.sessionStorage.removeItem('rfms_esign_resume'); } catch { /* ignore */ }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to confirm Aadhaar eSign completion.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function reopenEsignLink() {
+    if (!invitationLink) return;
+    window.location.assign(invitationLink);
   }
 
   async function requestCorrection() {
@@ -1667,11 +1956,12 @@ function ApplicantAgreementPanel({ application, token, onApplicationUpdated }: {
         <button type="button" className="secondary" disabled={busy === 'correction' || !correction.trim()} onClick={() => void requestCorrection()}>{busy === 'correction' ? 'Submitting…' : 'Submit change request'}</button>
       </> : null}
       <label className="agreement-terms-check"><input type="checkbox" checked={termsAccepted} readOnly onClick={handleTermsCheckboxClick} /><span>I have read the Franchise Agreement and accept the <button type="button" className="text-button agreement-terms-link" onClick={(event) => { event.preventDefault(); openTermsModal(); }}>Terms &amp; Conditions</button>.</span></label>
-      <button type="button" className="primary" disabled={!termsAccepted || busy === 'accept'} onClick={() => void acceptAndEsign()}>{busy === 'accept' ? 'Starting Aadhaar eSign…' : 'Accept Agreement'}</button>
+      <button type="button" className="primary" disabled={!termsAccepted || Boolean(busy)} onClick={() => void acceptAndEsign()}>{busy === 'accept' ? 'Starting Aadhaar eSign…' : 'Accept Agreement'}</button>
     </div> : null}
     {canDownloadExecuted ? <div className="agreement-panel-actions"><button type="button" disabled={busy === 'download'} onClick={() => void downloadExecutedAgreement()}>{busy === 'download' ? 'Downloading…' : 'Download executed agreement'}</button></div> : null}
     {error ? <p className="portal-message error" role="alert">{error}</p> : null}
     {termsOpen ? <div className="terms-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setTermsOpen(false); }}><section className="terms-modal agreement-terms-modal" role="dialog" aria-modal="true" aria-labelledby="agreement-terms-title"><header><div><p>Agreement terms</p><h2 id="agreement-terms-title">Terms &amp; Conditions</h2></div><button type="button" aria-label="Close terms" onClick={() => setTermsOpen(false)}>×</button></header><div className="terms-copy">{agreementTerms || 'Loading the latest Terms & Conditions…'}</div><div className="terms-modal-actions"><button type="button" className="terms-cancel" onClick={rejectTermsAccepted}>Not Accepted</button><button type="button" className="terms-accept" onClick={confirmTermsAccepted}>Ok</button></div></section></div> : null}
+    {otpOpen ? <div className="terms-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setOtpOpen(false); }}><section className="terms-modal agreement-otp-modal" role="dialog" aria-modal="true" aria-labelledby="agreement-otp-title"><header><div><p>Aadhaar eSign</p><h2 id="agreement-otp-title">Complete CGPEY signing</h2></div><button type="button" aria-label="Close eSign" disabled={Boolean(busy)} onClick={() => setOtpOpen(false)}>×</button></header><p className="agreement-otp-copy">{otpHint || 'A CGPEY signing window opens for Aadhaar OTP eSign. After you finish there, confirm below.'}</p><div className="terms-modal-actions"><button type="button" className="terms-cancel" disabled={Boolean(busy) || !invitationLink} onClick={() => void reopenEsignLink()}>Reopen signing link</button><button type="button" className="terms-accept" disabled={Boolean(busy)} onClick={() => void completeEsign()}>{busy === 'verify' ? 'Confirming…' : 'I have completed eSign'}</button></div></section></div> : null}
   </div>;
 }
 
@@ -1714,7 +2004,19 @@ function ApplicantFranchiseWebpageCard({ application }: { application: Applicati
 }
 
 function ApplicantProfile({ company, application, refreshing, accountToken, uploading, onRefresh, onPaymentPage, onReplaceDocument, onApplicationUpdated, onLogout, onMessage, onError }: { company: typeof DEFAULT_COMPANY; application: Application; refreshing: boolean; accountToken: string; uploading: DocumentKey | null; onRefresh: () => void; onPaymentPage: () => void; onReplaceDocument: (key: DocumentKey, event: ChangeEvent<HTMLInputElement>) => void; onApplicationUpdated: (application: Application) => void; onLogout: () => Promise<void>; onMessage?: (message: string) => void; onError?: (message: string) => void }) {
-  const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
+  const initialSection = (() => {
+    if (typeof window === 'undefined') return 'overview' as DashboardSection;
+    const section = new URLSearchParams(window.location.search).get('section');
+    if (section === 'agreement' || section === 'documents' || section === 'payments' || section === 'territory' || section === 'video-kyc' || section === 'training' || section === 'support' || section === 'application' || section === 'overview') {
+      return section as DashboardSection;
+    }
+    if (new URLSearchParams(window.location.search).get('esign_return') === '1') return 'agreement';
+    try {
+      if (window.sessionStorage.getItem('rfms_esign_resume')) return 'agreement';
+    } catch { /* ignore */ }
+    return 'overview';
+  })();
+  const [activeSection, setActiveSection] = useState<DashboardSection>(initialSection);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const timeline = buildOnboardingTimeline(application);
   const duePayment = application.payments.find((payment) => payment.status === 'due');
@@ -1776,7 +2078,7 @@ function ApplicantProfile({ company, application, refreshing, accountToken, uplo
   const openProfileSettings = () => { setActiveSection('profile-settings'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const body = activeSection === 'profile-settings'
     ? <ApplicantProfileSettings application={application} token={accountToken} photoUrl={photo || undefined} onBack={() => selectSection('overview')} onApplicationUpdated={onApplicationUpdated} />
-    : activeSection === 'overview' ? overview : activeSection === 'payments' ? <section className="dashboard-detail-panel payments-detail"><div className="dashboard-detail-heading"><div><p>Payments</p><h1>Payment schedule</h1><span>Choose a payment method, apply coupons and track verification for every phase.</span></div></div><PaymentSchedule application={application} company={company} onApplicationUpdated={onApplicationUpdated} onMessage={onMessage} onError={onError} /></section> : <section className="dashboard-detail-panel"><div className="dashboard-detail-heading"><div><p>{detail?.eyebrow}</p><h1>{detail?.title}</h1><span>{detail?.description}</span></div><b>{application.franchisee_id || application.application_number}</b></div>{activeSection === 'application' ? <><div className="dashboard-detail-grid"><div><small>Applicant name</small><b>{application.full_name}</b></div><div><small>Franchise model</small><b>{application.franchise_model}</b></div>{application.franchisee_id ? <div><small>Franchisee ID</small><b>{application.franchisee_id}</b></div> : null}<div><small>Email address</small><b>{application.email}</b></div><div><small>Mobile number</small><b>{application.mobile}</b></div><div><small>{territoryAllotted ? 'Allotted territory' : 'Preferred territory'}</small><b>{application.territory_allotment?.final_territory || application.preferred_location}</b></div><div><small>Current stage</small><b>{stageLabel(application.stage)}</b></div></div><ApplicantFieldVisitCard application={application} token={accountToken} /><ApplicantBrandingAndHr application={application} /></> : activeSection === 'documents' ? <ApplicantDocumentsPanel application={application} token={accountToken} uploading={uploading} onReplaceDocument={onReplaceDocument} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'territory' ? <ApplicantTerritoryPanel application={application} token={accountToken} /> : activeSection === 'video-kyc' ? <ApplicantVideoKycPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'agreement' ? <ApplicantAgreementPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'training' ? <ApplicantTrainingPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'support' ? <ApplicantSupportPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} notify={() => undefined} /> : <div className="dashboard-status-card"><b>Remedium Franchise Support</b><span>{`${detail?.eyebrow} status`}</span><p>{detail?.description}</p></div>}</section>;
+    : activeSection === 'overview' ? overview : activeSection === 'payments' ? <section className="dashboard-detail-panel payments-detail"><div className="dashboard-detail-heading"><div><p>Payments</p><h1>Payment schedule</h1><span>Choose a payment method, apply coupons and track verification for every phase.</span></div></div><PaymentSchedule application={application} company={company} onApplicationUpdated={onApplicationUpdated} onMessage={onMessage} onError={onError} /></section> : <section className="dashboard-detail-panel"><div className="dashboard-detail-heading"><div><p>{detail?.eyebrow}</p><h1>{detail?.title}</h1><span>{detail?.description}</span></div><b>{application.franchisee_id || application.application_number}</b></div>{activeSection === 'application' ? <><div className="dashboard-detail-grid"><div><small>Applicant name</small><b>{application.full_name}</b></div><div><small>Franchise model</small><b>{application.franchise_model}</b></div>{application.franchisee_id ? <div><small>Franchisee ID</small><b>{application.franchisee_id}</b></div> : null}<div><small>Email address</small><b>{application.email}</b></div><div><small>Mobile number</small><b>{application.mobile}</b></div><div><small>{territoryAllotted ? 'Allotted territory' : 'Preferred territory'}</small><b>{application.territory_allotment?.final_territory || application.preferred_location}</b></div><div><small>Current stage</small><b>{stageLabel(application.stage)}</b></div></div><ApplicantFieldVisitCard application={application} token={accountToken} /><ApplicantBrandingAndHr application={application} /></> : activeSection === 'documents' ? <ApplicantDocumentsPanel application={application} token={accountToken} uploading={uploading} onReplaceDocument={onReplaceDocument} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'territory' ? <ApplicantTerritoryPanel application={application} token={accountToken} /> : activeSection === 'video-kyc' ? <ApplicantVideoKycPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'agreement' ? <ApplicantAgreementPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} onEsignCompleted={(message) => onMessage?.(message)} /> : activeSection === 'training' ? <ApplicantTrainingPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} /> : activeSection === 'support' ? <ApplicantSupportPanel application={application} token={accountToken} onApplicationUpdated={onApplicationUpdated} notify={() => undefined} /> : <div className="dashboard-status-card"><b>Remedium Franchise Support</b><span>{`${detail?.eyebrow} status`}</span><p>{detail?.description}</p></div>}</section>;
   return <div className="app-dashboard"><button type="button" className={`dashboard-sidebar-backdrop${mobileNavOpen ? ' open' : ''}`} aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} /><aside className={`dashboard-sidebar${mobileNavOpen ? ' open' : ''}`}><div className="dashboard-brand"><span className="dashboard-logo-frame"><img src={company.logo_url} alt={`${company.company_name} logo`} onError={(event) => { event.currentTarget.src = DEFAULT_COMPANY.logo_url; }} /></span><div className="dashboard-brand-copy"><b>{company.company_name}</b><small>Applicant portal</small></div></div><nav aria-label="Applicant portal navigation">{menu.map((item) => <button type="button" className={activeSection === item.key ? 'active' : ''} onClick={() => selectSection(item.key)} key={item.key}>{item.label}</button>)}</nav><section className="dashboard-help"><b>Need help?</b><p>Our franchise team is here to guide your application.</p><button type="button" onClick={() => selectSection('support')}>Contact support</button></section></aside><div className="dashboard-workspace"><header className="dashboard-topbar"><button type="button" className={`portal-nav-toggle${mobileNavOpen ? ' open' : ''}`} aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'} onClick={() => setMobileNavOpen((current) => !current)}><span className="portal-nav-toggle-bar" /><span className="portal-nav-toggle-bar" /><span className="portal-nav-toggle-bar" /></button><div className="dashboard-topbar-copy"><small>{application.franchisee_id ? 'Franchisee ID' : 'Application number'}</small><strong title={application.franchisee_id || application.application_number}>{application.franchisee_id || application.application_number}</strong></div><span className="dashboard-topbar-desktop-id">{application.franchisee_id ? `Franchisee ID ${application.franchisee_id}` : `Application ${application.application_number}`}</span><button type="button" className="dashboard-topbar-refresh" onClick={onRefresh} disabled={refreshing}>{refreshing ? 'Refreshing...' : 'Refresh'}</button><ApplicantNotificationBell token={accountToken} onNavigate={(section) => selectSection(section as DashboardSection)} /><ApplicantProfileMenu photoUrl={photo || undefined} name={application.full_name} onUpdateProfile={openProfileSettings} onLogout={onLogout} /></header><main className="dashboard-content">{body}</main></div></div>;
 }
 
@@ -1937,7 +2239,9 @@ function ContactOtpControl({ channel, value, verified, onVerified }: { channel: 
       setChallengeId(payload.data.challenge_id as string);
       setMessage(payload.data.test_mode
         ? `OTP sent to ${payload.data.masked_destination}. Test mode: use 123456.`
-        : `OTP sent to ${payload.data.masked_destination} via SMS.`);
+        : channel === 'email'
+          ? `OTP sent to ${payload.data.masked_destination}. Check your email inbox.`
+          : `OTP sent to ${payload.data.masked_destination} via SMS.`);
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : `Unable to send the ${label} OTP.`); }
     finally { setBusy(false); }
   }

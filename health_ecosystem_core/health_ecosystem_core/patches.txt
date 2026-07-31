@@ -1,4 +1,5 @@
-health_ecosystem_core.patches.v1_0.add_performance_indexes
+﻿health_ecosystem_core.patches.v1_0.add_performance_indexes
 health_ecosystem_core.patches.v1_0.ensure_phase6_child_tables
 health_ecosystem_core.patches.v1_0.ensure_phase8_lab_report
 health_ecosystem_core.patches.v1_0.ensure_phase9_integration_fields
+health_ecosystem_core.patches.v1_0.ensure_cgpey_esign_fields

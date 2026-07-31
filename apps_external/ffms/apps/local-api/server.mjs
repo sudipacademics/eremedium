@@ -24,6 +24,14 @@ import {
   renderAgreementTemplate,
 } from './agreement-workflow.mjs';
 import {
+  buildEsignReturnUrl,
+  cgpeyConfigured,
+  cgpeyConfigFromEnv,
+  cgpeySimulate,
+  initiateAgreementEsign,
+  mergeCgpeyConfig,
+} from './cgpey-kyc-adapter.mjs';
+import {
   adminMarketingPages,
   defaultMarketingPages,
   mergeMarketingPages,
@@ -223,10 +231,17 @@ const allowedOrigins = new Set([
   marketingBaseUrl,
   portalBaseUrl,
   adminBaseUrl,
+  'https://www.e-remedium.in',
+  'https://e-remedium.in',
 ]);
 for (const origin of String(process.env.RFMS_ALLOWED_ORIGINS || '').split(',')) {
   const trimmed = origin.trim().replace(/\/+$/, '');
   if (trimmed) allowedOrigins.add(trimmed);
+}
+try {
+  allowedOrigins.add(new URL(portalBaseUrl).origin);
+} catch {
+  /* ignore invalid portal base */
 }
 function staticAppOutput(appDirName) {
   const folder = staticOutputSuffix ? `out-${staticOutputSuffix}` : 'out';
@@ -266,8 +281,29 @@ function publicIntegrationConfigPayload(config = {}) {
     contact_otp_via_erp: Boolean(config.contact_otp_via_erp),
     google_maps_api_key: String(config.google_maps_api_key || ''),
     google_maps_configured: Boolean(config.google_maps_configured),
+    cgpey_configured: Boolean(config.cgpey_configured),
+    cgpey_simulate: Boolean(config.cgpey_simulate),
     gateway_simulate: rfmsGatewaySimulate(),
   };
+}
+
+async function resolveCgpeyRuntimeConfig({ force = false } = {}) {
+  const fromEnv = cgpeyConfigFromEnv();
+  if (fromEnv.apiKey && fromEnv.apiSecret && fromEnv.merchantId) {
+    return fromEnv;
+  }
+  try {
+    const erp = await getRfmsIntegrationConfigCached({ force });
+    return mergeCgpeyConfig({
+      apiKey: erp?.cgpey_api_key,
+      apiSecret: erp?.cgpey_api_secret,
+      merchantId: erp?.cgpey_merchant_id,
+      baseUrl: erp?.cgpey_base_url,
+      simulate: erp?.cgpey_simulate,
+    });
+  } catch {
+    return fromEnv;
+  }
 }
 
 async function getWbGeoHierarchyCached({ force = false } = {}) {
@@ -4359,6 +4395,15 @@ async function handle(request, response) {
         status: 'ok',
         isolated: staticOutputSuffix === 'isolated',
         agreement_execution_routes: { manual_execute: true, save_executed: true },
+        cgpey_aadhaar_otp: (() => {
+          try {
+            // Sync snapshot from env; ERP-backed status is refreshed on Accept Agreement.
+            const cfg = cgpeyConfigFromEnv();
+            return { configured: cgpeyConfigured(cfg), simulate: cgpeySimulate(cfg), source: 'env_or_erp' };
+          } catch {
+            return { configured: false, simulate: false, source: 'unknown' };
+          }
+        })(),
         hec_bridge: Boolean(process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET),
         phase83_erp_bridge: true,
         phase84_wb_geo: true,
@@ -7008,29 +7053,131 @@ async function handle(request, response) {
       const body = await readJson(request);
       if (body.terms_accepted !== true) return failure(request, response, 'VALIDATION_ERROR', 'Select the mandatory Terms & Conditions checkbox before accepting the agreement.', 400);
       if (!workflow.document?.uploaded_file?.url) return failure(request, response, 'AGREEMENT_NOT_READY', 'The agreement document is not available yet.', 409);
+      const cgpey = await resolveCgpeyRuntimeConfig({ force: true });
+      if (!cgpeySimulate(cgpey) && !cgpeyConfigured(cgpey)) {
+        return failure(request, response, 'CGPEY_NOT_CONFIGURED', 'Aadhaar eSign is not configured. Paste CGPEY API key, secret and merchant ID in Health Ecosystem Settings (base URL https://verify.cgpey.com).', 503);
+      }
+      const pdfBytes = await readAgreementUploadBytes(workflow.document.uploaded_file.url);
+      if (!pdfBytes?.length) return failure(request, response, 'AGREEMENT_PDF_MISSING', 'Unable to read the agreement PDF for CGPEY eSign.', 500);
       const now = new Date().toISOString();
-      const esignReference = `AADHAAR-ESIGN-${randomUUID().slice(0, 8).toUpperCase()}`;
       workflow.applicant = workflow.applicant && typeof workflow.applicant === 'object' ? workflow.applicant : {};
       workflow.applicant.terms_accepted_at = now;
       workflow.applicant.correction_request = '';
       workflow.applicant.terms_version = companyProfile(database.company_profile).agreement_terms_version;
+      try {
+        const returnUrl = buildEsignReturnUrl({
+          portalBaseUrl,
+          applicationNumber: application.application_number || '',
+        });
+        const esignStart = await initiateAgreementEsign({
+          pdfBase64: Buffer.from(pdfBytes).toString('base64'),
+          signerName: application.full_name,
+          signerMobile: application.mobile,
+          referencePrefix: application.application_number || 'RFMS',
+          returnUrl,
+          applicationNumber: application.application_number || '',
+          config: cgpey,
+        });
+        if (!esignStart.simulated && !esignStart.invitationLink) {
+          return failure(
+            request,
+            response,
+            'CGPEY_ESIGN_LINK_MISSING',
+            'CGPEY eSign started but did not return a browser signing URL. Retry Accept Agreement or use the idto.ai SMS link, then return to the portal.',
+            502,
+          );
+        }
+        workflow.applicant.esign_pending = {
+          provider: 'cgpey',
+          mode: 'invitation_link',
+          request_id: esignStart.reference || esignStart.docketId || '',
+          docket_id: esignStart.docketId || '',
+          document_id: esignStart.documentId || '',
+          signer_id: esignStart.signerId || '',
+          invitation_link: esignStart.invitationLink || '',
+          return_url: esignStart.returnUrl || returnUrl,
+          started_at: now,
+          simulated: Boolean(esignStart.simulated),
+        };
+        agreementAudit(workflow, 'agreement_accepted', 'Applicant accepted the franchise agreement Terms & Conditions.', application.full_name);
+        agreementAudit(workflow, 'aadhaar_esign_started', esignStart.simulated
+          ? 'Simulated CGPEY Aadhaar eSign started.'
+          : `CGPEY Aadhaar eSign started${esignStart.docketId ? ` (docket ${esignStart.docketId})` : ''}.`, application.full_name);
+        application.updated_at = now;
+        await saveDatabase();
+        return success(request, response, {
+          status: esignStart.invitationLink ? 'esign_redirect' : 'esign_pending',
+          message: esignStart.message || 'Redirecting to CGPEY Aadhaar eSign…',
+          invitation_link: esignStart.invitationLink || '',
+          return_url: esignStart.returnUrl || returnUrl,
+          docket_id: esignStart.docketId || '',
+          redirect_same_tab: Boolean(esignStart.invitationLink),
+          simulated: Boolean(esignStart.simulated),
+          application: applicationSummary(application),
+        });
+      } catch (esignError) {
+        const code = esignError?.code || 'CGPEY_ESIGN_START_FAILED';
+        return failure(request, response, code, esignError instanceof Error ? esignError.message : 'Unable to start CGPEY Aadhaar eSign.', 502);
+      }
+    }
+
+    // Provider return landing (no auth cookie) → bounce into portal agreement section.
+    if (request.method === 'GET' && (route === '/api/v1/public/esign/return' || route === '/api/v1/applicant/agreement/esign/return')) {
+      const redirectTo = buildEsignReturnUrl({
+        portalBaseUrl,
+        referenceDocId: text(url.searchParams.get('esign_ref') || url.searchParams.get('reference_doc_id') || url.searchParams.get('docket_id') || '', 80),
+        applicationNumber: text(url.searchParams.get('application') || '', 80),
+      });
+      cors(request, response);
+      response.writeHead(302, {
+        Location: redirectTo,
+        'Cache-Control': 'no-store',
+      });
+      response.end();
+      return;
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applicant/agreement/esign/complete') {
+      const application = applicantFor(request);
+      if (!application?.agreement_workflow) return failure(request, response, 'NOT_FOUND', 'No agreement is available for eSign yet.', 404);
+      const workflow = application.agreement_workflow;
+      if (['applicant_esign_completed', 'company_dsc_completed', 'company_execution_pending', 'executed'].includes(workflow.status)) {
+        return success(request, response, applicationSummary(application));
+      }
+      if (workflow.status !== 'sent_to_applicant') return failure(request, response, 'AGREEMENT_STATE', 'The agreement is not currently awaiting Aadhaar eSign completion.', 409);
+      if (!workflow.applicant?.terms_accepted_at) return failure(request, response, 'TERMS_REQUIRED', 'Accept the Terms & Conditions before completing Aadhaar eSign.', 409);
+      if (!workflow.document?.uploaded_file?.url) return failure(request, response, 'AGREEMENT_NOT_READY', 'The agreement document is not available yet.', 409);
+      const pending = workflow.applicant?.esign_pending && typeof workflow.applicant.esign_pending === 'object' ? workflow.applicant.esign_pending : null;
+      if (!pending) return failure(request, response, 'ESIGN_NOT_STARTED', 'Start Aadhaar eSign before marking it complete.', 409);
+      const now = new Date().toISOString();
+      const esignReference = pending.docket_id || pending.request_id || `AADHAAR-ESIGN-${randomUUID().slice(0, 8).toUpperCase()}`;
       const signed = await persistAadhaarSignedAgreement(application, workflow, application.full_name, esignReference);
       if (!signed) return failure(request, response, 'AGREEMENT_ESIGN_FAILED', 'Unable to complete the Aadhaar eSign process for this agreement.', 500);
       workflow.applicant.esign_completed_at = now;
       workflow.applicant.esign_reference = esignReference;
+      workflow.applicant.esign_provider = 'cgpey';
+      workflow.applicant.esign_pending = null;
       workflow.status = 'applicant_esign_completed';
       reconcileAgreementWorkflow(workflow);
-      agreementAudit(workflow, 'agreement_accepted', 'Applicant accepted the franchise agreement Terms & Conditions.', application.full_name);
-      agreementAudit(workflow, 'applicant_esign_completed', `Applicant Aadhaar eSign completed through integrated API. Reference ${esignReference}.`, application.full_name);
+      agreementAudit(workflow, 'applicant_esign_completed', `Applicant completed CGPEY Aadhaar eSign. Reference ${esignReference}. Agreement is ready for company DSC or manual signing in the Manager Agreement Panel.`, application.full_name);
       applicationReviewHistory(application, 'applicant_esign_completed', 'Applicant accepted the agreement and completed Aadhaar eSign. Company execution is now enabled in the Agreement Queue.', { headers: {} });
+      notifyApplicationWorkflow(application, 'applicant_esign_completed', 'Applicant Aadhaar eSign completed. Open Agreement Queue for company DSC or manual signing.', { headers: {} }, application.full_name);
       application.updated_at = now;
       await saveDatabase();
       await pushHecResultToFrappe(application, {
         status: 'Agreement Signed',
         aadhaarRef: esignReference,
-        notes: 'Applicant Aadhaar eSign completed in FFMS',
+        notes: pending.simulated ? 'Applicant Aadhaar eSign completed in FFMS (simulated)' : 'Applicant Aadhaar eSign completed in FFMS via CGPEY',
       });
       return success(request, response, applicationSummary(application));
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applicant/agreement/esign/resend-otp') {
+      return failure(request, response, 'CGPEY_KYC_DEPRECATED', 'Aadhaar OTP is completed inside the CGPEY signing link. Use Accept Agreement again if you need a fresh signing invitation.', 410);
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applicant/agreement/esign/verify-otp') {
+      return failure(request, response, 'CGPEY_KYC_DEPRECATED', 'Aadhaar OTP is completed inside the CGPEY signing link. After signing, click “I have completed eSign”.', 410);
     }
 
     if (request.method === 'POST' && route === '/api/v1/applicant/agreement/accept') {
@@ -7075,27 +7222,7 @@ async function handle(request, response) {
     }
 
     if (request.method === 'POST' && route === '/api/v1/applicant/agreement/esign') {
-      const application = applicantFor(request);
-      if (!application?.agreement_workflow) return failure(request, response, 'NOT_FOUND', 'No agreement is available for eSign yet.', 404);
-      const workflow = application.agreement_workflow;
-      if (workflow.status !== 'applicant_accepted') return failure(request, response, 'AGREEMENT_STATE', 'Complete agreement acceptance before proceeding to Aadhaar eSign.', 409);
-      const esignReference = `AADHAAR-ESIGN-${randomUUID().slice(0, 8).toUpperCase()}`;
-      const signed = await persistAadhaarSignedAgreement(application, workflow, application.full_name, esignReference);
-      if (!signed) return failure(request, response, 'AGREEMENT_ESIGN_FAILED', 'Unable to complete the Aadhaar eSign process for this agreement.', 500);
-      workflow.applicant.esign_completed_at = new Date().toISOString();
-      workflow.applicant.esign_reference = esignReference;
-      workflow.status = 'applicant_esign_completed';
-      reconcileAgreementWorkflow(workflow);
-      agreementAudit(workflow, 'applicant_esign_completed', `Applicant Aadhaar eSign completed. Reference ${esignReference}.`, application.full_name);
-      applicationReviewHistory(application, 'applicant_esign_completed', 'Applicant Aadhaar eSign completed. Company DSC signature is now enabled.', { headers: {} });
-      application.updated_at = new Date().toISOString();
-      await saveDatabase();
-      await pushHecResultToFrappe(application, {
-        status: 'Agreement Signed',
-        aadhaarRef: esignReference,
-        notes: 'Applicant Aadhaar eSign completed in FFMS (esign route)',
-      });
-      return success(request, response, applicationSummary(application));
+      return failure(request, response, 'CGPEY_KYC_DEPRECATED', 'Use Accept Agreement. CGPEY opens a hosted Aadhaar eSign link instead of the legacy OTP route.', 410);
     }
 
     if (request.method === 'GET' && route === '/api/v1/applicant/agreement/view') {

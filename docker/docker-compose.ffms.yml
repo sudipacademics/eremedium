@@ -46,10 +46,18 @@ services:
       RFMS_LOCAL_DATA_FILE: /data/work/rfms-local-api-data.json
       RFMS_UPLOADS_DIR: /data/uploads
       RFMS_OTP_VIA_ERP: ${RFMS_OTP_VIA_ERP:-1}
+      RFMS_CONTACT_OTP_VIA_ERP: ${RFMS_CONTACT_OTP_VIA_ERP:-1}
       FRAPPE_API_BASE_URL: ${FRAPPE_API_BASE_URL:-http://backend:8000}
       ONBOARD_HMAC_SECRET: ${ONBOARD_HMAC_SECRET:-hec-onboard-dev-secret-change-me}
       FRAPPE_CALLBACK_URL: ${FRAPPE_CALLBACK_URL:-http://backend:8000/api/method/health_ecosystem_core.health_ecosystem_core.api.ingest_onboarding_result}
       FRAPPE_SITE: health.localhost
+      RFMS_GATEWAY_SIMULATE: ${RFMS_GATEWAY_SIMULATE:-0}
+      # CGPEY Aadhaar OTP for Agreement Accept / eSign (server-side only; never NEXT_PUBLIC_*)
+      RFMS_CGPEY_API_KEY: ${RFMS_CGPEY_API_KEY:-}
+      RFMS_CGPEY_API_SECRET: ${RFMS_CGPEY_API_SECRET:-}
+      RFMS_CGPEY_MERCHANT_ID: ${RFMS_CGPEY_MERCHANT_ID:-}
+      RFMS_CGPEY_BASE_URL: ${RFMS_CGPEY_BASE_URL:-https://verify.cgpey.com}
+      RFMS_CGPEY_SIMULATE: ${RFMS_CGPEY_SIMULATE:-0}
     volumes:
       - rfms_data:/data
     depends_on:
