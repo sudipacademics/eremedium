@@ -1,8 +1,14 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, SalesLead } from '../../api';
 import { captureSalesGps } from '../../hooks/useSalesGps';
+import { useWbGeoHierarchy } from '../../hooks/useWbGeoHierarchy';
 
 const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Negotiation', 'Won', 'Lost'];
+const SOURCE_FILTERS = ['All', 'Manual', 'Meta Ads', 'Google Ads', 'WhatsApp Ads', 'Website', 'Reach'];
+
+function statusClass(status?: string) {
+  return `reach-status ${(status || 'new').toLowerCase().replace(/\s+/g, '')}`;
+}
 
 export function SalesLeadsPage() {
   const [leads, setLeads] = useState<SalesLead[]>([]);
@@ -10,6 +16,8 @@ export function SalesLeadsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('All');
+  const { districts, subdivisionsFor, pincodesFor, error: geoError } = useWbGeoHierarchy();
 
   const [leadName, setLeadName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -17,10 +25,21 @@ export function SalesLeadsPage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
+  const [subdivision, setSubdivision] = useState('');
+  const [pincode, setPincode] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+
+  const subdivisions = district ? subdivisionsFor(district) : [];
+  const pincodes = district ? pincodesFor(district, subdivision || undefined) : [];
+
+  const visibleLeads = useMemo(() => {
+    if (sourceFilter === 'All') return leads;
+    return leads.filter((lead) => (lead.lead_source || 'Manual') === sourceFilter);
+  }, [leads, sourceFilter]);
 
   async function load() {
     setError(null);
@@ -59,7 +78,10 @@ export function SalesLeadsPage() {
         contact_person: contactPerson,
         phone,
         email,
-        city,
+        city: city || district,
+        district,
+        subdivision,
+        pincode,
         address,
         notes,
         status: 'New',
@@ -73,6 +95,9 @@ export function SalesLeadsPage() {
       setPhone('');
       setEmail('');
       setCity('');
+      setDistrict('');
+      setSubdivision('');
+      setPincode('');
       setAddress('');
       setNotes('');
       setLatitude(null);
@@ -86,104 +111,201 @@ export function SalesLeadsPage() {
   }
 
   return (
-    <>
-      <h1>Franchise leads</h1>
-      <p className="muted">Track potential franchisee prospects through the pipeline.</p>
-
-      <div className="toolbar">
-        <button type="button" className="btn" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : 'Add lead'}
-        </button>
+    <div className="reach-leads-page">
+      <div className="reach-page-head">
+        <div>
+          <h1>Franchise leads</h1>
+          <p>Capture new prospects and track them through the field pipeline. Ads leads stay unassigned until a manager allocates them.</p>
+        </div>
+        <div className="reach-page-actions">
+          <label className="reach-filter">
+            Source
+            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+              {SOURCE_FILTERS.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="reach-btn" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancel' : 'Add new lead'}
+          </button>
+        </div>
       </div>
 
-      {message ? <div className="success">{message}</div> : null}
-      {error ? <div className="error">{error}</div> : null}
+      {message ? <div className="reach-alert ok">{message}</div> : null}
+      {error ? <div className="reach-alert err">{error}</div> : null}
+      {geoError ? <div className="reach-alert err">{geoError}</div> : null}
 
       {showForm ? (
-        <form className="card form-stack" onSubmit={onSubmit} style={{ marginTop: 16 }}>
-          <label>
-            Lead / clinic name *
-            <input value={leadName} onChange={(e) => setLeadName(e.target.value)} required />
-          </label>
-          <label>
-            Company name
-            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-          </label>
-          <label>
-            Contact person
-            <input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
-          </label>
-          <label>
-            Phone *
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
-          </label>
-          <label>
-            Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label>
-            City
-            <input value={city} onChange={(e) => setCity(e.target.value)} />
-          </label>
-          <label>
-            Address
-            <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
-          </label>
-          <label>
-            Notes
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-          </label>
-          <div className="toolbar">
-            <button type="button" className="btn secondary" onClick={() => void captureGps()}>
-              Capture GPS
-            </button>
-            {latitude != null ? (
-              <span className="muted">
-                {latitude.toFixed(5)}, {longitude?.toFixed(5)}
-              </span>
-            ) : null}
+        <form className="reach-card" onSubmit={onSubmit}>
+          <div className="reach-card-head">
+            <div className="reach-card-icon" aria-hidden>
+              +
+            </div>
+            <div>
+              <h2>Add new lead</h2>
+              <p>Enter contact details, territory and optional GPS so the team can follow up in the field.</p>
+            </div>
           </div>
-          <button type="submit" className="btn" disabled={submitting}>
-            {submitting ? 'Saving…' : 'Save lead'}
-          </button>
+
+          <div className="reach-form-grid">
+            <label className="reach-field">
+              Lead / clinic name *
+              <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Prospect or clinic name" />
+            </label>
+            <label className="reach-field">
+              Company name
+              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Legal / trade name" />
+            </label>
+            <label className="reach-field">
+              Contact person
+              <input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Decision maker" />
+            </label>
+            <label className="reach-field">
+              Phone *
+              <input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" />
+            </label>
+            <label className="reach-field">
+              Email
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            </label>
+            <label className="reach-field">
+              District
+              <select
+                value={district}
+                onChange={(e) => {
+                  setDistrict(e.target.value);
+                  setSubdivision('');
+                  setPincode('');
+                }}
+              >
+                <option value="">Select district</option>
+                {districts.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="reach-field">
+              Subdivision
+              <select
+                value={subdivision}
+                onChange={(e) => {
+                  setSubdivision(e.target.value);
+                  setPincode('');
+                }}
+                disabled={!district}
+              >
+                <option value="">{district ? 'Select subdivision' : 'Choose district first'}</option>
+                {subdivisions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="reach-field">
+              PIN code
+              <select value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={!district}>
+                <option value="">{district ? 'Select PIN' : 'Choose district first'}</option>
+                {pincodes.map((pin) => (
+                  <option key={pin} value={pin}>
+                    {pin}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="reach-field">
+              City / Corporation
+              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional free-text city" />
+            </label>
+            <label className="reach-field span-2">
+              Address
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, landmark, locality" />
+            </label>
+            <label className="reach-field full">
+              Notes
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Context for the next follow-up" />
+            </label>
+          </div>
+
+          <div className="reach-form-footer">
+            <div className="reach-gps">
+              <button type="button" className="reach-btn secondary" onClick={() => void captureGps()}>
+                Capture GPS
+              </button>
+              {latitude != null ? (
+                <code>
+                  {latitude.toFixed(5)}, {longitude?.toFixed(5)}
+                </code>
+              ) : (
+                <span>Optional — attach current location</span>
+              )}
+            </div>
+            <button type="submit" className="reach-btn" disabled={submitting}>
+              {submitting ? 'Saving…' : 'Save lead'}
+            </button>
+          </div>
         </form>
       ) : null}
 
-      <table className="data-table" style={{ marginTop: 24 }}>
-        <thead>
-          <tr>
-            <th>Lead</th>
-            <th>Phone</th>
-            <th>City</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leads.map((l) => (
-            <tr key={l.name}>
-              <td>
-                <strong>{l.lead_name}</strong>
-                {l.company_name ? <div className="muted">{l.company_name}</div> : null}
-              </td>
-              <td>{l.phone}</td>
-              <td>{l.city || '—'}</td>
-              <td>
-                <span className={`badge badge-${l.status?.toLowerCase() || 'new'}`}>{l.status}</span>
-              </td>
-            </tr>
-          ))}
-          {!leads.length ? (
-            <tr>
-              <td colSpan={4} className="muted">
-                No leads yet.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-      <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-        Statuses: {LEAD_STATUSES.join(' → ')}
-      </p>
-    </>
+      <section className="reach-panel" style={{ marginTop: showForm ? 16 : 0 }}>
+        <div className="reach-panel-head">
+          <h2>Lead pipeline</h2>
+          <span>
+            {visibleLeads.length} lead{visibleLeads.length === 1 ? '' : 's'}
+            {sourceFilter !== 'All' ? ` · ${sourceFilter}` : ''}
+          </span>
+        </div>
+        <div className="reach-table-wrap">
+          <table className="reach-table">
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Source / campaign</th>
+                <th>Phone</th>
+                <th>District / PIN</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleLeads.map((l) => (
+                <tr key={l.name}>
+                  <td>
+                    <div className="lead-name">{l.lead_name}</div>
+                    {l.company_name ? <div className="sub">{l.company_name}</div> : null}
+                    {!l.assigned_rep ? <div className="sub">Unassigned</div> : null}
+                  </td>
+                  <td>
+                    {l.lead_source || 'Manual'}
+                    {l.campaign_name ? <div className="sub">{l.campaign_name}</div> : null}
+                    {l.external_lead_id ? <div className="sub">{l.external_lead_id}</div> : null}
+                  </td>
+                  <td>{l.phone}</td>
+                  <td>
+                    {l.district || l.city || '—'}
+                    {l.pincode ? <div className="sub">PIN {l.pincode}</div> : null}
+                  </td>
+                  <td>
+                    <span className={statusClass(l.status)}>{l.status}</span>
+                  </td>
+                </tr>
+              ))}
+              {!visibleLeads.length ? (
+                <tr>
+                  <td colSpan={5} className="reach-empty">
+                    No leads yet. Add a new lead or wait for ads imports.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <p className="reach-pipeline-hint">Statuses: {LEAD_STATUSES.join(' → ')}</p>
+    </div>
   );
 }

@@ -519,7 +519,16 @@ def authenticate_user(usr=None, pwd=None):
             franchisee = frappe.db.get_value(
                 "Franchisee Profile",
                 {"linked_user": user_id, "active_status": "Active"},
-                ["name", "branch_code", "franchise_name", "commission_percentage_rate"],
+                [
+                    "name",
+                    "branch_code",
+                    "franchise_name",
+                    "territory_region",
+                    "address",
+                    "contact_phone",
+                    "contact_email",
+                    "commission_percentage_rate",
+                ],
                 as_dict=True,
             )
 
@@ -1347,7 +1356,16 @@ def validate_session(sid=None):
         franchisee = frappe.db.get_value(
             "Franchisee Profile",
             {"linked_user": user, "active_status": "Active"},
-            ["name", "branch_code", "franchise_name", "territory_region", "commission_percentage_rate"],
+            [
+                "name",
+                "branch_code",
+                "franchise_name",
+                "territory_region",
+                "address",
+                "contact_phone",
+                "contact_email",
+                "commission_percentage_rate",
+            ],
             as_dict=True,
         )
 
@@ -2370,10 +2388,12 @@ def create_b2b_walk_in_order(
     age=None,
     gender=None,
     item_code=None,
+    item_codes=None,
+    discount_amount=None,
     payment_method=None,
     sid=None,
 ):
-    """Phase 23 — franchisee walk-in lab order (patient pays MRP at hub)."""
+    """Phase 23 — franchisee walk-in lab order (patient pays MRP at hub). Supports multi-test bills."""
     denied = _require_b2b_access(sid)
     if denied:
         return denied
@@ -2385,10 +2405,13 @@ def create_b2b_walk_in_order(
     age = _parse_request_value("age", age)
     gender = _parse_request_value("gender", gender)
     item_code = _parse_request_value("item_code", item_code)
+    item_codes = _parse_request_value("item_codes", item_codes)
+    discount_amount = _parse_request_value("discount_amount", discount_amount)
     payment_method = _parse_request_value("payment_method", payment_method)
 
-    if not all([patient_name, patient_phone, age, gender, item_code]):
-        return _error(_("patient_name, patient_phone, age, gender, and item_code are required"))
+    has_items = bool(item_codes or item_code)
+    if not all([patient_name, patient_phone, age, gender, has_items]):
+        return _error(_("patient_name, patient_phone, age, gender, and at least one lab test are required"))
 
     try:
         row = _create(
@@ -2399,6 +2422,8 @@ def create_b2b_walk_in_order(
             gender,
             item_code,
             payment_method=payment_method,
+            item_codes=item_codes,
+            discount_amount=discount_amount,
         )
         return _success(row, message=_("Walk-in order created"))
     except frappe.ValidationError as exc:
@@ -2525,7 +2550,8 @@ def create_sales_lead(sid=None, **kwargs):
 
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "lead_name", "company_name", "contact_person", "phone", "email",
-        "address", "city", "state", "latitude", "longitude", "status", "notes",
+        "address", "city", "district", "subdivision", "pincode", "state",
+        "latitude", "longitude", "status", "notes", "lead_source",
     )}
     if not data.get("lead_name") or not data.get("phone"):
         return _error(_("lead_name and phone are required"))
@@ -2555,13 +2581,45 @@ def log_sales_visit(sid=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_sales_visits(sid=None, limit=None):
+def get_sales_visits(sid=None, limit=None, all_team=None):
     denied = _require_sales_access(sid)
     if denied:
         return denied
     from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_field_visits
 
-    return _success({"visits": list_field_visits(frappe.session.user, limit=limit or 50)})
+    team = str(_parse_request_value("all_team", all_team) or "").lower() in ("1", "true", "yes")
+    return _success({"visits": list_field_visits(frappe.session.user, limit=limit or 50, all_team=team)})
+
+
+@frappe.whitelist(allow_guest=True)
+def list_reach_sales_reps(sid=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_sales_reps_for_manager
+
+    try:
+        return _success({"reps": list_sales_reps_for_manager(frappe.session.user)})
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_reach_sales_lead(sid=None, lead_id=None, sales_rep_id=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import assign_sales_lead_rep
+
+    lead_id = _parse_request_value("lead_id", lead_id)
+    sales_rep_id = _parse_request_value("sales_rep_id", sales_rep_id)
+    if not lead_id or not sales_rep_id:
+        return _error(_("lead_id and sales_rep_id are required"))
+    try:
+        row = assign_sales_lead_rep(frappe.session.user, lead_id, sales_rep_id)
+        return _success(row, message=_("REACH user assigned"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2720,6 +2778,134 @@ def activate_rfms_paid_franchisee(hec_payload=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+def provision_partner_portal_credentials(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge — create Partner Portal user + password when manager marks Onboarded."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            provision_partner_portal_credentials_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = provision_partner_portal_credentials_payload(payload)
+        return _success(row, message=_("Partner Portal credentials provisioned"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="provision_partner_portal_credentials", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to provision Partner Portal credentials"))
+
+
+@frappe.whitelist(allow_guest=True)
+def sync_rfms_hub_from_directory(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge — refresh Franchisee Profile hub name/branch details from Franchise Directory."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            sync_rfms_hub_from_directory_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = sync_rfms_hub_from_directory_payload(payload)
+        return _success(row, message=_("Franchise hub synced from directory"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="sync_rfms_hub_from_directory", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to sync franchise hub from directory"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ingest_franchise_ad_lead(**kwargs):
+    """Phase 86: Meta/Google franchise lead webhook → Reach + RFMS dual-write."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            ingest_franchise_ad_lead as _ingest,
+        )
+
+        return _ingest(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ingest_franchise_ad_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to ingest franchise ad lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def franchise_ads_status(**kwargs):
+    """Phase 86: lightweight franchise ads webhook status (secret-gated)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            franchise_ads_status as _status,
+        )
+
+        return _status(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="franchise_ads_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to read franchise ads status"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ingest_whatsapp_cloud_webhook(**kwargs):
+    """Phase 87: Meta WhatsApp Cloud webhook (verify + inbound messages)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            ingest_whatsapp_cloud_webhook as _ingest,
+        )
+
+        return _ingest(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ingest_whatsapp_cloud_webhook", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to ingest WhatsApp Cloud webhook"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_franchise_whatsapp_thread(**kwargs):
+    """Phase 87: RFMS proxy — conversation thread."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            get_franchise_whatsapp_thread as _get,
+        )
+
+        return _get(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="get_franchise_whatsapp_thread", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WhatsApp thread"))
+
+
+@frappe.whitelist(allow_guest=True)
+def send_franchise_whatsapp_reply(**kwargs):
+    """Phase 87: RFMS proxy — officer reply via Meta/Gupshup adapter."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            send_franchise_whatsapp_reply as _send,
+        )
+
+        return _send(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="send_franchise_whatsapp_reply", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to send WhatsApp reply"))
+
+
+@frappe.whitelist(allow_guest=True)
 def get_wb_geo_hierarchy():
     """West Bengal district → subdivision → block/PIN hierarchy (Phase 84)."""
     try:
@@ -2848,6 +3034,7 @@ def submit_sales_closing_report(sid=None, **kwargs):
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "report_type", "period_date", "visits_count", "new_leads", "qualified_leads",
         "onboardings", "franchise_revenue", "km_traveled", "notes",
+        "other_expenses", "total_expenses", "expenses_json", "attachments_json",
     )}
     try:
         report_id = submit_closing_report(frappe.session.user, data)
@@ -4065,6 +4252,14 @@ def _home_content_sections():
     from health_ecosystem_core.health_ecosystem_core.clinical_homepage import home_content_extras
 
     return home_content_extras()
+
+
+@frappe.whitelist(allow_guest=True)
+def get_site_footer():
+    """Public www footer — social links + ERP-managed home collection helpline."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_homepage import build_site_footer
+
+    return _success(build_site_footer())
 
 
 @frappe.whitelist(allow_guest=True)

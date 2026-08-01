@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from calendar import monthrange
 from datetime import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, now_datetime, today
+from frappe.utils import cint, cstr, flt, getdate, now_datetime, today
 
 SALES_REP_ROLE = "Sales Representative"
 SALES_MANAGER_ROLE = "Sales Manager"
@@ -301,25 +302,49 @@ def get_sales_portal_payload(user=None):
 
 def list_sales_leads(user=None, limit=50):
     rep_ids = scoped_rep_ids(user)
+    fields = [
+        "name",
+        "lead_name",
+        "company_name",
+        "phone",
+        "email",
+        "city",
+        "district",
+        "subdivision",
+        "pincode",
+        "status",
+        "assigned_rep",
+        "franchisee",
+        "lead_source",
+        "platform",
+        "external_lead_id",
+        "campaign_name",
+        "campaign_id",
+        "ad_id",
+        "form_id",
+        "rfms_lead_id",
+        "latitude",
+        "longitude",
+        "modified",
+    ]
+    # Managers see team leads + unassigned ads pool; reps see only their assigned leads.
+    fetch_limit = cint(limit) * 3 if is_sales_manager(user) else cint(limit)
     rows = frappe.get_all(
         "Franchise Sales Lead",
-        filters={"assigned_rep": ("in", rep_ids)},
-        fields=[
-            "name",
-            "lead_name",
-            "company_name",
-            "phone",
-            "city",
-            "status",
-            "assigned_rep",
-            "franchisee",
-            "latitude",
-            "longitude",
-            "modified",
-        ],
+        fields=fields,
         order_by="modified desc",
-        limit=cint(limit),
+        limit=max(fetch_limit, cint(limit)),
     )
+    if is_sales_manager(user):
+        allowed = set(rep_ids or [])
+        rows = [
+            row
+            for row in rows
+            if (not row.get("assigned_rep")) or (row.get("assigned_rep") in allowed)
+        ][: cint(limit)]
+    else:
+        allowed = set(rep_ids or [])
+        rows = [row for row in rows if row.get("assigned_rep") in allowed][: cint(limit)]
     return rows
 
 
@@ -337,16 +362,86 @@ def create_sales_lead(user, data):
             "email": data.get("email"),
             "address": data.get("address"),
             "city": data.get("city"),
-            "state": data.get("state"),
+            "district": data.get("district"),
+            "subdivision": data.get("subdivision"),
+            "pincode": data.get("pincode"),
+            "state": data.get("state") or "West Bengal",
             "latitude": flt(data.get("latitude")) or None,
             "longitude": flt(data.get("longitude")) or None,
             "status": data.get("status") or "New",
             "assigned_rep": rep_id,
+            "lead_source": data.get("lead_source") or "Manual",
             "notes": data.get("notes"),
         }
     )
     doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    _sync_sales_lead_to_rfms(doc, rep_id)
     return doc.name
+
+
+def _sync_sales_lead_to_rfms(doc, rep_id=None):
+    """Push REACH / ERP Franchise Sales Lead into FFMS Admin CRM in real time."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _push_lead_to_rfms,
+        )
+
+        phone_digits = re.sub(r"\D", "", cstr(doc.phone or ""))
+        email = cstr(doc.email or "").strip().lower()
+        if not email and phone_digits:
+            email = f"{phone_digits}@reach.franchise.local"
+        territory = ", ".join(
+            [
+                part
+                for part in [
+                    cstr(doc.district or "").strip(),
+                    cstr(doc.subdivision or "").strip(),
+                    cstr(doc.city or "").strip(),
+                    cstr(doc.pincode or "").strip(),
+                ]
+                if part
+            ]
+        )
+        assigned_to = "Unassigned"
+        if rep_id and frappe.db.exists("Sales Rep Profile", rep_id):
+            assigned_to = cstr(frappe.db.get_value("Sales Rep Profile", rep_id, "full_name") or "").strip() or "Unassigned"
+        rfms = _push_lead_to_rfms(
+            {
+                "name": cstr(doc.lead_name or doc.company_name or "REACH lead"),
+                "email": email,
+                "mobile": phone_digits,
+                "territory_query": territory or cstr(doc.address or ""),
+                "source": "reach_sales",
+                "platform": "reach",
+                "campaign_name": "REACH Portal",
+                "external_lead_id": doc.name,
+                "hec_lead_id": doc.name,
+                "notes": cstr(doc.notes or "")[:1000],
+                "assigned_to": assigned_to,
+                "stage": _reach_status_to_rfms_stage(doc.status),
+                "priority": "normal",
+            }
+        )
+        if rfms.get("lead_id"):
+            frappe.db.set_value("Franchise Sales Lead", doc.name, "rfms_lead_id", rfms["lead_id"])
+            frappe.db.commit()
+        return rfms
+    except Exception:
+        frappe.log_error(title="reach_lead_rfms_sync", message=frappe.get_traceback())
+        return {"ok": False}
+
+
+def _reach_status_to_rfms_stage(status):
+    mapping = {
+        "New": "new",
+        "Contacted": "contacted",
+        "Qualified": "qualified",
+        "Negotiation": "follow_up",
+        "Won": "won",
+        "Lost": "lost",
+    }
+    return mapping.get(cstr(status or "").strip(), "new")
 
 
 def log_field_visit(user, data):
@@ -372,8 +467,151 @@ def log_field_visit(user, data):
     doc.insert(ignore_permissions=True)
     if data.get("lead_id") and data.get("lead_status"):
         frappe.db.set_value("Franchise Sales Lead", data["lead_id"], "status", data["lead_status"])
+        if frappe.db.exists("Franchise Sales Lead", data["lead_id"]):
+            lead_doc = frappe.get_doc("Franchise Sales Lead", data["lead_id"])
+            _sync_sales_lead_to_rfms(lead_doc, lead_doc.assigned_rep)
     frappe.db.commit()
+    _sync_field_visit_to_rfms(doc, rep_id)
     return doc.name
+
+
+def _sync_field_visit_to_rfms(doc, rep_id=None):
+    """Mirror REACH field visits into FFMS Admin Log Visit module."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            get_rfms_api_base_url,
+            _franchise_ads_secret,
+        )
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError, URLError
+        import json
+
+        base = get_rfms_api_base_url()
+        if not base:
+            return {"ok": False, "error": "rfms_api_base_url missing"}
+        secret = _franchise_ads_secret() or cstr(frappe.conf.get("onboard_hmac_secret") or "")
+        rep_name = ""
+        if rep_id and frappe.db.exists("Sales Rep Profile", rep_id):
+            rep_name = cstr(frappe.db.get_value("Sales Rep Profile", rep_id, "full_name") or "")
+        lead_name = ""
+        lead_phone = ""
+        rfms_lead_id = ""
+        if doc.lead and frappe.db.exists("Franchise Sales Lead", doc.lead):
+            lead = frappe.db.get_value(
+                "Franchise Sales Lead",
+                doc.lead,
+                ["lead_name", "phone", "rfms_lead_id"],
+                as_dict=True,
+            )
+            if lead:
+                lead_name = cstr(lead.lead_name or "")
+                lead_phone = cstr(lead.phone or "")
+                rfms_lead_id = cstr(lead.rfms_lead_id or "")
+        payload = {
+            "visits": [
+                {
+                    "hec_visit_id": doc.name,
+                    "hec_lead_id": cstr(doc.lead or ""),
+                    "rfms_lead_id": rfms_lead_id,
+                    "lead_name": lead_name,
+                    "lead_phone": lead_phone,
+                    "reach_user": rep_name,
+                    "sales_rep_id": cstr(rep_id or ""),
+                    "visit_date": cstr(doc.visit_date or ""),
+                    "visit_time": cstr(doc.visit_time or ""),
+                    "purpose": cstr(doc.purpose or ""),
+                    "outcome": cstr(doc.outcome or ""),
+                    "duration_minutes": cint(doc.duration_minutes),
+                    "latitude": flt(doc.latitude),
+                    "longitude": flt(doc.longitude),
+                    "notes": cstr(doc.notes or "")[:2000],
+                    "source": "reach",
+                }
+            ]
+        }
+        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if secret:
+            headers["X-Franchise-Ads-Secret"] = secret
+        req = Request(f"{base}/sales-visits/ingest", data=body, headers=headers, method="POST")
+        with urlopen(req, timeout=25) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(text) if text else {}
+            return {"ok": True, "data": data.get("data") if isinstance(data, dict) else data}
+    except Exception:
+        frappe.log_error(title="reach_visit_rfms_sync", message=frappe.get_traceback())
+        return {"ok": False}
+
+
+def list_field_visits(user, limit=50, *, all_team=False):
+    if all_team and is_sales_manager(user):
+        filters = {}
+    else:
+        rep_ids = scoped_rep_ids(user)
+        filters = {"sales_rep": ("in", rep_ids)}
+    rows = frappe.get_all(
+        "Field Sales Visit",
+        filters=filters,
+        fields=[
+            "name",
+            "sales_rep",
+            "lead",
+            "franchisee",
+            "visit_date",
+            "visit_time",
+            "purpose",
+            "outcome",
+            "duration_minutes",
+            "latitude",
+            "longitude",
+            "notes",
+            "creation",
+        ],
+        order_by="creation desc",
+        limit=cint(limit),
+    )
+    for row in rows:
+        if row.get("sales_rep"):
+            row["reach_user"] = frappe.db.get_value("Sales Rep Profile", row["sales_rep"], "full_name")
+        if row.get("lead"):
+            lead = frappe.db.get_value(
+                "Franchise Sales Lead",
+                row["lead"],
+                ["lead_name", "phone", "status", "rfms_lead_id"],
+                as_dict=True,
+            )
+            if lead:
+                row["lead_name"] = lead.lead_name
+                row["lead_phone"] = lead.phone
+                row["lead_status"] = lead.status
+                row["rfms_lead_id"] = lead.rfms_lead_id
+    return rows
+
+
+def list_sales_reps_for_manager(user):
+    if not is_sales_manager(user) and "System Manager" not in frappe.get_roles(user):
+        frappe.throw(_("Only sales managers can list REACH users"))
+    return frappe.get_all(
+        "Sales Rep Profile",
+        filters={"active": 1},
+        fields=["name", "full_name", "rep_code", "designation", "territory_region", "linked_user"],
+        order_by="full_name asc",
+        limit=200,
+    )
+
+
+def assign_sales_lead_rep(user, lead_id, sales_rep_id):
+    if not is_sales_manager(user) and "System Manager" not in frappe.get_roles(user):
+        frappe.throw(_("Only sales managers can assign REACH users"))
+    if not frappe.db.exists("Franchise Sales Lead", lead_id):
+        frappe.throw(_("Lead not found"))
+    if not frappe.db.exists("Sales Rep Profile", sales_rep_id):
+        frappe.throw(_("REACH user / sales rep not found"))
+    frappe.db.set_value("Franchise Sales Lead", lead_id, "assigned_rep", sales_rep_id)
+    frappe.db.commit()
+    lead_doc = frappe.get_doc("Franchise Sales Lead", lead_id)
+    _sync_sales_lead_to_rfms(lead_doc, sales_rep_id)
+    return {"lead_id": lead_id, "assigned_rep": sales_rep_id}
 
 
 def submit_franchise_onboarding(user, data):
@@ -539,27 +777,97 @@ def get_sales_catalog_payload():
     }
 
 
+def ensure_closing_report_expense_fields():
+    """Hot-add expense fields when migrate has not run yet."""
+    try:
+        from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+    except Exception:
+        return
+    meta = frappe.get_meta("Sales Closing Report")
+    fields = []
+    if not meta.has_field("period_end"):
+        fields.append(
+            {
+                "fieldname": "period_end",
+                "label": "Period End",
+                "fieldtype": "Date",
+                "insert_after": "period_date",
+            }
+        )
+    if not meta.has_field("other_expenses"):
+        fields.append(
+            {
+                "fieldname": "other_expenses",
+                "label": "Other Expenses",
+                "fieldtype": "Currency",
+                "insert_after": "km_traveled",
+                "default": "0",
+            }
+        )
+    if not meta.has_field("total_expenses"):
+        fields.append(
+            {
+                "fieldname": "total_expenses",
+                "label": "Total Expenses",
+                "fieldtype": "Currency",
+                "insert_after": "other_expenses",
+                "default": "0",
+            }
+        )
+    if not meta.has_field("expense_json"):
+        fields.append(
+            {
+                "fieldname": "expense_json",
+                "label": "Expense Lines JSON",
+                "fieldtype": "Long Text",
+                "insert_after": "total_expenses",
+            }
+        )
+    if fields:
+        create_custom_fields({"Sales Closing Report": fields}, update=True)
+
+
+def _closing_report_list_fields():
+    meta = frappe.get_meta("Sales Closing Report")
+    fields = [
+        "name",
+        "sales_rep",
+        "report_type",
+        "period_date",
+        "visits_count",
+        "new_leads",
+        "qualified_leads",
+        "onboardings",
+        "franchise_revenue",
+        "km_traveled",
+        "notes",
+        "creation",
+    ]
+    for extra in ("period_end", "other_expenses", "total_expenses", "expense_json"):
+        if meta.has_field(extra):
+            fields.append(extra)
+    return fields
+
+
 def list_closing_reports(user, limit=30):
     rep_ids = scoped_rep_ids(user)
-    return frappe.get_all(
+    rows = frappe.get_all(
         "Sales Closing Report",
         filters={"sales_rep": ("in", rep_ids)},
-        fields=[
-            "name",
-            "sales_rep",
-            "report_type",
-            "period_date",
-            "visits_count",
-            "new_leads",
-            "qualified_leads",
-            "onboardings",
-            "franchise_revenue",
-            "km_traveled",
-            "creation",
-        ],
+        fields=_closing_report_list_fields(),
         order_by="creation desc",
         limit=cint(limit),
     )
+    for row in rows:
+        raw = row.get("expense_json")
+        if isinstance(raw, str) and raw.strip():
+            try:
+                row["expenses"] = json.loads(raw)
+            except Exception:
+                row["expenses"] = []
+        else:
+            row["expenses"] = []
+    return rows
 
 
 def build_closing_report_draft(user, report_type="Daily", period_date=None):
@@ -596,36 +904,156 @@ def build_closing_report_draft(user, report_type="Daily", period_date=None):
     franchisee_ids = _franchisee_ids_for_reps([rep_id])
     revenue = _franchisee_stats(franchisee_ids, start, end)["total_revenue"]
 
+    already = frappe.db.exists(
+        "Sales Closing Report",
+        {
+            "sales_rep": rep_id,
+            "report_type": report_type,
+            "period_date": start if report_type == "Monthly" else period_date,
+        },
+    )
+
     return {
         "report_type": report_type,
-        "period_date": str(period_date),
+        "period_date": str(start if report_type == "Monthly" else period_date),
+        "period_end": str(end),
         "visits_count": visits,
         "new_leads": new_leads,
         "qualified_leads": qualified,
         "onboardings": onboardings,
         "franchise_revenue": revenue,
+        "already_submitted": 1 if already else 0,
+        "existing_report_id": already or "",
     }
 
 
+def _parse_expense_lines(data):
+    raw = data.get("expenses_json") or data.get("expense_json") or data.get("expenses")
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            frappe.throw(_("Invalid expense lines JSON"))
+    if not isinstance(raw, list):
+        return []
+    lines = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        amount = flt(item.get("amount"))
+        expense_type = (item.get("expense_type") or item.get("type") or "Other").strip() or "Other"
+        remarks = (item.get("remarks") or item.get("description") or "").strip()
+        filename = (item.get("filename") or item.get("receipt_name") or "").strip()
+        lines.append(
+            {
+                "expense_type": expense_type[:80],
+                "amount": amount,
+                "remarks": remarks[:500],
+                "filename": filename[:140],
+            }
+        )
+    return lines
+
+
+def _parse_closing_attachments(data):
+    raw = data.get("attachments_json") or data.get("attachments")
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            frappe.throw(_("Invalid attachments JSON"))
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        filename = (item.get("filename") or "receipt.pdf").strip() or "receipt.pdf"
+        content = item.get("file_content") or item.get("content") or ""
+        if not content:
+            continue
+        if isinstance(content, str) and "," in content and content.strip().startswith("data:"):
+            content = content.split(",", 1)[1]
+        out.append({"filename": filename[:140], "file_content": content})
+    return out
+
+
+def _attach_closing_files(report_name, attachments):
+    if not attachments:
+        return
+    import base64
+
+    from frappe.utils.file_manager import save_file
+
+    for item in attachments[:20]:
+        try:
+            content = base64.b64decode(item["file_content"])
+        except Exception:
+            frappe.throw(_("Invalid receipt file encoding for {0}").format(item.get("filename")))
+        if len(content) > 5 * 1024 * 1024:
+            frappe.throw(_("Receipt {0} exceeds 5MB limit").format(item.get("filename")))
+        save_file(
+            item["filename"],
+            content,
+            "Sales Closing Report",
+            report_name,
+            decode=False,
+            is_private=1,
+        )
+
+
 def submit_closing_report(user, data):
+    ensure_closing_report_expense_fields()
     rep_id = get_or_create_sales_rep(user)
     draft = build_closing_report_draft(user, data.get("report_type") or "Daily", data.get("period_date"))
-    doc = frappe.get_doc(
-        {
-            "doctype": "Sales Closing Report",
-            "sales_rep": rep_id,
-            "report_type": draft["report_type"],
-            "period_date": draft["period_date"],
-            "visits_count": cint(data.get("visits_count", draft["visits_count"])),
-            "new_leads": cint(data.get("new_leads", draft["new_leads"])),
-            "qualified_leads": cint(data.get("qualified_leads", draft["qualified_leads"])),
-            "onboardings": cint(data.get("onboardings", draft["onboardings"])),
-            "franchise_revenue": flt(data.get("franchise_revenue", draft["franchise_revenue"])),
-            "km_traveled": flt(data.get("km_traveled")),
-            "notes": data.get("notes"),
-        }
-    )
+    if draft.get("already_submitted"):
+        frappe.throw(
+            _("A {0} closing report for {1} is already submitted and cannot be edited.").format(
+                draft["report_type"], draft["period_date"]
+            )
+        )
+
+    expense_lines = _parse_expense_lines(data)
+    other_expenses = flt(data.get("other_expenses"))
+    if not other_expenses and expense_lines:
+        other_expenses = sum(flt(x.get("amount")) for x in expense_lines)
+    km = flt(data.get("km_traveled"))
+    total_expenses = flt(data.get("total_expenses"))
+    if not total_expenses:
+        total_expenses = other_expenses
+
+    payload = {
+        "doctype": "Sales Closing Report",
+        "sales_rep": rep_id,
+        "report_type": draft["report_type"],
+        "period_date": draft["period_date"],
+        "visits_count": cint(data.get("visits_count", draft["visits_count"])),
+        "new_leads": cint(data.get("new_leads", draft["new_leads"])),
+        "qualified_leads": cint(data.get("qualified_leads", draft["qualified_leads"])),
+        "onboardings": cint(data.get("onboardings", draft["onboardings"])),
+        "franchise_revenue": flt(data.get("franchise_revenue", draft["franchise_revenue"])),
+        "km_traveled": km,
+        "notes": (data.get("notes") or "")[:2000],
+    }
+    meta = frappe.get_meta("Sales Closing Report")
+    if meta.has_field("period_end"):
+        payload["period_end"] = draft.get("period_end")
+    if meta.has_field("other_expenses"):
+        payload["other_expenses"] = other_expenses
+    if meta.has_field("total_expenses"):
+        payload["total_expenses"] = total_expenses
+    if meta.has_field("expense_json"):
+        payload["expense_json"] = json.dumps(expense_lines, ensure_ascii=False)
+
+    doc = frappe.get_doc(payload)
     doc.insert(ignore_permissions=True)
+    _attach_closing_files(doc.name, _parse_closing_attachments(data))
     frappe.db.commit()
     return doc.name
 
@@ -687,33 +1115,10 @@ def get_sales_team_map(user=None):
     leads = frappe.get_all(
         "Franchise Sales Lead",
         filters={"assigned_rep": ("in", rep_ids), "status": ("not in", ["Lost"])},
-        fields=["name", "lead_name", "latitude", "longitude", "status", "city"],
+        fields=["name", "lead_name", "latitude", "longitude", "status", "city", "district", "subdivision", "pincode"],
         limit=100,
     )
     return {"reps": pins, "leads": [l for l in leads if l.latitude and l.longitude]}
-
-
-def list_field_visits(user, limit=50):
-    rep_ids = scoped_rep_ids(user)
-    return frappe.get_all(
-        "Field Sales Visit",
-        filters={"sales_rep": ("in", rep_ids)},
-        fields=[
-            "name",
-            "sales_rep",
-            "lead",
-            "franchisee",
-            "visit_date",
-            "purpose",
-            "outcome",
-            "latitude",
-            "longitude",
-            "notes",
-            "creation",
-        ],
-        order_by="creation desc",
-        limit=cint(limit),
-    )
 
 
 def seed_sales_team():

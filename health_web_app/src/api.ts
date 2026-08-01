@@ -1,5 +1,5 @@
 import { clearStoredSession, getSid, loadSession, saveSession } from './auth/session';
-import { apiUrl, ApiModule } from './config';
+import { apiUrl, ApiModule, rfmsApiUrl } from './config';
 import { CareJourney, JourneyOpsBoard, JourneyActivity } from './types/journey';
 import {
   LabReportDetail,
@@ -242,6 +242,9 @@ export type AiPhysicianCenter = {
   latitude?: number | null;
   longitude?: number | null;
   distance_km?: number | null;
+  google_map_location_url?: string;
+  directions_url?: string;
+  webpage_url?: string;
   book_lab_path?: string;
   book_doctor_path?: string;
 };
@@ -357,10 +360,22 @@ export type SalesLead = {
   lead_name: string;
   company_name?: string;
   phone: string;
+  email?: string;
   city?: string;
+  district?: string;
+  subdivision?: string;
+  pincode?: string;
   status: string;
   assigned_rep?: string;
   franchisee?: string;
+  lead_source?: string;
+  platform?: string;
+  external_lead_id?: string;
+  campaign_name?: string;
+  campaign_id?: string;
+  ad_id?: string;
+  form_id?: string;
+  rfms_lead_id?: string;
   latitude?: number;
   longitude?: number;
   modified?: string;
@@ -461,18 +476,43 @@ export type SalesCommissionPayload = {
   entries: SalesCommissionEntry[];
 };
 
+export type SalesClosingExpenseLine = {
+  expense_type: string;
+  amount: number;
+  remarks?: string;
+  filename?: string;
+};
+
 export type SalesClosingReport = {
   name: string;
   sales_rep: string;
   report_type: string;
   period_date: string;
+  period_end?: string;
   visits_count: number;
   new_leads: number;
   qualified_leads: number;
   onboardings: number;
   franchise_revenue: number;
   km_traveled?: number;
+  other_expenses?: number;
+  total_expenses?: number;
+  expenses?: SalesClosingExpenseLine[];
+  notes?: string;
   creation?: string;
+};
+
+export type SalesClosingDraft = {
+  report_type: string;
+  period_date: string;
+  period_end?: string;
+  visits_count: number;
+  new_leads: number;
+  qualified_leads: number;
+  onboardings: number;
+  franchise_revenue: number;
+  already_submitted?: number;
+  existing_report_id?: string;
 };
 
 export type CheckoutPricing = {
@@ -523,7 +563,40 @@ export type SalesTeamMapData = {
     longitude?: number;
     status?: string;
     city?: string;
+    district?: string;
+    subdivision?: string;
+    pincode?: string;
   }>;
+};
+
+export type WbGeoHierarchy = {
+  districts: Array<{
+    name: string;
+    subdivisions: Array<{
+      name: string;
+      localities: Array<{ block_area?: string; pincode?: string; post_office?: string }>;
+    }>;
+  }>;
+  count?: number;
+};
+
+export type TerritorialSalesSummary = {
+  available: boolean;
+  period?: string;
+  reason?: string;
+  by_district: Array<{
+    district: string;
+    leads: number;
+    leads_won: number;
+    visits: number;
+    franchisees: number;
+  }>;
+  totals: {
+    leads: number;
+    leads_won: number;
+    visits: number;
+    franchisees: number;
+  };
 };
 
 export type LabReagentBatch = {
@@ -797,6 +870,28 @@ export type HomeHeaders = {
   section_popular_title?: string;
 };
 
+export type SiteFooterLink = {
+  code?: string;
+  title: string;
+  url: string;
+  icon?: string;
+  open_in_new_tab?: boolean;
+  group?: string;
+};
+
+export type SiteFooterPayload = {
+  brand?: string;
+  tagline?: string;
+  subdomains?: SiteFooterLink[];
+  company?: SiteFooterLink[];
+  social?: SiteFooterLink[];
+  legal?: Array<{ title: string; url: string }>;
+  home_collection_helpline?: string;
+  home_collection_hours?: string;
+  home_collection_tel?: string;
+  home_collection_cta_label?: string;
+};
+
 export type Franchisee = {
   name: string;
   franchise_name: string;
@@ -877,6 +972,9 @@ export type FranchiseeProfile = {
   franchise_name?: string;
   territory_region?: string;
   commission_percentage_rate?: number;
+  address?: string;
+  contact_phone?: string;
+  contact_email?: string;
 };
 
 export type ProviderProfile = {
@@ -1543,7 +1641,10 @@ export const api = {
       radiology_services?: HomeRadiologyService[];
       whatsapp_cta?: WhatsappCta;
       headers?: HomeHeaders;
+      footer?: SiteFooterPayload;
     }>('get_home_content', { auth: false }),
+
+  getSiteFooter: () => request<SiteFooterPayload>('get_site_footer', { auth: false }),
 
   startAiPhysicianJourney: (body: {
     symptoms: string;
@@ -1579,6 +1680,53 @@ export const api = {
       body,
       auth: false,
     }),
+
+  /** Onboarded FFMS franchise centres (public; no ERP guest session required). */
+  listPublicCentres: async (params?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    radius_km?: number | null;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.latitude != null && params?.longitude != null) {
+      query.set('latitude', String(params.latitude));
+      query.set('longitude', String(params.longitude));
+    }
+    if (params?.radius_km != null && Number.isFinite(params.radius_km) && params.radius_km > 0) {
+      query.set('radius_km', String(params.radius_km));
+    }
+    const url = `${rfmsApiUrl('public/centres')}${query.toString() ? `?${query}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'omit',
+    });
+    const text = await response.text();
+    let payload: {
+      success?: boolean;
+      data?: { centres?: AiPhysicianCenter[]; centers?: AiPhysicianCenter[]; count?: number };
+      message?: string;
+      error?: { message?: string };
+    } = {};
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      if (response.status === 502 || text.trim().startsWith('<')) {
+        throw new Error(
+          'Server is temporarily unavailable (502). Backend may be restarting — wait 1 minute and try again, or run emergency-fix-502.sh on the server.',
+        );
+      }
+      throw new Error('Could not load franchise centres');
+    }
+    if (!response.ok || payload.success === false) {
+      throw new Error(payload.error?.message || payload.message || `Centres request failed (${response.status})`);
+    }
+    const centres = payload.data?.centres || payload.data?.centers || [];
+    return {
+      status: 'success' as const,
+      data: { centers: centres, centres, count: payload.data?.count ?? centres.length },
+    };
+  },
 
   getLabPanels: () =>
     request<{ panels: LabPanel[] }>('get_lab_test_panels', { auth: false, module: 'diagnostics' }),
@@ -2771,11 +2919,21 @@ export const api = {
       { method: 'POST', body, auth: true },
     ),
 
-  createB2bWalkInOrder: (body: Record<string, string>) =>
+  createB2bWalkInOrder: (body: Record<string, string | number>) =>
     request<{
       trf_id: string;
       barcode: string;
+      item_codes?: string[];
+      line_items?: Array<{
+        item_code: string;
+        item_name: string;
+        retail_amount: number;
+        wholesale_amount: number;
+        margin: number;
+      }>;
       retail_amount: number;
+      discount_amount?: number;
+      payable_amount?: number;
       wholesale_amount: number;
       margin: number;
       wallet_balance: number;
@@ -2793,6 +2951,22 @@ export const api = {
 
   createSalesLead: (body: Record<string, string | number>) =>
     request<{ lead_id: string }>('create_sales_lead', { method: 'POST', body, auth: true }),
+
+  getWbGeoHierarchy: () =>
+    request<WbGeoHierarchy>('get_wb_geo_hierarchy', { method: 'GET', auth: false }),
+
+  resolveWbPincode: (pincode: string) =>
+    request<{ pincode: string; matches: Array<Record<string, string>>; count: number }>(
+      'resolve_wb_pincode',
+      { method: 'GET', body: { pincode }, auth: false },
+    ),
+
+  getTerritorialSalesSummary: (period: 'month' | 'all' = 'month') =>
+    request<TerritorialSalesSummary>('get_territorial_sales_summary', {
+      method: 'POST',
+      body: { period },
+      auth: true,
+    }),
 
   logSalesVisit: (body: Record<string, string | number>) =>
     request<{ visit_id: string }>('log_sales_visit', { method: 'POST', body, auth: true }),
@@ -2841,7 +3015,7 @@ export const api = {
     }),
 
   draftSalesClosingReport: (reportType: 'Daily' | 'Monthly', periodDate?: string) =>
-    request<Record<string, string | number>>('draft_sales_closing_report', {
+    request<SalesClosingDraft>('draft_sales_closing_report', {
       method: 'POST',
       body: periodDate
         ? { report_type: reportType, period_date: periodDate }

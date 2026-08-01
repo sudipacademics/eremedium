@@ -28,8 +28,11 @@ import {
   cgpeyConfigured,
   cgpeyConfigFromEnv,
   cgpeySimulate,
+  initiateAadhaarOkyc,
   initiateAgreementEsign,
+  maskAadhaar,
   mergeCgpeyConfig,
+  verifyAadhaarOkycOtp,
 } from './cgpey-kyc-adapter.mjs';
 import {
   adminMarketingPages,
@@ -126,6 +129,7 @@ import {
   franchiseeDirectoryMatchesFilters,
   franchiseeDirectoryPartnerRecord,
   franchiseeDirectorySnapshot,
+  franchiseeBusinessName,
   FRANCHISEE_DIRECTORY_EXPORT_FIELDS,
   isOnboardedFranchisee,
   onboardingCompletedAt,
@@ -192,6 +196,8 @@ import {
   createRfmsRazorpayOrderViaErp,
   verifyRfmsRazorpayPaymentViaErp,
   activateRfmsPaidFranchiseeViaErp,
+  provisionPartnerPortalCredentialsViaErp,
+  syncRfmsHubFromDirectoryViaErp,
   fetchWbGeoHierarchy,
   resolveWbPincodeViaErp,
   fetchFranchiseWhatsappThreadViaErp,
@@ -251,6 +257,7 @@ const challenges = new Map();
 const applicantChallenges = new Map();
 const contactOtpChallenges = new Map();
 const contactVerificationTokens = new Map();
+const aadhaarOkycSessions = new Map();
 const INTEGRATION_CONFIG_TTL_MS = 60_000;
 let integrationConfigCache = { at: 0, value: null };
 const WB_GEO_TTL_MS = 3_600_000;
@@ -399,6 +406,7 @@ async function loadDatabase() {
     database.hero_slides = Array.isArray(database.hero_slides) && database.hero_slides.length ? database.hero_slides.map((slide) => heroSlide(slide, slide.id)) : defaultHeroSlides();
     database.applications = Array.isArray(database.applications) ? database.applications : [];
     database.leads = Array.isArray(database.leads) ? database.leads.map((item) => leadRecord(item, item?.id)) : [];
+    database.sales_visits = Array.isArray(database.sales_visits) ? database.sales_visits.map((item) => salesVisitRecord(item, item?.id)) : [];
     database.appointments = Array.isArray(database.appointments) ? database.appointments.map((item) => appointmentRecord(item, item?.id)) : [];
     database.territories = Array.isArray(database.territories) ? database.territories.map((item) => territoryRecord(item, item?.id)) : westBengalTerritorySeeds().map((item) => territoryRecord(item, item.id));
     database.sessions = Array.isArray(database.sessions) ? database.sessions.filter((session) => session && typeof session.token === 'string' && typeof session.role === 'string' && typeof session.name === 'string' && typeof session.mobile === 'string').slice(-50) : [];
@@ -1585,6 +1593,71 @@ function addLeadActivity(lead, type, message, actor) {
   return createdAt;
 }
 
+function salesVisitRecord(value, id = randomUUID()) {
+  const source = value && typeof value === 'object' ? value : {};
+  const createdAt = text(source.created_at, 60) || new Date().toISOString();
+  return {
+    id: text(id || source.id, 80) || randomUUID(),
+    hec_visit_id: text(source.hec_visit_id, 120),
+    hec_lead_id: text(source.hec_lead_id, 120),
+    rfms_lead_id: text(source.rfms_lead_id || source.lead_id, 120),
+    lead_name: text(source.lead_name, 160),
+    lead_phone: text(source.lead_phone, 20),
+    reach_user: text(source.reach_user, 120),
+    sales_rep_id: text(source.sales_rep_id, 120),
+    visit_date: text(source.visit_date, 20),
+    visit_time: text(source.visit_time, 20),
+    purpose: text(source.purpose, 120) || 'Meet Lead',
+    outcome: text(source.outcome, 120),
+    duration_minutes: Number(source.duration_minutes) || 0,
+    latitude: Number(source.latitude) || null,
+    longitude: Number(source.longitude) || null,
+    notes: text(source.notes, 2000),
+    source: text(source.source, 40) || 'reach',
+    created_at: createdAt,
+    updated_at: text(source.updated_at, 60) || createdAt,
+  };
+}
+
+function ingestSalesVisitsIntoCrm(rows = []) {
+  database.sales_visits = Array.isArray(database.sales_visits) ? database.sales_visits : [];
+  const imported = [];
+  const updated = [];
+  for (const row of rows.slice(0, 500)) {
+    if (!row || typeof row !== 'object') continue;
+    const hecVisitId = text(row.hec_visit_id, 120);
+    const existing = hecVisitId
+      ? database.sales_visits.find((item) => item.hec_visit_id === hecVisitId)
+      : null;
+    const visit = salesVisitRecord({ ...(existing || {}), ...row, id: existing?.id }, existing?.id);
+    if (!visit.rfms_lead_id && visit.hec_lead_id) {
+      const lead = database.leads.find((item) => item.hec_lead_id === visit.hec_lead_id);
+      if (lead) visit.rfms_lead_id = lead.id;
+    }
+    if (existing) {
+      Object.assign(existing, visit);
+      updated.push(existing);
+    } else {
+      database.sales_visits.unshift(visit);
+      imported.push(visit);
+    }
+    const lead = visit.rfms_lead_id
+      ? database.leads.find((item) => item.id === visit.rfms_lead_id)
+      : (visit.hec_lead_id ? database.leads.find((item) => item.hec_lead_id === visit.hec_lead_id) : null);
+    if (lead) {
+      if (visit.reach_user) lead.assigned_to = visit.reach_user;
+      addLeadActivity(
+        lead,
+        'note',
+        `REACH visit logged · ${visit.purpose}${visit.outcome ? ` · ${visit.outcome}` : ''}${visit.notes ? ` — ${visit.notes.slice(0, 180)}` : ''}`,
+        visit.reach_user || 'Reach sales',
+      );
+      lead.last_contacted_at = visit.created_at;
+    }
+  }
+  return { imported, updated };
+}
+
 function leadIsValid(lead) {
   return Boolean(lead.name && isEmail(lead.email) && lead.mobile && ['FOFO', 'FOCO'].includes(lead.franchise_model) && lead.territory_query);
 }
@@ -1701,12 +1774,14 @@ function ingestAdLeadsIntoCrm(rows, defaults = {}) {
         gclid: payload.gclid || existing.gclid,
         hec_lead_id: payload.hec_lead_id || existing.hec_lead_id,
         raw_source_payload: payload.raw_source_payload || existing.raw_source_payload,
+        assigned_to: payload.assigned_to && payload.assigned_to !== 'Unassigned' ? payload.assigned_to : existing.assigned_to,
+        stage: payload.stage || existing.stage,
         updated_at: new Date().toISOString(),
       });
       if (payload.franchise_model && ['FOFO', 'FOCO'].includes(payload.franchise_model)) {
         existing.franchise_model = payload.franchise_model;
       }
-      addLeadActivity(existing, 'imported', `Ad lead updated from ${sourceLabel(payload.source)}.`, 'Ads webhook');
+      addLeadActivity(existing, 'imported', payload.source === 'reach_sales' ? 'REACH Portal lead updated.' : `Ad lead updated from ${sourceLabel(payload.source)}.`, payload.source === 'reach_sales' ? 'Reach sales' : 'Ads webhook');
       updated.push(existing);
       continue;
     }
@@ -2980,6 +3055,174 @@ async function regenerateFranchiseWebpage(webpage) {
   return webpage;
 }
 
+const PARTNER_PORTAL_ONBOARDED_MESSAGE = 'Your franchise is now onboarded. Please use the Partner Portal to manage your business and save these login credentials for future use.';
+
+function generatePartnerPortalPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const bytes = randomBytes(10);
+  let password = 'Rp';
+  for (let index = 0; index < bytes.length; index += 1) {
+    password += alphabet[bytes[index] % alphabet.length];
+  }
+  return password;
+}
+
+function partnerPortalLoginUrl() {
+  return String(process.env.PARTNER_PORTAL_URL || 'https://partners.e-remedium.in').trim().replace(/\/+$/, '') || 'https://partners.e-remedium.in';
+}
+
+/** Franchise Directory fields pushed to Partner Portal / ERP Franchisee Profile. */
+function hubDirectoryFieldsFromApplication(application) {
+  const allotment = territoryAllotmentSummary(application?.territory_allotment);
+  const registeredAddress = String(
+    allotment?.franchise_address
+    || application?.onboarding_certificate?.franchise_address
+    || application?.training?.franchise_address
+    || application?.address
+    || '',
+  ).trim();
+  const territoryRegion = String(
+    allotment?.final_territory
+    || allotment?.registered_territory_label
+    || application?.district
+    || '',
+  ).trim();
+  return {
+    businessName: franchiseeBusinessName(application),
+    district: String(allotment?.district || application?.district || '').trim(),
+    pincode: String(allotment?.pincode || application?.pincode || '').trim(),
+    preferredLocation: String(application?.preferred_location || '').trim(),
+    registeredAddress,
+    territoryRegion,
+    email: String(application?.email || '').trim(),
+    mobile: String(application?.mobile || '').trim(),
+    fullName: String(application?.full_name || '').trim(),
+    franchiseModel: String(application?.franchise_model || '').trim(),
+    franchiseeProfile: String(application?.hec_franchisee_profile || '').trim(),
+    applicationId: application?.id || '',
+    applicationNumber: application?.application_number || '',
+  };
+}
+
+async function syncHubDirectoryDetailsToErp(application, request, { actor = '' } = {}) {
+  if (!application) return null;
+  const fields = hubDirectoryFieldsFromApplication(application);
+  if (!fields.businessName && !fields.fullName) return null;
+  try {
+    const result = await syncRfmsHubFromDirectoryViaErp({
+      applicationId: fields.applicationId,
+      applicationNumber: fields.applicationNumber,
+      businessName: fields.businessName,
+      district: fields.district,
+      email: fields.email,
+      franchiseModel: fields.franchiseModel,
+      franchiseeProfile: fields.franchiseeProfile,
+      fullName: fields.fullName,
+      mobile: fields.mobile,
+      pincode: fields.pincode,
+      preferredLocation: fields.preferredLocation,
+      registeredAddress: fields.registeredAddress,
+      territoryRegion: fields.territoryRegion,
+    });
+    const franchiseeId = String(result?.franchisee_id || '').trim();
+    if (franchiseeId) application.hec_franchisee_profile = franchiseeId;
+    application.hec_hub_directory_synced_at = new Date().toISOString();
+    application.hec_hub_directory_sync_error = '';
+    applicationReviewHistory(
+      application,
+      'franchise_hub_directory_synced',
+      `Partner Portal hub synced from Franchise Directory as ${result?.franchise_name || fields.businessName}${franchiseeId ? ` (${franchiseeId})` : ''}.`,
+      request,
+    );
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Franchise hub directory sync failed.';
+    application.hec_hub_directory_sync_error = message.slice(0, 500);
+    console.error('[hub-directory] sync failed', application.application_number, message);
+    applicationReviewHistory(application, 'franchise_hub_directory_sync_failed', message, request);
+    return null;
+  }
+}
+
+async function provisionPartnerPortalForOnboardedApplication(application, request) {
+  const password = generatePartnerPortalPassword();
+  const loginUrl = partnerPortalLoginUrl();
+  const fields = hubDirectoryFieldsFromApplication(application);
+  try {
+    const result = await provisionPartnerPortalCredentialsViaErp({
+      applicationId: fields.applicationId,
+      applicationNumber: fields.applicationNumber,
+      businessName: fields.businessName,
+      district: fields.district,
+      email: fields.email,
+      franchiseModel: fields.franchiseModel,
+      franchiseeProfile: fields.franchiseeProfile,
+      fullName: fields.fullName,
+      loginUrl,
+      mobile: fields.mobile,
+      password,
+      pincode: fields.pincode,
+      preferredLocation: fields.preferredLocation,
+      registeredAddress: fields.registeredAddress,
+      territoryRegion: fields.territoryRegion,
+    });
+    const userId = String(result?.user_id || '').trim();
+    const franchiseeId = String(result?.franchisee_id || '').trim();
+    if (franchiseeId) application.hec_franchisee_profile = franchiseeId;
+    if (!application.hec_hub_activated_at) application.hec_hub_activated_at = new Date().toISOString();
+    application.partner_portal = {
+      login_url: String(result?.login_url || loginUrl).trim() || loginUrl,
+      user_id: userId,
+      password: String(result?.password || password).trim() || password,
+      provisioned_at: new Date().toISOString(),
+      message: PARTNER_PORTAL_ONBOARDED_MESSAGE,
+      hub_name: String(result?.franchise_name || fields.businessName || '').trim(),
+      branch_code: String(result?.branch_code || '').trim(),
+      territory_region: String(result?.territory_region || fields.territoryRegion || '').trim(),
+    };
+    application.partner_portal_error = '';
+    applicationReviewHistory(
+      application,
+      'partner_portal_provisioned',
+      `Partner Portal account created for ${userId || application.email}. Hub: ${application.partner_portal.hub_name || fields.businessName}. Login: ${application.partner_portal.login_url}`,
+      request,
+    );
+    return application.partner_portal;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Partner Portal account creation failed.';
+    application.partner_portal_error = message.slice(0, 500);
+    console.error('[partner-portal] provision failed', application.application_number, message);
+    applicationReviewHistory(application, 'partner_portal_provision_failed', message, request);
+    return null;
+  }
+}
+
+function hasPartnerPortalCredentials(application) {
+  return Boolean(application?.partner_portal?.user_id && application?.partner_portal?.password);
+}
+
+/** Create Partner Portal credentials when missing (onboarded apps, including backfill). */
+async function ensurePartnerPortalCredentials(application, request, { force = false, actor = '' } = {}) {
+  if (!application || application.stage !== 'onboarding_completed') return null;
+  if (!force && hasPartnerPortalCredentials(application)) {
+    await syncHubDirectoryDetailsToErp(application, request, { actor });
+    return application.partner_portal;
+  }
+  const provisioned = await provisionPartnerPortalForOnboardedApplication(application, request);
+  if (provisioned) {
+    application.updated_at = new Date().toISOString();
+    appendFranchiseeDirectoryVersion(
+      application,
+      actor || reviewActor(request) || 'System',
+      'Partner Portal credentials stored',
+      franchiseeDirectorySnapshot(application, franchiseeDirectoryHelpers()),
+    );
+  } else {
+    await syncHubDirectoryDetailsToErp(application, request, { actor });
+  }
+  return provisioned;
+}
+
 async function markApplicationOnboarded(application, actor, request) {
   if (!canMarkApplicationOnboarded(application)) return null;
   const now = new Date().toISOString();
@@ -3004,6 +3247,7 @@ async function markApplicationOnboarded(application, actor, request) {
       await writeFranchiseWebpageHtmlFile(webpage);
     }
   }
+  await ensurePartnerPortalCredentials(application, request, { force: true, actor });
   ensureTrainingState(application).history.push({
     id: randomUUID(),
     type: 'application_onboarded',
@@ -3388,6 +3632,20 @@ function applicationSummary(application) {
     date_of_birth: application.date_of_birth ?? '',
     pan_number: application.pan_number ?? '',
     aadhaar_number: application.aadhaar_number ?? '',
+    aadhaar_okyc: application.aadhaar_okyc && typeof application.aadhaar_okyc === 'object'
+      ? {
+          status: application.aadhaar_okyc.status || '',
+          reference_id: application.aadhaar_okyc.reference_id || '',
+          message: application.aadhaar_okyc.message || '',
+          verified_at: application.aadhaar_okyc.verified_at || '',
+          initiated_at: application.aadhaar_okyc.initiated_at || '',
+          simulated: Boolean(application.aadhaar_okyc.simulated),
+          aadhaar_masked: application.aadhaar_okyc.aadhaar_masked || maskAadhaar(application.aadhaar_number),
+          response: application.aadhaar_okyc.response && typeof application.aadhaar_okyc.response === 'object'
+            ? application.aadhaar_okyc.response
+            : null,
+        }
+      : null,
     address: application.address ?? '',
     city: application.city ?? '',
     district: application.district ?? '',
@@ -3427,6 +3685,17 @@ function applicationSummary(application) {
     hec_hub_activated_at: application.hec_hub_activated_at ?? '',
     hec_wallet_recharge: application.hec_wallet_recharge ?? null,
     hec_hub_activation_error: application.hec_hub_activation_error ?? '',
+    partner_portal: application.partner_portal && typeof application.partner_portal === 'object'
+      ? {
+          login_url: String(application.partner_portal.login_url || partnerPortalLoginUrl()).trim() || partnerPortalLoginUrl(),
+          user_id: String(application.partner_portal.user_id || '').trim(),
+          password: String(application.partner_portal.password || '').trim(),
+          provisioned_at: String(application.partner_portal.provisioned_at || '').trim(),
+          message: String(application.partner_portal.message || PARTNER_PORTAL_ONBOARDED_MESSAGE).trim() || PARTNER_PORTAL_ONBOARDED_MESSAGE,
+        }
+      : null,
+    partner_portal_error: application.partner_portal_error ?? '',
+    employee_referral_number: text(application.employee_referral_number, 40),
     support: {
       unread_replies: applicantSupportUnreadCount(ensureSupportTicketsArray(), application.id),
       open_tickets: ensureSupportTicketsArray().filter((item) => item.application_id === application.id && item.status !== 'closed').length,
@@ -3982,20 +4251,24 @@ function depositAmountForHubActivation(application, payment) {
 
 async function maybeActivateFranchiseeHub(application, payment, request) {
   if (!hubActivationMilestone(application, payment)) return null;
+  const fields = hubDirectoryFieldsFromApplication(application);
   try {
     const result = await activateRfmsPaidFranchiseeViaErp({
-      applicationId: application.id,
-      applicationNumber: application.application_number,
+      applicationId: fields.applicationId,
+      applicationNumber: fields.applicationNumber,
+      businessName: fields.businessName,
       depositAmount: depositAmountForHubActivation(application, payment),
-      district: application.district || '',
-      email: application.email || '',
-      franchiseModel: application.franchise_model || '',
-      franchiseeProfile: application.hec_franchisee_profile || '',
-      fullName: application.full_name || '',
-      mobile: application.mobile || '',
+      district: fields.district,
+      email: fields.email,
+      franchiseModel: fields.franchiseModel,
+      franchiseeProfile: fields.franchiseeProfile,
+      fullName: fields.fullName,
+      mobile: fields.mobile,
       paymentKey: payment.key || '',
-      pincode: application.pincode || '',
-      preferredLocation: application.preferred_location || '',
+      pincode: fields.pincode,
+      preferredLocation: fields.preferredLocation,
+      registeredAddress: fields.registeredAddress,
+      territoryRegion: fields.territoryRegion,
     });
     const franchiseeId = String(result?.franchisee_id || '').trim();
     if (franchiseeId) application.hec_franchisee_profile = franchiseeId;
@@ -4005,14 +4278,14 @@ async function maybeActivateFranchiseeHub(application, payment, request) {
     applicationReviewHistory(
       application,
       'franchisee_hub_activated',
-      `Franchisee hub ${franchiseeId || 'profile'} activated${result?.wallet_recharge ? ` with opening wallet ₹${result.wallet_recharge}` : ''}.`,
+      `Franchisee hub ${franchiseeId || 'profile'} activated as ${result?.franchise_name || fields.businessName || application.full_name}${result?.wallet_recharge ? ` with opening wallet ₹${result.wallet_recharge}` : ''}.`,
       request,
     );
     workflowNotify({
       module: 'payments',
       action: 'franchisee_hub_activated',
       title: 'Franchisee hub activated',
-      message: `${application.full_name} · hub ${franchiseeId || 'created'} after ${payment.label || payment.key}.`,
+      message: `${fields.businessName || application.full_name} · hub ${franchiseeId || 'created'} after ${payment.label || payment.key}.`,
       actor: workflowActor(request),
       href: `admin:Payments:${application.id}`,
       entityType: 'application',
@@ -4772,6 +5045,10 @@ async function handle(request, response) {
     if (request.method === 'GET' && route === '/api/v1/applicant/profile') {
       const application = applicantFor(request);
       if (!application) return failure(request, response, 'FORBIDDEN', 'Sign in to view your applicant profile.', 403);
+      if (application.stage === 'onboarding_completed' && !hasPartnerPortalCredentials(application)) {
+        await ensurePartnerPortalCredentials(application, request, { actor: 'System' });
+        await saveDatabase();
+      }
       return success(request, response, applicationSummary(application));
     }
 
@@ -4907,6 +5184,9 @@ async function handle(request, response) {
           files.push(file);
         }
         sitePhotos = files;
+      }
+      if (!sitePhotos.length) {
+        return failure(request, response, 'PHOTOS_REQUIRED', 'Upload at least one site photograph with the Field Visit report.', 400);
       }
       const now = new Date().toISOString();
       visit.report = {
@@ -5185,6 +5465,107 @@ async function handle(request, response) {
       return success(request, response, { kind, name: text(body.name, 180) || `${kind}.${document.extension}`, url: storedUploadUrl(filename) }, 201);
     }
 
+    if (request.method === 'POST' && route === '/api/v1/applications/public/aadhaar/okyc/initiate') {
+      const body = await readJson(request);
+      const aadhaarNumber = text(body.aadhaar_number ?? body.aadhaarNumber, 20).replace(/\D/g, '');
+      if (!/^\d{12}$/.test(aadhaarNumber)) {
+        return failure(request, response, 'AADHAAR_INVALID', 'Enter a valid 12-digit Aadhaar number before verification.', 400);
+      }
+      try {
+        const cgpey = await resolveCgpeyRuntimeConfig({ force: true });
+        const okyc = await initiateAadhaarOkyc({ aadhaarNumber, config: cgpey });
+        const verificationToken = randomUUID();
+        const record = {
+          verification_token: verificationToken,
+          status: 'otp_pending',
+          reference_id: okyc.referenceId || okyc.sessionId || '',
+          session_id: okyc.sessionId || okyc.referenceId || '',
+          message: okyc.message || 'Aadhaar OTP sent. Enter the OTP to complete verification.',
+          aadhaar_masked: maskAadhaar(aadhaarNumber),
+          aadhaar_digits: aadhaarNumber, // in-memory only; stripped before application persistence
+          initiated_at: new Date().toISOString(),
+          verified_at: '',
+          simulated: Boolean(okyc.simulated),
+          response: okyc.data || {},
+        };
+        aadhaarOkycSessions.set(verificationToken, record);
+        return success(request, response, {
+          status: record.status,
+          reference_id: record.reference_id,
+          message: record.message,
+          aadhaar_masked: record.aadhaar_masked,
+          initiated_at: record.initiated_at,
+          simulated: record.simulated,
+          verification_token: verificationToken,
+          response: record.response,
+        });
+      } catch (okycError) {
+        const code = okycError?.code || 'CGPEY_OKYC_FAILED';
+        const status = code === 'AADHAAR_INVALID' ? 400 : code === 'CGPEY_NOT_CONFIGURED' ? 503 : 502;
+        return failure(request, response, code, okycError instanceof Error ? okycError.message : 'Unable to start Aadhaar OKYC.', status);
+      }
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applications/public/aadhaar/okyc/verify') {
+      const body = await readJson(request);
+      const verificationToken = text(body.verification_token ?? body.verificationToken, 80);
+      const otp = text(body.otp, 12).replace(/\D/g, '');
+      const session = verificationToken ? aadhaarOkycSessions.get(verificationToken) : null;
+      if (!session) {
+        return failure(request, response, 'OKYC_SESSION_MISSING', 'Aadhaar OKYC session expired or not found. Click Verify Aadhaar to send a new OTP.', 400);
+      }
+      if (session.status === 'verified' && session.verified_at) {
+        return success(request, response, {
+          status: 'verified',
+          reference_id: session.reference_id || '',
+          message: session.message || 'Aadhaar already verified.',
+          aadhaar_masked: session.aadhaar_masked || '',
+          initiated_at: session.initiated_at || '',
+          verified_at: session.verified_at,
+          simulated: Boolean(session.simulated),
+          verification_token: verificationToken,
+          response: session.response || {},
+        });
+      }
+      if (!/^\d{4,8}$/.test(otp)) {
+        return failure(request, response, 'OTP_INVALID', 'Enter the OTP sent to the Aadhaar-linked mobile number.', 400);
+      }
+      try {
+        const cgpey = await resolveCgpeyRuntimeConfig({ force: true });
+        const verified = await verifyAadhaarOkycOtp({
+          aadhaarNumber: session.aadhaar_digits,
+          sessionId: session.session_id || session.reference_id,
+          otp,
+          config: cgpey,
+        });
+        session.status = 'verified';
+        session.reference_id = verified.referenceId || session.reference_id || '';
+        session.session_id = verified.sessionId || session.session_id || '';
+        session.message = verified.message || 'Aadhaar verified successfully.';
+        session.verified_at = new Date().toISOString();
+        session.simulated = Boolean(verified.simulated);
+        session.response = verified.data || session.response || {};
+        aadhaarOkycSessions.set(verificationToken, session);
+        return success(request, response, {
+          status: 'verified',
+          reference_id: session.reference_id,
+          message: session.message,
+          aadhaar_masked: session.aadhaar_masked,
+          initiated_at: session.initiated_at,
+          verified_at: session.verified_at,
+          simulated: session.simulated,
+          verification_token: verificationToken,
+          response: session.response,
+        });
+      } catch (okycError) {
+        const code = okycError?.code || 'CGPEY_OKYC_VERIFY_FAILED';
+        const status = code === 'OTP_INVALID' || code === 'OKYC_SESSION_MISSING' || code === 'AADHAAR_INVALID'
+          ? 400
+          : code === 'CGPEY_NOT_CONFIGURED' ? 503 : 502;
+        return failure(request, response, code, okycError instanceof Error ? okycError.message : 'Unable to verify Aadhaar OTP.', status);
+      }
+    }
+
     if (request.method === 'POST' && route === '/api/v1/applications/public') {
       const body = await readJson(request);
       const model = text(body.franchise_model, 10).toUpperCase();
@@ -5208,8 +5589,53 @@ async function handle(request, response) {
         user_id: userId, account_password_salt: account?.salt ?? '', account_password_hash: account?.hash ?? '',
         terms_model: model, terms_text: termsText, terms_accepted_at: termsAccepted ? new Date().toISOString() : '',
         documents, document_verifications: {}, review_notes: '', review_history: [], payment_terms: {}, video_kyc_sessions: [], video_kyc_current_session_id: '', field_visit: null, onboarding_documents: [], branding_signage: null, hr_process: null, payments: paymentPlan(model), stage: 'payment_1_due', visible_to_admin: false,
+        employee_referral_number: '',
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
+      const referralRaw = text(body.employee_referral_number ?? body.employee_referral ?? body.referral_number, 40).toUpperCase();
+      const referral = referralRaw.replace(/[^A-Z0-9-]/g, '').slice(0, 40);
+      if (referral) {
+        application.employee_referral_number = referral.startsWith('ERN-') ? referral : `ERN-${referral}`;
+        applicationReviewHistory(
+          application,
+          'reach_employee_referral',
+          `Reach Employee Referral Number ${application.employee_referral_number} recorded as internal reference (not editable by applicant).`,
+          { headers: {} },
+          'Reach sales',
+        );
+      }
+      const okycToken = text(body.aadhaar_okyc_verification_token ?? body.aadhaar_okyc?.verification_token, 80);
+      const okycSession = okycToken ? aadhaarOkycSessions.get(okycToken) : null;
+      if (okycSession && okycSession.aadhaar_digits === aadhaarNumber) {
+        application.aadhaar_okyc = {
+          status: okycSession.status || 'initiated',
+          reference_id: okycSession.reference_id || '',
+          message: okycSession.message || '',
+          aadhaar_masked: okycSession.aadhaar_masked || maskAadhaar(aadhaarNumber),
+          initiated_at: okycSession.initiated_at || new Date().toISOString(),
+          verified_at: okycSession.verified_at || '',
+          simulated: Boolean(okycSession.simulated),
+          response: okycSession.response && typeof okycSession.response === 'object' ? okycSession.response : {},
+        };
+        aadhaarOkycSessions.delete(okycToken);
+      } else if (body.aadhaar_okyc && typeof body.aadhaar_okyc === 'object') {
+        // Accept client-echoed OKYC summary only when reference_id is present (no full Aadhaar in payload).
+        const referenceId = text(body.aadhaar_okyc.reference_id, 120);
+        if (referenceId) {
+          application.aadhaar_okyc = {
+            status: text(body.aadhaar_okyc.status, 40) || 'initiated',
+            reference_id: referenceId,
+            message: text(body.aadhaar_okyc.message, 500),
+            aadhaar_masked: text(body.aadhaar_okyc.aadhaar_masked, 20) || maskAadhaar(aadhaarNumber),
+            initiated_at: text(body.aadhaar_okyc.initiated_at, 40) || new Date().toISOString(),
+            verified_at: text(body.aadhaar_okyc.verified_at, 40),
+            simulated: Boolean(body.aadhaar_okyc.simulated),
+            response: body.aadhaar_okyc.response && typeof body.aadhaar_okyc.response === 'object'
+              ? body.aadhaar_okyc.response
+              : {},
+          };
+        }
+      }
       if (!application.full_name || !isEmail(application.email) || !application.mobile || !application.date_of_birth || !/^[A-Z]{5}\d{4}[A-Z]$/.test(application.pan_number) || !/^\d{12}$/.test(application.aadhaar_number) || !application.address || !application.city || !application.district || !/^\d{6}$/.test(application.pincode) || !['FOFO', 'FOCO'].includes(model) || !application.preferred_location || !requiredDocumentsPresent || !/^[a-z0-9._-]{4,40}$/.test(userId) || !account || accountPassword !== accountPasswordConfirmation) {
         return failure(request, response, 'VALIDATION_ERROR', 'Enter a valid PAN number and 12-digit Aadhaar number, complete all applicant details, and upload all four required files: photo, PAN card, Aadhaar card and Voter ID.');
       }
@@ -5791,7 +6217,7 @@ async function handle(request, response) {
     }
 
     if (request.method === 'PATCH' && route === '/api/v1/territories/capacities/bulk') {
-      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can bulk-edit territory capacities.', 403);
+      if (!requirePermission(request, response, 'territory')) return;
       const body = await readJson(request);
       const updates = Array.isArray(body?.updates) ? body.updates : [];
       if (!updates.length) return failure(request, response, 'VALIDATION_ERROR', 'Provide at least one PIN capacity update.');
@@ -5850,7 +6276,7 @@ async function handle(request, response) {
     }
 
     if (request.method === 'POST' && route === '/api/v1/territories') {
-      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can create territories.', 403);
+      if (!requirePermission(request, response, 'territory')) return;
       const body = await readJson(request);
       const territory = territoryRecord({ ...body, fofo_capacity: body.fofo_available ?? body.fofo_capacity, foco_capacity: body.foco_available ?? body.foco_capacity });
       if (!territoryIsValid(territory)) return failure(request, response, 'VALIDATION_ERROR', 'Choose a state, district and subdivision, enter an area, add one or more six-digit PIN codes, and set FOFO or FOCO availability.');
@@ -5865,7 +6291,7 @@ async function handle(request, response) {
 
     const territoryMatch = route.match(/^\/api\/v1\/territories\/([^/]+)$/);
     if (territoryMatch && request.method === 'PATCH') {
-      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can update territories.', 403);
+      if (!requirePermission(request, response, 'territory')) return;
       const index = database.territories.findIndex((item) => item.id === territoryMatch[1]);
       if (index < 0) return failure(request, response, 'NOT_FOUND', 'Territory not found.', 404);
       const current = database.territories[index];
@@ -5908,7 +6334,7 @@ async function handle(request, response) {
     }
 
     if (territoryMatch && request.method === 'DELETE') {
-      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can remove territories.', 403);
+      if (!requirePermission(request, response, 'territory')) return;
       const territory = database.territories.find((item) => item.id === territoryMatch[1]);
       if (!territory) return failure(request, response, 'NOT_FOUND', 'Territory not found.', 404);
       if (territory.allocations.length) return failure(request, response, 'TERRITORY_IN_USE', 'Release all territory allocations before removing this territory.');
@@ -7556,6 +7982,33 @@ async function handle(request, response) {
       });
     }
 
+    const partnerPortalProvisionMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/partner-portal\/provision$/);
+    if (partnerPortalProvisionMatch && request.method === 'POST') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can provision Partner Portal credentials.', 403);
+      const application = database.applications.find((item) => item.id === partnerPortalProvisionMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      if (application.stage !== 'onboarding_completed') {
+        return failure(request, response, 'ONBOARDING_STATE', 'Mark the application onboarded before creating Partner Portal credentials.', 409);
+      }
+      const body = await readJson(request, 8_000).catch(() => ({}));
+      const force = Boolean(body?.force);
+      const provisioned = await ensurePartnerPortalCredentials(application, request, {
+        force,
+        actor: reviewActor(request),
+      });
+      await saveDatabase();
+      if (!provisioned) {
+        return failure(
+          request,
+          response,
+          'PARTNER_PORTAL_FAILED',
+          application.partner_portal_error || 'Unable to create Partner Portal credentials.',
+          502,
+        );
+      }
+      return success(request, response, applicationSummary(application));
+    }
+
     if (request.method === 'GET' && route === '/api/v1/admin/franchise-webpages') {
       if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can view franchise webpages.', 403);
       const query = text(url.searchParams.get('q') ?? '', 120).toLowerCase();
@@ -7668,6 +8121,11 @@ async function handle(request, response) {
       if (!session) return;
       const application = findApplicationByFranchiseeIdentifier(database.applications, franchiseeDetailMatch[1]);
       if (!application || !isOnboardedFranchisee(application)) return failure(request, response, 'NOT_FOUND', 'Onboarded franchisee record not found.', 404);
+      if (!hasPartnerPortalCredentials(application)) {
+        await ensurePartnerPortalCredentials(application, request, { actor: session.name || 'System' });
+      } else {
+        await syncHubDirectoryDetailsToErp(application, request, { actor: session.name || 'System' });
+      }
       const detail = franchiseeDirectoryDetail(application, franchiseeDirectoryHelpers(), session.name);
       await saveDatabase();
       return success(request, response, detail);
@@ -8016,6 +8474,64 @@ async function handle(request, response) {
         skipped: result.skipped,
         leads: [...result.imported, ...result.updated],
       }, 201);
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/sales-visits/ingest') {
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 1_000_000);
+      const rows = Array.isArray(body.visits) ? body.visits : (Array.isArray(body.rows) ? body.rows : [body]);
+      const result = ingestSalesVisitsIntoCrm(rows.filter(Boolean));
+      if (result.imported.length || result.updated.length) {
+        workflowNotify({
+          module: 'leads',
+          action: 'sales_visit_logged',
+          title: 'REACH field visit logged',
+          message: `${result.imported.length + result.updated.length} visit report${result.imported.length + result.updated.length === 1 ? '' : 's'} synced from REACH.`,
+          actor: { name: 'REACH Portal', role: 'system' },
+          href: 'admin:Log Visit',
+          entityType: 'sales_visit',
+          entityId: (result.imported[0] || result.updated[0] || {}).id || '',
+        });
+      }
+      await saveDatabase();
+      return success(request, response, {
+        imported_count: result.imported.length,
+        updated_count: result.updated.length,
+        visits: [...result.imported, ...result.updated],
+      }, 201);
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/sales-visits') {
+      if (!requirePermission(request, response, 'leads')) return;
+      const visits = [...(database.sales_visits || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      const reachLeads = (database.leads || [])
+        .filter((lead) => lead.source === 'reach_sales' || lead.hec_lead_id)
+        .filter((lead) => crmLeadAccess(request, lead))
+        .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+      return success(request, response, {
+        visits,
+        reach_leads: reachLeads,
+        stats: {
+          total_visits: visits.length,
+          visits_today: visits.filter((item) => String(item.visit_date || item.created_at || '').startsWith(new Date().toISOString().slice(0, 10))).length,
+          reach_leads: reachLeads.length,
+          open_leads: reachLeads.filter((lead) => !['won', 'lost', 'completed', 'disqualified'].includes(lead.stage)).length,
+        },
+      });
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/sales-visits/assign-lead') {
+      if (!requirePermission(request, response, 'leads')) return;
+      if (!canManageCrm(request)) return failure(request, response, 'FORBIDDEN', 'Only CRM managers can assign REACH users.', 403);
+      const body = await readJson(request, 8_000);
+      const lead = database.leads.find((item) => item.id === text(body.lead_id, 80));
+      if (!lead) return failure(request, response, 'NOT_FOUND', 'Lead not found.', 404);
+      const reachUser = text(body.reach_user || body.assigned_to, 120);
+      if (!reachUser) return failure(request, response, 'VALIDATION_ERROR', 'reach_user is required.', 400);
+      lead.assigned_to = reachUser;
+      addLeadActivity(lead, 'owner_change', `REACH user assigned: ${reachUser}.`, leadActor(request));
+      await saveDatabase();
+      return success(request, response, lead);
     }
 
     if (request.method === 'GET' && route === '/api/v1/leads/ads/status') {

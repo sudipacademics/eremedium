@@ -1,6 +1,7 @@
 export const ADMIN_PAGES = [
   'Overview',
   'Leads',
+  'Log Visit',
   'Appointments',
   'Applicants',
   'Territory',
@@ -29,6 +30,7 @@ export function normalizeAdminRole(role: string) {
 const PAGE_PERMISSION: Record<AdminPage, string> = {
   Overview: 'overview',
   Leads: 'leads',
+  'Log Visit': 'leads',
   Appointments: 'appointments',
   Applicants: 'applicants',
   Territory: 'territory',

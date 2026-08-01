@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   api,
@@ -7,6 +7,7 @@ import {
   HomeRadiologyService,
   LabPanel,
   WhatsappCta,
+  itemDiscountPercent,
 } from '../api';
 import { AiPhysicianEntry } from '../components/AiPhysicianEntry';
 import { PriceTag } from '../components/PriceTag';
@@ -70,6 +71,62 @@ const QUICK_ACTIONS: Array<{
 
 const PKG_ICONS = ['🧪', '❤️', '🦋', '💪', '🩺', '🧬'];
 
+const FALLBACK_COLLECTION_STEPS: CollectionStep[] = [
+  { step: 1, title: 'Book Online', description: 'Pick tests, slot, and payment method' },
+  { step: 2, title: 'Phlebo Assigned', description: 'Your hub assigns a home visit' },
+  { step: 3, title: 'Sample Collected', description: 'Barcode scanned at your doorstep' },
+  { step: 4, title: 'Lab Processing', description: 'Results entered and reviewed' },
+  { step: 5, title: 'Report Ready', description: 'Download NABL PDF from My orders' },
+];
+
+const WORKFLOW_ICONS = [
+  // Book Online
+  <svg key="book" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <rect x="5" y="3.5" width="14" height="17" rx="2" />
+    <path d="M8 8h8M8 12h8M8 16h5" />
+  </svg>,
+  // Phlebo Assigned
+  <svg key="phlebo" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <circle cx="9" cy="7.5" r="2.5" />
+    <path d="M4.5 18.5c.7-3 2.7-4.5 4.5-4.5s3.8 1.5 4.5 4.5" />
+    <circle cx="17.5" cy="16.5" r="2" />
+    <path d="M14 16.5h1.2M19.8 16.5H21M17.5 14.2V13" />
+  </svg>,
+  // Sample Collected
+  <svg key="sample" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <path d="M9 3h6M10 3v5.5L6.5 18a3.2 3.2 0 0 0 3 4.5h5a3.2 3.2 0 0 0 3-4.5L14 8.5V3" />
+    <path d="M8.5 14h7" />
+  </svg>,
+  // Lab Processing
+  <svg key="lab" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <path d="M9 3v6.5L4.8 18.2A2.4 2.4 0 0 0 7 21.5h10a2.4 2.4 0 0 0 2.2-3.3L15 9.5V3" />
+    <path d="M9 3h6M8 14h8" />
+  </svg>,
+  // Report Ready
+  <svg key="report" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <path d="M7 3.5h7l3 3V20.5H7z" />
+    <path d="M14 3.5V7h3M9.5 13l2 2 3.5-4" />
+  </svg>,
+];
+
+function DeliveryBikeIcon() {
+  return (
+    <svg viewBox="0 0 32 20" width="28" height="18" fill="none" aria-hidden>
+      <circle cx="7" cy="14" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="24" cy="14" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M10.2 14h4.2l2.2-5.2h4.4l2.4 5.2H21"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M16.6 8.8V5.8h3.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12.2 8.8h2.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <rect x="19.8" y="3.4" width="3.4" height="2.4" rx="0.5" fill="currentColor" opacity="0.85" />
+    </svg>
+  );
+}
+
 function packageOffPercent(pkg: LabPanel): number | null {
   const mrp = Number(pkg.mrp || 0);
   const rate = Number(pkg.rate || 0);
@@ -95,13 +152,33 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
+  const popularRailRef = useRef<HTMLDivElement>(null);
+
+  function scrollPopular(dir: -1 | 1) {
+    const el = popularRailRef.current;
+    if (!el) return;
+    const step = Math.min(280, Math.max(200, el.clientWidth * 0.72));
+    el.scrollBy({ left: dir * step, behavior: 'smooth' });
+  }
+
+  const workflowSteps = useMemo(() => {
+    if (steps.length >= 5) return steps.slice(0, 5);
+    if (steps.length > 0) {
+      return FALLBACK_COLLECTION_STEPS.map((fallback, i) => ({
+        ...fallback,
+        ...(steps[i] || {}),
+        step: i + 1,
+        title: steps[i]?.title || fallback.title,
+        description: steps[i]?.description || fallback.description,
+      }));
+    }
+    return FALLBACK_COLLECTION_STEPS;
+  }, [steps]);
 
   const slides = useMemo(() => {
     const title = headers.home_title || HERO_SLIDES[0].title;
     const subtitle = headers.home_subtitle || HERO_SLIDES[0].subtitle;
-    return HERO_SLIDES.map((s, i) =>
-      i === 0 ? { ...s, title, subtitle } : s,
-    );
+    return HERO_SLIDES.map((s, i) => (i === 0 ? { ...s, title, subtitle } : s));
   }, [headers.home_subtitle, headers.home_title]);
 
   const load = useCallback(async () => {
@@ -464,51 +541,106 @@ export function HomePage() {
         </section>
       ) : null}
 
-      <section className="home-section home-section-soft">
+      <section className="home-section home-section-soft popular-diag-section">
         <div className="section-head">
           <h2 className="section-title">
             {headers.section_popular_title || 'Popular diagnostics'}
           </h2>
-          <button
-            className="btn secondary btn-sm"
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            Refresh
-          </button>
+          <div className="popular-diag-actions">
+            <button
+              className="btn secondary btn-sm"
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+            {popular.length > 1 ? (
+              <div className="popular-diag-nav" aria-label="Scroll popular diagnostics">
+                <button
+                  type="button"
+                  className="popular-diag-nav-btn"
+                  aria-label="Scroll left"
+                  onClick={() => scrollPopular(-1)}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="popular-diag-nav-btn"
+                  aria-label="Scroll right"
+                  onClick={() => scrollPopular(1)}
+                >
+                  ›
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
         {error ? <div className="error">{error}</div> : null}
         {loading && !popular.length ? <p className="muted">Loading…</p> : null}
-        <div className="catalog-grid">
-          {popular.map((item) => (
-            <article key={item.name} className="card">
-              <h3>{item.item_name}</h3>
-              <p className="muted">{stripHtml(item.description)}</p>
-              <PriceTag item={item} />
-              <Link className="btn btn-sm" to={`/diagnostics/book/${encodeURIComponent(item.name)}`}>
-                Book
-              </Link>
-            </article>
-          ))}
-        </div>
+        {popular.length ? (
+          <div
+            ref={popularRailRef}
+            className="package-scroll popular-diag-scroll"
+            role="list"
+            aria-label="Popular diagnostics carousel"
+          >
+            {popular.map((item) => {
+              const off = itemDiscountPercent(item);
+              const blurb = stripHtml(item.description || '');
+              return (
+                <article key={item.name} className="popular-diag-card" role="listitem">
+                  {off > 0 ? <span className="pkg-off-badge">{off}% OFF</span> : null}
+                  <h3 title={item.item_name}>{item.item_name}</h3>
+                  <p className="muted popular-diag-desc">
+                    {blurb && blurb.toLowerCase() !== item.item_name.toLowerCase()
+                      ? blurb
+                      : 'Lab test profile'}
+                  </p>
+                  <PriceTag item={item} size="sm" />
+                  <Link
+                    className="btn btn-sm"
+                    to={`/diagnostics/book/${encodeURIComponent(item.name)}`}
+                  >
+                    Book
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
       </section>
 
-      {steps.length > 0 ? (
-        <section className="home-section home-section-soft">
-          <h2 className="section-title">How home sample collection works</h2>
-          <ol className="collection-steps">
-            {steps.map((s) => (
-              <li key={s.step}>
-                <strong>
-                  {s.step}. {s.title}
-                </strong>
-                <p className="muted">{s.description}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
+      <section className="home-section home-section-soft home-workflow-section">
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">How home sample collection works</h2>
+            <p className="section-sub">From booking to report — tracked end to end.</p>
+          </div>
+        </div>
+        <ol className="home-workflow" aria-label="Home sample collection workflow">
+          {workflowSteps.map((s, idx) => (
+            <li key={`${s.step}-${s.title}`} className="home-workflow-step">
+              <div className="home-workflow-node">
+                <span className="home-workflow-icon">{WORKFLOW_ICONS[idx] || WORKFLOW_ICONS[0]}</span>
+                <span className="home-workflow-num">{s.step}</span>
+                <strong>{s.title}</strong>
+                <p>{s.description}</p>
+              </div>
+              {idx < workflowSteps.length - 1 ? (
+                <div className="home-workflow-connector" aria-hidden>
+                  <span className="home-workflow-line" />
+                  <span className="home-workflow-bike" style={{ animationDelay: `${idx * 0.55}s` }}>
+                    <DeliveryBikeIcon />
+                  </span>
+                  <span className="home-workflow-arrow">›</span>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   );
 }

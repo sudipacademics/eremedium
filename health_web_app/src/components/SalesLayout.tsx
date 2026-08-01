@@ -5,6 +5,7 @@ import { isSalesStaff } from '../auth/roles';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MobileBottomNav, MobileMenuButton, MobileNav, type MobileNavItem } from './MobileNav';
 import { getSalesBottomNavItems } from './roleBottomNav';
+import '../pages/sales/reach-portal.css';
 
 export function SalesLayout() {
   const { user, logout } = useAuth();
@@ -44,7 +45,7 @@ export function SalesLayout() {
   }
 
   return (
-    <div className={`page b2b-layout sales-layout${isMobile ? ' has-bottom-nav' : ''}`}>
+    <div className={`page b2b-layout sales-layout reach-shell${isMobile ? ' has-bottom-nav' : ''}`}>
       <header className="b2b-header">
         <div className="b2b-header-leading">
           {isMobile ? (

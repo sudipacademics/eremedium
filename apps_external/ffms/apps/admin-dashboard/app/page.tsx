@@ -9,6 +9,7 @@ import './notification-bell.css';
 import { ContentStudio } from './content-studio';
 import { TerritorySetup } from './territory-setup';
 import { LeadDirectory as CrmLeadDirectory } from './lead-directory';
+import { LogVisitDirectory } from './log-visit-directory';
 import { AppointmentDirectory } from './appointment-directory';
 import './modules.css';
 import './content-studio.css';
@@ -21,6 +22,7 @@ import './territory-sidebar-reset.css';
 import './territory-pin-capacities.css';
 import './google-territory-map.css';
 import './lead-directory.css';
+import './log-visit-directory.css';
 import './application-review.css';
 import './training-studio.css';
 import { AgreementQueueModule } from './agreement-queue';
@@ -40,7 +42,7 @@ import { PaymentOperationsModule } from './payment-operations';
 import './payment-operations.css';
 
 type Page = AdminPage;
-type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'Support' | 'User Management' | 'Payments'>;
+type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Log Visit' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'Support' | 'User Management' | 'Payments'>;
 type AdminSession = { token: string; name: string; role: string; allowedPages: Page[] };
 type LeadRecord = { id: string; name: string; email: string; mobile: string; franchise_model: string; territory_query: string; stage: string; created_at: string };
 type AppointmentRecord = { id: string; name: string; email: string; mobile: string; preferred_date: string; preferred_time: string; topic: string; status: string; created_at: string };
@@ -67,7 +69,7 @@ type AgreementWorkflow = { id?: string; status: string; status_label?: string; r
 type TrainingVideoSummary = { id: string; title: string; description: string; video_url: string; mime: string; duration_minutes: number; sort_order: number; sequence: number; accessible: boolean; locked_reason: string; completed: boolean; completed_at: string };
 type TrainingSummary = { unlocked: boolean; unlocked_at: string; unlocked_by: string; business_name: string; franchise_address: string; completed_at: string; progress: { total: number; completed: number; percent: number }; can_unlock: boolean; can_issue_certificate: boolean; can_regenerate_certificate: boolean; certificate: { certificate_number: string; business_name: string; franchise_address: string; issued_at: string; verification_url: string; qr_reference: string; pdf: { name: string; url: string; mime: string } | null } | null; videos: TrainingVideoSummary[] };
 type OnboardingCertificateSummary = { can_issue: boolean; can_download: boolean; can_mark_onboarded: boolean; is_onboarded: boolean; certificate: { certificate_number: string; business_name: string; franchise_model: string; franchise_model_label: string; issued_at: string; verification_url: string; qr_reference: string; pdf: { name: string; url: string; mime: string } | null } | null };
-type ApplicationRecord = { id: string; application_number: string; franchisee_id?: string; franchisee_id_issued_at?: string; full_name: string; email: string; mobile: string; date_of_birth?: string; pan_number?: string; aadhaar_number?: string; address?: string; city?: string; district?: string; pincode?: string; business_experience?: string; user_id?: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; territory_id?: string; territory_label?: string; territory_pincode?: string; territory_allotment?: TerritoryAllotment | null; territory_allotments?: TerritoryAllotment[]; stage: string; terms_accepted?: boolean; payment_terms?: Record<string, { terms_text?: string; accepted_at?: string; accepted_by?: string }>; documents: Record<string, ApplicationDocument>; document_verifications?: Record<string, ApplicationDocumentVerification>; review_notes?: string; review_history?: ApplicationReviewActivity[]; video_kyc_sessions?: VideoKycSession[]; video_kyc_current_session_id?: string; field_visit?: FieldVisit | null; onboarding_documents?: OnboardingDocument[]; branding_signage?: BrandingSignage | null; hr_process?: HrProcess | null; agreement_workflow?: AgreementWorkflow | null; training?: TrainingSummary | null; onboarding_certificate?: OnboardingCertificateSummary | null; franchise_webpage?: { id: string; public_url: string; enabled: boolean; settings: { business_name: string } } | null; payments: ApplicationPayment[]; created_at: string; updated_at: string };
+type ApplicationRecord = { id: string; application_number: string; franchisee_id?: string; franchisee_id_issued_at?: string; full_name: string; email: string; mobile: string; date_of_birth?: string; pan_number?: string; aadhaar_number?: string; address?: string; city?: string; district?: string; pincode?: string; business_experience?: string; user_id?: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; territory_id?: string; territory_label?: string; territory_pincode?: string; territory_allotment?: TerritoryAllotment | null; territory_allotments?: TerritoryAllotment[]; stage: string; terms_accepted?: boolean; payment_terms?: Record<string, { terms_text?: string; accepted_at?: string; accepted_by?: string }>; documents: Record<string, ApplicationDocument>; document_verifications?: Record<string, ApplicationDocumentVerification>; review_notes?: string; review_history?: ApplicationReviewActivity[]; video_kyc_sessions?: VideoKycSession[]; video_kyc_current_session_id?: string; field_visit?: FieldVisit | null; onboarding_documents?: OnboardingDocument[]; branding_signage?: BrandingSignage | null; hr_process?: HrProcess | null; agreement_workflow?: AgreementWorkflow | null; training?: TrainingSummary | null; onboarding_certificate?: OnboardingCertificateSummary | null; franchise_webpage?: { id: string; public_url: string; enabled: boolean; settings: { business_name: string } } | null; partner_portal?: { login_url?: string; user_id?: string; password?: string; provisioned_at?: string; message?: string } | null; partner_portal_error?: string; payments: ApplicationPayment[]; employee_referral_number?: string; created_at: string; updated_at: string };
 
 const API_BASE = RFMS_API_BASE;
 const API_ORIGIN = new URL(API_BASE).origin;
@@ -128,7 +130,7 @@ async function resolveAllocationGoogleMapsKey(token: string): Promise<string> {
   }
   return BAKED_GOOGLE_MAPS_API_KEY || runtimeGoogleMapsApiKey;
 }
-const pages: Page[] = ['Overview', 'Leads', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'Franchisee Webpage Index', 'Franchisee Directory', 'Support', 'Content CMS', 'User Management'];
+const pages: Page[] = ['Overview', 'Leads', 'Log Visit', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'Franchisee Webpage Index', 'Franchisee Directory', 'Support', 'Content CMS', 'User Management'];
 const applicants = [
   ['Ananya Ghosh', 'RFMS-2026-0148', 'FOFO', 'Document review', 'Arindam Das'],
   ['Sourav Banerjee', 'RFMS-2026-0149', 'FOCO', 'Video KYC', 'R. Saha'],
@@ -242,7 +244,7 @@ export default function Dashboard() {
           <ProfileMenu initials={initials} onLogout={signOut} />
         </header>
         <div className="content">
-          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
+          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Log Visit' ? <LogVisitDirectory token={session.token} search={search} notify={notify} viewer={{ name: session.name, role: session.role }} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
         </div>
       </section>
       {toast ? <div className="toast">Saved: {toast}</div> : null}
@@ -323,9 +325,10 @@ function FieldVisitOfficerPortal({ secureToken }: { secureToken: string }) {
       <label>Documents observed<textarea value={form.documents_observed} onChange={(event) => setForm((current) => ({ ...current, documents_observed: event.target.value }))} placeholder="Property or local documents seen" /></label>
       <label>Recommendation<textarea value={form.recommendation} onChange={(event) => setForm((current) => ({ ...current, recommendation: event.target.value }))} placeholder="Recommendation for the franchise manager" /></label>
       <label>Officer remarks<textarea value={form.officer_remarks} onChange={(event) => setForm((current) => ({ ...current, officer_remarks: event.target.value }))} placeholder="Additional observations" /></label>
-      <label className="field-visit-full">Upload site photos (maximum 12)<input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} new photograph${photos.length === 1 ? '' : 's'} selected for upload.` : savedPhotos.length ? `${savedPhotos.length} photograph${savedPhotos.length === 1 ? '' : 's'} already on this report. Choose new files only if you need to replace them.` : 'Upload clear photographs of the site exterior, interior and key facilities. Required for manager verification.'}</small></label>
+      <label className="field-visit-full">Upload Site Photos (maximum 12)<input required={!savedPhotos.length} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} photograph${photos.length === 1 ? '' : 's'} selected. These will appear in Manager → Applicants → Manual Application Review.` : savedPhotos.length ? `${savedPhotos.length} photograph${savedPhotos.length === 1 ? '' : 's'} already on this report. Choose new files only if you need to replace them.` : 'Upload clear photographs of the site exterior, interior and key facilities. Required for manager verification.'}</small></label>
+      {photos.length ? <p className="field-visit-full field-visit-photos-empty">{photos.map((file) => file.name).join(', ')}</p> : null}
       {savedPhotos.length ? <div className="field-visit-photo-grid field-visit-full">{savedPhotos.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}
-      <div className="field-visit-full"><button disabled={busy}>{busy ? 'Submitting report...' : 'Submit Field Visit report'}</button></div>
+      <div className="field-visit-full"><button disabled={busy || (!photos.length && !savedPhotos.length)}>{busy ? 'Submitting report...' : 'Submit Field Visit report'}</button></div>
     </form>}
     {locked && savedPhotos.length ? <div className="field-visit-photo-grid">{savedPhotos.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}
     {message ? <p className="field-visit-success">{message}</p> : null}{error ? <p className="field-visit-error" role="alert">{error}</p> : null}
@@ -401,6 +404,7 @@ function BrandingVendorPortal({ secureToken }: { secureToken: string }) {
   }
   if (!record) return <main className="secure-submission-page"><section><p>Secure Branding Signage</p><h1>{error ? 'Link unavailable' : 'Opening vendor workspace...'}</h1>{error ? <span>{error}</span> : null}</section></main>;
   const locked = record.branding_signage.status === 'approved';
+  const awaitingReview = record.branding_signage.status === 'submitted';
   const vendor = record.branding_signage.vendor;
   const needsRevision = record.branding_signage.status === 'rejected' || record.branding_signage.status === 'revision_requested';
   const hasExistingPhotos = Boolean(record.branding_signage.photographs?.length);
@@ -409,7 +413,7 @@ function BrandingVendorPortal({ secureToken }: { secureToken: string }) {
     <header>
       <div>
         <p>Secure Branding Signage</p>
-        <h1>{locked ? 'Branding installation approved' : needsRevision ? 'Revise amount, bill and branding work' : 'Submit completed branding work'}</h1>
+        <h1>{locked ? 'Branding installation approved' : needsRevision ? 'Revise total amount and bill' : awaitingReview ? 'Update amount, bill or evidence' : 'Submit completed branding work'}</h1>
         <span>{vendor?.shop_name || 'Approved branding vendor'} · {record.application_number}</span>
       </div>
       <b>{record.branding_signage.status.replaceAll('_', ' ')}</b>
@@ -419,15 +423,16 @@ function BrandingVendorPortal({ secureToken }: { secureToken: string }) {
       <div><small>Franchise model</small><b>{record.franchise_model}</b></div>
       <div><small>Proposed location</small><b>{record.preferred_location}</b></div>
     </div>
-    {needsRevision && record.branding_signage.manager_remarks ? <p className="field-visit-error">Manager note: {record.branding_signage.manager_remarks}</p> : null}
+    {needsRevision && record.branding_signage.manager_remarks ? <p className="field-visit-error">Manager note: {record.branding_signage.manager_remarks}. Use this same link to resubmit a revised total amount and bill.</p> : null}
+    {awaitingReview && !message ? <p className="field-visit-success">Submitted for manager review. You can still update the total amount, bill or photographs from this link until the manager decides.</p> : null}
     {record.branding_signage.materials?.length ? <section className="secure-assets"><b>Approved branding materials</b>{record.branding_signage.materials.map((asset) => <a key={asset.id || asset.url} href={resolveUploadUrl(asset.url)} target="_blank" rel="noreferrer">{asset.title}</a>)}</section> : null}
-    {locked ? <p className="field-visit-success">The manager has approved this installation. The record is now locked and available to the applicant.</p> : <form onSubmit={submit}>
+    {locked ? <p className="field-visit-success">The manager approved this installation{record.branding_signage.payment_voucher_number ? ` and payment voucher ${record.branding_signage.payment_voucher_number} was created for accounts` : ''}. This link is now locked.</p> : <form onSubmit={submit}>
       <label className="secure-full">Completion details<textarea required value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Describe completed signage, wall branding, vinyl work and installation notes" /></label>
-      <label className="secure-full">Submit total amount (INR)<input required type="number" min="1" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Final branding installation amount" /><small>Enter the total amount payable for the completed branding work.</small></label>
-      <label className="secure-full">Upload bill / invoice<input required={!hasExistingBill} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setBill(event.target.files?.[0] ?? null)} /><small>{bill ? bill.name : hasExistingBill ? `Current bill on file: ${record.branding_signage.invoice?.name}. Upload a revised bill only if needed.` : 'Upload the final bill or invoice (PDF or image).'}</small></label>
+      <label className="secure-full">Total amount (INR)<input required type="number" min="1" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Final branding installation amount" /><small>Enter the total amount payable for the completed branding work.</small></label>
+      <label className="secure-full">Upload bill<input required={!hasExistingBill} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setBill(event.target.files?.[0] ?? null)} /><small>{bill ? bill.name : hasExistingBill ? `Current bill on file: ${record.branding_signage.invoice?.name}. Upload a revised bill only if needed.` : 'Upload the final bill or invoice (PDF or image).'}</small></label>
       {hasExistingBill && !bill ? <p><a href={resolveUploadUrl(record.branding_signage.invoice?.url)} target="_blank" rel="noreferrer">View current bill</a></p> : null}
       <label className="secure-full">Installation photographs (maximum 6)<input required={!hasExistingPhotos} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={choosePhotos} /><small>{photos.length ? `${photos.length} photograph${photos.length === 1 ? '' : 's'} selected` : hasExistingPhotos ? `${record.branding_signage.photographs?.length} photograph(s) already on file. Upload replacements only if needed.` : 'Upload clear completed-work photographs.'}</small></label>
-      <button disabled={busy || (!photos.length && !hasExistingPhotos) || (!bill && !hasExistingBill) || !amount}>{busy ? 'Submitting...' : needsRevision ? 'Resubmit amount, bill and branding work' : 'Submit branding work for review'}</button>
+      <button disabled={busy || (!photos.length && !hasExistingPhotos) || (!bill && !hasExistingBill) || !amount}>{busy ? 'Submitting...' : needsRevision ? 'Resubmit total amount and bill' : awaitingReview ? 'Update submission for review' : 'Submit branding work for review'}</button>
     </form>}
     {message ? <p className="field-visit-success">{message}</p> : null}
     {error ? <p className="field-visit-error">{error}</p> : null}
@@ -744,7 +749,7 @@ function FieldVisitReviewSection({ application, token, eligible, onApplicationUp
       <label>Site address<textarea value={report.site_address ?? ''} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, site_address: event.target.value }))} /></label>
       <label className="field-visit-report-wide">Google Maps location link<input type="url" value={googleMapsUrl} disabled={visit.status === 'approved'} onChange={(event) => setReport((current) => ({ ...current, google_maps_url: event.target.value }))} placeholder="No Google Maps location was submitted" /><span className="field-visit-map-actions">{googleMapsUrl ? <><a href={googleMapsUrl} target="_blank" rel="noreferrer">Open Google Maps</a><button type="button" onClick={() => void copyGoogleMapsLink()}>Copy Google Maps link</button></> : <small>No location link was submitted by the officer.</small>}</span></label>
       {field('inspection_summary', 'Inspection summary', true)}{field('property_condition', 'Property condition')}{field('documents_observed', 'Documents observed')}{field('recommendation', 'Officer recommendation')}{field('officer_remarks', 'Officer remarks')}
-      {(report.site_photos?.length || visit.report?.site_photos?.length) ? <div className="field-visit-report-wide field-visit-site-photos"><b>Site photographs for verification</b><div className="field-visit-photo-grid">{(report.site_photos?.length ? report.site_photos : visit.report?.site_photos ?? []).map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div><small>{(report.site_photos?.length || visit.report?.site_photos?.length || 0)} photograph{(report.site_photos?.length || visit.report?.site_photos?.length || 0) === 1 ? '' : 's'} submitted by the Field Visit Officer.</small></div> : visit.report ? <p className="field-visit-report-wide field-visit-photos-empty">No site photographs were attached to this report.</p> : null}
+      <div className="field-visit-report-wide field-visit-site-photos"><b>Upload Site Photos — officer evidence</b>{(report.site_photos?.length || visit.report?.site_photos?.length) ? <><div className="field-visit-photo-grid">{(report.site_photos?.length ? report.site_photos : visit.report?.site_photos ?? []).map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div><small>{(report.site_photos?.length || visit.report?.site_photos?.length || 0)} photograph{(report.site_photos?.length || visit.report?.site_photos?.length || 0) === 1 ? '' : 's'} attached by the Field Visit Officer for verification.</small></> : <p className="field-visit-photos-empty">No site photographs were attached yet. Ask the officer to resubmit with Upload Site Photos from the secure Field Visit link.</p>}</div>
     </div> : <div className="field-visit-awaiting">Awaiting the assigned officer's Field Visit report.</div>}
     <label className="field-visit-manager-note">Manager remarks<textarea value={managerRemarks} disabled={visit.status === 'approved'} onChange={(event) => setManagerRemarks(event.target.value)} placeholder="Add review notes, correction instructions or approval remarks." /></label>
     {visit.status === 'approved' ? <button type="button" className="field-visit-final-pdf" disabled={busy === 'download'} onClick={() => void downloadReport()}>{busy === 'download' ? 'Preparing PDF...' : 'Download final Field Visit PDF'}</button> : visit.report ? <div className="field-visit-review-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void save('save')}>{busy === 'save' ? 'Saving...' : 'Save review edits'}</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void save('reject')}>{busy === 'reject' ? 'Saving...' : 'Request corrected report'}</button><button type="button" disabled={Boolean(busy)} onClick={() => void save('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve final report'}</button></div> : null}
@@ -1296,8 +1301,8 @@ function OnboardingCertificateReviewSection({ application, token, onApplicationU
       if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to mark this application onboarded.');
       onApplicationUpdated(payload.data.application);
       notify(application.franchise_model === 'FOCO'
-        ? `Application marked onboarded. FOCO franchise webpage${payload.data.franchise_webpage?.public_url ? ` published at ${payload.data.franchise_webpage.public_url}` : ' generated'}.`
-        : 'Application marked onboarded and franchise onboarding completed.');
+        ? `Application marked onboarded. Partner Portal credentials generated${payload.data.application.partner_portal?.user_id ? ` for ${payload.data.application.partner_portal.user_id}` : ''}. FOCO franchise webpage${payload.data.franchise_webpage?.public_url ? ` published at ${payload.data.franchise_webpage.public_url}` : ' generated'}.`
+        : `Application marked onboarded. Partner Portal credentials generated${payload.data.application.partner_portal?.user_id ? ` for ${payload.data.application.partner_portal.user_id}` : ''}.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to mark this application onboarded.');
     } finally {
@@ -1312,8 +1317,65 @@ function OnboardingCertificateReviewSection({ application, token, onApplicationU
     {certificate?.pdf?.url ? <div className="onboarding-certificate-panel"><div><b>Onboarding welcome certificate issued</b><span>{certificate.certificate_number} · {displayDate(certificate.issued_at)} · {certificate.business_name}</span><small>{certificate.franchise_model_label} partner · {application.full_name}</small><a href={certificate.verification_url} target="_blank" rel="noreferrer">Open verification page</a></div><button type="button" disabled={busy} onClick={() => void downloadCertificate()}>{busy ? 'Preparing…' : 'Download certificate'}</button></div> : onboarding?.can_issue ? <div className="onboarding-certificate-issue-panel"><div className="training-unlock-copy"><b>Generate onboarding certificate</b><span>Confirm the franchise business name below. The franchise model ({application.franchise_model}) is added automatically to the certificate.</span><label className="training-unlock-field">Business name<input value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder="Enter the franchise business name for the welcome certificate" disabled={busy} /></label></div><button type="button" className="onboarding-certificate-generate-button" disabled={busy || !businessName.trim()} onClick={() => void generateCertificate()}>{busy ? 'Generating…' : 'Generate Onboarding Certificate'}</button></div> : null}
     {certificate?.pdf?.url && onboarding?.can_mark_onboarded ? <div className="onboarding-complete-panel"><div><b>Complete franchise onboarding</b><span>{application.franchise_model === 'FOCO' ? 'Mark this application onboarded and automatically generate the dedicated FOCO franchise portfolio webpage.' : 'Mark this application onboarded and complete the franchise onboarding workflow.'}</span></div><button type="button" className="onboarding-complete-button" disabled={busy} onClick={() => void markOnboarded()}>{busy ? 'Completing…' : 'Onboarded'}</button></div> : null}
     {isOnboarded ? <div className="onboarding-complete-status"><b>Franchise onboarding completed</b>{application.franchisee_id ? <span>Franchisee ID <b>{application.franchisee_id}</b>{application.franchisee_id_issued_at ? ` · issued ${displayDate(application.franchisee_id_issued_at)}` : ''}</span> : null}<span>{application.franchise_model === 'FOCO' && franchiseWebpage?.public_url ? <>Portfolio webpage: <a href={franchiseWebpage.public_url} target="_blank" rel="noreferrer">{franchiseWebpage.public_url}</a></> : application.franchise_model === 'FOCO' ? 'FOCO franchise webpage generated.' : 'This FOFO franchise application is now marked onboarded.'}</span></div> : null}
+    {isOnboarded ? <PartnerPortalCredentialsPanel application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /> : null}
     {error ? <p className="application-review-error">{error}</p> : null}
   </section>;
+}
+
+function PartnerPortalCredentialsPanel({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const portal = application.partner_portal;
+  const hasCredentials = Boolean(portal?.user_id && portal?.password);
+  const loginUrl = portal?.login_url || 'https://partners.e-remedium.in';
+
+  async function provisionCredentials(force = false) {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/partner-portal/provision`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: ApplicationRecord; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to create Partner Portal credentials.');
+      onApplicationUpdated(payload.data);
+      notify(force ? 'Partner Portal password regenerated and stored for support.' : 'Partner Portal account created and stored for support.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to create Partner Portal credentials.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="partner-portal-credentials-panel">
+      <div className="partner-portal-credentials-head">
+        <div>
+          <b>Partner Portal credentials</b>
+          <span>Stored for applicant Overview, Manual Application Review and Franchisee Directory support.</span>
+        </div>
+        <button type="button" disabled={busy} onClick={() => void provisionCredentials(hasCredentials)}>
+          {busy ? 'Working…' : hasCredentials ? 'Reset password' : 'Create Partner Portal account'}
+        </button>
+      </div>
+      {hasCredentials ? (
+        <dl className="partner-portal-credentials-grid">
+          <div><dt>Login Link</dt><dd><a href={loginUrl} target="_blank" rel="noreferrer">{loginUrl}</a></dd></div>
+          <div><dt>User ID</dt><dd><code>{portal?.user_id}</code></dd></div>
+          <div><dt>Password</dt><dd><code>{portal?.password}</code></dd></div>
+        </dl>
+      ) : (
+        <p className="partner-portal-credentials-missing">
+          {application.partner_portal_error
+            ? `Partner Portal account is missing. Last error: ${application.partner_portal_error}`
+            : 'No Partner Portal login has been generated yet. Create one so the applicant can access partners.e-remedium.in.'}
+        </p>
+      )}
+      {error ? <p className="application-review-error">{error}</p> : null}
+    </div>
+  );
 }
 
 function ApplicationContactEditor({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
@@ -1389,7 +1451,7 @@ function ApplicationReviewModal({ application, token, busyId, error, onClose, on
 
       <section className="application-review-state"><div><span>Review progress</span><b>{verifiedCount}/4 documents verified</b></div><span className={allDocumentsVerified ? 'application-review-ready' : 'application-review-pending'}>{allDocumentsVerified ? 'Ready for manager decision' : `${4 - verifiedCount} document${4 - verifiedCount === 1 ? '' : 's'} still need verification`}</span></section>
 
-      <section className="application-review-section"><div className="application-review-section-head"><div><h3>Applicant and franchise request</h3><p>Check the submitted details against the supporting KYC files.</p></div><span>{application.terms_accepted ? 'Terms accepted' : 'Terms not recorded'}</span></div><div className="application-details-grid"><div><small>Date of birth</small><b>{application.date_of_birth || '—'}</b></div><div><small>Applicant user ID</small><b>{application.user_id || '—'}</b></div><div><small>PAN number</small><b>{application.pan_number || '—'}</b></div><div><small>Aadhaar number</small><b>{application.aadhaar_number || '—'}</b></div><div><small>Franchise model</small><b>{application.franchise_model}</b></div><div><small>Preferred location</small><b>{application.preferred_location}</b></div><div><small>PIN code</small><b>{application.pincode || '—'}</b></div><div><small>Assigned territory</small><b>{territory}</b></div><div className="application-detail-full"><small>Residential address</small><b>{[application.address, application.city, application.district, application.pincode].filter(Boolean).join(', ') || '—'}</b></div><div className="application-detail-full"><small>Business experience</small><b>{application.business_experience || 'Not provided'}</b></div></div></section>
+      <section className="application-review-section"><div className="application-review-section-head"><div><h3>Applicant and franchise request</h3><p>Check the submitted details against the supporting KYC files.</p></div><span>{application.terms_accepted ? 'Terms accepted' : 'Terms not recorded'}</span></div><div className="application-details-grid"><div><small>Date of birth</small><b>{application.date_of_birth || '—'}</b></div><div><small>Applicant user ID</small><b>{application.user_id || '—'}</b></div><div><small>PAN number</small><b>{application.pan_number || '—'}</b></div><div><small>Aadhaar number</small><b>{application.aadhaar_number || '—'}</b></div><div><small>Franchise model</small><b>{application.franchise_model}</b></div><div><small>Preferred location</small><b>{application.preferred_location}</b></div><div><small>PIN code</small><b>{application.pincode || '—'}</b></div><div><small>Assigned territory</small><b>{territory}</b></div><div><small>Employee Referral Number</small><b>{application.employee_referral_number || '—'}</b></div><div><small>Reach internal reference</small><b>{application.employee_referral_number ? 'Locked from Reach handoff' : 'Not provided'}</b></div><div className="application-detail-full"><small>Residential address</small><b>{[application.address, application.city, application.district, application.pincode].filter(Boolean).join(', ') || '—'}</b></div><div className="application-detail-full"><small>Business experience</small><b>{application.business_experience || 'Not provided'}</b></div></div></section>
 
       <ApplicationContactEditor application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
 
