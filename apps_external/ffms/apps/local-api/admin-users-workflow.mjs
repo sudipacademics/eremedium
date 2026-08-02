@@ -6,6 +6,7 @@ export const ADMIN_USER_STATUSES = ['active', 'inactive'];
 export const ADMIN_PAGES = [
   'Overview',
   'Leads',
+  'Log Visit',
   'Appointments',
   'Applicants',
   'Territory',
@@ -45,6 +46,7 @@ export const ADMIN_PERMISSIONS = {
 export const PAGE_PERMISSION = {
   Overview: 'overview',
   Leads: 'leads',
+  'Log Visit': 'leads',
   Appointments: 'appointments',
   Applicants: 'applicants',
   Territory: 'territory',
@@ -128,17 +130,37 @@ export function officerUserSummary(user) {
   };
 }
 
+/** Company ID format: RFMS-0001, RFMS-0012, … */
+export function isValidOfficerEmployeeId(value) {
+  return /^RFMS-\d{4,}$/i.test(String(value ?? '').trim());
+}
+
+/** Next unused RFMS-NNNN from existing officers (starts at RFMS-0008 after seed range). */
+export function nextOfficerEmployeeId(officers = []) {
+  let highest = 0;
+  for (const item of Array.isArray(officers) ? officers : []) {
+    const match = String(item?.employee_id ?? '').trim().toUpperCase().match(/^RFMS-(\d+)$/);
+    if (!match) continue;
+    highest = Math.max(highest, Number(match[1]) || 0);
+  }
+  // Keep seed RFMS-0001…0007 free of accidental collision when allocating for staff.
+  const next = Math.max(highest + 1, 8);
+  return `RFMS-${String(next).padStart(4, '0')}`;
+}
+
 export function createOfficerUser(input, officers = []) {
   const now = new Date().toISOString();
   const role = normalizeRole(input.role);
   if (!ADMIN_USER_ROLES.includes(role)) throw new Error('Choose a valid user role.');
   const email = String(input.email ?? '').trim().toLowerCase();
-  const employeeId = String(input.employee_id ?? '').trim();
+  const requestedId = String(input.employee_id ?? '').trim().toUpperCase();
+  const employeeId = requestedId || nextOfficerEmployeeId(officers);
   const name = String(input.name ?? '').trim();
   const mobile = String(input.mobile ?? '').replace(/\D/g, '').slice(0, 15);
-  if (!name || !email || !mobile || !employeeId) throw new Error('Enter name, email, mobile number and employee ID.');
+  if (!name || !email || !mobile) throw new Error('Enter name, email and mobile number.');
+  if (!isValidOfficerEmployeeId(employeeId)) throw new Error('Company ID must look like RFMS-0008.');
   if (officers.some((item) => item.email === email)) throw new Error('An admin user with this email already exists.');
-  if (officers.some((item) => item.employee_id.toLowerCase() === employeeId.toLowerCase())) throw new Error('An admin user with this employee ID already exists.');
+  if (officers.some((item) => item.employee_id.toLowerCase() === employeeId.toLowerCase())) throw new Error('An admin user with this company ID already exists.');
   const password = passwordDetails(input.password);
   if (!password) throw new Error('Choose a password between 8 and 128 characters.');
   return officerUserRecord({
@@ -160,7 +182,12 @@ export function updateOfficerUser(user, input, officers = []) {
   if (input.name !== undefined) next.name = String(input.name ?? '').trim();
   if (input.email !== undefined) next.email = String(input.email ?? '').trim().toLowerCase();
   if (input.mobile !== undefined) next.mobile = String(input.mobile ?? '').replace(/\D/g, '').slice(0, 15);
-  if (input.employee_id !== undefined) next.employee_id = String(input.employee_id ?? '').trim();
+  if (input.employee_id !== undefined) {
+    const requested = String(input.employee_id ?? '').trim().toUpperCase();
+    if (requested && requested !== String(user.employee_id ?? '').trim().toUpperCase()) {
+      throw new Error('Company ID is permanent after issue and cannot be changed.');
+    }
+  }
   if (input.role !== undefined) {
     const role = normalizeRole(input.role);
     if (!ADMIN_USER_ROLES.includes(role)) throw new Error('Choose a valid user role.');
@@ -170,9 +197,9 @@ export function updateOfficerUser(user, input, officers = []) {
     if (!ADMIN_USER_STATUSES.includes(input.status)) throw new Error('Choose a valid account status.');
     next.status = input.status;
   }
-  if (!next.name || !next.email || !next.mobile || !next.employee_id) throw new Error('Name, email, mobile number and employee ID are required.');
+  if (!next.name || !next.email || !next.mobile || !next.employee_id) throw new Error('Name, email, mobile number and company ID are required.');
   if (officers.some((item) => item.id !== user.id && item.email === next.email)) throw new Error('Another admin user already uses this email.');
-  if (officers.some((item) => item.id !== user.id && item.employee_id.toLowerCase() === next.employee_id.toLowerCase())) throw new Error('Another admin user already uses this employee ID.');
+  if (officers.some((item) => item.id !== user.id && item.employee_id.toLowerCase() === next.employee_id.toLowerCase())) throw new Error('Another admin user already uses this company ID.');
   next.updated_at = new Date().toISOString();
   return next;
 }

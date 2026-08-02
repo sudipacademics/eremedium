@@ -2572,6 +2572,7 @@ def log_sales_visit(sid=None, **kwargs):
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "lead_id", "franchisee_id", "visit_date", "visit_time", "latitude", "longitude",
         "purpose", "outcome", "duration_minutes", "notes", "lead_status",
+        "visit_id", "photo_base64", "photo_filename",
     )}
     try:
         visit_id = log_field_visit(frappe.session.user, data)
@@ -2620,6 +2621,84 @@ def assign_reach_sales_lead(sid=None, lead_id=None, sales_rep_id=None):
         return _success(row, message=_("REACH user assigned"))
     except frappe.ValidationError as exc:
         return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_list_reach_reps(**kwargs):
+    """FFMS HMAC bridge — list active REACH / Sales Rep Profiles."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_list_reach_reps as _list
+
+        _check_webhook_secret()
+        return _success({"reps": _list()})
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_list_reach_reps", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list REACH users"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_assign_reach_lead(**kwargs):
+    """FFMS HMAC bridge — assign lead to REACH user (creates pending Log Visit)."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_assign_reach_lead as _assign
+
+        _check_webhook_secret()
+        create_visit_raw = _parse_request_value("create_visit", kwargs.get("create_visit"))
+        create_visit = str(create_visit_raw or "1").lower() not in ("0", "false", "no")
+        row = _assign(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            sales_rep_id=_parse_request_value("sales_rep_id", kwargs.get("sales_rep_id")),
+            assigned_to_name=_parse_request_value("assigned_to_name", kwargs.get("assigned_to_name")),
+            assignee_role=_parse_request_value("assignee_role", kwargs.get("assignee_role")) or "reach",
+            create_visit=create_visit,
+            assigned_from=_parse_request_value("assigned_from", kwargs.get("assigned_from")) or "FFMS Admin",
+        )
+        return _success(row, message=_("Lead assignment synced to REACH"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ffms_assign_reach_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to assign REACH lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_lead_status(**kwargs):
+    """FFMS HMAC bridge — push CRM stage back to REACH Franchise Sales Lead."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_update_lead_status as _update
+
+        _check_webhook_secret()
+        row = _update(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            stage=_parse_request_value("stage", kwargs.get("stage")),
+            status=_parse_request_value("status", kwargs.get("status")),
+        )
+        return _success(row, message=_("Lead status synced to REACH"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_lead_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to sync lead status"))
 
 
 @frappe.whitelist(allow_guest=True)

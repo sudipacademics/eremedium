@@ -387,11 +387,18 @@ export type SalesVisit = {
   lead?: string;
   franchisee?: string;
   visit_date?: string;
+  visit_time?: string;
   purpose?: string;
   outcome?: string;
+  visit_status?: string;
   latitude?: number;
   longitude?: number;
   notes?: string;
+  photo?: string;
+  assigned_from?: string;
+  lead_name?: string;
+  lead_phone?: string;
+  reach_user?: string;
   creation?: string;
 };
 

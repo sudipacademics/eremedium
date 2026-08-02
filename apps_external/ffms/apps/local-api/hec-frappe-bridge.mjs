@@ -465,6 +465,7 @@ export async function verifyRfmsRazorpayPaymentViaErp({
 export async function activateRfmsPaidFranchiseeViaErp({
   applicationId = '',
   applicationNumber = '',
+  businessName = '',
   depositAmount = 0,
   district = '',
   email = '',
@@ -475,6 +476,8 @@ export async function activateRfmsPaidFranchiseeViaErp({
   paymentKey = '',
   pincode = '',
   preferredLocation = '',
+  registeredAddress = '',
+  territoryRegion = '',
 } = {}) {
   const amount = Number(depositAmount) || 0;
   const amountCanonical = Number.isInteger(amount) ? String(amount) : String(Number(amount.toFixed(2)));
@@ -482,6 +485,7 @@ export async function activateRfmsPaidFranchiseeViaErp({
     action: 'activate_rfms_paid_franchisee',
     application_id: String(applicationId || ''),
     application_number: String(applicationNumber || ''),
+    business_name: String(businessName || ''),
     deposit_amount: amountCanonical,
     district: String(district || ''),
     email: String(email || '').toLowerCase(),
@@ -492,9 +496,90 @@ export async function activateRfmsPaidFranchiseeViaErp({
     payment_key: String(paymentKey || ''),
     pincode: String(pincode || ''),
     preferred_location: String(preferredLocation || ''),
+    registered_address: String(registeredAddress || ''),
+    territory_region: String(territoryRegion || ''),
   });
   return postSignedHecMethod(
     'health_ecosystem_core.health_ecosystem_core.api.activate_rfms_paid_franchisee',
+    canonical,
+  );
+}
+
+export async function provisionPartnerPortalCredentialsViaErp({
+  applicationId = '',
+  applicationNumber = '',
+  businessName = '',
+  district = '',
+  email = '',
+  franchiseModel = '',
+  franchiseeProfile = '',
+  fullName = '',
+  loginUrl = 'https://partners.e-remedium.in',
+  mobile = '',
+  password = '',
+  pincode = '',
+  preferredLocation = '',
+  registeredAddress = '',
+  territoryRegion = '',
+} = {}) {
+  const canonical = JSON.stringify({
+    action: 'provision_partner_portal_credentials',
+    application_id: String(applicationId || ''),
+    application_number: String(applicationNumber || ''),
+    business_name: String(businessName || ''),
+    district: String(district || ''),
+    email: String(email || '').toLowerCase(),
+    franchise_model: String(franchiseModel || '').toUpperCase(),
+    franchisee_profile: String(franchiseeProfile || ''),
+    full_name: String(fullName || ''),
+    login_url: String(loginUrl || 'https://partners.e-remedium.in').replace(/\/+$/, ''),
+    mobile: String(mobile || ''),
+    password: String(password || ''),
+    pincode: String(pincode || ''),
+    preferred_location: String(preferredLocation || ''),
+    registered_address: String(registeredAddress || ''),
+    territory_region: String(territoryRegion || ''),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.provision_partner_portal_credentials',
+    canonical,
+  );
+}
+
+/** Refresh Partner Portal hub name/branch details from Franchise Directory (no password change). */
+export async function syncRfmsHubFromDirectoryViaErp({
+  applicationId = '',
+  applicationNumber = '',
+  businessName = '',
+  district = '',
+  email = '',
+  franchiseModel = '',
+  franchiseeProfile = '',
+  fullName = '',
+  mobile = '',
+  pincode = '',
+  preferredLocation = '',
+  registeredAddress = '',
+  territoryRegion = '',
+} = {}) {
+  const canonical = JSON.stringify({
+    action: 'sync_rfms_hub_from_directory',
+    application_id: String(applicationId || ''),
+    application_number: String(applicationNumber || ''),
+    business_name: String(businessName || ''),
+    district: String(district || ''),
+    email: String(email || '').toLowerCase(),
+    franchise_model: String(franchiseModel || '').toUpperCase(),
+    franchisee_profile: String(franchiseeProfile || ''),
+    full_name: String(fullName || ''),
+    mobile: String(mobile || ''),
+    pincode: String(pincode || ''),
+    preferred_location: String(preferredLocation || ''),
+    registered_address: String(registeredAddress || ''),
+    territory_region: String(territoryRegion || ''),
+  });
+  return postSignedHecMethod(
+    'health_ecosystem_core.health_ecosystem_core.api.sync_rfms_hub_from_directory',
     canonical,
   );
 }
@@ -581,4 +666,131 @@ export async function resolveWbPincodeViaErp(pincode) {
   }
   const data = message?.data && typeof message.data === 'object' ? message.data : message;
   return data && typeof data === 'object' ? data : { pincode: pin, matches: [], count: 0 };
+}
+
+/** Phase 86 — ERP franchise ads webhook method path (Meta/Google configure this URL). */
+export function franchiseAdsIngestMethodUrl() {
+  return frappeMethodUrl('health_ecosystem_core.health_ecosystem_core.api.ingest_franchise_ad_lead');
+}
+
+export function franchiseAdsWebhookSecret() {
+  return String(process.env.FRANCHISE_ADS_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET || '').trim();
+}
+
+export function whatsappCloudWebhookSecret() {
+  return String(process.env.WHATSAPP_CLOUD_WEBHOOK_SECRET || process.env.FRANCHISE_ADS_WEBHOOK_SECRET || process.env.ONBOARD_HMAC_SECRET || process.env.HEC_ONBOARD_HMAC_SECRET || '').trim();
+}
+
+async function postWhatsappCloudMethod(methodPath, fields = {}) {
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const secret = whatsappCloudWebhookSecret();
+  const form = new URLSearchParams();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null || value === '') continue;
+    form.set(key, String(value));
+  }
+  const raw = Buffer.from(form.toString());
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+    'X-Frappe-Site': site,
+    Host: site,
+  };
+  if (secret) headers['X-WhatsApp-Cloud-Secret'] = secret;
+  const response = await postForm(frappeMethodUrl(methodPath), headers, raw);
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `WhatsApp Cloud ERP call failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : message;
+  return data && typeof data === 'object' ? data : {};
+}
+
+export async function fetchFranchiseWhatsappThreadViaErp({ phone = '', rfmsLeadId = '', conversationId = '' } = {}) {
+  return postWhatsappCloudMethod('health_ecosystem_core.health_ecosystem_core.api.get_franchise_whatsapp_thread', {
+    phone,
+    rfms_lead_id: rfmsLeadId,
+    conversation_id: conversationId,
+  });
+}
+
+export async function sendFranchiseWhatsappReplyViaErp({ phone = '', message = '', rfmsLeadId = '', conversationId = '' } = {}) {
+  return postWhatsappCloudMethod('health_ecosystem_core.health_ecosystem_core.api.send_franchise_whatsapp_reply', {
+    phone,
+    message,
+    rfms_lead_id: rfmsLeadId,
+    conversation_id: conversationId,
+  });
+}
+
+async function postFranchiseAdsMethod(methodPath, fields = {}) {
+  const site = process.env.FRAPPE_SITE || 'health.localhost';
+  const secret = franchiseAdsWebhookSecret();
+  const form = new URLSearchParams();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null || value === '') continue;
+    form.set(key, String(value));
+  }
+  const raw = Buffer.from(form.toString());
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+    'X-Frappe-Site': site,
+    Host: site,
+  };
+  if (secret) headers['X-Franchise-Ads-Secret'] = secret;
+  const response = await postForm(frappeMethodUrl(methodPath), headers, raw);
+  let json = null;
+  try {
+    json = JSON.parse(response.text);
+  } catch {
+    json = { raw: response.text };
+  }
+  const message = unwrapFrappeMessage(json);
+  const err = frappePayloadError(message);
+  if (response.status < 200 || response.status >= 300 || err) {
+    throw new Error(err || `REACH sync ERP call failed (${response.status})`);
+  }
+  const data = message?.data && typeof message.data === 'object' ? message.data : message;
+  return data && typeof data === 'object' ? data : {};
+}
+
+export async function listReachRepsViaErp() {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_list_reach_reps', {});
+}
+
+export async function assignReachLeadViaErp({
+  hecLeadId = '',
+  rfmsLeadId = '',
+  salesRepId = '',
+  assignedToName = '',
+  assigneeRole = 'reach',
+  createVisit = true,
+  assignedFrom = 'FFMS Admin',
+} = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_assign_reach_lead', {
+    hec_lead_id: hecLeadId,
+    rfms_lead_id: rfmsLeadId,
+    sales_rep_id: salesRepId,
+    assigned_to_name: assignedToName,
+    assignee_role: assigneeRole,
+    create_visit: createVisit ? '1' : '0',
+    assigned_from: assignedFrom,
+  });
+}
+
+export async function updateReachLeadStatusViaErp({ hecLeadId = '', rfmsLeadId = '', stage = '', status = '' } = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_update_lead_status', {
+    hec_lead_id: hecLeadId,
+    rfms_lead_id: rfmsLeadId,
+    stage,
+    status,
+  });
 }

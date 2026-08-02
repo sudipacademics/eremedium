@@ -1,12 +1,22 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, SalesLead, SalesVisit } from '../../api';
 import { captureSalesGps } from '../../hooks/useSalesGps';
 
-const PURPOSES = ['Meet Lead', 'Follow-up', 'Presentation', 'Negotiation', 'Onboarding support'];
-const OUTCOMES = ['Positive', 'Neutral', 'Needs follow-up', 'Not interested', 'Closed'];
+const PURPOSES = ['Meet Lead', 'Follow-up', 'Onboarding', 'Franchise Support', 'HQ Check-in'];
+const OUTCOMES = ['Positive', 'Neutral', 'Negative', 'Rescheduled'];
 
 function statusClass(value?: string) {
   return `reach-status ${(value || '').toLowerCase().replace(/\s+/g, '')}`;
+}
+
+async function fileToBase64(file: File): Promise<{ base64: string; filename: string }> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Unable to read photo'));
+    reader.readAsDataURL(file);
+  });
+  return { base64: dataUrl, filename: file.name };
 }
 
 export function SalesVisitPage() {
@@ -16,6 +26,7 @@ export function SalesVisitPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const [visitId, setVisitId] = useState('');
   const [leadId, setLeadId] = useState('');
   const [purpose, setPurpose] = useState(PURPOSES[0]);
   const [outcome, setOutcome] = useState('');
@@ -24,10 +35,17 @@ export function SalesVisitPage() {
   const [leadStatus, setLeadStatus] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [photoBase64, setPhotoBase64] = useState('');
+  const [photoName, setPhotoName] = useState('');
+
+  const assignedVisits = useMemo(
+    () => visits.filter((v) => String(v.visit_status || '').toLowerCase() === 'assigned'),
+    [visits],
+  );
 
   async function load() {
     try {
-      const [leadsRes, visitsRes] = await Promise.all([api.getSalesLeads(), api.getSalesVisits(20)]);
+      const [leadsRes, visitsRes] = await Promise.all([api.getSalesLeads(), api.getSalesVisits(50)]);
       setLeads(leadsRes.data.leads || []);
       setVisits(visitsRes.data.visits || []);
     } catch (e) {
@@ -45,6 +63,14 @@ export function SalesVisitPage() {
       .catch(() => undefined);
   }, []);
 
+  function selectAssigned(visit: SalesVisit) {
+    setVisitId(visit.name);
+    setLeadId(visit.lead || '');
+    setPurpose(visit.purpose || PURPOSES[0]);
+    setNotes(visit.notes || '');
+    setMessage(`Completing assigned visit ${visit.name}`);
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (latitude == null || longitude == null) {
@@ -56,6 +82,7 @@ export function SalesVisitPage() {
     setMessage(null);
     try {
       await api.logSalesVisit({
+        ...(visitId ? { visit_id: visitId } : {}),
         ...(leadId ? { lead_id: leadId } : {}),
         latitude,
         longitude,
@@ -64,11 +91,15 @@ export function SalesVisitPage() {
         duration_minutes: duration,
         notes,
         ...(leadStatus ? { lead_status: leadStatus } : {}),
+        ...(photoBase64 ? { photo_base64: photoBase64, photo_filename: photoName || 'visit.jpg' } : {}),
       });
-      setMessage('Visit logged with GPS');
+      setMessage(visitId ? 'Assigned Log Visit completed and synced to FFMS' : 'Visit logged with GPS — synced to FFMS');
       setNotes('');
       setOutcome('');
       setLeadStatus('');
+      setVisitId('');
+      setPhotoBase64('');
+      setPhotoName('');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Log failed');
@@ -82,12 +113,51 @@ export function SalesVisitPage() {
       <div className="reach-page-head">
         <div>
           <h1>Log field visit</h1>
-          <p>Record meetings with franchisee leads. GPS is captured automatically so managers can verify field activity.</p>
+          <p>Assigned visits from FFMS appear here instantly. Complete them with GPS, remarks and an optional photo — they sync back to FFMS Log Visit.</p>
         </div>
       </div>
 
       {message ? <div className="reach-alert ok">{message}</div> : null}
       {error ? <div className="reach-alert err">{error}</div> : null}
+
+      {assignedVisits.length ? (
+        <section className="reach-panel" style={{ marginBottom: 16 }}>
+          <div className="reach-panel-head">
+            <h2>Assigned Log Visits</h2>
+            <span>{assignedVisits.length} pending from FFMS</span>
+          </div>
+          <div className="reach-table-wrap">
+            <table className="reach-table">
+              <thead>
+                <tr>
+                  <th>Lead</th>
+                  <th>Purpose</th>
+                  <th>From</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {assignedVisits.map((v) => (
+                  <tr key={v.name}>
+                    <td>
+                      <b>{v.lead_name || v.lead || 'Lead'}</b>
+                      <br />
+                      <small>{v.name}</small>
+                    </td>
+                    <td>{v.purpose || 'Meet Lead'}</td>
+                    <td>{v.assigned_from || 'FFMS'}</td>
+                    <td>
+                      <button type="button" className="reach-btn secondary" onClick={() => selectAssigned(v)}>
+                        Complete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <form className="reach-card" onSubmit={onSubmit}>
         <div className="reach-card-head">
@@ -95,8 +165,8 @@ export function SalesVisitPage() {
             ⌖
           </div>
           <div>
-            <h2>Visit details</h2>
-            <p>Link a lead when relevant, note purpose and outcome, then save with your current location.</p>
+            <h2>{visitId ? 'Complete assigned visit' : 'Visit details'}</h2>
+            <p>{visitId ? `Updating ${visitId}` : 'Link a lead when relevant, note purpose and outcome, then save with your current location.'}</p>
           </div>
         </div>
 
@@ -152,6 +222,28 @@ export function SalesVisitPage() {
             Duration (minutes)
             <input type="number" min={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
           </label>
+          <label className="reach-field">
+            Visit photo (optional)
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) {
+                  setPhotoBase64('');
+                  setPhotoName('');
+                  return;
+                }
+                void fileToBase64(file)
+                  .then(({ base64, filename }) => {
+                    setPhotoBase64(base64);
+                    setPhotoName(filename);
+                  })
+                  .catch(() => setError('Unable to read visit photo'));
+              }}
+            />
+          </label>
           <label className="reach-field span-2">
             Notes
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="What was discussed, next step, objections…" />
@@ -182,16 +274,17 @@ export function SalesVisitPage() {
                 Waiting for GPS…
               </span>
             )}
+            {photoName ? <small>Photo ready: {photoName}</small> : null}
           </div>
           <button type="submit" className="reach-btn" disabled={submitting}>
-            {submitting ? 'Saving…' : 'Log visit'}
+            {submitting ? 'Saving…' : visitId ? 'Complete & sync' : 'Log visit'}
           </button>
         </div>
       </form>
 
       <section className="reach-panel" style={{ marginTop: 16 }}>
         <div className="reach-panel-head">
-          <h2>Recent visits</h2>
+          <h2>Visit history</h2>
           <span>
             {visits.length} recent entr{visits.length === 1 ? 'y' : 'ies'}
           </span>
@@ -201,7 +294,8 @@ export function SalesVisitPage() {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Purpose</th>
+                <th>Lead</th>
+                <th>Status</th>
                 <th>Outcome</th>
                 <th>GPS</th>
               </tr>
@@ -210,7 +304,10 @@ export function SalesVisitPage() {
               {visits.map((v) => (
                 <tr key={v.name}>
                   <td>{v.visit_date || v.creation?.slice(0, 10)}</td>
-                  <td>{v.purpose}</td>
+                  <td>{v.lead_name || v.lead || '—'}</td>
+                  <td>
+                    <span className={statusClass(v.visit_status || 'Completed')}>{v.visit_status || 'Completed'}</span>
+                  </td>
                   <td>{v.outcome ? <span className={statusClass(v.outcome)}>{v.outcome}</span> : '—'}</td>
                   <td>
                     {v.latitude && v.longitude
@@ -221,7 +318,7 @@ export function SalesVisitPage() {
               ))}
               {!visits.length ? (
                 <tr>
-                  <td colSpan={4} className="reach-empty">
+                  <td colSpan={5} className="reach-empty">
                     No visits logged yet.
                   </td>
                 </tr>

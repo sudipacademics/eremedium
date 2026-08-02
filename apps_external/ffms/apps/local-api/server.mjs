@@ -202,6 +202,9 @@ import {
   resolveWbPincodeViaErp,
   fetchFranchiseWhatsappThreadViaErp,
   sendFranchiseWhatsappReplyViaErp,
+  listReachRepsViaErp,
+  assignReachLeadViaErp,
+  updateReachLeadStatusViaErp,
 } from './hec-frappe-bridge.mjs';
 import {
   applyBulkPinAvailability,
@@ -1568,6 +1571,11 @@ function leadRecord(value, id = randomUUID()) {
     hec_franchisee_profile: text(source.hec_franchisee_profile, 120),
     hec_session_id: text(source.hec_session_id, 120),
     hec_lead_id: text(source.hec_lead_id, 120),
+    sales_rep_id: text(source.sales_rep_id, 120),
+    reach_user_name: text(source.reach_user_name, 120),
+    reach_user_email: text(source.reach_user_email, 160),
+    reach_lead_source: text(source.reach_lead_source, 80),
+    assignee_role: text(source.assignee_role, 40),
     whatsapp_conversation_id: text(source.whatsapp_conversation_id, 120),
     whatsapp_last_at: text(source.whatsapp_last_at, 60),
     whatsapp_messages: Array.isArray(source.whatsapp_messages)
@@ -1596,6 +1604,10 @@ function addLeadActivity(lead, type, message, actor) {
 function salesVisitRecord(value, id = randomUUID()) {
   const source = value && typeof value === 'object' ? value : {};
   const createdAt = text(source.created_at, 60) || new Date().toISOString();
+  const visitStatusRaw = text(source.visit_status, 40).toLowerCase().replace(/[\s-]+/g, '_');
+  const visitStatus = ['assigned', 'in_progress', 'completed', 'cancelled'].includes(visitStatusRaw)
+    ? visitStatusRaw
+    : (Number(source.latitude) || Number(source.longitude) ? 'completed' : 'assigned');
   return {
     id: text(id || source.id, 80) || randomUUID(),
     hec_visit_id: text(source.hec_visit_id, 120),
@@ -1609,10 +1621,14 @@ function salesVisitRecord(value, id = randomUUID()) {
     visit_time: text(source.visit_time, 20),
     purpose: text(source.purpose, 120) || 'Meet Lead',
     outcome: text(source.outcome, 120),
+    visit_status: visitStatus,
     duration_minutes: Number(source.duration_minutes) || 0,
     latitude: Number(source.latitude) || null,
     longitude: Number(source.longitude) || null,
     notes: text(source.notes, 2000),
+    photo_url: text(source.photo_url, 500),
+    photo_data_url: text(source.photo_data_url, 600000),
+    assigned_from: text(source.assigned_from, 120),
     source: text(source.source, 40) || 'reach',
     created_at: createdAt,
     updated_at: text(source.updated_at, 60) || createdAt,
@@ -8508,16 +8524,55 @@ async function handle(request, response) {
         .filter((lead) => lead.source === 'reach_sales' || lead.hec_lead_id)
         .filter((lead) => crmLeadAccess(request, lead))
         .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+      const performanceMap = new Map();
+      for (const visit of visits) {
+        const key = visit.reach_user || visit.sales_rep_id || 'Unassigned';
+        if (!performanceMap.has(key)) {
+          performanceMap.set(key, {
+            reach_user: key,
+            sales_rep_id: visit.sales_rep_id || '',
+            total_visits: 0,
+            completed: 0,
+            assigned: 0,
+            positive: 0,
+            with_photo: 0,
+            with_gps: 0,
+          });
+        }
+        const row = performanceMap.get(key);
+        row.total_visits += 1;
+        if (visit.visit_status === 'completed') row.completed += 1;
+        if (visit.visit_status === 'assigned') row.assigned += 1;
+        if (String(visit.outcome || '').toLowerCase() === 'positive') row.positive += 1;
+        if (visit.photo_url || visit.photo_data_url) row.with_photo += 1;
+        if (visit.latitude != null && visit.longitude != null && (Number(visit.latitude) || Number(visit.longitude))) row.with_gps += 1;
+      }
+      const performance = [...performanceMap.values()].sort((a, b) => b.total_visits - a.total_visits);
       return success(request, response, {
         visits,
         reach_leads: reachLeads,
+        performance,
         stats: {
           total_visits: visits.length,
           visits_today: visits.filter((item) => String(item.visit_date || item.created_at || '').startsWith(new Date().toISOString().slice(0, 10))).length,
           reach_leads: reachLeads.length,
           open_leads: reachLeads.filter((lead) => !['won', 'lost', 'completed', 'disqualified'].includes(lead.stage)).length,
+          assigned_visits: visits.filter((item) => item.visit_status === 'assigned').length,
+          completed_visits: visits.filter((item) => item.visit_status === 'completed').length,
         },
       });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/sales-visits/reach-reps') {
+      if (!requirePermission(request, response, 'leads')) return;
+      if (!canManageCrm(request)) return failure(request, response, 'FORBIDDEN', 'Only CRM managers can list REACH users.', 403);
+      try {
+        const remote = await listReachRepsViaErp();
+        const reps = Array.isArray(remote.reps) ? remote.reps : [];
+        return success(request, response, { reps });
+      } catch (error) {
+        return failure(request, response, 'REACH_SYNC_ERROR', error instanceof Error ? error.message : 'Unable to load REACH users.', 502);
+      }
     }
 
     if (request.method === 'POST' && route === '/api/v1/sales-visits/assign-lead') {
@@ -8526,10 +8581,37 @@ async function handle(request, response) {
       const body = await readJson(request, 8_000);
       const lead = database.leads.find((item) => item.id === text(body.lead_id, 80));
       if (!lead) return failure(request, response, 'NOT_FOUND', 'Lead not found.', 404);
-      const reachUser = text(body.reach_user || body.assigned_to, 120);
-      if (!reachUser) return failure(request, response, 'VALIDATION_ERROR', 'reach_user is required.', 400);
-      lead.assigned_to = reachUser;
-      addLeadActivity(lead, 'owner_change', `REACH user assigned: ${reachUser}.`, leadActor(request));
+      const assigneeRole = text(body.assignee_role || body.role, 40).toLowerCase().replace(/[\s-]+/g, '_') || 'reach';
+      const salesRepId = text(body.sales_rep_id, 120);
+      const reachUser = text(body.reach_user || body.assigned_to || body.assigned_to_name, 120);
+      if (!reachUser && !salesRepId) return failure(request, response, 'VALIDATION_ERROR', 'Assignee is required.', 400);
+      const actor = leadActor(request);
+      try {
+        if (lead.hec_lead_id || assigneeRole === 'reach' || assigneeRole === 'log_visit') {
+          const remote = await assignReachLeadViaErp({
+            hecLeadId: lead.hec_lead_id || '',
+            rfmsLeadId: lead.id,
+            salesRepId: salesRepId || (assigneeRole === 'reach' ? reachUser : ''),
+            assignedToName: reachUser,
+            assigneeRole,
+            createVisit: assigneeRole === 'reach' || assigneeRole === 'log_visit',
+            assignedFrom: actor,
+          });
+          if (remote?.assigned_rep) lead.sales_rep_id = text(remote.assigned_rep, 120);
+          if (salesRepId) lead.sales_rep_id = salesRepId;
+        }
+      } catch (error) {
+        return failure(request, response, 'REACH_SYNC_ERROR', error instanceof Error ? error.message : 'Unable to sync assignment to REACH.', 502);
+      }
+      lead.assigned_to = reachUser || lead.assigned_to;
+      lead.assignee_role = assigneeRole;
+      if (salesRepId) lead.sales_rep_id = salesRepId;
+      addLeadActivity(
+        lead,
+        'owner_change',
+        `Assigned to ${lead.assigned_to} (${assigneeRole.replaceAll('_', ' ')}) for ${assigneeRole === 'reach' || assigneeRole === 'log_visit' ? 'Log Visit' : 'CRM handling'}.`,
+        actor,
+      );
       await saveDatabase();
       return success(request, response, lead);
     }
@@ -8778,6 +8860,29 @@ async function handle(request, response) {
         entityId: lead.id,
         assigneeName: lead.assigned_to,
       });
+      if (lead.hec_lead_id || lead.source === 'reach_sales') {
+        try {
+          if (action === 'stage_change' || Boolean(requestedStage)) {
+            await updateReachLeadStatusViaErp({
+              hecLeadId: lead.hec_lead_id || '',
+              rfmsLeadId: lead.id,
+              stage: lead.stage,
+            });
+          }
+          if (action === 'owner_change' || action === 'claim') {
+            await assignReachLeadViaErp({
+              hecLeadId: lead.hec_lead_id || '',
+              rfmsLeadId: lead.id,
+              assignedToName: lead.assigned_to,
+              assigneeRole: 'crm',
+              createVisit: false,
+              assignedFrom: actor,
+            });
+          }
+        } catch (error) {
+          console.error('reach_status_sync_failed', error);
+        }
+      }
       await saveDatabase();
       return success(request, response, lead);
     }

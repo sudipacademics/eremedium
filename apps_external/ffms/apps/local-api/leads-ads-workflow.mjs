@@ -68,6 +68,12 @@ export function adLeadPayloadFromRow(row = {}, defaults = {}) {
       ? row.raw_source_payload.slice(0, 4000)
       : (row.raw_source_payload ? JSON.stringify(row.raw_source_payload).slice(0, 4000) : ''),
     assigned_to: String(row.assigned_to || defaults.assigned_to || 'Unassigned').trim() || 'Unassigned',
+    sales_rep_id: String(row.sales_rep_id || '').trim(),
+    reach_user_name: String(row.reach_user_name || '').trim(),
+    reach_user_email: String(row.reach_user_email || '').trim(),
+    reach_lead_source: String(row.reach_lead_source || '').trim(),
+    assignee_role: String(row.assignee_role || '').trim(),
+    created_at: String(row.created_at || '').trim(),
     stage: String(row.stage || 'new').trim() || 'new',
     priority: String(row.priority || 'normal').trim() || 'normal',
   };
