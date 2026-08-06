@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { RFMS_API_BASE, RFMS_MARKETING_ORIGIN, adminPagesForRole, clearOfficerAuthHandoffFromUrl, clearOfficerSessionStorage, logoutOfficer, persistOfficerSession, peekNotificationEntity, clearNotificationEntity, readOfficerAuthHandoff, type AdminPage } from '@rfms/utils';
+import { RFMS_API_BASE, RFMS_MARKETING_ORIGIN, ADMIN_PAGES, adminCanHardDelete, adminPagesForRole, clearOfficerAuthHandoffFromUrl, clearOfficerSessionStorage, logoutOfficer, persistOfficerSession, peekNotificationEntity, clearNotificationEntity, readOfficerAuthHandoff, type AdminPage } from '@rfms/utils';
 import { AdminLogin } from './admin-login';
 import { NotificationBell, ProfileMenu } from './notification-bell';
 import './notification-bell.css';
@@ -22,15 +22,19 @@ import './territory-sidebar-reset.css';
 import './territory-pin-capacities.css';
 import './google-territory-map.css';
 import './lead-directory.css';
+import './hard-delete.css';
 import './log-visit-directory.css';
 import './application-review.css';
 import './training-studio.css';
 import { AgreementQueueModule } from './agreement-queue';
 import { AgreementChangeRequestBox, correctionWorkflowActive } from './agreement-change-request';
 import { TrainingStudio } from './training-studio';
+import { LisBridgeAdminPanel } from './lis-bridge-admin';
+import './lis-bridge-admin.css';
 import { FranchiseWebpageIndex } from './franchise-webpage-index';
 import './franchise-webpage-index.css';
 import { FranchiseeDirectory } from './franchisee-directory';
+import { B2bOperationsModule } from './b2b-operations';
 import { OverviewTerritoryAvailability } from './overview-territory-availability';
 import './franchisee-directory.css';
 import { SupportDesk } from './support-desk';
@@ -40,9 +44,10 @@ import { UserManagementPanel } from './user-management';
 import './user-management.css';
 import { PaymentOperationsModule } from './payment-operations';
 import './payment-operations.css';
+import { HardDeleteButton } from './hard-delete-button';
 
 type Page = AdminPage;
-type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Log Visit' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'Support' | 'User Management' | 'Payments'>;
+type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Log Visit' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'LIS Bridge' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'B2B Operations' | 'Support' | 'User Management' | 'Payments'>;
 type AdminSession = { token: string; name: string; role: string; allowedPages: Page[] };
 type LeadRecord = { id: string; name: string; email: string; mobile: string; franchise_model: string; territory_query: string; stage: string; created_at: string };
 type AppointmentRecord = { id: string; name: string; email: string; mobile: string; preferred_date: string; preferred_time: string; topic: string; status: string; created_at: string };
@@ -130,12 +135,7 @@ async function resolveAllocationGoogleMapsKey(token: string): Promise<string> {
   }
   return BAKED_GOOGLE_MAPS_API_KEY || runtimeGoogleMapsApiKey;
 }
-const pages: Page[] = ['Overview', 'Leads', 'Log Visit', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'Franchisee Webpage Index', 'Franchisee Directory', 'Support', 'Content CMS', 'User Management'];
-const applicants = [
-  ['Ananya Ghosh', 'RFMS-2026-0148', 'FOFO', 'Document review', 'Arindam Das'],
-  ['Sourav Banerjee', 'RFMS-2026-0149', 'FOCO', 'Video KYC', 'R. Saha'],
-  ['Dipanwita Pal', 'RFMS-2026-0150', 'FOFO', 'Territory review', 'Arindam Das'],
-];
+const pages: Page[] = ['Overview', 'Leads', 'Log Visit', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'LIS Bridge', 'Franchisee Webpage Index', 'Franchisee Directory', 'B2B Operations', 'Support', 'Content CMS', 'User Management'];
 
 const data: Record<OperationalPage, { title: string; note: string; action: string; headers: string[]; rows: string[][] }> = {
   Territory: { title: 'Territory availability', note: 'West Bengal territory controls with exclusive-allocation safeguards.', action: 'Create territory', headers: ['Territory', 'District', 'Model', 'Status', 'Reservation'], rows: [['Kolkata - Ward 114', 'Kolkata', 'FOFO', 'Available', '-'], ['Siliguri North', 'Darjeeling', 'FOCO', 'Reserved', 'Expires 19 Jul'], ['Bardhaman Central', 'Purba Bardhaman', 'FOFO', 'Occupied', 'Medilife Diagnostics']] },
@@ -189,6 +189,10 @@ export default function Dashboard() {
     setFieldVisitToken(query.get('field-visit') ?? '');
     setBrandingVendorToken(query.get('branding-vendor') ?? '');
     setHrProcessToken(query.get('hr-process') ?? '');
+    const pageParam = query.get('page');
+    if (pageParam && (ADMIN_PAGES as readonly string[]).includes(pageParam)) {
+      setPage(pageParam as Page);
+    }
   }, []);
 
   useEffect(() => {
@@ -198,8 +202,12 @@ export default function Dashboard() {
 
   const visiblePages = useMemo(() => {
     if (!session) return [] as Page[];
-    const source = session.allowedPages.length ? session.allowedPages : adminPagesForRole(session.role);
-    return source.filter((item) => pages.includes(item as Page)) as Page[];
+    // Always derive from current role ACL so newly shipped pages (LIS Bridge) appear
+    // even if sessionStorage still has an older allowed_pages snapshot.
+    const byRole = adminPagesForRole(session.role) as Page[];
+    const stored = session.allowedPages.filter((item) => pages.includes(item));
+    const merged = Array.from(new Set<Page>([...byRole, ...stored]));
+    return ADMIN_PAGES.filter((item) => merged.includes(item as Page)) as Page[];
   }, [session]);
 
   useEffect(() => {
@@ -233,7 +241,7 @@ export default function Dashboard() {
       <aside>
         <div className="brand"><span className="brand-mark">R</span><div><strong>Remedium Lab</strong><small>Franchise Management</small></div></div>
         <nav>{visiblePages.map((item) => <button key={item} className={page === item ? 'active' : ''} onClick={() => setPage(item)}>{item}</button>)}</nav>
-        <div className="side-card"><b>Quick actions</b>{visiblePages.includes('Leads') ? <button onClick={() => { setPage('Leads'); setLeadCreateRequest((value) => value + 1); }}>Add new lead</button> : null}{visiblePages.includes('Territory') ? <button onClick={() => setPage('Territory')}>Assign territory</button> : null}{visiblePages.includes('Content CMS') ? <button onClick={() => setPage('Content CMS')}>Manage website content</button> : null}</div>
+        <div className="side-card"><b>Quick actions</b>{visiblePages.includes('Leads') ? <button onClick={() => { setPage('Leads'); setLeadCreateRequest((value) => value + 1); }}>Add new lead</button> : null}{visiblePages.includes('Territory') ? <button onClick={() => setPage('Territory')}>Assign territory</button> : null}{visiblePages.includes('LIS Bridge') ? <button onClick={() => setPage('LIS Bridge')}>LIS Bridge package</button> : null}{visiblePages.includes('Content CMS') ? <button onClick={() => setPage('Content CMS')}>Manage website content</button> : null}</div>
         <small className="copyright">(c) 2026 Remedium Lab</small>
       </aside>
       <section className="workspace">
@@ -244,7 +252,7 @@ export default function Dashboard() {
           <ProfileMenu initials={initials} onLogout={signOut} />
         </header>
         <div className="content">
-          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Log Visit' ? <LogVisitDirectory token={session.token} search={search} notify={notify} viewer={{ name: session.name, role: session.role }} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
+          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Log Visit' ? <LogVisitDirectory token={session.token} search={search} notify={notify} viewer={{ name: session.name, role: session.role }} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'LIS Bridge' ? <LisBridgeAdminPanel token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'B2B Operations' ? <B2bOperationsModule token={session.token} search={search} notify={notify} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
         </div>
       </section>
       {toast ? <div className="toast">Saved: {toast}</div> : null}
@@ -455,12 +463,159 @@ function Overview({ userName, token, go, notify }: { userName: string; token: st
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const displayName = userName.trim() || 'there';
+  const [overview, setOverview] = useState<{
+    period_label: string;
+    cards: Record<string, { display: string; delta: string; tone?: string }>;
+    pipeline: {
+      conversion_label: string;
+      growth_label: string;
+      funnel: Array<{ key: string; label: string; value: number; width_pct: number }>;
+    };
+    priority_approvals: Array<{
+      id: string;
+      applicant_name: string;
+      application_number: string;
+      franchise_model: string;
+      stage_label: string;
+      manager: string;
+    }>;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadOverview = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/admin/overview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (isOfficerSessionExpired(response)) return;
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        data?: typeof overview;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new Error(payload?.error?.message ?? 'Unable to load overview metrics.');
+      }
+      setOverview(payload.data);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load overview metrics.');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
+
+  const cards = overview?.cards;
+  const funnel = overview?.pipeline?.funnel || [];
+  const priorities = overview?.priority_approvals || [];
+  const periodLabel = overview?.period_label
+    || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
   return <>
-    <div className="title-row"><div><h1>{greeting}, {displayName}</h1><p>Here is the operational pulse of your franchise network.</p></div><button className="date" onClick={() => notify('Date filter set to July 2026')}>July 2026</button></div>
-    <div className="metrics"><Metric label="New leads" value="128" delta="18.7%" icon="Lead" /><Metric label="Applications in review" value="36" delta="8 pending action" icon="App" /><Metric label="Territories available" value="28" delta="across West Bengal" icon="Map" /><Metric label="Collections this month" value="INR 18.2L" delta="12.4%" icon="Pay" /></div>
-    <div className="grid top"><section className="panel pipeline"><Header title="Application pipeline" text="Conversion from qualified lead to franchise partner" action="Export" onClick={() => notify('Pipeline export queued')} /><div className="funnel"><div style={{ width: '100%' }}><b>128</b><span>Qualified leads</span></div><div style={{ width: '82%' }}><b>62</b><span>Applications started</span></div><div style={{ width: '64%' }}><b>36</b><span>Under review</span></div><div style={{ width: '46%' }}><b>14</b><span>Approved</span></div></div><div className="funnel-note"><span>12.5% conversion</span><span>Up 2.1% vs last month</span></div></section></div>
+    <div className="title-row">
+      <div>
+        <h1>{greeting}, {displayName}</h1>
+        <p>Live operational pulse from your franchise network database.</p>
+      </div>
+      <button className="date" type="button" onClick={() => void loadOverview()}>
+        {loading ? 'Refreshing…' : periodLabel}
+      </button>
+    </div>
+    {error ? <p className="application-review-error">{error}</p> : null}
+    <div className="metrics">
+      <Metric label="New leads" value={cards?.new_leads.display ?? (loading ? '…' : '0')} delta={cards?.new_leads.delta ?? 'Loading live count'} icon="Lead" />
+      <Metric label="Applications in review" value={cards?.applications_in_review.display ?? (loading ? '…' : '0')} delta={cards?.applications_in_review.delta ?? 'Loading live count'} icon="App" />
+      <Metric label="Territories available" value={cards?.territories_available.display ?? (loading ? '…' : '0')} delta={cards?.territories_available.delta ?? 'Loading live count'} icon="Map" />
+      <Metric label="Collections this month" value={cards?.collections_this_month.display ?? (loading ? '…' : 'INR 0')} delta={cards?.collections_this_month.delta ?? 'Loading live count'} icon="Pay" />
+    </div>
+    <div className="grid top">
+      <section className="panel pipeline">
+        <Header
+          title="Application pipeline"
+          text="Conversion from qualified lead to franchise partner"
+          action="Export"
+          onClick={() => {
+            if (!overview) {
+              notify('Overview still loading');
+              return;
+            }
+            const rows = [
+              ['Stage', 'Count'],
+              ...funnel.map((item) => [item.label, String(item.value)]),
+              ['Conversion', overview.pipeline.conversion_label],
+              ['Trend', overview.pipeline.growth_label],
+            ];
+            const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ffms-overview-pipeline-${periodLabel.replaceAll(' ', '-').toLowerCase()}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+            notify('Pipeline export downloaded');
+          }}
+        />
+        <div className="funnel">
+          {funnel.length ? funnel.map((item) => (
+            <div key={item.key} style={{ width: `${item.width_pct}%` }}>
+              <b>{item.value}</b>
+              <span>{item.label}</span>
+            </div>
+          )) : (
+            <div style={{ width: '100%' }}><b>{loading ? '…' : '0'}</b><span>No pipeline data yet</span></div>
+          )}
+        </div>
+        <div className="funnel-note">
+          <span>{overview?.pipeline?.conversion_label ?? (loading ? 'Calculating…' : '0% conversion')}</span>
+          <span>{overview?.pipeline?.growth_label ?? '—'}</span>
+        </div>
+      </section>
+    </div>
     <OverviewTerritoryAvailability token={token} onOpenTerritory={() => go('Territory')} />
-    <section className="panel data-panel"><Header title="Priority approvals" text="Requests that need a decision this week" action="Review all" onClick={() => go('Applicants')} /><div className="table-wrap"><table><thead><tr><th>Applicant</th><th>Application ID</th><th>Model</th><th>Stage</th><th>Manager</th><th /></tr></thead><tbody>{applicants.map((row) => <tr key={row[1]}>{row.map((cell, index) => <td key={cell}>{index === 0 ? <b>{cell}</b> : cell}</td>)}<td><button className="row-action" onClick={() => notify(`${row[0]} opened`)}>Review</button></td></tr>)}</tbody></table></div></section>
+    <section className="panel data-panel">
+      <Header
+        title="Priority approvals"
+        text={loading ? 'Loading applications that need a decision…' : `${priorities.length} request${priorities.length === 1 ? '' : 's'} needing attention`}
+        action="Review all"
+        onClick={() => go('Applicants')}
+      />
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Applicant</th><th>Application ID</th><th>Model</th><th>Stage</th><th>Manager</th><th /></tr>
+          </thead>
+          <tbody>
+            {error ? (
+              <tr><td className="empty" colSpan={6}>{error}</td></tr>
+            ) : priorities.length ? priorities.map((row) => (
+              <tr key={row.id}>
+                <td><b>{row.applicant_name}</b></td>
+                <td>{row.application_number}</td>
+                <td>{row.franchise_model}</td>
+                <td>{row.stage_label}</td>
+                <td>{row.manager}</td>
+                <td>
+                  <button className="row-action" type="button" onClick={() => go('Applicants')}>Review</button>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td className="empty" colSpan={6}>
+                  {loading ? 'Loading priority approvals…' : 'No applications currently waiting for manager review.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   </>;
 }
 
@@ -595,7 +750,7 @@ function reviewActivityLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function ApplicationDirectory({ token, search, notify }: { token: string; search: string; notify: (message: string) => void }) {
+function ApplicationDirectory({ token, search, notify, viewerRole }: { token: string; search: string; notify: (message: string) => void; viewerRole: string }) {
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -640,6 +795,18 @@ function ApplicationDirectory({ token, search, notify }: { token: string; search
 
   function replaceApplication(updated: ApplicationRecord) {
     setApplications((items) => items.map((item) => item.id === updated.id ? updated : item));
+  }
+
+  async function hardDeleteSelectedApplication() {
+    if (!selectedApplication || !adminCanHardDelete(viewerRole)) throw new Error('Only a Super Admin can permanently delete applications.');
+    const response = await fetch(`${API_BASE}/admin/applications/${selectedApplication.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (isOfficerSessionExpired(response)) return;
+    const result = await response.json().catch(() => null) as { success?: boolean; error?: { message?: string } } | null;
+    if (!response.ok || !result?.success) throw new Error(result?.error?.message ?? 'Unable to permanently delete this application.');
+    setApplications((items) => items.filter((item) => item.id !== selectedApplication.id));
+    setSelectedApplicationId('');
+    setReviewError('');
+    notify('Application permanently deleted from FFMS and linked portals.');
   }
 
   async function verifyDocument(application: ApplicationRecord, kind: string, verified: boolean) {
@@ -710,7 +877,7 @@ function ApplicationDirectory({ token, search, notify }: { token: string; search
     <div className="title-row"><div><h1>Franchise applications</h1><p>Applications appear here after the first payment is received. Review KYC and unlock each next step.</p></div><button className="date" onClick={() => setReload((current) => current + 1)}>Refresh</button></div>
     <div className="module-summary"><section><span>Paid applications</span><b>{applications.length}</b><small>Visible to the franchise team</small></section><section><span>Ready for review</span><b>{phaseOneReady}</b><small>First payment received</small></section><section><span>Finalising</span><b>{finalising}</b><small>Onboarding or agreement work</small></section></div>
     <section className="panel data-panel"><Header title="Applicant workflow" text={loading ? 'Loading paid applications...' : `${visibleApplications.length} application records`} action="Refresh" onClick={() => setReload((current) => current + 1)} /><div className="table-wrap"><table><thead><tr><th>Applicant</th><th>Application</th><th>Model and territory</th><th>KYC</th><th>Payments and stage</th><th>Next phase</th><th /></tr></thead><tbody>{error ? <tr><td className="empty" colSpan={7}>{error}</td></tr> : visibleApplications.map((application) => { const paidPayments = application.payments.filter((payment) => payment.status === 'paid'); const duePayment = application.payments.find((payment) => payment.status === 'due'); const action = nextApplicationAction(application); const verifiedCount = requiredApplicationDocuments.filter((document) => application.document_verifications?.[document.key]?.status === 'verified').length; return <tr key={application.id}><td><b>{application.full_name}</b><br /><small>{application.email}<br />{application.mobile}</small></td><td><b>{application.application_number}</b><br /><small>Received {displayDate(application.created_at)}</small></td><td>{application.franchise_model}<br /><small>{application.preferred_location}</small></td><td><b>{Object.keys(application.documents ?? {}).length}/4 uploaded</b><br /><small>{verifiedCount}/4 verified</small></td><td><b>{paidPayments.length}/{application.payments.length} paid</b><br /><small>{duePayment ? `Due: ${duePayment.label}` : applicationStage(application.stage)}</small></td><td><small className="application-next-step">{action || applicationStage(application.stage)}</small></td><td><button className="row-action" type="button" onClick={() => { setReviewError(''); setSelectedApplicationId(application.id); }}>Open review</button></td></tr>; })}{!loading && !error && visibleApplications.length === 0 ? <tr><td className="empty" colSpan={7}>No paid franchise applications have been received yet.</td></tr> : null}</tbody></table></div></section>
-    {selectedApplication ? <ApplicationReviewModal application={selectedApplication} token={token} busyId={busyId} error={reviewError} onClose={() => { setReviewError(''); setSelectedApplicationId(''); }} onDocumentVerification={(kind, verified) => void verifyDocument(selectedApplication, kind, verified)} onAssignVideoKyc={() => void assignVideoKyc(selectedApplication)} onAdvance={(notes) => void advance(selectedApplication, notes)} onProceedAgreement={(notes) => void proceedAgreement(selectedApplication, notes)} onApplicationUpdated={replaceApplication} notify={notify} /> : null}
+    {selectedApplication ? <ApplicationReviewModal application={selectedApplication} token={token} busyId={busyId} error={reviewError} viewerRole={viewerRole} onClose={() => { setReviewError(''); setSelectedApplicationId(''); }} onDocumentVerification={(kind, verified) => void verifyDocument(selectedApplication, kind, verified)} onAssignVideoKyc={() => void assignVideoKyc(selectedApplication)} onAdvance={(notes) => void advance(selectedApplication, notes)} onProceedAgreement={(notes) => void proceedAgreement(selectedApplication, notes)} onApplicationUpdated={replaceApplication} onHardDelete={hardDeleteSelectedApplication} notify={notify} /> : null}
   </section>;
 }
 
@@ -1428,7 +1595,7 @@ function ApplicationContactEditor({ application, token, onApplicationUpdated, no
   );
 }
 
-function ApplicationReviewModal({ application, token, busyId, error, onClose, onDocumentVerification, onAssignVideoKyc, onAdvance, onProceedAgreement, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; busyId: string; error: string; onClose: () => void; onDocumentVerification: (kind: string, verified: boolean) => void; onAssignVideoKyc: () => void; onAdvance: (notes: string) => void; onProceedAgreement: (notes: string) => void; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+function ApplicationReviewModal({ application, token, busyId, error, viewerRole, onClose, onDocumentVerification, onAssignVideoKyc, onAdvance, onProceedAgreement, onApplicationUpdated, onHardDelete, notify }: { application: ApplicationRecord; token: string; busyId: string; error: string; viewerRole: string; onClose: () => void; onDocumentVerification: (kind: string, verified: boolean) => void; onAssignVideoKyc: () => void; onAdvance: (notes: string) => void; onProceedAgreement: (notes: string) => void; onApplicationUpdated: (application: ApplicationRecord) => void; onHardDelete?: () => Promise<void>; notify: (message: string) => void }) {
   const [notes, setNotes] = useState(application.review_notes ?? '');
   const action = nextApplicationAction(application);
   const proceedEligible = canProceedToFinalAgreement(application);
@@ -1447,7 +1614,7 @@ function ApplicationReviewModal({ application, token, busyId, error, onClose, on
 
   return <div className="application-review-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="application-review-modal" role="dialog" aria-modal="true" aria-labelledby="application-review-heading" onMouseDown={(event) => event.stopPropagation()}>
-      <header className="application-review-head"><div><p>Manual application review</p><h2 id="application-review-heading">{application.full_name}</h2><span className="application-review-head-meta">{application.application_number}{application.franchisee_id ? ` · ${application.franchisee_id}` : ''} · {application.franchise_model} · received {displayDate(application.created_at)}</span></div><button type="button" onClick={onClose} aria-label="Close application review">Close</button></header>
+      <header className="application-review-head"><div><p>Manual application review</p><h2 id="application-review-heading">{application.full_name}</h2><span className="application-review-head-meta">{application.application_number}{application.franchisee_id ? ` · ${application.franchisee_id}` : ''} · {application.franchise_model} · received {displayDate(application.created_at)}</span></div><div className="application-review-head-actions">{adminCanHardDelete(viewerRole) && onHardDelete ? <HardDeleteButton onConfirm={onHardDelete} /> : null}<button type="button" onClick={onClose} aria-label="Close application review">Close</button></div></header>
 
       <section className="application-review-state"><div><span>Review progress</span><b>{verifiedCount}/4 documents verified</b></div><span className={allDocumentsVerified ? 'application-review-ready' : 'application-review-pending'}>{allDocumentsVerified ? 'Ready for manager decision' : `${4 - verifiedCount} document${4 - verifiedCount === 1 ? '' : 's'} still need verification`}</span></section>
 
@@ -1697,6 +1864,6 @@ function Header({ title, text, action, onClick }: { title: string; text: string;
 }
 
 function Metric({ label, value, delta, icon }: { label: string; value: string; delta: string; icon: string }) {
-  return <section className="metric"><div className="metric-icon">{icon}</div><div><p>{label}</p><h2>{value}</h2><small>Up {delta}</small></div></section>;
+  return <section className="metric"><div className="metric-icon">{icon}</div><div><p>{label}</p><h2>{value}</h2><small>{delta}</small></div></section>;
 }
 

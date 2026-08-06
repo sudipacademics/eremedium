@@ -1766,6 +1766,14 @@ def get_phlebotomist_collection_queue(limit=50, sid=None):
         item = _serialize_trf(row)
         item["barcode"] = row.get("unique_barcode")
         item["collection_address"] = row.get("collection_address")
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase89_vial_accession import (
+                get_trf_draw_plan_payload,
+            )
+
+            item["collection_tubes"] = get_trf_draw_plan_payload(row.get("name"))
+        except Exception:
+            item["collection_tubes"] = []
         orders.append(item)
 
     return _success({"orders": orders, "franchisee": franchisee})
@@ -2532,6 +2540,44 @@ def get_sales_portal(sid=None):
 
 
 @frappe.whitelist(allow_guest=True)
+def get_sales_profile_dashboard(sid=None, seed_if_missing=1):
+    """REACH user Profile dashboard — KPIs, ERP employee, CTC/target/expenses."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25_sales_profile import (
+            get_sales_profile_dashboard as _dashboard,
+        )
+
+        seed = str(seed_if_missing or "1").lower() not in ("0", "false", "no")
+        return _success(_dashboard(frappe.session.user, seed_if_missing=seed))
+    except Exception as exc:
+        frappe.log_error(title="get_sales_profile_dashboard", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load sales profile dashboard"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ensure_reach_sales_profiles_seed(sid=None):
+    """Admin/HMAC-friendly seed for all active REACH sales profiles."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25_sales_profile import (
+            ensure_reach_profiles_seed_all,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import is_sales_manager
+
+        if not is_sales_manager(frappe.session.user) and "System Manager" not in frappe.get_roles(frappe.session.user):
+            return _error(_("Only sales managers can seed all REACH profiles"), 403)
+        return _success(ensure_reach_profiles_seed_all(), message=_("REACH profiles seeded"))
+    except Exception as exc:
+        frappe.log_error(title="ensure_reach_sales_profiles_seed", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to seed REACH profiles"))
+
+
+@frappe.whitelist(allow_guest=True)
 def get_sales_leads(sid=None, limit=None):
     denied = _require_sales_access(sid)
     if denied:
@@ -2651,10 +2697,29 @@ def ffms_assign_reach_lead(**kwargs):
             _check_webhook_secret,
         )
         from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_assign_reach_lead as _assign
+        import json as _json
 
         _check_webhook_secret()
         create_visit_raw = _parse_request_value("create_visit", kwargs.get("create_visit"))
         create_visit = str(create_visit_raw or "1").lower() not in ("0", "false", "no")
+
+        lead_payload = {}
+        lead_json = _parse_request_value("lead_json", kwargs.get("lead_json"))
+        if lead_json:
+            try:
+                parsed = _json.loads(lead_json) if isinstance(lead_json, str) else lead_json
+                if isinstance(parsed, dict):
+                    lead_payload = parsed
+            except Exception:
+                lead_payload = {}
+        for key in (
+            "name", "lead_name", "email", "phone", "mobile", "territory_query", "address",
+            "notes", "stage", "source", "campaign_name", "franchise_model", "city", "district", "pincode",
+        ):
+            value = _parse_request_value(f"lead_{key}", kwargs.get(f"lead_{key}"))
+            if value is not None and str(value).strip() != "":
+                lead_payload[key] = value
+
         row = _assign(
             hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
             rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
@@ -2663,6 +2728,7 @@ def ffms_assign_reach_lead(**kwargs):
             assignee_role=_parse_request_value("assignee_role", kwargs.get("assignee_role")) or "reach",
             create_visit=create_visit,
             assigned_from=_parse_request_value("assigned_from", kwargs.get("assigned_from")) or "FFMS Admin",
+            lead=lead_payload,
         )
         return _success(row, message=_("Lead assignment synced to REACH"))
     except frappe.AuthenticationError as exc:
@@ -2699,6 +2765,244 @@ def ffms_update_lead_status(**kwargs):
     except Exception as exc:
         frappe.log_error(title="ffms_update_lead_status", message=frappe.get_traceback())
         return _error(str(exc) or _("Unable to sync lead status"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_archive_reach_lead(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_archive_reach_lead as _archive
+
+        _check_webhook_secret()
+        row = _archive(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("REACH lead archived"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_archive_reach_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to archive REACH lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_archive_field_visit(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_archive_field_visit as _archive
+
+        _check_webhook_secret()
+        row = _archive(
+            hec_visit_id=_parse_request_value("hec_visit_id", kwargs.get("hec_visit_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Field visit archived"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_archive_field_visit", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to archive field visit"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_disable_partner_portal(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_disable_partner_portal as _disable
+
+        _check_webhook_secret()
+        row = _disable(
+            franchisee_profile=_parse_request_value("franchisee_profile", kwargs.get("franchisee_profile")),
+            user_id=_parse_request_value("user_id", kwargs.get("user_id")),
+            franchisee_id=_parse_request_value("franchisee_id", kwargs.get("franchisee_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Partner portal disabled"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_disable_partner_portal", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to disable partner portal"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_deboard_franchisee(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_deboard_franchisee as _deboard
+
+        _check_webhook_secret()
+        row = _deboard(
+            franchisee_profile=_parse_request_value("franchisee_profile", kwargs.get("franchisee_profile")),
+            franchisee_id=_parse_request_value("franchisee_id", kwargs.get("franchisee_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Franchisee deboarded on ERP"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_deboard_franchisee", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to deboard franchisee"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_b2b_collection_centres(sid=None, limit=100):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import list_b2b_collection_centres as _list
+
+        return _success({"centres": _list(frappe.session.user, limit=limit)}, message=_("B2B collection centres"))
+    except Exception as exc:
+        frappe.log_error(title="list_b2b_collection_centres", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list B2B collection centres"))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_b2b_collection_centre(sid=None, **kwargs):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import create_b2b_collection_centre as _create
+
+        data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
+            "centre_name", "wallet_amount", "total_deposit", "contact_number", "manual_address",
+            "google_map_location", "trade_licence", "approved_rate_chart", "remarks", "status",
+            "logistics_assignments", "logistics",
+        )}
+        row = _create(frappe.session.user, **data)
+        return _success(row, message=_("B2B collection centre registered"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_b2b_collection_centre", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create B2B collection centre"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_b2b_sales_entries(sid=None, limit=100, sales_date=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import list_b2b_sales_entries as _list
+
+        return _success(
+            {"entries": _list(frappe.session.user, limit=limit, sales_date=sales_date)},
+            message=_("B2B sales entries"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_b2b_sales_entries", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list B2B sales entries"))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_b2b_sales_entry(sid=None, **kwargs):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import submit_b2b_sales_entry as _submit
+
+        data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
+            "b2b_collection_centre", "centre_id", "number_of_samples", "samples", "business_value",
+            "total_b2b_business_value", "assigned_logistics_person", "sales_date", "date", "remarks",
+        )}
+        row = _submit(frappe.session.user, **data)
+        return _success(row, message=_("B2B sales entry submitted"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="submit_b2b_sales_entry", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to submit B2B sales entry"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_b2b_closing_summary(sid=None, period_date=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import b2b_closing_summary_for_draft
+
+        return _success(
+            b2b_closing_summary_for_draft(frappe.session.user, period_date=period_date),
+            message=_("B2B closing summary"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_b2b_closing_summary", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load B2B closing summary"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_b2b_sales_status(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_update_b2b_sales_status as _update,
+        )
+
+        _check_webhook_secret()
+        row = _update(
+            hec_sales_id=_parse_request_value("hec_sales_id", kwargs.get("hec_sales_id")),
+            status=_parse_request_value("status", kwargs.get("status")),
+            assigned_logistics_person=_parse_request_value(
+                "assigned_logistics_person", kwargs.get("assigned_logistics_person")
+            ),
+            remarks=_parse_request_value("remarks", kwargs.get("remarks")),
+        )
+        return _success(row, message=_("B2B sales updated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_b2b_sales_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update B2B sales"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_b2b_centre(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_update_b2b_centre as _update,
+        )
+
+        _check_webhook_secret()
+        row = _update(
+            hec_centre_id=_parse_request_value("hec_centre_id", kwargs.get("hec_centre_id")),
+            status=_parse_request_value("status", kwargs.get("status")),
+            logistics_assignments=_parse_request_value(
+                "logistics_assignments", kwargs.get("logistics_assignments")
+            ),
+        )
+        return _success(row, message=_("B2B centre updated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_b2b_centre", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update B2B centre"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -3178,6 +3482,15 @@ def phlebotomist_mark_sample_collected(trf_id=None, sid=None):
     current = frappe.db.get_value("Customer TRF", trf_id, "order_status")
     if current != "Booked":
         return _error(_(f"Cannot collect sample — order is already {current}"))
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase89_vial_accession import (
+            mark_trf_tubes_drawn,
+        )
+
+        mark_trf_tubes_drawn(trf_id)
+    except Exception:
+        frappe.log_error(title="phase89_mark_drawn", message=frappe.get_traceback())
 
     return _apply_order_status(trf_id, "Sample Collected")
 

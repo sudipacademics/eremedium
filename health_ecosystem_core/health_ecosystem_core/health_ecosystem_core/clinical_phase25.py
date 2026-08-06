@@ -455,6 +455,8 @@ def _sync_sales_lead_to_rfms(doc, rep_id=None):
                 "campaign_name": "REACH Portal",
                 "external_lead_id": doc.name,
                 "hec_lead_id": doc.name,
+                "rfms_lead_id": cstr(doc.get("rfms_lead_id") or ""),
+                "id": cstr(doc.get("rfms_lead_id") or ""),
                 "notes": cstr(doc.notes or "")[:1000],
                 "assigned_to": assigned_to,
                 "assignee_role": "reach" if reach_user_id else "",
@@ -856,6 +858,93 @@ def resolve_franchise_sales_lead_id(*, hec_lead_id=None, rfms_lead_id=None):
     return None
 
 
+def _ffms_source_to_reach_lead_source(source):
+    mapping = {
+        "manual": "Manual",
+        "website": "Website",
+        "meta_ads": "Meta Ads",
+        "google_ads": "Google Ads",
+        "whatsapp_ads": "WhatsApp Ads",
+        "csv_upload": "Manual",
+        "appointment": "Manual",
+        "reach_sales": "REACH",
+    }
+    key = cstr(source or "").strip().lower().replace(" ", "_")
+    return mapping.get(key, "Manual")
+
+
+def ensure_franchise_sales_lead_from_ffms(*, hec_lead_id=None, rfms_lead_id=None, lead=None):
+    """Find or create REACH Franchise Sales Lead for an FFMS CRM lead."""
+    lead_id = resolve_franchise_sales_lead_id(hec_lead_id=hec_lead_id, rfms_lead_id=rfms_lead_id)
+    if lead_id:
+        return lead_id
+
+    data = lead if isinstance(lead, dict) else {}
+    phone_digits = re.sub(r"\D", "", cstr(data.get("phone") or data.get("mobile") or ""))[-10:]
+    email = cstr(data.get("email") or "").strip().lower()
+    rfms = cstr(rfms_lead_id or data.get("rfms_lead_id") or data.get("id") or "").strip()
+
+    if phone_digits:
+        for row in frappe.get_all(
+            "Franchise Sales Lead",
+            fields=["name", "phone", "email", "rfms_lead_id"],
+            limit=500,
+            order_by="modified desc",
+        ):
+            row_phone = re.sub(r"\D", "", cstr(row.get("phone") or ""))[-10:]
+            row_email = cstr(row.get("email") or "").strip().lower()
+            if rfms and cstr(row.get("rfms_lead_id") or "").strip() == rfms:
+                return row.name
+            if phone_digits and row_phone == phone_digits:
+                if rfms and not cstr(row.get("rfms_lead_id") or "").strip():
+                    frappe.db.set_value("Franchise Sales Lead", row.name, "rfms_lead_id", rfms)
+                    frappe.db.commit()
+                return row.name
+            if email and row_email == email and not email.endswith("@ads.franchise.local"):
+                if rfms and not cstr(row.get("rfms_lead_id") or "").strip():
+                    frappe.db.set_value("Franchise Sales Lead", row.name, "rfms_lead_id", rfms)
+                    frappe.db.commit()
+                return row.name
+
+    lead_name = cstr(data.get("lead_name") or data.get("name") or "").strip()
+    if not lead_name:
+        frappe.throw(_("Lead name is required to sync FFMS lead into REACH"))
+    if not phone_digits:
+        frappe.throw(_("Lead mobile/phone is required to sync FFMS lead into REACH"))
+    if not email:
+        email = f"{phone_digits}@ffms.franchise.local"
+
+    status = _rfms_stage_to_reach_status(data.get("stage")) or cstr(data.get("status") or "New").strip() or "New"
+    territory = cstr(data.get("territory_query") or data.get("address") or data.get("city") or "").strip()
+    doc_dict = {
+        "doctype": "Franchise Sales Lead",
+        "lead_name": lead_name[:140],
+        "company_name": cstr(data.get("company_name") or "")[:140],
+        "contact_person": cstr(data.get("contact_person") or "")[:140],
+        "phone": phone_digits,
+        "email": email[:140],
+        "address": territory[:500],
+        "city": cstr(data.get("city") or "")[:140],
+        "district": cstr(data.get("district") or "")[:140],
+        "pincode": cstr(data.get("pincode") or "")[:20],
+        "state": cstr(data.get("state") or "West Bengal"),
+        "status": status,
+        "notes": cstr(data.get("notes") or "")[:2000],
+    }
+    meta = frappe.get_meta("Franchise Sales Lead")
+    if meta.has_field("lead_source"):
+        doc_dict["lead_source"] = _ffms_source_to_reach_lead_source(data.get("source") or data.get("lead_source"))
+    if meta.has_field("rfms_lead_id") and rfms:
+        doc_dict["rfms_lead_id"] = rfms
+    if meta.has_field("campaign_name") and data.get("campaign_name"):
+        doc_dict["campaign_name"] = cstr(data.get("campaign_name"))[:180]
+
+    doc = frappe.get_doc(doc_dict)
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return doc.name
+
+
 def ffms_list_reach_reps():
     """Service listing of REACH users for FFMS Log Visit assignment."""
     return list_sales_reps_for_manager(user=None)
@@ -870,11 +959,23 @@ def ffms_assign_reach_lead(
     assignee_role="reach",
     create_visit=True,
     assigned_from="FFMS Admin",
+    lead=None,
 ):
     """FFMS → REACH assignment bridge (HMAC guest caller)."""
-    lead_id = resolve_franchise_sales_lead_id(hec_lead_id=hec_lead_id, rfms_lead_id=rfms_lead_id)
-    if not lead_id:
-        frappe.throw(_("Lead not found on REACH / ERP"))
+    lead_payload = lead if isinstance(lead, dict) else {}
+    if isinstance(lead, str) and lead.strip():
+        try:
+            parsed = json.loads(lead)
+            if isinstance(parsed, dict):
+                lead_payload = parsed
+        except Exception:
+            lead_payload = {}
+
+    lead_id = ensure_franchise_sales_lead_from_ffms(
+        hec_lead_id=hec_lead_id,
+        rfms_lead_id=rfms_lead_id,
+        lead=lead_payload,
+    )
     role = cstr(assignee_role or "reach").strip().lower().replace(" ", "_")
     if role in ("reach", "sales_rep", "log_visit"):
         if not sales_rep_id:
@@ -916,6 +1017,98 @@ def ffms_update_lead_status(*, hec_lead_id=None, rfms_lead_id=None, stage=None, 
     _sync_sales_lead_to_rfms(lead_doc, lead_doc.assigned_rep)
     return {"lead_id": lead_id, "status": next_status, "stage": _reach_status_to_rfms_stage(next_status)}
 
+
+def ffms_archive_reach_lead(*, hec_lead_id=None, rfms_lead_id=None, reason=None):
+    """FFMS hard-delete cascade — mark REACH Franchise Sales Lead Lost/Cancelled."""
+    lead_id = resolve_franchise_sales_lead_id(hec_lead_id=hec_lead_id, rfms_lead_id=rfms_lead_id)
+    if not lead_id:
+        return {"ok": True, "skipped": True, "reason": "lead_not_found"}
+    note = cstr(reason or "Archived from FFMS Admin").strip()[:500]
+    status_candidates = ("Lost", "Cancelled", "Disqualified", "Closed")
+    meta = frappe.get_meta("Franchise Sales Lead")
+    next_status = "Lost"
+    if meta.has_field("status"):
+        options = (meta.get_field("status").options or "").split("\n")
+        for candidate in status_candidates:
+            if candidate in options:
+                next_status = candidate
+                break
+    values = {"status": next_status}
+    if meta.has_field("notes"):
+        existing = cstr(frappe.db.get_value("Franchise Sales Lead", lead_id, "notes") or "")
+        values["notes"] = f"{existing}\n{note}".strip()[:2000]
+    frappe.db.set_value("Franchise Sales Lead", lead_id, values)
+    frappe.db.commit()
+    return {"ok": True, "lead_id": lead_id, "status": next_status}
+
+
+def ffms_archive_field_visit(*, hec_visit_id=None, reason=None):
+    """FFMS hard-delete cascade — cancel Field Sales Visit."""
+    visit_id = cstr(hec_visit_id or "").strip()
+    if not visit_id or not frappe.db.exists("Field Sales Visit", visit_id):
+        return {"ok": True, "skipped": True, "reason": "visit_not_found"}
+    note = cstr(reason or "Archived from FFMS Admin").strip()[:500]
+    meta = frappe.get_meta("Field Sales Visit")
+    values = {}
+    if meta.has_field("visit_status"):
+        values["visit_status"] = "cancelled"
+    if meta.has_field("notes"):
+        existing = cstr(frappe.db.get_value("Field Sales Visit", visit_id, "notes") or "")
+        values["notes"] = f"{existing}\n{note}".strip()[:2000]
+    if values:
+        frappe.db.set_value("Field Sales Visit", visit_id, values)
+        frappe.db.commit()
+    return {"ok": True, "visit_id": visit_id}
+
+
+def ffms_disable_partner_portal(*, franchisee_profile=None, user_id=None, franchisee_id=None, reason=None):
+    """Disable Partner Portal User and optionally mark Franchisee Profile Inactive."""
+    profile_name = cstr(franchisee_profile or "").strip()
+    if not profile_name and franchisee_id:
+        profile_name = frappe.db.get_value(
+            "Franchisee Profile",
+            {"branch_code": cstr(franchisee_id).strip()},
+            "name",
+        ) or frappe.db.get_value(
+            "Franchisee Profile",
+            {"name": cstr(franchisee_id).strip()},
+            "name",
+        ) or ""
+    disabled_users = []
+    user_name = cstr(user_id or "").strip()
+    if user_name and frappe.db.exists("User", user_name):
+        frappe.db.set_value("User", user_name, "enabled", 0)
+        disabled_users.append(user_name)
+    if profile_name and frappe.db.exists("Franchisee Profile", profile_name):
+        profile = frappe.get_doc("Franchisee Profile", profile_name)
+        if hasattr(profile, "active_status"):
+            profile.active_status = "Inactive"
+        operator = cstr(getattr(profile, "user", None) or getattr(profile, "operator_user", None) or "")
+        if operator and frappe.db.exists("User", operator) and operator not in disabled_users:
+            frappe.db.set_value("User", operator, "enabled", 0)
+            disabled_users.append(operator)
+        email = cstr(getattr(profile, "email", None) or "")
+        if email and frappe.db.exists("User", email) and email not in disabled_users:
+            frappe.db.set_value("User", email, "enabled", 0)
+            disabled_users.append(email)
+        profile.add_comment("Comment", cstr(reason or "Partner portal disabled from FFMS")[:400])
+        profile.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"ok": True, "franchisee_profile": profile_name, "disabled_users": disabled_users}
+
+
+def ffms_deboard_franchisee(*, franchisee_profile=None, franchisee_id=None, reason=None):
+    """Deboard franchisee: Inactive hub + disable linked users."""
+    result = ffms_disable_partner_portal(
+        franchisee_profile=franchisee_profile,
+        franchisee_id=franchisee_id,
+        reason=cstr(reason or "Deboarded from FFMS Admin"),
+    )
+    profile_name = result.get("franchisee_profile") or ""
+    if profile_name and frappe.db.exists("Franchisee Profile", profile_name):
+        frappe.db.set_value("Franchisee Profile", profile_name, "active_status", "Inactive")
+        frappe.db.commit()
+    return {**result, "deboarded": True}
 
 def backfill_sales_leads_to_rfms(limit=50):
     """Push Franchise Sales Leads missing rfms_lead_id into FFMS CRM."""
@@ -1309,6 +1502,16 @@ def build_closing_report_draft(user, report_type="Daily", period_date=None):
     franchisee_ids = _franchisee_ids_for_reps([rep_id])
     revenue = _franchisee_stats(franchisee_ids, start, end)["total_revenue"]
 
+    b2b = {"samples": 0, "business_value": 0, "entries": 0, "new_centres": 0}
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            b2b_closing_summary_for_draft,
+        )
+
+        b2b = b2b_closing_summary_for_draft(user, period_date=period_date)
+    except Exception:
+        frappe.log_error(title="b2b_closing_draft", message=frappe.get_traceback())
+
     already = frappe.db.exists(
         "Sales Closing Report",
         {
@@ -1329,6 +1532,10 @@ def build_closing_report_draft(user, report_type="Daily", period_date=None):
         "franchise_revenue": revenue,
         "already_submitted": 1 if already else 0,
         "existing_report_id": already or "",
+        "b2b_samples": b2b.get("samples") or 0,
+        "b2b_business_value": b2b.get("business_value") or 0,
+        "b2b_entries": b2b.get("entries") or 0,
+        "b2b_new_centres": b2b.get("new_centres") or 0,
     }
 
 

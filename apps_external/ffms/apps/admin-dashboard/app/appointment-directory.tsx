@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RFMS_API_BASE, adminCanManageAppointments, clearNotificationEntity, peekNotificationEntity } from '@rfms/utils';
+import { RFMS_API_BASE, adminCanHardDelete, adminCanManageAppointments, clearNotificationEntity, peekNotificationEntity } from '@rfms/utils';
+import { HardDeleteButton } from './hard-delete-button';
 import './appointment-directory.css';
 
 const API_BASE = RFMS_API_BASE;
@@ -61,7 +62,7 @@ const draftFrom = (appointment: Appointment): AppointmentDraft => ({
   status: appointment.status,
 });
 
-function AppointmentModal({ appointment, viewer, team, draft, saving, error, onChange, onSave, onConvert, onClose }: { appointment: Appointment; viewer: Viewer; team: CrmTeamMember[]; draft: AppointmentDraft; saving: boolean; error: string; onChange: <K extends keyof AppointmentDraft>(key: K, value: AppointmentDraft[K]) => void; onSave: (action: 'assignment' | 'schedule' | 'outcome' | 'status') => void; onConvert: (model: 'FOFO' | 'FOCO') => void; onClose: () => void }) {
+function AppointmentModal({ appointment, viewer, team, draft, saving, error, onChange, onSave, onConvert, onClose, onHardDelete }: { appointment: Appointment; viewer: Viewer; team: CrmTeamMember[]; draft: AppointmentDraft; saving: boolean; error: string; onChange: <K extends keyof AppointmentDraft>(key: K, value: AppointmentDraft[K]) => void; onSave: (action: 'assignment' | 'schedule' | 'outcome' | 'status') => void; onConvert: (model: 'FOFO' | 'FOCO') => void; onClose: () => void; onHardDelete?: () => Promise<void> }) {
   const manager = isManager(viewer);
   const unassigned = isUnassigned(appointment);
   const canWork = manager || appointment.assigned_to === viewer.name;
@@ -72,7 +73,7 @@ function AppointmentModal({ appointment, viewer, team, draft, saving, error, onC
   const plannedTime = appointment.confirmed_time || appointment.preferred_time;
 
   return <div className="appointment-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="appointment-modal" role="dialog" aria-modal="true" aria-labelledby="appointment-workspace-heading" onMouseDown={(event) => event.stopPropagation()}>
-    <header className="appointment-modal-head"><div><p>Appointment workspace</p><h2 id="appointment-workspace-heading">{appointment.name}</h2><span>{appointment.email} · {appointment.mobile}</span></div><button type="button" onClick={onClose}>Close</button></header>
+    <header className="appointment-modal-head"><div><p>Appointment workspace</p><h2 id="appointment-workspace-heading">{appointment.name}</h2><span>{appointment.email} · {appointment.mobile}</span></div><div className="appointment-modal-head-actions">{adminCanHardDelete(viewer.role) && onHardDelete ? <HardDeleteButton onConfirm={onHardDelete} /> : null}<button type="button" onClick={onClose}>Close</button></div></header>
     <div className="appointment-person-summary"><span><small>Requested slot</small><b>{dateTime(appointment.preferred_date, appointment.preferred_time)}</b></span><span><small>Discussion topic</small><b>{appointment.topic}</b></span><span><small>Current owner</small><b>{unassigned ? 'Awaiting assignment' : appointment.assigned_to}</b></span><span><small>Workflow status</small><b className={`appointment-status ${appointment.status}`}>{readable(appointment.status)}</b></span></div>
     {converted ? <section className="appointment-converted-notice"><b>CRM lead created</b><p>This appointment has been transferred to Lead Management. The lead keeps the appointment outcome, model discussion, meeting details and activity history.</p><span>Lead reference: {appointment.converted_lead_id}</span></section> : !canWork ? <section className="appointment-assignment-notice"><b>Waiting for manager assignment</b><p>A CRM Manager or Super Admin must assign this appointment before an employee can work on it.</p></section> : <div className="appointment-workflow">
       <section className="appointment-flow-card"><div className="appointment-flow-heading"><span>1</span><div><h3>Assign the consultation</h3><p>Set one accountable CRM employee before scheduling the guest.</p></div></div>{manager ? <div className="appointment-form-grid"><label className="appointment-full">Assigned business consultant<select value={draft.assigned_to} onChange={(event) => onChange('assigned_to', event.target.value)}><option value="">{team.length ? 'Choose a business consultant' : 'No active consultants found'}</option>{team.map((member) => <option key={member.id ?? member.name} value={member.name}>{teamMemberLabel(member)}</option>)}</select></label><button className="appointment-outline" type="button" disabled={saving} onClick={() => onSave('assignment')}>{saving ? 'Saving…' : 'Save assignment'}</button></div> : <p className="appointment-owner-note">You are the assigned CRM employee for this consultation. Only you, a manager, or an administrator can access this appointment.</p>}</section>
@@ -196,6 +197,18 @@ export function AppointmentDirectory({ token, search, viewer }: { token: string;
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to add appointment.'); } finally { setSaving(false); }
   }
 
+  async function hardDeleteSelectedAppointment() {
+    if (!selected || !adminCanHardDelete(viewer.role)) throw new Error('Only a Super Admin can permanently delete appointments.');
+    const response = await fetch(`${API_BASE}/appointments/${selected.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (isOfficerSessionExpired(response)) return;
+    const result = await response.json() as Envelope<{ deleted?: boolean }>;
+    if (!response.ok || !result.success) throw new Error(result.error?.message ?? 'Unable to permanently delete this appointment.');
+    setAppointments((current) => current.filter((item) => item.id !== selected.id));
+    setSelectedId('');
+    setDraft(null);
+    setError('');
+  }
+
   const requested = appointments.filter((appointment) => appointment.status === 'requested').length;
   const scheduled = appointments.filter((appointment) => appointment.status === 'scheduled').length;
   const readyToConvert = appointments.filter((appointment) => appointment.status === 'completed' && !appointment.converted_lead_id).length;
@@ -208,6 +221,6 @@ export function AppointmentDirectory({ token, search, viewer }: { token: string;
     <div className="appointment-filter-row"><div>{STATUS_FILTERS.map((item) => <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'All appointments' : readable(item)} <span>{item === 'all' ? appointments.length : appointments.filter((appointment) => appointment.status === item).length}</span></button>)}</div><p>{manager ? 'Managers can assign any employee and set exact meeting details.' : 'You can see and manage only the appointments assigned to you.'}</p></div>
     {error && !selected ? <p className="appointment-error" role="alert">{error}</p> : null}
     <section className="panel appointment-table-card"><div className="panel-head"><div><h2>Consultation queue</h2><p>{loading ? 'Loading appointment workflow…' : `${visibleAppointments.length} appointment record${visibleAppointments.length === 1 ? '' : 's'} in this view.`}</p></div><p className="appointment-table-note">Open a record to assign the employee, confirm the meeting plan, record its outcome and convert it to a CRM lead.</p></div><div className="table-wrap"><table><thead><tr><th>Guest</th><th>Requested slot</th><th>Assigned owner</th><th>Meeting plan</th><th>Outcome</th><th>Status</th><th /></tr></thead><tbody>{visibleAppointments.map((appointment) => <tr key={appointment.id}><td><b>{appointment.name}</b><small>{appointment.email}<br />{appointment.mobile}</small></td><td>{dateTime(appointment.preferred_date, appointment.preferred_time)}</td><td>{isUnassigned(appointment) ? <span className="appointment-unassigned">Unassigned</span> : appointment.assigned_to}</td><td><b>{appointmentModeName(appointment.meeting_mode)}</b><small>{dateTime(appointment.confirmed_date, appointment.confirmed_time)}</small></td><td>{appointment.outcome ? <small>{appointment.outcome.slice(0, 78)}{appointment.outcome.length > 78 ? '…' : ''}</small> : <span className="appointment-pending">Awaiting consultation</span>}</td><td><span className={`appointment-status ${appointment.status}`}>{readable(appointment.status)}</span></td><td><button className="row-action" type="button" onClick={() => open(appointment)}>{appointment.status === 'converted_to_lead' ? 'View record' : 'Manage'}</button></td></tr>)}{!loading && !visibleAppointments.length ? <tr><td className="empty" colSpan={7}>No appointments match this workflow view.</td></tr> : null}</tbody></table></div></section>
-    {selected && draft ? <AppointmentModal appointment={selected} viewer={viewer} team={team} draft={draft} saving={saving} error={error} onChange={setDraftField} onSave={(action) => void save(action)} onConvert={(model) => void convert(model)} onClose={() => { setSelectedId(''); setDraft(null); setError(''); }} /> : null}
+    {selected && draft ? <AppointmentModal appointment={selected} viewer={viewer} team={team} draft={draft} saving={saving} error={error} onChange={setDraftField} onSave={(action) => void save(action)} onConvert={(model) => void convert(model)} onClose={() => { setSelectedId(''); setDraft(null); setError(''); }} onHardDelete={hardDeleteSelectedAppointment} /> : null}
   </section>;
 }

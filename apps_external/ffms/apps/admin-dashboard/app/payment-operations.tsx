@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RFMS_API_BASE, adminCanManageCoupons, adminCanManageTerritory, clearNotificationEntity, normalizeAdminRole, peekNotificationEntity } from '@rfms/utils';
+import { RFMS_API_BASE, adminCanHardDelete, adminCanManageCoupons, adminCanManageTerritory, clearNotificationEntity, normalizeAdminRole, peekNotificationEntity } from '@rfms/utils';
 import './payment-operations.css';
 import { CouponOperationsPanel } from './coupon-operations';
+import { HardDeleteButton } from './hard-delete-button';
 
 const API_BASE = RFMS_API_BASE;
 const API_ORIGIN = new URL(API_BASE).origin;
@@ -161,6 +162,7 @@ function PaymentDetailModal({
   onDownloadReceipt,
   onVerifyPayment,
   onRejectPayment,
+  onHardDeletePayment,
 }: {
   detail: PaymentDetail;
   token: string;
@@ -173,8 +175,10 @@ function PaymentDetailModal({
   onDownloadReceipt: (payment: PaymentPhaseDetail) => Promise<void>;
   onVerifyPayment: (payment: PaymentPhaseDetail) => Promise<void>;
   onRejectPayment: (payment: PaymentPhaseDetail, remarks: string) => Promise<void>;
+  onHardDeletePayment: (payment: PaymentPhaseDetail) => Promise<void>;
 }) {
   const canManageUnlocks = adminCanManageTerritory(viewerRole);
+  const canHardDelete = adminCanHardDelete(viewerRole);
   const [rejectingKey, setRejectingKey] = useState('');
   const [rejectRemarks, setRejectRemarks] = useState('');
 
@@ -281,6 +285,7 @@ function PaymentDetailModal({
             {payment.can_download_receipt && detail.permissions.can_download_receipt ? <button type="button" disabled={busy === `receipt:${payment.key}`} onClick={() => void onDownloadReceipt(payment)}>
               {busy === `receipt:${payment.key}` ? 'Preparing receipt…' : 'Download receipt'}
             </button> : null}
+            {canHardDelete ? <HardDeleteButton label="Delete payment" onConfirm={() => onHardDeletePayment(payment)} disabled={Boolean(busy)} /> : null}
           </div>
           {rejectingKey === payment.key ? <div className="payment-reject-panel">
             <label>Rejection remarks<textarea value={rejectRemarks} onChange={(event) => setRejectRemarks(event.target.value)} rows={3} placeholder="Explain why this payment submission is rejected." /></label>
@@ -567,6 +572,23 @@ export function PaymentOperationsModule({ token, search, notify, viewerRole }: {
     }
   }
 
+  async function hardDeletePayment(payment: PaymentPhaseDetail) {
+    if (!detail || !adminCanHardDelete(viewerRole)) throw new Error('Only a Super Admin can permanently delete payments.');
+    const response = await fetch(`${API_BASE}/admin/applications/${detail.application_id}/payments/${payment.key}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (isOfficerSessionExpired(response)) throw new Error('Your session has expired. Sign in again.');
+    const payload = await response.json().catch(() => null) as { success?: boolean; data?: PaymentDetail; error?: { message?: string } } | null;
+    if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to permanently delete this payment.');
+    if (payload.data) setDetail(payload.data);
+    else {
+      setDetail((current) => current ? { ...current, payments: current.payments.filter((item) => item.key !== payment.key) } : current);
+    }
+    await loadLedger();
+    notify(`${payment.label} permanently deleted for ${detail.applicant_name}.`);
+  }
+
   function exportCsv() {
     const headers = ['Application ID', 'Applicant Name', 'Franchise Model', 'Payment Phase', 'Amount', 'Payment Date', 'Transaction ID', 'Current Status'];
     const lines = visibleRows.map((row) => [
@@ -663,6 +685,7 @@ export function PaymentOperationsModule({ token, search, notify, viewerRole }: {
       onDownloadReceipt={handleDownloadReceipt}
       onVerifyPayment={handleVerifyPayment}
       onRejectPayment={handleRejectPayment}
+      onHardDeletePayment={hardDeletePayment}
     /> : null}
     </>}
   </section>;

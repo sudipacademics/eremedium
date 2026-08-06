@@ -1,0 +1,25 @@
+{
+  "actions": [],
+  "creation": "2026-08-05 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "person_name",
+    "contact_number",
+    "pickup_point",
+    "logistics_cost"
+  ],
+  "fields": [
+    {"fieldname": "person_name", "fieldtype": "Data", "in_list_view": 1, "label": "Approved Logistics Person Name", "reqd": 1},
+    {"fieldname": "contact_number", "fieldtype": "Data", "in_list_view": 1, "label": "Contact Number"},
+    {"fieldname": "pickup_point", "fieldtype": "Data", "in_list_view": 1, "label": "Logistics Pickup Point"},
+    {"fieldname": "logistics_cost", "fieldtype": "Currency", "in_list_view": 1, "label": "Logistics Cost", "default": "0"}
+  ],
+  "istable": 1,
+  "module": "Health Ecosystem Core",
+  "name": "B2B Logistics Assignment",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "DESC"
+}

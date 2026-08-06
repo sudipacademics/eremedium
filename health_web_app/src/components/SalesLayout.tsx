@@ -16,12 +16,15 @@ export function SalesLayout() {
   const mobileNavItems = useMemo((): MobileNavItem[] => {
     return [
       { type: 'link', to: '/sales', label: 'Portal', end: true },
+      { type: 'link', to: '/sales/profile', label: 'Profile' },
       { type: 'link', to: '/sales/leads', label: 'Leads' },
       { type: 'link', to: '/sales/visit', label: 'Log visit' },
       { type: 'link', to: '/sales/onboard', label: 'Onboard' },
       { type: 'link', to: '/sales/franchisees', label: 'Franchisees' },
       { type: 'link', to: '/sales/catalog', label: 'Catalog' },
       { type: 'link', to: '/sales/commissions', label: 'Commissions' },
+      { type: 'link', to: '/sales/b2b-centres', label: 'B2B Centres' },
+      { type: 'link', to: '/sales/b2b-sales', label: 'B2B Sales' },
       { type: 'link', to: '/sales/reports', label: 'Closing reports' },
       { type: 'link', to: '/sales/map', label: 'Team map' },
       { type: 'link', to: '/dashboard/hr', label: 'HR' },
@@ -62,12 +65,15 @@ export function SalesLayout() {
           <NavLink to="/sales" end>
             Portal
           </NavLink>
+          <NavLink to="/sales/profile">Profile</NavLink>
           <NavLink to="/sales/leads">Leads</NavLink>
           <NavLink to="/sales/visit">Log visit</NavLink>
           <NavLink to="/sales/onboard">Onboard</NavLink>
           <NavLink to="/sales/franchisees">Franchisees</NavLink>
           <NavLink to="/sales/catalog">Catalog</NavLink>
           <NavLink to="/sales/commissions">Commissions</NavLink>
+          <NavLink to="/sales/b2b-centres">B2B Centres</NavLink>
+          <NavLink to="/sales/b2b-sales">B2B Sales</NavLink>
           <NavLink to="/sales/reports">Closing</NavLink>
           <NavLink to="/sales/map">Team map</NavLink>
           <NavLink to="/dashboard/hr">HR</NavLink>

@@ -1,12 +1,13 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { RFMS_API_BASE, adminCanManageFranchiseeDirectoryApi } from '@rfms/utils';
+import { RFMS_API_BASE, adminCanDeboardFranchise, adminCanManageFranchiseeDirectoryApi } from '@rfms/utils';
+import { HardDeleteButton } from './hard-delete-button';
 import { printFranchiseeRecord } from './franchisee-print';
 
 const API_BASE = RFMS_API_BASE;
 const API_ORIGIN = API_BASE.replace(/\/api\/v1\/?$/, '');
-const EXPORT_FIELDS = ['identifiers', 'basic_details', 'google_map_location_url', 'territory', 'payments', 'agreement', 'field_visit', 'branding', 'hr', 'training', 'certificates', 'webpage', 'onboarding_journey'] as const;
+const EXPORT_FIELDS = ['identifiers', 'basic_details', 'google_map_location_url', 'territory', 'payments', 'agreement', 'field_visit', 'branding', 'hr', 'training', 'certificates', 'webpage', 'partner_portal', 'onboarding_journey'] as const;
 const EXPORT_FIELD_LABELS: Record<(typeof EXPORT_FIELDS)[number], string> = {
   identifiers: 'Identifiers',
   basic_details: 'Basic details',
@@ -20,6 +21,7 @@ const EXPORT_FIELD_LABELS: Record<(typeof EXPORT_FIELDS)[number], string> = {
   training: 'Training',
   certificates: 'Certificates',
   webpage: 'Webpage',
+  partner_portal: 'Partner Portal',
   onboarding_journey: 'Onboarding journey',
 };
 
@@ -47,6 +49,7 @@ type DetailRecord = {
   identifiers: { franchisee_id: string; application_id: string; application_number: string; business_id: string; webpage_id: string };
   basic_details: Record<string, string>;
   google_map_location_url?: string;
+  partner_portal?: { login_url?: string; user_id?: string; password?: string; provisioned_at?: string; message?: string } | null;
   territory: Record<string, unknown> | null;
   payments: { items: { key: string; label: string; amount: number; status: string; receipt_number?: string; paid_at?: string; receipt?: FileAsset | null }[] };
   agreement: Record<string, unknown> | null;
@@ -58,6 +61,21 @@ type DetailRecord = {
   webpage: { id?: string; public_url?: string; preview_image?: string; settings?: Record<string, string> } | null;
   onboarding_journey: { application_submitted_at?: string; onboarding_completed_at?: string; timeline?: { id: string; type: string; label: string; at: string; actor?: string }[]; stages?: JourneyStage[] };
   version_history: { id: string; version: number; summary: string; actor: string; recorded_at: string }[];
+  deboarded?: boolean;
+  deboarded_at?: string;
+  deboarding_report?: {
+    report_text?: string;
+    total_expense?: number;
+    branding_signage_cost?: number;
+    hr_cost?: number;
+    legal_cost?: number;
+    it_software_cost?: number;
+    digital_marketing_cost?: number;
+    physical_marketing_cost?: number;
+    active_franchise_days?: number;
+    employee_count?: number;
+    generated_at?: string;
+  } | null;
 };
 
 type ApiSettings = {
@@ -104,7 +122,7 @@ function DetailGrid({ rows }: { rows: [string, string][] }) {
   return <dl className="franchisee-detail-grid">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>;
 }
 
-function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { record: DetailRecord; token: string; onClose: () => void; onRecordUpdated: (record: DetailRecord) => void }) {
+function FranchiseeDetailModal({ record, token, canDeboard, notify, onClose, onRecordUpdated }: { record: DetailRecord; token: string; canDeboard: boolean; notify: (message: string) => void; onClose: () => void; onRecordUpdated: (record: DetailRecord) => void }) {
   const basic = record.basic_details;
   const territory = record.territory as Record<string, string | number> | null;
   const branding = record.branding as Record<string, unknown> | null;
@@ -121,6 +139,7 @@ function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { re
   const [mapBusy, setMapBusy] = useState(false);
   const [mapError, setMapError] = useState('');
   const [mapMessage, setMapMessage] = useState('');
+  const alreadyDeboarded = Boolean(record.deboarded || basic.current_status === 'deboarded');
 
   useEffect(() => {
     setMapUrl(record.google_map_location_url || basic.google_maps_location || '');
@@ -147,6 +166,18 @@ function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { re
     }
   }
 
+  async function deboardFranchise() {
+    const response = await fetch(`${API_BASE}/admin/franchisees/${encodeURIComponent(record.identifiers.franchisee_id)}/deboard`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true }),
+    });
+    const payload = await response.json().catch(() => null) as { success?: boolean; data?: DetailRecord & { deboarding_report?: DetailRecord['deboarding_report'] }; error?: { message?: string } } | null;
+    if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to deboard this franchise.');
+    onRecordUpdated(payload.data);
+    notify(`Franchise deboarded. Total expense ₹${Number(payload.data.deboarding_report?.total_expense ?? 0).toLocaleString('en-IN')}.`);
+  }
+
   function printRecord() {
     void printFranchiseeRecord(record);
   }
@@ -161,9 +192,33 @@ function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { re
     <section className="franchisee-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
       <header className="franchisee-modal-header">
         <div><p className="franchisee-kicker">Franchisee profile</p><h2>{basic.business_name || basic.franchisee_name}</h2><span>{record.identifiers.application_number} · {readable(basic.franchise_model)} · {readable(basic.current_status)}</span></div>
-        <div className="franchisee-modal-actions"><button type="button" onClick={printRecord}>Print record</button><button type="button" className="franchisee-modal-close" onClick={onClose}>Close</button></div>
+        <div className="franchisee-modal-actions">
+          {canDeboard && !alreadyDeboarded ? (
+            <HardDeleteButton
+              label="Deboard Franchise"
+              busyLabel="Deboarding…"
+              confirmTitle="Confirm franchise deboarding"
+              confirmText="Deboarding will set status to Deboarded, suspend Partner Portal login, unpublish the franchise webpage, release territory, and remove the centre from public Nearby Centres listings. A permanent cost report will be stored on this directory record."
+              onConfirm={deboardFranchise}
+            />
+          ) : null}
+          <button type="button" onClick={printRecord}>Print record</button>
+          <button type="button" className="franchisee-modal-close" onClick={onClose}>Close</button>
+        </div>
       </header>
       <div className="franchisee-modal-summary"><span><small>Franchisee ID</small><b>{record.identifiers.franchisee_id}</b></span><span><small>Business ID</small><b>{record.identifiers.business_id}</b></span><span><small>Onboarded</small><b>{displayDate(basic.onboarding_completed_at)}</b></span><span><small>Application submitted</small><b>{displayDate(basic.application_submitted_at)}</b></span></div>
+
+      {record.deboarding_report?.report_text ? (
+        <DetailSection title="Deboarding cost report" description="Permanently stored after franchise deboarding.">
+          <DetailGrid rows={[
+            ['Total expense', `₹${Number(record.deboarding_report.total_expense || 0).toLocaleString('en-IN')}`],
+            ['Active days', String(record.deboarding_report.active_franchise_days ?? '—')],
+            ['Employees', String(record.deboarding_report.employee_count ?? '—')],
+            ['Generated', displayDate(record.deboarding_report.generated_at)],
+          ]} />
+          <pre className="franchisee-deboard-report">{record.deboarding_report.report_text}</pre>
+        </DetailSection>
+      ) : null}
 
       <DetailSection title="Basic details" description="Core franchise identity and contact information.">
         <DetailGrid rows={[['Franchisee name', basic.franchisee_name], ['Applicant name', basic.applicant_name], ['Business name', basic.business_name], ['Franchise model', readable(basic.franchise_model)], ['Registered address', basic.registered_address], ['Contact number', basic.contact_number], ['Email address', basic.email_address], ['District / PIN', `${basic.district || '—'} · ${basic.pincode || '—'}`], ['Current status', readable(basic.current_status)]]} />
@@ -171,12 +226,25 @@ function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { re
           <label>Google Maps location link<input type="url" value={mapUrl} onChange={(event) => setMapUrl(event.target.value)} placeholder="https://www.google.com/maps/..." /></label>
           <div className="franchisee-map-link-actions">
             {mapUrl ? <a href={mapUrl} target="_blank" rel="noreferrer">Open in Google Maps</a> : null}
-            <button type="button" disabled={mapBusy} onClick={() => void saveMapLocation()}>{mapBusy ? 'Saving…' : 'Save location link'}</button>
+            <button type="button" disabled={mapBusy || alreadyDeboarded} onClick={() => void saveMapLocation()}>{mapBusy ? 'Saving…' : 'Save location link'}</button>
           </div>
           <small>Validated Google Maps links are stored on this franchisee record and exported to partner APIs as <code>google_map_location_url</code> when enabled in Partner API settings.</small>
           {mapError ? <p className="application-review-error">{mapError}</p> : null}
           {mapMessage ? <p className="franchisee-map-link-success">{mapMessage}</p> : null}
         </div>
+      </DetailSection>
+
+      <DetailSection title="Partner Portal credentials" description="Login details for partners.e-remedium.in — keep for support and future reference.">
+        {record.partner_portal?.user_id && record.partner_portal?.password ? (
+          <DetailGrid rows={[
+            ['Login Link', record.partner_portal.login_url || 'https://partners.e-remedium.in'],
+            ['User ID', record.partner_portal.user_id],
+            ['Password', record.partner_portal.password],
+            ['Provisioned', displayDate(record.partner_portal.provisioned_at || '')],
+          ]} />
+        ) : (
+          <p className="franchisee-empty-note">Partner Portal credentials are not stored on this record yet. Open Manual Application Review and create/reset the Partner Portal account, or ask the applicant to refresh Overview.</p>
+        )}
       </DetailSection>
 
       <DetailSection title="Territory" description="Allotted territory, radius and allotment letter reference.">
@@ -193,8 +261,8 @@ function FranchiseeDetailModal({ record, token, onClose, onRecordUpdated }: { re
         {agreement ? <><DetailGrid rows={[['Status', readable(String(agreement.status_label ?? agreement.status ?? ''))], ['Reference number', String(agreement.reference_number ?? '—')], ['Executed at', displayDate(String(agreement.executed_at ?? ''))], ['Applicant eSign reference', String(agreement.applicant_esign_reference ?? '—')], ['Company DSC signed by', String(agreement.company_dsc_signed_by ?? '—')]]} /><DocumentLinks files={[executedAgreement ?? null]} /></> : <p className="franchisee-empty-note">Agreement workflow data is not available.</p>}
       </DetailSection>
 
-      <DetailSection title="Field visit" description="Approved field visit report and assigned field officer details.">
-        {fieldVisit ? <><DetailGrid rows={[['Field officer', String(fieldVisit.field_officer_name ?? '—')], ['Officer contact', String(fieldVisit.field_officer_contact ?? '—')], ['Approved at', displayDate(String(fieldVisit.approved_at ?? ''))], ['Approved by', String(fieldVisit.approved_by ?? '—')]]} />{(fieldVisit.report as Record<string, string> | undefined) ? <DetailGrid rows={[['Visit date', String((fieldVisit.report as Record<string, string>).visit_date ?? '—')], ['Site address', String((fieldVisit.report as Record<string, string>).site_address ?? '—')], ['Inspection summary', String((fieldVisit.report as Record<string, string>).inspection_summary ?? '—')], ['Recommendation', String((fieldVisit.report as Record<string, string>).recommendation ?? '—')]]} /> : null}</> : <p className="franchisee-empty-note">Field visit report is not available.</p>}
+      <DetailSection title="Field visit" description="Approved field visit report, site photographs and assigned field officer details.">
+        {fieldVisit ? <><DetailGrid rows={[['Field officer', String(fieldVisit.field_officer_name ?? '—')], ['Officer contact', String(fieldVisit.field_officer_contact ?? '—')], ['Approved at', displayDate(String(fieldVisit.approved_at ?? ''))], ['Approved by', String(fieldVisit.approved_by ?? '—')]]} />{(fieldVisit.report as Record<string, unknown> | undefined) ? <DetailGrid rows={[['Visit date', String(((fieldVisit.report as Record<string, unknown>).visit_date ?? '—'))], ['Site address', String(((fieldVisit.report as Record<string, unknown>).site_address ?? '—'))], ['Inspection summary', String(((fieldVisit.report as Record<string, unknown>).inspection_summary ?? '—'))], ['Recommendation', String(((fieldVisit.report as Record<string, unknown>).recommendation ?? '—'))]]} /> : null}{Array.isArray((fieldVisit.report as { site_photos?: FileAsset[] } | undefined)?.site_photos) && (fieldVisit.report as { site_photos: FileAsset[] }).site_photos.length ? <div className="franchisee-photo-grid">{(fieldVisit.report as { site_photos: FileAsset[] }).site_photos.map((photo) => <figure key={photo.url}><img src={resolveAssetUrl(photo.url)} alt={photo.name} /><figcaption>{photo.name}</figcaption></figure>)}</div> : null}</> : <p className="franchisee-empty-note">Field visit report is not available.</p>}
       </DetailSection>
 
       <DetailSection title="Branding" description="Vendor details, materials, installation cost and approved photographs.">
@@ -293,6 +361,7 @@ function FranchiseeApiSettingsPanel({ token, notify }: { token: string; notify: 
 
 export function FranchiseeDirectory({ token, search, notify, viewerRole }: { token: string; search: string; notify: (message: string) => void; viewerRole: string }) {
   const canManageApi = adminCanManageFranchiseeDirectoryApi(viewerRole);
+  const canDeboard = adminCanDeboardFranchise(viewerRole);
   const [activeTab, setActiveTab] = useState<'directory' | 'api'>('directory');
   const [records, setRecords] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -363,6 +432,6 @@ export function FranchiseeDirectory({ token, search, notify, viewerRole }: { tok
         {visibleRecords.map((record) => <tr key={record.franchisee_id} className={selectedId === record.franchisee_id ? 'selected' : ''}><td><b>{record.business_name || record.franchisee_name}</b><br /><small>{record.franchisee_id}</small></td><td><b>{record.applicant_name}</b><br /><small>{record.application_number}</small></td><td>{record.franchise_model}</td><td>{record.location || record.territory || '—'}</td><td>{displayDate(record.onboarding_date)}</td><td><span className="franchisee-status">{readable(record.current_status)}</span></td><td><button type="button" className="row-action" onClick={() => void openRecord(record)}>{detailLoading && selectedId === record.franchisee_id ? 'Opening…' : 'Open record'}</button></td></tr>)}
       </tbody></table></div></section>
     </>}
-    {detail ? <FranchiseeDetailModal record={detail} token={token} onClose={() => { setDetail(null); setSelectedId(''); }} onRecordUpdated={(next) => setDetail(next)} /> : null}
+    {detail ? <FranchiseeDetailModal record={detail} token={token} canDeboard={canDeboard} notify={notify} onClose={() => { setDetail(null); setSelectedId(''); }} onRecordUpdated={(next) => { setDetail(next); void load(); }} /> : null}
   </section>;
 }

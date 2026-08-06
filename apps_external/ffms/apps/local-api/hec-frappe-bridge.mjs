@@ -774,8 +774,9 @@ export async function assignReachLeadViaErp({
   assigneeRole = 'reach',
   createVisit = true,
   assignedFrom = 'FFMS Admin',
+  lead = null,
 } = {}) {
-  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_assign_reach_lead', {
+  const payload = {
     hec_lead_id: hecLeadId,
     rfms_lead_id: rfmsLeadId,
     sales_rep_id: salesRepId,
@@ -783,7 +784,17 @@ export async function assignReachLeadViaErp({
     assignee_role: assigneeRole,
     create_visit: createVisit ? '1' : '0',
     assigned_from: assignedFrom,
-  });
+  };
+  if (lead && typeof lead === 'object') {
+    payload.lead_json = JSON.stringify(lead);
+    for (const key of [
+      'name', 'lead_name', 'email', 'phone', 'mobile', 'territory_query', 'address',
+      'notes', 'stage', 'source', 'campaign_name', 'franchise_model', 'city', 'district', 'pincode',
+    ]) {
+      if (lead[key] != null && String(lead[key]).trim()) payload[`lead_${key}`] = lead[key];
+    }
+  }
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_assign_reach_lead', payload);
 }
 
 export async function updateReachLeadStatusViaErp({ hecLeadId = '', rfmsLeadId = '', stage = '', status = '' } = {}) {
@@ -792,5 +803,68 @@ export async function updateReachLeadStatusViaErp({ hecLeadId = '', rfmsLeadId =
     rfms_lead_id: rfmsLeadId,
     stage,
     status,
+  });
+}
+
+export async function archiveReachLeadViaErp({ hecLeadId = '', rfmsLeadId = '', reason = 'Deleted from FFMS Admin' } = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_archive_reach_lead', {
+    hec_lead_id: hecLeadId,
+    rfms_lead_id: rfmsLeadId,
+    reason,
+  });
+}
+
+export async function archiveFieldVisitViaErp({ hecVisitId = '', reason = 'Deleted from FFMS Admin' } = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_archive_field_visit', {
+    hec_visit_id: hecVisitId,
+    reason,
+  });
+}
+
+export async function disablePartnerPortalViaErp({
+  franchiseeProfile = '',
+  userId = '',
+  franchiseeId = '',
+  reason = 'Deleted or deboarded from FFMS Admin',
+} = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_disable_partner_portal', {
+    franchisee_profile: franchiseeProfile,
+    user_id: userId,
+    franchisee_id: franchiseeId,
+    reason,
+  });
+}
+
+export async function deboardFranchiseeViaErp({
+  franchiseeProfile = '',
+  franchiseeId = '',
+  reason = 'Deboarded from FFMS Admin',
+} = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_deboard_franchisee', {
+    franchisee_profile: franchiseeProfile,
+    franchisee_id: franchiseeId,
+    reason,
+  });
+}
+
+export async function updateB2bSalesStatusViaErp({
+  hecSalesId = '',
+  status = '',
+  assignedLogisticsPerson = '',
+  remarks = '',
+} = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_update_b2b_sales_status', {
+    hec_sales_id: hecSalesId,
+    status,
+    assigned_logistics_person: assignedLogisticsPerson,
+    remarks,
+  });
+}
+
+export async function updateB2bCentreViaErp({ hecCentreId = '', status = '', logisticsAssignments = [] } = {}) {
+  return postFranchiseAdsMethod('health_ecosystem_core.health_ecosystem_core.api.ffms_update_b2b_centre', {
+    hec_centre_id: hecCentreId,
+    status,
+    logistics_assignments: logisticsAssignments,
   });
 }

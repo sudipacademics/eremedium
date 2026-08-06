@@ -9,8 +9,10 @@ export const ADMIN_PAGES = [
   'Agreements',
   'Payments',
   'Training',
+  'LIS Bridge',
   'Franchisee Webpage Index',
   'Franchisee Directory',
+  'B2B Operations',
   'Support',
   'Content CMS',
   'User Management',
@@ -38,8 +40,10 @@ const PAGE_PERMISSION: Record<AdminPage, string> = {
   Agreements: 'agreements',
   Payments: 'payments',
   Training: 'training',
+  'LIS Bridge': 'lis_bridge',
   'Franchisee Webpage Index': 'franchise_webpages',
   'Franchisee Directory': 'franchisee_directory',
+  'B2B Operations': 'b2b_operations',
   Support: 'support',
   'Content CMS': 'content_cms',
   'User Management': 'user_management',
@@ -55,9 +59,13 @@ const PERMISSIONS: Record<string, string[]> = {
   agreements: ['super_admin', 'manager', 'advocate'],
   payments: ['super_admin', 'manager', 'accountant'],
   training: ['super_admin', 'manager'],
+  lis_bridge: ['super_admin', 'manager'],
   franchise_webpages: ['super_admin', 'manager'],
   franchisee_directory: ['super_admin', 'manager'],
   franchisee_directory_api: ['super_admin'],
+  hard_delete: ['super_admin'],
+  deboard_franchise: ['super_admin', 'manager'],
+  b2b_operations: ['super_admin', 'manager'],
   support: ['super_admin', 'manager'],
   support_settings: ['super_admin'],
   content_cms: ['super_admin'],
@@ -91,4 +99,16 @@ export function adminCanManageSupportSettings(role: string) {
 
 export function adminCanManageFranchiseeDirectoryApi(role: string) {
   return normalizeAdminRole(role) === 'super_admin';
+}
+
+export function adminCanHardDelete(role: string) {
+  return normalizeAdminRole(role) === 'super_admin';
+}
+
+export function adminCanDeboardFranchise(role: string) {
+  return ['super_admin', 'manager'].includes(normalizeAdminRole(role));
+}
+
+export function adminCanManageB2bOperations(role: string) {
+  return ['super_admin', 'manager'].includes(normalizeAdminRole(role));
 }

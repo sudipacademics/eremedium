@@ -1,7 +1,8 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { RFMS_API_BASE, adminCanManageCrm } from '@rfms/utils';
+import { RFMS_API_BASE, adminCanHardDelete, adminCanManageCrm } from '@rfms/utils';
+import { HardDeleteButton } from './hard-delete-button';
 import './log-visit-directory.css';
 
 const API_BASE = RFMS_API_BASE;
@@ -111,6 +112,19 @@ export function LogVisitDirectory({
   const [saving, setSaving] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const canManage = adminCanManageCrm(viewer.role);
+
+  async function hardDeleteSelectedVisit() {
+    if (!selectedVisit || !adminCanHardDelete(viewer.role)) throw new Error('Only a Super Admin can permanently delete visits.');
+    const response = await fetch(`${API_BASE}/sales-visits/${selectedVisit.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => null) as { success?: boolean; error?: { message?: string } } | null;
+    if (!response.ok || !result?.success) throw new Error(result?.error?.message ?? 'Unable to permanently delete this visit.');
+    setVisits((current) => current.filter((item) => item.id !== selectedVisit.id));
+    setSelectedVisit(null);
+    notify('Visit permanently deleted from FFMS and linked portals.');
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -240,7 +254,7 @@ export function LogVisitDirectory({
         <section><span>REACH visits</span><b>{stats.total_visits}</b><small>Submitted + assigned</small></section>
         <section><span>Assigned</span><b>{stats.assigned_visits ?? 0}</b><small>Pending field Log Visits</small></section>
         <section><span>Completed</span><b>{stats.completed_visits ?? 0}</b><small>Reports with GPS / notes</small></section>
-        <section><span>Open pipeline</span><b>{stats.open_leads}</b><small>Active REACH leads</small></section>
+        <section><span>Open pipeline</span><b>{stats.open_leads}</b><small>Active assignable leads</small></section>
       </div>
 
       {error ? <p className="log-visit-error">{error}</p> : null}
@@ -250,7 +264,7 @@ export function LogVisitDirectory({
           <header className="panel-head">
             <div>
               <h2>Assign lead</h2>
-              <p>Route to CRM, Business Consultant, or a REACH user for Log Visit. REACH assignments sync immediately to the field portal.</p>
+              <p>Route any active FFMS or REACH lead to CRM, Business Consultant, or a REACH user for Log Visit. REACH assignments sync immediately to the field portal.</p>
             </div>
             <button className="date" type="button" onClick={() => void load()}>Refresh</button>
           </header>
@@ -422,7 +436,10 @@ export function LogVisitDirectory({
                 <h2>{selectedVisit.lead_name || 'Field visit'}</h2>
                 <p>{selectedVisit.reach_user || '—'} · {readable(selectedVisit.visit_status || 'completed')}</p>
               </div>
-              <button type="button" onClick={() => setSelectedVisit(null)}>Close</button>
+              <div className="log-visit-modal-actions">
+                {adminCanHardDelete(viewer.role) ? <HardDeleteButton onConfirm={hardDeleteSelectedVisit} /> : null}
+                <button type="button" onClick={() => setSelectedVisit(null)}>Close</button>
+              </div>
             </header>
             <div className="log-visit-modal-grid">
               <span><small>Date / time</small><b>{selectedVisit.visit_date || dateTime(selectedVisit.created_at)} {selectedVisit.visit_time || ''}</b></span>

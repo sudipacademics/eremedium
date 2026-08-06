@@ -28,11 +28,14 @@ import { SalesPortalPage } from './pages/sales/SalesPortalPage';
 import { SalesLeadsPage } from './pages/sales/SalesLeadsPage';
 import { SalesVisitPage } from './pages/sales/SalesVisitPage';
 import { SalesOnboardPage } from './pages/sales/SalesOnboardPage';
+import { SalesProfilePage } from './pages/sales/SalesProfilePage';
 import { SalesFranchiseesPage } from './pages/sales/SalesFranchiseesPage';
 import { SalesCatalogPage } from './pages/sales/SalesCatalogPage';
 import { SalesCommissionPage } from './pages/sales/SalesCommissionPage';
 import { SalesReportsPage } from './pages/sales/SalesReportsPage';
 import { SalesTeamMapPage } from './pages/sales/SalesTeamMapPage';
+import { SalesB2bCentresPage } from './pages/sales/SalesB2bCentresPage';
+import { SalesB2bSalesPage } from './pages/sales/SalesB2bSalesPage';
 
 import { CareersLayout } from './components/CareersLayout';
 import { CareersHrLayout } from './components/CareersHrLayout';
@@ -432,6 +435,7 @@ export default function App() {
                 }
               >
                 <Route index element={<SalesPortalPage />} />
+                <Route path="profile" element={<SalesProfilePage />} />
                 <Route path="leads" element={<SalesLeadsPage />} />
                 <Route path="visit" element={<SalesVisitPage />} />
                 <Route path="onboard" element={<SalesOnboardPage />} />
@@ -439,6 +443,8 @@ export default function App() {
                 <Route path="catalog" element={<SalesCatalogPage />} />
                 <Route path="commissions" element={<SalesCommissionPage />} />
                 <Route path="reports" element={<SalesReportsPage />} />
+                <Route path="b2b-centres" element={<SalesB2bCentresPage />} />
+                <Route path="b2b-sales" element={<SalesB2bSalesPage />} />
                 <Route path="map" element={<SalesTeamMapPage />} />
               </Route>
 

@@ -1,0 +1,52 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-08-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "centre_name",
+    "status",
+    "wallet_amount",
+    "total_deposit",
+    "contact_number",
+    "manual_address",
+    "google_map_location",
+    "trade_licence",
+    "approved_rate_chart",
+    "created_by_reach_user",
+    "rfms_centre_id",
+    "logistics_section",
+    "logistics_assignments",
+    "remarks"
+  ],
+  "fields": [
+    {"default": "B2BC-.#####", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "B2BC-.#####", "reqd": 1},
+    {"fieldname": "centre_name", "fieldtype": "Data", "in_list_view": 1, "label": "Collection Centre Name", "reqd": 1},
+    {"default": "Active", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Draft\nActive\nVerified\nInactive"},
+    {"fieldname": "wallet_amount", "fieldtype": "Currency", "label": "Wallet Amount", "default": "0"},
+    {"fieldname": "total_deposit", "fieldtype": "Currency", "label": "Total Deposit", "default": "0"},
+    {"fieldname": "contact_number", "fieldtype": "Data", "label": "Contact Number"},
+    {"fieldname": "manual_address", "fieldtype": "Small Text", "label": "Manual Address"},
+    {"fieldname": "google_map_location", "fieldtype": "Data", "label": "Google Map Location"},
+    {"fieldname": "trade_licence", "fieldtype": "Attach", "label": "Trade Licence"},
+    {"fieldname": "approved_rate_chart", "fieldtype": "Attach", "label": "Approved B2B Rate Chart"},
+    {"fieldname": "created_by_reach_user", "fieldtype": "Data", "label": "Created By REACH User"},
+    {"fieldname": "rfms_centre_id", "fieldtype": "Data", "label": "RFMS Centre ID", "read_only": 1},
+    {"fieldname": "logistics_section", "fieldtype": "Section Break", "label": "Logistics"},
+    {"fieldname": "logistics_assignments", "fieldtype": "Table", "label": "Logistics Assignments", "options": "B2B Logistics Assignment"},
+    {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "B2B Collection Centre",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

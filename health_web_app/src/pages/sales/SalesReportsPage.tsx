@@ -378,6 +378,26 @@ export function SalesReportsPage() {
             <strong>{draft ? formatInr(Number(draft.franchise_revenue || 0)) : '—'}</strong>
             <span>Total revenue</span>
           </article>
+          <article className="reach-metric-card">
+            <span className="reach-metric-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 7h16v10H4z" />
+                <path d="M8 7V5h8v2M8 17v2h8v-2" />
+              </svg>
+            </span>
+            <strong>{draft ? draft.b2b_samples ?? 0 : '—'}</strong>
+            <span>B2B samples</span>
+          </article>
+          <article className="reach-metric-card">
+            <span className="reach-metric-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M3 17l6-6 4 4 8-8" />
+                <path d="M14 7h7v7" />
+              </svg>
+            </span>
+            <strong>{draft ? formatInr(Number(draft.b2b_business_value || 0)) : '—'}</strong>
+            <span>B2B sales value · {draft?.b2b_entries ?? 0} entries{draft?.b2b_new_centres ? ` · ${draft.b2b_new_centres} new centres` : ''}</span>
+          </article>
         </section>
 
         <section className="reach-expense-summary" aria-label="Expense summary">

@@ -1,8 +1,9 @@
 'use client';
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { RFMS_API_BASE } from '@rfms/utils';
+import { RFMS_API_BASE, adminCanHardDelete } from '@rfms/utils';
 import { AgreementChangeRequestBox, correctionWorkflowActive } from './agreement-change-request';
+import { HardDeleteButton } from './hard-delete-button';
 
 const API_BASE = RFMS_API_BASE;
 
@@ -227,7 +228,7 @@ function AgreementDocumentViewer({ url, title = 'Agreement document' }: { url?: 
   </div>;
 }
 
-export function AgreementQueueModule({ token, search, notify }: { token: string; search: string; notify: (message: string) => void }) {
+export function AgreementQueueModule({ token, search, notify, viewerRole }: { token: string; search: string; notify: (message: string) => void; viewerRole: string }) {
   const [queue, setQueue] = useState<AgreementQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -564,11 +565,26 @@ export function AgreementQueueModule({ token, search, notify }: { token: string;
     setCertificateFile(event.target.files?.[0] ?? null);
   }
 
+  async function hardDeleteSelectedApplication() {
+    if (!application || !adminCanHardDelete(viewerRole)) throw new Error('Only a Super Admin can permanently delete applications.');
+    const response = await fetch(`${API_BASE}/admin/applications/${application.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => null) as { success?: boolean; error?: { message?: string } } | null;
+    if (!response.ok || !result?.success) throw new Error(result?.error?.message ?? 'Unable to permanently delete this application.');
+    const deletedId = application.id;
+    setQueue((current) => current.filter((item) => item.application_id !== deletedId));
+    setSelectedId('');
+    setApplication(null);
+    notify('Application and agreement permanently deleted from FFMS and linked portals.');
+  }
+
   return <section className="agreement-dashboard">
     <div className="title-row"><div><h1>Agreement queue</h1><p>Manage e-Stamp verification, agreement generation, applicant review, Aadhaar eSign and manual company execution.</p></div><button className="date" type="button" onClick={() => setReload((value) => value + 1)}>Refresh queue</button></div>
     <div className="module-summary"><section><span>Active agreements</span><b>{queue.length}</b><small>Started from Manual Application Review</small></section><section><span>Corrections pending</span><b>{queue.filter((item) => item.status === 'correction_requested').length}</b><small>Applicant change requests awaiting re-upload</small></section><section><span>Awaiting e-Stamp</span><b>{queue.filter((item) => ['in_process', 'estamp_pending'].includes(item.status)).length}</b><small>First mandatory Agreement Module step</small></section><section><span>Executed</span><b>{queue.filter((item) => item.status === 'executed').length}</b><small>Archived with full audit trail</small></section></div>
     <section className="panel data-panel"><div className="panel-head"><div><h2>Agreement work queue</h2><p>{loading ? 'Loading agreement work items…' : `${visibleQueue.length} agreement record${visibleQueue.length === 1 ? '' : 's'}`}</p></div><button type="button" onClick={() => setReload((value) => value + 1)}>Refresh</button></div><div className="table-wrap"><table><thead><tr><th>Applicant</th><th>Application</th><th>Model</th><th>Status</th><th>Applicant request</th><th>Reference</th><th>Updated</th><th /></tr></thead><tbody>{error ? <tr><td colSpan={8} className="empty">{error}</td></tr> : visibleQueue.map((item) => <tr key={item.application_id} className={item.status === 'correction_requested' ? 'agreement-row-correction' : ''}><td><b>{item.applicant_name}</b></td><td><b>{item.application_number}</b><br /><small>{item.preferred_location}</small></td><td>{item.franchise_model}</td><td>{item.status === 'correction_requested' ? <span className="agreement-status-pill correction">{item.status_label}</span> : item.status_label}</td><td>{item.correction_request ? <span className="agreement-correction-snippet" title={item.correction_request}>{item.correction_request}</span> : '—'}</td><td>{item.reference_number || '—'}</td><td>{displayDate(item.updated_at)}</td><td><button className="row-action" type="button" onClick={() => setSelectedId(item.application_id)}>{item.status === 'correction_requested' ? 'Review correction' : 'Open workspace'}</button></td></tr>)}{!loading && !error && visibleQueue.length === 0 ? <tr><td colSpan={8} className="empty">No agreement work items yet. Proceed to final agreement from Manual Application Review after the final payment or branding stage is verified.</td></tr> : null}</tbody></table></div></section>
-    {selectedId && application ? <section className="panel agreement-workspace"><div className="panel-head"><div><h2>{application.full_name}</h2><p>{application.application_number} · {application.franchise_model} · {workflow?.status_label ?? 'Agreement in process'} · API {new URL(API_BASE).origin}</p></div><button type="button" onClick={() => setSelectedId('')}>Close workspace</button></div>
+    {selectedId && application ? <section className="panel agreement-workspace"><div className="panel-head"><div><h2>{application.full_name}</h2><p>{application.application_number} · {application.franchise_model} · {workflow?.status_label ?? 'Agreement in process'} · API {new URL(API_BASE).origin}</p></div><div className="agreement-workspace-head-actions">{adminCanHardDelete(viewerRole) ? <HardDeleteButton onConfirm={hardDeleteSelectedApplication} /> : null}<button type="button" onClick={() => setSelectedId('')}>Close workspace</button></div></div>
       {apiNeedsRestart ? <p className="application-review-error" role="alert">Restart <b>RFMS Isolated Services</b> (run start-isolated.cmd) before using Upload / Save agreement.</p> : null}
       <div className="agreement-workspace-grid">
         <article className="agreement-step-card"><h3>Step 1 · e-Stamp module</h3><p>Upload and verify the official e-Stamp certificate before generating the final agreement.</p>{workflow?.estamp?.verified_at ? <div className="agreement-complete-box"><b>e-Stamp verified</b><span>{workflow.estamp.state} · {workflow.estamp.certificate_number}{workflow.estamp.uin ? ` · UIN ${workflow.estamp.uin}` : ''}</span>{workflow.estamp.certificate?.url ? <a href={resolveUploadUrl(workflow.estamp.certificate.url)} target="_blank" rel="noreferrer">View certificate</a> : null}</div> : <form className="agreement-estamp-form" onSubmit={(event) => void uploadEstamp(event)}><label>State<input required value={estamp.state} onChange={(event) => setEstamp((current) => ({ ...current, state: event.target.value }))} /></label><label>Stamp duty value<input required inputMode="decimal" value={estamp.stamp_duty_value} onChange={(event) => setEstamp((current) => ({ ...current, stamp_duty_value: event.target.value }))} /></label><label>Purpose of stamp<input required value={estamp.purpose} onChange={(event) => setEstamp((current) => ({ ...current, purpose: event.target.value }))} /></label><label>Execution date<input required type="date" value={estamp.execution_date} onChange={(event) => setEstamp((current) => ({ ...current, execution_date: event.target.value }))} /></label><label>e-Stamp certificate number<input required value={estamp.certificate_number} onChange={(event) => setEstamp((current) => ({ ...current, certificate_number: event.target.value }))} /></label><label>UIN (if applicable)<input value={estamp.uin} onChange={(event) => setEstamp((current) => ({ ...current, uin: event.target.value }))} /></label><label>Vendor / issuing authority<input required value={estamp.vendor} onChange={(event) => setEstamp((current) => ({ ...current, vendor: event.target.value }))} /></label><label className="span-two">e-Stamp certificate PDF<input required type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={onCertificateChange} /></label><button type="submit" disabled={busy === 'estamp' || !certificateFile}>{busy === 'estamp' ? 'Verifying…' : 'Verify e-Stamp certificate'}</button></form>}</article>

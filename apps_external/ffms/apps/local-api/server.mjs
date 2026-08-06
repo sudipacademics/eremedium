@@ -117,6 +117,14 @@ import {
   updateNotificationStatus,
 } from './notifications-workflow.mjs';
 import {
+  buildConfigTemplate,
+  checkErpConnectivity,
+  ensureCachedPackage,
+  interpretSetupLog,
+  lisBridgePackageMeta,
+  packageCacheInfo,
+} from './lis-bridge-workflow.mjs';
+import {
   appendFranchiseeDirectoryVersion,
   appendPartnerApiAuditLog,
   businessIdForApplication,
@@ -141,11 +149,16 @@ import {
   verifyPartnerFileToken,
 } from './franchisee-directory-workflow.mjs';
 import {
+  deboardFranchiseApplication,
+  isDeboardedFranchise,
+} from './franchise-deboard-workflow.mjs';
+import {
   paymentDetailForApplication,
   paymentLedgerForApplications,
   paymentLedgerMetrics,
   paymentPhaseSummary,
 } from './payments-workflow.mjs';
+import { buildAdminOverview } from './overview-dashboard-workflow.mjs';
 import {
   applyCouponPatch,
   couponHasCompletedUsage,
@@ -205,7 +218,28 @@ import {
   listReachRepsViaErp,
   assignReachLeadViaErp,
   updateReachLeadStatusViaErp,
+  archiveReachLeadViaErp,
+  archiveFieldVisitViaErp,
+  disablePartnerPortalViaErp,
+  deboardFranchiseeViaErp,
+  updateB2bSalesStatusViaErp,
 } from './hec-frappe-bridge.mjs';
+import {
+  hardDeleteLead,
+  hardDeleteVisit,
+  hardDeleteAppointment,
+  hardDeleteApplication,
+  hardDeletePaymentSubmission,
+  hardDeleteConfirmMessage,
+} from './hard-delete-workflow.mjs';
+import {
+  ensureB2bCollections,
+  ingestB2bCentres,
+  ingestB2bSales,
+  b2bOperationsSummary,
+  b2bCentreRecord,
+  b2bSalesRecord,
+} from './b2b-operations-workflow.mjs';
 import {
   applyBulkPinAvailability,
   capacityCsv,
@@ -410,6 +444,9 @@ async function loadDatabase() {
     database.applications = Array.isArray(database.applications) ? database.applications : [];
     database.leads = Array.isArray(database.leads) ? database.leads.map((item) => leadRecord(item, item?.id)) : [];
     database.sales_visits = Array.isArray(database.sales_visits) ? database.sales_visits.map((item) => salesVisitRecord(item, item?.id)) : [];
+    ensureB2bCollections(database);
+    database.b2b_collection_centres = database.b2b_collection_centres.map((item) => b2bCentreRecord(item, item?.id));
+    database.b2b_sales_entries = database.b2b_sales_entries.map((item) => b2bSalesRecord(item, item?.id));
     database.appointments = Array.isArray(database.appointments) ? database.appointments.map((item) => appointmentRecord(item, item?.id)) : [];
     database.territories = Array.isArray(database.territories) ? database.territories.map((item) => territoryRecord(item, item?.id)) : westBengalTerritorySeeds().map((item) => territoryRecord(item, item.id));
     database.sessions = Array.isArray(database.sessions) ? database.sessions.filter((session) => session && typeof session.token === 'string' && typeof session.role === 'string' && typeof session.name === 'string' && typeof session.mobile === 'string').slice(-50) : [];
@@ -506,6 +543,21 @@ function sendPdf(request, response, filename, body) {
     'Cache-Control': 'private, no-store',
   });
   response.end(body);
+}
+
+function sendZip(request, response, filename, body) {
+  cors(request, response);
+  response.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length': body.length,
+    'Cache-Control': 'private, no-store',
+  });
+  response.end(body);
+}
+
+function lisBridgeCacheDirectory() {
+  return path.resolve(process.env.RFMS_LIS_BRIDGE_CACHE_DIR ?? path.join(process.cwd(), 'work', 'lis-bridge-packages'));
 }
 
 function success(request, response, data, status = 200) {
@@ -2907,7 +2959,9 @@ function publicOnboardedCentreRecord(application) {
 }
 
 function listPublicOnboardedCentres({ latitude = null, longitude = null, radiusKm = null } = {}) {
-  const centres = onboardedFranchiseeApplications().map((application) => publicOnboardedCentreRecord(application));
+  const centres = onboardedFranchiseeApplications()
+    .filter((application) => !application.deboarded && application.stage !== 'deboarded')
+    .map((application) => publicOnboardedCentreRecord(application));
   const hasOrigin = latitude !== null && longitude !== null
     && Number.isFinite(latitude) && Number.isFinite(longitude);
   const radius = radiusKm === null || radiusKm === undefined || radiusKm === '' ? null : Number(radiusKm);
@@ -6203,6 +6257,15 @@ async function handle(request, response) {
       return success(request, response, { territories, metrics: territoryMetrics(), unassigned_applications: unassignedApplications, franchise_locations: franchiseLocations });
     }
 
+    if (request.method === 'GET' && route === '/api/v1/admin/overview') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can view the overview dashboard.', 403);
+      const overview = buildAdminOverview(database, {
+        territoryMetrics: () => territoryMetrics(),
+        territorySummary: (territory) => territorySummary(territory, false),
+      });
+      return success(request, response, overview);
+    }
+
     if (request.method === 'GET' && route === '/api/v1/territories/capacities') {
       if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can export territory capacities.', 403);
       const rows = flattenCapacityRows(publicPinRecords);
@@ -7736,6 +7799,70 @@ async function handle(request, response) {
       return success(request, response, applicationSummary(application));
     }
 
+        if (request.method === 'GET' && route === '/api/v1/applicant/lis-bridge/package') {
+      const application = applicantFor(request);
+      if (!application) return failure(request, response, 'UNAUTHORIZED', 'Applicant authentication required.', 401);
+      try {
+        const info = await packageCacheInfo(lisBridgeCacheDirectory());
+        if (!info.ready) {
+          const built = await ensureCachedPackage(lisBridgeCacheDirectory());
+          const { buffer, ...meta } = built;
+          return success(request, response, { ...meta, ready: true, size_kb: Math.round((meta.size_bytes || 0) / 1024) });
+        }
+        return success(request, response, { ...info, size_kb: Math.round((info.size_bytes || 0) / 1024) });
+      } catch (error) {
+        return failure(request, response, 'PACKAGE_UNAVAILABLE', error instanceof Error ? error.message : 'Unable to prepare LIS Bridge package.', 500);
+      }
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/applicant/lis-bridge/download') {
+      const application = applicantFor(request);
+      if (!application) return failure(request, response, 'UNAUTHORIZED', 'Applicant authentication required.', 401);
+      try {
+        const packed = await ensureCachedPackage(lisBridgeCacheDirectory());
+        return sendZip(request, response, packed.filename || 'hec-em200-lis-bridge.zip', packed.buffer);
+      } catch (error) {
+        return failure(request, response, 'PACKAGE_UNAVAILABLE', error instanceof Error ? error.message : 'Unable to download LIS Bridge package.', 500);
+      }
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applicant/lis-bridge/erp-check') {
+      const application = applicantFor(request);
+      if (!application) return failure(request, response, 'UNAUTHORIZED', 'Applicant authentication required.', 401);
+      const body = await readJson(request, 100_000);
+      const result = await checkErpConnectivity({
+        backend_base_url: body.backend_base_url,
+        site_name: body.site_name,
+        api_key: body.api_key,
+        api_secret: body.api_secret,
+        barcode: body.barcode,
+      });
+      return success(request, response, result);
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/applicant/lis-bridge/debug-log') {
+      const application = applicantFor(request);
+      if (!application) return failure(request, response, 'UNAUTHORIZED', 'Applicant authentication required.', 401);
+      const body = await readJson(request, 400_000);
+      const analysis = interpretSetupLog(body.log_text || body.log || '');
+      return success(request, response, {
+        ...analysis,
+        application_number: application.application_number,
+        franchisee_id: application.franchisee_id || '',
+        analyzed_at: new Date().toISOString(),
+      });
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/applicant/lis-bridge/config-template') {
+      const application = applicantFor(request);
+      if (!application) return failure(request, response, 'UNAUTHORIZED', 'Applicant authentication required.', 401);
+      return success(request, response, {
+        filename: 'em200.env.json',
+        config: buildConfigTemplate(),
+        note: 'Replace PASTE_KEY / PASTE_SECRET with HQ keys. Do not share this file on WhatsApp.',
+      });
+    }
+
     if (request.method === 'GET' && route === '/api/v1/applicant/training/certificate') {
       const application = applicantFor(request);
       if (!application?.training?.certificate?.pdf?.url) {
@@ -8168,6 +8295,38 @@ async function handle(request, response) {
       return success(request, response, franchiseeDirectoryDetail(application, helpers, session.name));
     }
 
+    const franchiseeDeboardMatch = route.match(/^\/api\/v1\/admin\/franchisees\/([^/]+)\/deboard$/);
+    if (franchiseeDeboardMatch && request.method === 'POST') {
+      const session = requirePermission(request, response, 'deboard_franchise');
+      if (!session) return;
+      const application = findApplicationByFranchiseeIdentifier(database.applications, franchiseeDeboardMatch[1]);
+      if (!application || !isOnboardedFranchisee(application)) return failure(request, response, 'NOT_FOUND', 'Onboarded franchisee record not found.', 404);
+      if (isDeboardedFranchise(application)) return failure(request, response, 'ALREADY_DEBOARDED', 'This franchise is already deboarded.', 409);
+      const helpers = franchiseeDirectoryHelpers();
+      const result = deboardFranchiseApplication(database, application, session, helpers);
+      let erp = null;
+      try {
+        erp = await deboardFranchiseeViaErp({
+          franchiseeProfile: result.cascade.hec_franchisee_profile,
+          franchiseeId: result.cascade.franchisee_id,
+          reason: `Deboarded by ${session.name} from FFMS Admin`,
+        });
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      auditAdminAction(request, {
+        action: 'franchise_deboarded',
+        target: franchiseeIdForApplication(application) || application.id,
+        details: `Franchise deboarded. Total expense ₹${result.cost_report.total_expense}.`,
+      });
+      await saveDatabase();
+      return success(request, response, {
+        ...franchiseeDirectoryDetail(application, helpers, session.name),
+        deboarding_report: result.cost_report,
+        erp,
+      });
+    }
+
     if (request.method === 'GET' && route === '/api/v1/admin/franchisee-directory/api-settings') {
       if (!requirePermission(request, response, 'franchisee_directory_api')) return;
       return success(request, response, {
@@ -8255,6 +8414,64 @@ async function handle(request, response) {
       appendPartnerApiAuditLog(database, { route, method: request.method, franchisee_id: franchiseeIdForApplication(application) || application.id, status: 'detail', token_prefix: access.settings.api_token_prefix });
       await saveDatabase();
       return success(request, response, franchiseeDirectoryPartnerRecord(detail, access.settings, access.settings.allowed_fields));
+    }
+
+        if (request.method === 'GET' && route === '/api/v1/admin/lis-bridge/package') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can manage the LIS Bridge package.', 403);
+      try {
+        let info = await packageCacheInfo(lisBridgeCacheDirectory());
+        if (!info.ready) {
+          const built = await ensureCachedPackage(lisBridgeCacheDirectory());
+          const { buffer, ...meta } = built;
+          info = { ...meta, ready: true };
+        }
+        return success(request, response, { ...info, size_kb: Math.round((info.size_bytes || 0) / 1024), meta_defaults: lisBridgePackageMeta() });
+      } catch (error) {
+        return failure(request, response, 'PACKAGE_UNAVAILABLE', error instanceof Error ? error.message : 'Unable to load LIS Bridge package status.', 500);
+      }
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/admin/lis-bridge/rebuild') {
+      if (!requirePermission(request, response, 'lis_bridge')) return;
+      try {
+        const packed = await ensureCachedPackage(lisBridgeCacheDirectory(), { force: true });
+        const { buffer, ...meta } = packed;
+        return success(request, response, { ...meta, ready: true, size_kb: Math.round((meta.size_bytes || 0) / 1024), rebuilt: true });
+      } catch (error) {
+        return failure(request, response, 'PACKAGE_UNAVAILABLE', error instanceof Error ? error.message : 'Unable to rebuild LIS Bridge package.', 500);
+      }
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/lis-bridge/download') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can download the LIS Bridge package.', 403);
+      try {
+        const packed = await ensureCachedPackage(lisBridgeCacheDirectory());
+        return sendZip(request, response, packed.filename || 'hec-em200-lis-bridge.zip', packed.buffer);
+      } catch (error) {
+        return failure(request, response, 'PACKAGE_UNAVAILABLE', error instanceof Error ? error.message : 'Unable to download LIS Bridge package.', 500);
+      }
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/admin/lis-bridge/erp-check') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can run the ERP check.', 403);
+      const body = await readJson(request, 100_000);
+      const result = await checkErpConnectivity({
+        backend_base_url: body.backend_base_url,
+        site_name: body.site_name,
+        api_key: body.api_key,
+        api_secret: body.api_secret,
+        barcode: body.barcode,
+      });
+      return success(request, response, result);
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/lis-bridge/config-template') {
+      if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can export the LIS Bridge config template.', 403);
+      return success(request, response, {
+        filename: 'em200.env.json',
+        config: buildConfigTemplate(),
+        note: 'Base config for franchise USB / portal. Fill API_KEY / API_SECRET from Health Ecosystem Settings.',
+      });
     }
 
     if (route.startsWith('/api/v1/admin/training/videos') && !requireOfficer(request)) {
@@ -8351,6 +8568,108 @@ async function handle(request, response) {
       completeLinkedLeadsForApplication(application);
       await saveDatabase();
       return success(request, response, { application: applicationSummary(application), action: next.label });
+    }
+
+    if (request.method === 'DELETE' && route.match(/^\/api\/v1\/leads\/([^/]+)$/)) {
+      const session = requirePermission(request, response, 'hard_delete');
+      if (!session) return;
+      const leadId = route.match(/^\/api\/v1\/leads\/([^/]+)$/)[1];
+      const result = hardDeleteLead(database, leadId, session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      let erp = null;
+      try {
+        if (result.cascade.hec_lead_id || result.cascade.source === 'reach_sales') {
+          erp = await archiveReachLeadViaErp({
+            hecLeadId: result.cascade.hec_lead_id,
+            rfmsLeadId: result.cascade.rfms_lead_id,
+            reason: `Hard-deleted by ${session.name} from FFMS Admin`,
+          });
+        }
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, { deleted: true, entity: 'lead', id: leadId, confirm_message: hardDeleteConfirmMessage(), erp });
+    }
+
+    if (request.method === 'DELETE' && route.match(/^\/api\/v1\/sales-visits\/([^/]+)$/)) {
+      const session = requirePermission(request, response, 'hard_delete');
+      if (!session) return;
+      const visitId = route.match(/^\/api\/v1\/sales-visits\/([^/]+)$/)[1];
+      const result = hardDeleteVisit(database, visitId, session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      let erp = null;
+      try {
+        if (result.cascade.hec_visit_id) {
+          erp = await archiveFieldVisitViaErp({
+            hecVisitId: result.cascade.hec_visit_id,
+            reason: `Hard-deleted by ${session.name} from FFMS Admin`,
+          });
+        }
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, { deleted: true, entity: 'sales_visit', id: visitId, confirm_message: hardDeleteConfirmMessage(), erp });
+    }
+
+    if (request.method === 'DELETE' && route.match(/^\/api\/v1\/appointments\/([^/]+)$/)) {
+      const session = requirePermission(request, response, 'hard_delete');
+      if (!session) return;
+      const appointmentId = route.match(/^\/api\/v1\/appointments\/([^/]+)$/)[1];
+      const result = hardDeleteAppointment(database, appointmentId, session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      await saveDatabase();
+      return success(request, response, { deleted: true, entity: 'appointment', id: appointmentId, confirm_message: hardDeleteConfirmMessage() });
+    }
+
+    if (request.method === 'DELETE' && route.match(/^\/api\/v1\/admin\/applications\/([^/]+)$/)) {
+      const session = requirePermission(request, response, 'hard_delete');
+      if (!session) return;
+      const applicationId = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)$/)[1];
+      const result = hardDeleteApplication(database, applicationId, session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      const erp = { reach: null, partner: null };
+      try {
+        if (result.cascade.hec_lead_id) {
+          erp.reach = await archiveReachLeadViaErp({
+            hecLeadId: result.cascade.hec_lead_id,
+            reason: `Applicant hard-deleted by ${session.name} from FFMS Admin`,
+          });
+        }
+      } catch (error) {
+        erp.reach = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      try {
+        if (result.cascade.hec_franchisee_profile || result.cascade.partner_portal_user_id || result.cascade.franchisee_id) {
+          erp.partner = await disablePartnerPortalViaErp({
+            franchiseeProfile: result.cascade.hec_franchisee_profile,
+            userId: result.cascade.partner_portal_user_id,
+            franchiseeId: result.cascade.franchisee_id,
+            reason: `Applicant hard-deleted by ${session.name} from FFMS Admin`,
+          });
+        }
+      } catch (error) {
+        erp.partner = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, { deleted: true, entity: 'application', id: applicationId, confirm_message: hardDeleteConfirmMessage(), erp, cascade: result.cascade });
+    }
+
+    if (request.method === 'DELETE' && route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/payments\/([^/]+)$/)) {
+      const session = requirePermission(request, response, 'hard_delete');
+      if (!session) return;
+      const match = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/payments\/([^/]+)$/);
+      const result = hardDeletePaymentSubmission(database, match[1], decodeURIComponent(match[2]), session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      await saveDatabase();
+      return success(request, response, {
+        deleted: true,
+        entity: 'payment',
+        application_id: match[1],
+        payment_key: match[2],
+        confirm_message: hardDeleteConfirmMessage(),
+      });
     }
 
     if (request.method === 'GET' && route === '/api/v1/leads') {
@@ -8517,11 +8836,102 @@ async function handle(request, response) {
       }, 201);
     }
 
+    if (request.method === 'POST' && route === '/api/v1/b2b-centres/ingest') {
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 1_000_000);
+      const rows = Array.isArray(body.centres) ? body.centres : [body];
+      const centres = ingestB2bCentres(database, rows.filter(Boolean));
+      await saveDatabase();
+      return success(request, response, { imported_count: centres.length, centres, centre: centres[0] || null }, 201);
+    }
+
+    if (request.method === 'POST' && route === '/api/v1/b2b-sales/ingest') {
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 1_000_000);
+      const rows = Array.isArray(body.entries) ? body.entries : [body];
+      const entries = ingestB2bSales(database, rows.filter(Boolean));
+      await saveDatabase();
+      return success(request, response, { imported_count: entries.length, entries, entry: entries[0] || null }, 201);
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/b2b/summary') {
+      if (!requirePermission(request, response, 'b2b_operations')) return;
+      ensureB2bCollections(database);
+      return success(request, response, b2bOperationsSummary(database));
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/b2b/centres') {
+      if (!requirePermission(request, response, 'b2b_operations')) return;
+      ensureB2bCollections(database);
+      return success(request, response, [...database.b2b_collection_centres].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))));
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/admin/b2b/sales') {
+      if (!requirePermission(request, response, 'b2b_operations')) return;
+      ensureB2bCollections(database);
+      return success(request, response, [...database.b2b_sales_entries].sort((a, b) => String(b.sales_date || b.updated_at).localeCompare(String(a.sales_date || a.updated_at))));
+    }
+
+    const b2bSalesPatchMatch = route.match(/^\/api\/v1\/admin\/b2b\/sales\/([^/]+)$/);
+    if (b2bSalesPatchMatch && request.method === 'PATCH') {
+      const session = requirePermission(request, response, 'b2b_operations');
+      if (!session) return;
+      ensureB2bCollections(database);
+      const entry = database.b2b_sales_entries.find((item) => item.id === b2bSalesPatchMatch[1] || item.hec_sales_id === b2bSalesPatchMatch[1]);
+      if (!entry) return failure(request, response, 'NOT_FOUND', 'B2B sales entry not found.', 404);
+      const body = await readJson(request);
+      if (body.status) entry.status = text(body.status, 40);
+      if (Object.prototype.hasOwnProperty.call(body, 'assigned_logistics_person')) entry.assigned_logistics_person = text(body.assigned_logistics_person, 140);
+      if (Object.prototype.hasOwnProperty.call(body, 'remarks')) entry.remarks = text(body.remarks, 1000);
+      if (Object.prototype.hasOwnProperty.call(body, 'business_value')) entry.business_value = Number(body.business_value) || 0;
+      if (Object.prototype.hasOwnProperty.call(body, 'number_of_samples')) entry.number_of_samples = Math.max(0, Math.floor(Number(body.number_of_samples) || 0));
+      entry.updated_at = new Date().toISOString();
+      let erp = null;
+      try {
+        if (entry.hec_sales_id) {
+          erp = await updateB2bSalesStatusViaErp({
+            hecSalesId: entry.hec_sales_id,
+            status: entry.status,
+            assignedLogisticsPerson: entry.assigned_logistics_person,
+            remarks: entry.remarks,
+          });
+        }
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, { entry, erp });
+    }
+
+    const b2bCentrePatchMatch = route.match(/^\/api\/v1\/admin\/b2b\/centres\/([^/]+)$/);
+    if (b2bCentrePatchMatch && request.method === 'PATCH') {
+      const session = requirePermission(request, response, 'b2b_operations');
+      if (!session) return;
+      ensureB2bCollections(database);
+      const centre = database.b2b_collection_centres.find((item) => item.id === b2bCentrePatchMatch[1] || item.hec_centre_id === b2bCentrePatchMatch[1]);
+      if (!centre) return failure(request, response, 'NOT_FOUND', 'B2B collection centre not found.', 404);
+      const body = await readJson(request);
+      if (body.status) centre.status = text(body.status, 40);
+      if (Array.isArray(body.logistics_assignments)) {
+        centre.logistics_assignments = body.logistics_assignments.map((item) => ({
+          person_name: text(item?.person_name, 140),
+          contact_number: text(item?.contact_number, 40),
+          pickup_point: text(item?.pickup_point, 200),
+          logistics_cost: Number(item?.logistics_cost) || 0,
+        })).filter((item) => item.person_name);
+      }
+      centre.updated_at = new Date().toISOString();
+      await saveDatabase();
+      return success(request, response, { centre });
+    }
+
     if (request.method === 'GET' && route === '/api/v1/sales-visits') {
       if (!requirePermission(request, response, 'leads')) return;
       const visits = [...(database.sales_visits || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      // Assign Lead must list every active CRM lead (FFMS manual/upload/ads + REACH), not only REACH-synced rows.
+      const TERMINAL_LEAD_STAGES = new Set(['won', 'lost', 'completed', 'disqualified']);
       const reachLeads = (database.leads || [])
-        .filter((lead) => lead.source === 'reach_sales' || lead.hec_lead_id)
+        .filter((lead) => !TERMINAL_LEAD_STAGES.has(String(lead.stage || '').toLowerCase()))
         .filter((lead) => crmLeadAccess(request, lead))
         .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
       const performanceMap = new Map();
@@ -8596,9 +9006,39 @@ async function handle(request, response) {
             assigneeRole,
             createVisit: assigneeRole === 'reach' || assigneeRole === 'log_visit',
             assignedFrom: actor,
+            lead: {
+              name: lead.name,
+              lead_name: lead.name,
+              email: lead.email,
+              phone: lead.mobile,
+              mobile: lead.mobile,
+              territory_query: lead.territory_query,
+              address: lead.territory_query,
+              notes: lead.notes,
+              stage: lead.stage,
+              source: lead.source,
+              campaign_name: lead.campaign_name,
+              franchise_model: lead.franchise_model,
+            },
           });
+          if (remote?.lead_id) lead.hec_lead_id = text(remote.lead_id, 120);
           if (remote?.assigned_rep) lead.sales_rep_id = text(remote.assigned_rep, 120);
           if (salesRepId) lead.sales_rep_id = salesRepId;
+          if (remote?.visit_id && (assigneeRole === 'reach' || assigneeRole === 'log_visit')) {
+            ingestSalesVisitsIntoCrm([{
+              hec_visit_id: remote.visit_id,
+              hec_lead_id: lead.hec_lead_id || remote.lead_id || '',
+              rfms_lead_id: lead.id,
+              lead_name: lead.name,
+              lead_phone: lead.mobile,
+              reach_user: reachUser,
+              sales_rep_id: lead.sales_rep_id || salesRepId,
+              visit_status: 'assigned',
+              purpose: 'Meet Lead',
+              assigned_from: actor,
+              notes: `Assigned from FFMS to ${reachUser || salesRepId} for field Log Visit.`,
+            }]);
+          }
         }
       } catch (error) {
         return failure(request, response, 'REACH_SYNC_ERROR', error instanceof Error ? error.message : 'Unable to sync assignment to REACH.', 502);
@@ -8606,6 +9046,9 @@ async function handle(request, response) {
       lead.assigned_to = reachUser || lead.assigned_to;
       lead.assignee_role = assigneeRole;
       if (salesRepId) lead.sales_rep_id = salesRepId;
+      if (assigneeRole === 'reach' || assigneeRole === 'log_visit') {
+        lead.reach_user_name = reachUser || lead.reach_user_name;
+      }
       addLeadActivity(
         lead,
         'owner_change',

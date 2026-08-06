@@ -355,6 +355,62 @@ export type SalesPortalPayload = {
   hr_available?: boolean;
 };
 
+export type SalesProfileDashboard = {
+  available: boolean;
+  reason?: string;
+  period: {
+    label: string;
+    start: string;
+    end: string;
+    days_covered: number;
+    days_in_month: number;
+  };
+  rep?: SalesRepProfile;
+  employee: {
+    id: string;
+    name: string;
+    department?: string;
+    designation?: string;
+    phone?: string;
+    email?: string;
+    date_of_joining?: string;
+    status?: string;
+    company?: string;
+    branch?: string;
+    grade?: string;
+  };
+  compensation: {
+    monthly_ctc: number;
+    monthly_target: number;
+    ctc_prorated_mtd: number;
+    expenses_claimed_mtd: number;
+    net_expense_to_company_mtd: number;
+    net_expense_per_day: number;
+  };
+  kpis: {
+    leads_uploaded: number;
+    visits_logged: number;
+    fofo_created: number;
+    foco_created: number;
+    b2b_created: number;
+    total_sales_generated: number;
+    achievement_pct: number;
+    used_seed_counts?: { fofo?: boolean; foco?: boolean; b2b?: boolean };
+  };
+  charts: {
+    sales_earned: Array<{ day: number; label: string; amount: number; seeded?: boolean }>;
+    sales_earned_mtd: number;
+    net_expense: {
+      ctc_prorated: number;
+      expenses: number;
+      total: number;
+      per_day: number;
+      days_covered: number;
+    };
+  };
+  seed?: { ok?: boolean; seeded?: string[] };
+};
+
 export type SalesLead = {
   name: string;
   lead_name: string;
@@ -520,6 +576,49 @@ export type SalesClosingDraft = {
   franchise_revenue: number;
   already_submitted?: number;
   existing_report_id?: string;
+  b2b_samples?: number;
+  b2b_business_value?: number;
+  b2b_entries?: number;
+  b2b_new_centres?: number;
+};
+
+export type B2bLogisticsAssignment = {
+  person_name: string;
+  contact_number?: string;
+  pickup_point?: string;
+  logistics_cost?: number;
+};
+
+export type B2bCollectionCentre = {
+  name: string;
+  centre_name: string;
+  status?: string;
+  wallet_amount?: number;
+  total_deposit?: number;
+  contact_number?: string;
+  manual_address?: string;
+  google_map_location?: string;
+  logistics_assignments?: B2bLogisticsAssignment[];
+  remarks?: string;
+};
+
+export type B2bSalesEntry = {
+  name: string;
+  sales_date: string;
+  b2b_collection_centre: string;
+  centre_name?: string;
+  number_of_samples: number;
+  business_value: number;
+  assigned_logistics_person?: string;
+  status?: string;
+  remarks?: string;
+};
+
+export type B2bClosingSummary = {
+  samples: number;
+  business_value: number;
+  entries: number;
+  new_centres: number;
 };
 
 export type CheckoutPricing = {
@@ -2953,6 +3052,13 @@ export const api = {
   getSalesPortal: () =>
     request<SalesPortalPayload>('get_sales_portal', { method: 'POST', auth: true }),
 
+  getSalesProfileDashboard: (seedIfMissing = true) =>
+    request<SalesProfileDashboard>('get_sales_profile_dashboard', {
+      method: 'POST',
+      body: { seed_if_missing: seedIfMissing ? 1 : 0 },
+      auth: true,
+    }),
+
   getSalesLeads: (limit = 50) =>
     request<{ leads: SalesLead[] }>('get_sales_leads', { method: 'POST', body: { limit }, auth: true }),
 
@@ -3032,6 +3138,59 @@ export const api = {
 
   submitSalesClosingReport: (body: Record<string, string | number>) =>
     request<{ report_id: string }>('submit_sales_closing_report', { method: 'POST', body, auth: true }),
+
+  listB2bCollectionCentres: (limit = 100) =>
+    request<{ centres: B2bCollectionCentre[] }>('list_b2b_collection_centres', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+    }),
+
+  createB2bCollectionCentre: (body: {
+    centre_name: string;
+    wallet_amount?: number;
+    total_deposit?: number;
+    contact_number?: string;
+    manual_address?: string;
+    google_map_location?: string;
+    remarks?: string;
+    logistics_assignments?: B2bLogisticsAssignment[];
+  }) =>
+    request<{ centre: B2bCollectionCentre; rfms?: unknown }>('create_b2b_collection_centre', {
+      method: 'POST',
+      body: {
+        centre_name: body.centre_name,
+        wallet_amount: body.wallet_amount ?? 0,
+        total_deposit: body.total_deposit ?? 0,
+        contact_number: body.contact_number || '',
+        manual_address: body.manual_address || '',
+        google_map_location: body.google_map_location || '',
+        remarks: body.remarks || '',
+        logistics_assignments: JSON.stringify(body.logistics_assignments || []),
+      },
+      auth: true,
+    }),
+
+  listB2bSalesEntries: (limit = 100, salesDate?: string) =>
+    request<{ entries: B2bSalesEntry[] }>('list_b2b_sales_entries', {
+      method: 'POST',
+      body: salesDate ? { limit, sales_date: salesDate } : { limit },
+      auth: true,
+    }),
+
+  submitB2bSalesEntry: (body: Record<string, string | number | boolean>) =>
+    request<{ entry: B2bSalesEntry; closing?: unknown; rfms?: unknown }>('submit_b2b_sales_entry', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  getB2bClosingSummary: (periodDate?: string) =>
+    request<B2bClosingSummary>('get_b2b_closing_summary', {
+      method: 'POST',
+      body: periodDate ? { period_date: periodDate } : {},
+      auth: true,
+    }),
 
   updateSalesRepLocation: (latitude: number, longitude: number, onDuty = true) =>
     request<{ rep_id: string; latitude: number; longitude: number }>('sales_rep_update_location', {

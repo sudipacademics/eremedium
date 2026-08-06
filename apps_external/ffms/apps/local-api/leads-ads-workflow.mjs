@@ -26,6 +26,11 @@ export function findExistingAdLead(leads, candidate) {
     const byHec = (leads || []).find((item) => String(item.hec_lead_id || '').trim() === hecId);
     if (byHec) return byHec;
   }
+  const rfmsId = String(candidate?.rfms_lead_id || candidate?.id || '').trim();
+  if (rfmsId) {
+    const byRfms = (leads || []).find((item) => String(item.id || '').trim() === rfmsId);
+    if (byRfms) return byRfms;
+  }
   const externalId = String(candidate?.external_lead_id || '').trim();
   if (externalId) {
     const byExternal = (leads || []).find((item) => String(item.external_lead_id || '').trim() === externalId);
@@ -64,6 +69,7 @@ export function adLeadPayloadFromRow(row = {}, defaults = {}) {
     utm_campaign: String(row.utm_campaign || defaults.utm_campaign || '').trim(),
     gclid: String(row.gclid || defaults.gclid || '').trim(),
     hec_lead_id: String(row.hec_lead_id || defaults.hec_lead_id || '').trim(),
+    rfms_lead_id: String(row.rfms_lead_id || defaults.rfms_lead_id || row.id || '').trim(),
     raw_source_payload: typeof row.raw_source_payload === 'string'
       ? row.raw_source_payload.slice(0, 4000)
       : (row.raw_source_payload ? JSON.stringify(row.raw_source_payload).slice(0, 4000) : ''),
