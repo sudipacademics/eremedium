@@ -1,0 +1,632 @@
+Remedium Health Ecosystem — Operations Workflows by Origin & Endpoint
+======================================================================
+Location: docs/APP_WORKFLOWS.txt
+Companion: docs/DEMO_CREDENTIALS.txt  (demo UnPw — do not duplicate secrets here)
+Updated:  2026-08-11
+Scope:    All live portals through Phase 88 (lab formats do not add logins)
+Uniform:  docs/UNIFORM_LAB_WORKFLOW.md  ·  docs/blood-collection-to-report-workflow.png
+
+
+0) HOW TO READ THIS FILE
+------------------------
+  ORIGIN  = browser host or path prefix (who opens what)
+  ACTOR   = role using that origin
+  FLOW    = step-by-step business path
+  ENDPOINT= URL or API the step hits
+
+  Public ERP methods (patient/partners/reach/collect/career):
+    https://www.e-remedium.in/api/method/health_ecosystem_core.health_ecosystem_core.api.<name>
+    (also proxied from partners / reach / collect / career hosts via /api/)
+
+  Public RFMS (FFMS) API:
+    Browser:  https://www.e-remedium.in/rfms-api/v1/<path>
+    Inside Docker: http://rfms:8090/api/v1/<path>
+    nginx rewrites /rfms-api/ → RFMS /api/
+
+
+0a) UNIFORM LAB MODEL (architecture of record)
+----------------------------------------------
+  Full text: docs/UNIFORM_LAB_WORKFLOW.md
+  Diagram:   docs/blood-collection-to-report-workflow.png
+
+  Target shape:
+    Multiple booking inputs (www, Flutter, partners Bill Entry / B2B, collect assist)
+         → HEC APIs on ERPNext mint Customer TRF.unique_barcode once
+         → From that barcode through Lab Report PDF is one unique chain
+         → health_web_app SPA = employee frontend (role dashboards)
+         → ERPNext = data receiver / source of truth
+         → ERP Desk = masters, admin, exceptions (not daily collect–test–authorize)
+
+  Multi-input → single barcode:
+    Patient web/app  → book_lab_test / create_customer_trf  → DocType barcode
+    Partners B2B     → create_b2b_walk_in_order             → DocType barcode
+    Bill Entry       → TRF insert (target: leave barcode blank; DocType only)
+    Tubes            → accession_id = {unique_barcode}-{TUBE} (logistic overlay)
+    LIS / analyzers  → get_barcode_tests / log_machine_result on unique_barcode
+
+  Post-barcode ops (SPA roles):
+    Phlebotomist  collect …/dashboard/phlebotomist     Sample Collected
+    Reception     www accession (Phase 89 APIs)          receive / reject tubes
+    Lab tech      www …/dashboard/lab-reports            grid + finalize Verified
+    Pathologist   same report UI                         authorize PDF + notify
+    Patient       www / Flutter /bookings                 download PDF
+
+  Result-store contract: LIS writes Lab Test Result; humans edit Lab Report
+  Parameter (after import); finalize syncs Report → LTR. No dual edits after Verified.
+
+  Known gap until live deploy: SPA LabReports* routes are wired in App.tsx locally;
+  Desk Lab Report remains available as exception path until parity is proven in production.
+
+
+1) INFRASTRUCTURE MAP
+---------------------
+
+  Browser
+    │
+    ├─ www | partners | reach | collect | career
+    │     SPA (health_web_app)
+    │     /api/method/... ──► nginx ──► Frappe backend :8000 (host :8080)
+    │
+    ├─ www/franchise  ──► RFMS marketing :3000
+    ├─ www/onboard    ──► RFMS applicant portal :3001
+    ├─ www/ffms       ──► RFMS admin :3002
+    ├─ www/rfms-api   ──► RFMS API :8090  (/api/v1)
+    ├─ www/uploads    ──► RFMS uploads
+    │
+    └─ erp.e-remedium.in ──► ERPNext Desk (same backend)
+
+  RFMS (local-api) calls ERP over HMAC (hec-frappe-bridge.mjs):
+    ONBOARD_HMAC_SECRET  ↔ site_config.onboard_hmac_secret
+    Franchise ads / WhatsApp secrets as documented in AGENTS_CONTEXT.md
+
+  502 on login / Reach: nginx may hold stale upstream IPs.
+    Fix on server: bash docker/scripts/emergency-fix-502.sh
+
+  Service worker trap: SPA SW must denylist /franchise|/onboard|/ffms|/rfms-api
+    or those paths look like the patient homepage.
+
+
+2) ORIGINS & DEFAULT LANDING
+----------------------------
+
+  Host / path                         Portal                    Default land
+  ----------------------------------  ------------------------  ---------------------------
+  https://www.e-remedium.in           Patient / public          /
+  https://e-remedium.in               Patient (alias)           /
+  https://partners.e-remedium.in      B2B Franchise Hub         /b2b
+  https://reach.e-remedium.in         REACH field sales         /sales
+  https://collect.e-remedium.in       Phlebotomist Collect      /dashboard/phlebotomist
+  https://career.e-remedium.in        Careers (public + /my)    /careers
+  https://erp.e-remedium.in           ERPNext Desk              /app
+  https://www.e-remedium.in/ffms      FFMS officer admin        /ffms
+  https://www.e-remedium.in/onboard   FOFO/FOCO applicant       /onboard
+  https://www.e-remedium.in/franchise Franchise marketing       /franchise
+  https://www.e-remedium.in/centres   Public centre directory   /centres
+  https://www.e-remedium.in/hr/...    HR applications (www)     /hr/applications
+  https://www.e-remedium.in/login     Patient/staff login        —
+  https://www.e-remedium.in/signup    Patient signup             —
+
+  Local FFMS (dev): marketing :3000 · portal :3001 · admin :3002
+
+
+3) ACTOR QUICK MATRIX
+---------------------
+
+  Actor                Origin(s)                         Auth style
+  -------------------  --------------------------------  --------------------------
+  Patient              www                               Email/password or mobile OTP
+  Franchise hub / B2B  partners                          Frappe User password
+  Sales rep / mgr     reach                             Frappe User password
+  Phlebotomist         collect                           Frappe User password
+  Job applicant        career (/my)                      OTP
+  HR manager           www/hr or career                  Frappe User password
+  FOFO/FOCO applicant  /onboard                          Self UnPw + contact OTP
+  FFMS officer         /ffms                             Company ID RFMS-NNNN + pwd
+  System / Desk admin  erp                               Administrator / staff users
+
+
+==============================================================================
+4) PATIENT WORKFLOW  —  www.e-remedium.in
+==============================================================================
+
+A. Register / login
+   1. Open /signup or /login
+   2. Email path: register_patient → verify email → login
+      OR mobile OTP: send_otp → verify_otp_and_login (test OTP often 123456)
+   Key methods: register_patient, authenticate_user, send_otp, verify_otp_and_login
+
+B. Discover centres
+   1. Open /centres
+   2. UI calls public RFMS: GET /rfms-api/v1/public/centres
+      (franchisees stage=onboarding_completed; Get Direction = saved Maps URL)
+
+C. Book lab test (TRF → pay → results)
+   1. /diagnostics → pick test → /diagnostics/book/:item
+   2. book_lab_test / create_customer_trf
+   3. create_razorpay_order → Razorpay Checkout → verify_razorpay_payment
+   4. Track: /bookings, /bookings/:trfId → get_my_bookings + report/journey APIs
+   5. Downstream: LIS / results pipeline (native ERPNext + lab roles)
+
+D. Account
+   /account — profile, bookings history
+
+Pages (SPA): /, /diagnostics, /centres, /bookings, /account, /dashboard/staff (staff)
+
+
+==============================================================================
+5) PARTNERS / B2B HUB  —  partners.e-remedium.in
+==============================================================================
+
+A. Login → hub home
+   1. /login → land /b2b (or /dashboard/franchisee)
+   2. get_b2b_portal, get_franchisee_dashboard (wallet, hub fields)
+
+B. Catalog & order
+   1. get_b2b_catalog
+   2. Walk-in / order APIs under B2B create_* methods
+   3. Statements: get_b2b_statements
+
+C. Wallet top-up
+   1. get_b2b_wallet
+   2. create_b2b_wallet_razorpay_order → verify payment
+   Opening wallet after FFMS paid activation (Phase 85c):
+     max(0, deposit − ₹80,000) via OPENING-RECHARGE (idempotent)
+
+D. How a centre arrives here
+   Path 1 — Hub sheet import (Phase 81): ERP Franchisee Profile + User (default pwd in DEMO_CREDENTIALS)
+   Path 2 — Paid FOFO/FOCO milestone (Phase 85c): RFMS HMAC → activate_rfms_paid_franchisee
+             → Franchisee Profile + optional portal credentials
+
+Key methods: get_b2b_portal, get_b2b_catalog, get_b2b_wallet, get_b2b_statements,
+             create_b2b_*, get_franchisee_dashboard, search_franchisees
+
+
+==============================================================================
+6) REACH SALES  —  reach.e-remedium.in/sales
+==============================================================================
+
+A. Login
+   /login → /sales (Sales Representative or Sales Manager)
+
+B. Lead management
+   1. /sales/leads — list/create/filter (source, campaign, district/PIN Phase 84)
+   2. create_sales_lead / get_sales_leads
+   3. Assign to another REACH rep (manager): assign_reach_sales_lead
+   4. Sync to FFMS CRM: ERP pushes lead → RFMS POST /sales-visits path / leads ingest
+      Backfill helper: clinical_phase25 backfill_sales_leads_to_rfms
+   5. Ad leads (Phase 86) also appear with Meta/Google source badges
+
+C. Log visit
+   1. /sales/visit — create Field Sales Visit (GPS, notes, photos)
+   2. log_sales_visit → syncs into FFMS Log Visit (ingest)
+   3. Complete assigned visits from FFMS ↔ REACH status sync
+
+D. Start applicant onboarding (Phase 80 — lead-only handoff)
+   1. /sales/onboard — “Start e-Aadhaar / e-agreement”
+   2. submit_sales_onboarding → create_onboarding_session (HMAC token)
+   3. Browser opens:
+        https://www.e-remedium.in/onboard/hec-session?token=…
+   4. RFMS creates CRM lead only (source=reach_sales, blank FOFO/FOCO)
+   5. Redirect /onboard?hec_lead=&hec_fp=… → applicant picks model (see §8)
+
+E. Reports / map / franchisees
+   /sales/reports — territorial rollup (district)
+   /sales/map — team by district
+   /sales/franchisees, /catalog, /commissions
+
+Key methods: get_sales_leads, create_sales_lead, log_sales_visit, get_sales_visits,
+             assign_reach_sales_lead, submit_sales_onboarding, submit_sales_closing_report,
+             get_wb_geo_hierarchy, resolve_wb_pincode, get_territorial_sales_summary
+
+Bidir from FFMS → REACH (HMAC guest):
+  ffms_list_reach_reps, ffms_assign_reach_lead, ffms_update_lead_status
+
+
+==============================================================================
+7) COLLECT (PHLEBOTOMIST)  —  collect.e-remedium.in
+==============================================================================
+
+A. Login → queue
+   /login → /dashboard/phlebotomist
+   get_phlebotomist_collection_queue, get_phlebotomist_map_data
+
+B. Field ops
+   1. phlebotomist_update_location (GPS)
+   2. phlebotomist_hub_checkin
+   3. Arrive → phlebotomist_mark_sample_collected
+   4. Offline cash: mark_offline_payment_collected (as applicable)
+
+C. Reports
+   /dashboard/phlebotomist/reports → get_phlebotomist_reports
+
+Host gate: collect host should only expose phlebotomist dashboard routes.
+
+
+==============================================================================
+8) APPLICANT ONBOARD (FOFO/FOCO)  —  www.e-remedium.in/onboard
+==============================================================================
+
+Sources of an applicant session:
+  A) REACH Phase 80 mint → /onboard/hec-session?token=… (prefilled, model blank)
+  B) Marketing /franchise → apply CTA → /onboard (organic)
+  C) Direct /onboard
+
+Fresh path (Phase 82a + 83 payments/OTP):
+  1. Select FOFO or FOCO
+  2. Create account (user_id + password) OR continue session
+  3. Contact OTP (mobile/email) via ERP MSG91 when RFMS_CONTACT_OTP_VIA_ERP=1
+     Dev fallback: RFMS_OTP_DEV_FALLBACK / otp_test_mode → 123456
+  4. KYC documents + e-Aadhaar / agreement steps as enabled
+  5. First payment:
+       POST /rfms-api/v1/.../payments/gateway/initiate
+       → ERP create_rfms_razorpay_order (HMAC) → Razorpay Checkout.js
+       → gateway/complete → verify_rfms_razorpay_payment
+       Simulate only if RFMS_GATEWAY_SIMULATE=1 or ERP test without key_id
+  6. Only after payment: application visible_to_admin=true → /ffms Applicants
+  7. Later completion: ingest_onboarding_result → Franchisee Profile (ERP)
+  8. Paid milestone (Phase 85c): activate_rfms_paid_franchisee
+       → hub profile + wallet OPENING-RECHARGE
+
+RFMS public application routes (under /rfms-api/v1):
+  POST /applications/public
+  contact OTP, document upload, aadhaar okyc
+  payments gateway initiate/complete, offline submit, receipt verify
+
+Portal static: /onboard/*
+Do NOT confuse with /franchise (marketing chrome) — portal header is applicant-only.
+
+
+==============================================================================
+9) FFMS OFFICER ADMIN  —  www.e-remedium.in/ffms
+==============================================================================
+
+A. Login
+   Company ID (RFMS-NNNN) or email + password
+   POST /rfms-api/v1/auth/login  { login_id, password }
+   OTP for officers is disabled (OTP_DISABLED)
+   Session: GET /auth/me · logout POST /auth/logout
+
+B. Modules (typical day)
+
+   Overview
+     KPIs + territory availability strip; maps key from
+     GET /admin/integrations/maps-key (ERP HEC browser key preferred)
+
+   User Management
+     List/create officers → next ID RFMS-0008+
+     GET|POST /admin/users · GET /admin/users/next-employee-id
+     PATCH cannot change assigned company ID
+
+   Applicants
+     Review FOFO/FOCO apps after first payment
+     GET /applications · progress stages · Video KYC / agreements queues as enabled
+
+   Payments
+     Ledger, receipt download/verify, coupons
+     Paid FOFO fee / FOCO deposit triggers hub activation (85c) — fail-soft if ERP down
+     Receipt PDF vs QR JSON: admin receipt route vs /receipts/verify/RCP-…
+
+   Territory Setup + Capacity (85b)
+     Google map: Active / Available / Reserved / Occupied (WB geo Phase 84)
+     GET /geo/wb-hierarchy · GET /geo/pincode/:pin
+     GET /territories · POST territories · availability / pincodes
+     Capacity ops: GET /territories/capacities (?format=csv)
+                   GET /territories/capacity-alerts?threshold=1
+                   PATCH /territories/capacities/bulk
+
+   Lead Management (+ ads + WhatsApp)
+     List/filter Meta/Google/WhatsApp/organic
+     Assign CRM / BC / Reach; stage actions sync to REACH when configured
+     GET|POST /leads · GET /leads/:id · POST /leads/:id/actions
+     CSV: POST /leads/import
+     Ads status: GET /leads/ads/status
+     WhatsApp thread: GET|POST /leads/:id/whatsapp
+     Inbox filter: WhatsApp inbox
+
+   Log Visit
+     Field visits from REACH + officer-created
+     GET /sales-visits
+     GET /sales-visits/reach-reps
+     POST /sales-visits/assign-lead  (push to REACH Field Sales Visit)
+     Performance panel; visit GPS/photos when present
+
+   Other
+     Appointments, Training, Franchisee Directory, Content CMS, Support
+     Partner reads: GET /partner/franchisees
+
+C. Integration config (Phase 83)
+   Public: GET /integrations/public-config (Razorpay key_id flags — no secrets)
+   Secrets stay on ERP Health Ecosystem Settings
+
+
+==============================================================================
+10) CAREERS  —  career.e-remedium.in (+ www /hr)
+==============================================================================
+
+A. Public apply
+   /careers → /jobs → /jobs/:id/apply → submit_job_application
+   (HRMS Job Opening / Job Applicant via clinical_phase73b+)
+
+B. Applicant hub
+   /my — OTP login → applications, profile, documents
+   get_my_career_hub and related 73b/d/e methods
+
+C. HR pipeline
+   www /hr/applications or career host /hr/*
+   list_job_applications → screen → interview → offer stages
+   Marketing ads sync (Phase 73f): Health Ecosystem Settings Hiring Ad Analytics
+     Webhook: ingest_ad_lead + X-Hiring-Ads-Secret
+     Daily: run_daily_hiring_ads_sync
+
+Note: Franchise ads (Phase 86) are separate from hiring ads (73f).
+
+
+==============================================================================
+11) FRANCHISE MARKETING  —  www.e-remedium.in/franchise
+==============================================================================
+
+Public FOFO/FOCO marketing site (RFMS :3000).
+CTA → /onboard or public lead form:
+  POST /rfms-api/v1/leads/public  (UTM/gclid may attach — Phase 86 alignment)
+Do not put marketing chrome on /onboard header.
+
+
+==============================================================================
+12) CROSS-SYSTEM CLOSED LOOPS
+==============================================================================
+
+12.1 Phase 80 — REACH → Onboard → FFMS → ERP profile
+  Reach submit_sales_onboarding
+    → create_onboarding_session (HMAC)
+    → GET /onboard/hec-session?token=
+    → RFMS CRM lead (reach_sales, blank model)
+    → Applicant FOFO|FOCO + KYC + pay
+    → Officer Applicants
+    → ingest_onboarding_result / activate_rfms_paid_franchisee
+    → Franchisee Profile + Partners wallet
+
+12.2 Phase 86 — Ads → ERP + RFMS + REACH
+  Meta Lead Ads / Google Lead Forms
+    → POST www /api/method/...ingest_franchise_ad_lead
+       (hub.verify + X-Franchise-Ads-Secret)
+    → Upsert Franchise Sales Lead (REACH)
+    → POST RFMS /leads/ingest/ad
+  Fallback: CSV import in FFMS; thin /leads/webhooks/meta|google
+
+12.3 Phase 87 — WhatsApp Cloud ↔ FFMS inbox
+  Meta Cloud webhook
+    → ingest_whatsapp_cloud_webhook
+    → HEC WhatsApp Conversation / Message
+    → RFMS /leads/whatsapp/link | /inbound
+    → FFMS Lead CRM thread + reply (GET|POST /leads/:id/whatsapp)
+  Outbound notifications: Meta preferred; Gupshup fallback (whatsapp_provider)
+
+12.4 Bidirectional leads & visits (REACH ↔ FFMS)
+  REACH create/update lead / visit → RFMS ingest
+  FFMS assign REACH rep / status → ERP ffms_assign_reach_lead / ffms_update_lead_status
+    → Field Sales Visit Assigned on REACH; complete with photos syncs back
+  Internal ERP→RFMS base URL MUST be http://rfms:8090/api/v1 (not public www from Docker)
+
+12.5 Phase 84 — WB geo SoR
+  ERP HEC WB Postal Locality (~341 rows)
+    → RFMS geo hierarchy / pincode resolve
+    → Territory picklists + map; REACH district/PIN on leads & reports
+
+12.6 Phase 85 — Territory capacity + paid hub activation
+  Officers bulk-edit FOFO/FOCO capacity; CSV export; near-full alerts
+  Paid FOFO one-time fee OR FOCO deposit/full → activate_rfms_paid_franchisee
+  Disable hub activate: RFMS_HUB_ACTIVATE_ON_PAY=0
+
+
+==============================================================================
+13) ERP DESK  —  erp.e-remedium.in
+==============================================================================
+
+Use for:
+  User / Role / Employee / Sales Rep Profile
+  Health Ecosystem Settings (Razorpay, MSG91, Maps browser key, WhatsApp Meta tokens,
+    franchise_ads_*, hiring ads, rfms_api_base_url, OTP test mode)
+  Franchisee Profile, Field Sales Visit, Franchise Sales Lead
+  Lab / LIS / operational DocTypes, Phase 28 Ops Rhythm divisions
+  Manual re-seed via bench execute (see DEMO_CREDENTIALS §12)
+
+Guest/webhook entry (same site, method API):
+  ingest_franchise_ad_lead
+  ingest_whatsapp_cloud_webhook
+  ingest_ad_lead (hiring)
+
+
+==============================================================================
+14) OPERATOR WEBHOOK URLS (copy/paste)
+==============================================================================
+
+  Franchise ads (Meta/Google):
+    https://www.e-remedium.in/api/method/health_ecosystem_core.health_ecosystem_core.api.ingest_franchise_ad_lead
+    Header: X-Franchise-Ads-Secret
+
+  WhatsApp Cloud:
+    https://www.e-remedium.in/api/method/health_ecosystem_core.health_ecosystem_core.api.ingest_whatsapp_cloud_webhook
+    Verify token / secret per Health Ecosystem Settings
+
+  Hiring ads (73f) — separate from franchise ads — use ingest_ad_lead + X-Hiring-Ads-Secret
+
+
+==============================================================================
+15) RFMS API ROUTE INDEX (public ↔ internal)
+==============================================================================
+
+  Browser path                         = Server path
+  /rfms-api/v1/<x>                     = /api/v1/<x>
+
+  Auth
+    POST /auth/login
+    GET  /auth/me
+    POST /auth/logout
+    Applicant OTP/password under /applicant/auth/*
+
+  Handoff / health / integrations
+    GET  /hec-session   (also bare /hec-session behind nginx)
+    GET  /health
+    GET  /integrations/public-config
+    GET  /admin/integrations/maps-key
+
+  Geo
+    GET  /geo/wb-hierarchy
+    GET  /geo/pincode/:pin
+
+  Applications & payments
+    POST /applications/public (+ OTP, docs, okyc subroutes)
+    …/payments/gateway/initiate|complete
+    receipts / verify
+
+  Leads
+    POST /leads/public
+    GET|POST /leads
+    GET  /leads/:id
+    POST /leads/:id/actions
+    POST /leads/import
+    POST /leads/ingest/ad
+    GET  /leads/ads/status
+    POST /leads/webhooks/meta|google
+    GET|POST /leads/:id/whatsapp
+    POST /leads/whatsapp/link|inbound
+
+  Sales visits
+    POST /sales-visits/ingest
+    GET  /sales-visits
+    GET  /sales-visits/reach-reps
+    POST /sales-visits/assign-lead
+
+  Territories
+    GET|POST /territories …
+    GET  /territories/capacities
+    GET  /territories/capacity-alerts
+    PATCH /territories/capacities/bulk
+
+  Public / partner / admin
+    GET  /public/centres
+    GET  /partner/franchisees[/:id]
+    GET|POST /admin/users
+    (+ content, support, training, directory as implemented)
+
+
+==============================================================================
+16) END-TO-END SCENARIOS (CHECKLIST)
+==============================================================================
+
+Scenario P1 — Patient books a test
+  [ ] www login/OTP
+  [ ] Book diagnostics → Razorpay verify
+  [ ] Booking appears under /bookings
+  [ ] Lab tech can process TRF in ERP / staff dashboard
+
+Scenario H1 — Hub places B2B order
+  [ ] partners login
+  [ ] Catalog + wallet balance
+  [ ] Place order / recharge wallet
+
+Scenario R1 — REACH lead → applicant → paid centre
+  [ ] Create lead on reach /sales/leads (district/PIN)
+  [ ] Lead visible in /ffms Lead Management
+  [ ] /sales/onboard mint → /onboard FOFO or FOCO
+  [ ] OTP + KYC + live Razorpay (or simulate)
+  [ ] Appears in /ffms Applicants
+  [ ] Payment milestone → Partners hub user/wallet
+
+Scenario R2 — Log Visit bidir
+  [ ] REACH log visit with photo
+  [ ] Visible in /ffms Log Visit
+  [ ] FFMS assign REACH rep → pending visit on REACH
+  [ ] Complete on REACH → status syncs FFMS
+
+Scenario A1 — Ad lead closed loop
+  [ ] Meta/Google webhook → Franchise Sales Lead + RFMS lead
+  [ ] Source badge in Reach + FFMS
+  [ ] Officer can WhatsApp-thread (Phase 87) if CTWA/phone present
+
+Scenario C1 — Collect sample
+  [ ] collect login → queue → mark collected
+  [ ] Location/check-in updates
+
+Scenario J1 — Hire
+  [ ] career apply → HR /hr/applications pipeline
+
+
+==============================================================================
+17) PHASE ↔ WORKFLOW MAP (AUTH / ORIGIN RELATED)
+==============================================================================
+
+  10–18   Patient IAM, email signup
+  23      Franchisee wallet transactions
+  25      REACH sales team + visits/leads DocTypes
+  28      Ops division Desk users
+  73b–f   Careers portal + hiring ads
+  80      REACH ↔ Onboard session mint / result ingest
+  81      Hub sheet import + wallet opening rule
+  82a     Fresh applicant path; payment unlocks admin visibility
+  82b     RFMS-NNNN officer IDs
+  83      ERP secrets hub; Razorpay/MSG91/Maps via HMAC
+  84      WB postal geo master → map + Reach reports
+  85b/c   Territory capacity ops; paid → hub activation
+  86      Franchise Meta/Google ads → Reach + RFMS
+  87      WhatsApp Cloud outbound + FFMS CRM inbox
+  88      Diagnostic test formats (no new portal origins)
+  89      Referral vial accession — tube catalog, draw plan, per-tube barcodes
+
+
+==============================================================================
+18) PHASE 89 — VIAL ACCESSION (ERP)
+==============================================================================
+
+  Masters
+    HEC Collection Tube (SST, LAV, BLU, GRY, GRN, RED, RBL)
+    Diagnostic Test Master.primary_tube + tube_requirements + specimen_material
+
+  TRF draw plan
+    Child table collection_tubes — aggregated by tube_code, CLSI order
+    accession_id = {unique_barcode}-{TUBE_CODE}
+    Bill Entry save / Rebuild Draw Plan button rebuilds rows
+
+  Collect
+    Queue payload includes collection_tubes
+    mark sample collected → tubes status Drawn
+
+  Accession desk
+    Customer TRF → Collection → Receive Tube / Reject Tube
+    Reject → Sample Rejection Record (Wrong Container)
+    Receive → optional Sample Transport Log
+
+  Lab Report
+    specimen derived from first draw-plan tube specimen_class
+
+  Smoke
+    health_ecosystem_core.health_ecosystem_core.clinical_phase89_vial_accession.smoke_phase89_all
+  Deploy
+    docker/scripts/hot-deploy-phase89-vial-accession.sh
+
+
+==============================================================================
+19) RELATED FILES (FOR AGENTS)
+==============================================================================
+
+  docs/DEMO_CREDENTIALS.txt
+  AGENTS_CONTEXT.md
+  health_web_app/src/config/portalHosts.ts
+  health_web_app/src/App.tsx
+  docker/ffms-www-paths.sh
+  docker/docker-compose.ffms.yml
+  apps_external/ffms/apps/local-api/server.mjs
+  apps_external/ffms/apps/local-api/hec-frappe-bridge.mjs
+  health_ecosystem_core/.../api.py
+  clinical_phase80_onboarding_bridge.py
+  clinical_phase83_rfms_bridge.py
+  clinical_phase84_wb_geo.py
+  clinical_phase85_rfms_activation.py
+  clinical_phase86_franchise_ads.py
+  clinical_phase87_whatsapp.py
+  clinical_phase88_diagnostic_formats.py
+  clinical_phase89_vial_accession.py
+  clinical_phase25.py  (REACH + ffms_* sync)
+
+
+End of file.

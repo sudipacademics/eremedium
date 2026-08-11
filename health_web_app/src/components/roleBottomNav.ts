@@ -18,6 +18,16 @@ export function getSalesBottomNavItems() {
   ];
 }
 
+export function getPeopleBottomNavItems() {
+  return [
+    { to: '/people', label: 'Home', end: true, icon: '◇' },
+    { to: '/people/attendance', label: 'Clock', icon: '◷' },
+    { to: '/people/leave', label: 'Leave', icon: '◫' },
+    { to: '/people/payslips', label: 'Pay', icon: '▤' },
+    { to: '/people/profile', label: 'Me', icon: '◎' },
+  ];
+}
+
 export function getPhleboBottomNavItems() {
   return [
     { to: '/dashboard/phlebotomist', label: 'Today', end: true, icon: '🧪' },
@@ -29,8 +39,8 @@ export function getPhleboBottomNavItems() {
 
 export function getLabTechBottomNavItems() {
   return [
-    { to: '/dashboard/lab-tech', label: 'Bench', end: true, icon: '🔬' },
-    { to: '/bookings', label: 'Bookings', icon: '📋' },
+    { to: '/dashboard/lab-reports', label: 'Results', end: true, icon: '📝' },
+    { to: '/dashboard/lab-tech', label: 'Bench', icon: '🔬' },
     { to: '/dashboard/reagents', label: 'Reagents', icon: '🧪' },
     { to: '/account', label: 'Account', icon: '👤' },
   ];

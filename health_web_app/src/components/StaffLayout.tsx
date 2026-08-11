@@ -42,8 +42,9 @@ export function StaffLayout() {
       }
     } else if (labTech) {
       items.push(
-        { type: 'link', to: '/dashboard/lab-tech', label: 'Bench', end: true },
-        { type: 'link', to: '/bookings', label: 'Bookings' },
+        { type: 'link', to: '/dashboard/lab-reports', label: 'Result entry', end: true },
+        { type: 'link', to: '/dashboard/report-lifecycle', label: 'Lifecycle' },
+        { type: 'link', to: '/dashboard/lab-tech', label: 'Bench' },
         { type: 'link', to: '/dashboard/reagents', label: 'Reagents' },
       );
       if (isHrStaff(roles)) {
@@ -96,7 +97,7 @@ export function StaffLayout() {
   const sidebar = (
     <aside className="sidebar">
       <Link
-        to={phlebo ? '/dashboard/phlebotomist' : labTech ? '/dashboard/lab-tech' : '/'}
+        to={phlebo ? '/dashboard/phlebotomist' : labTech ? '/dashboard/lab-reports' : '/'}
         className="brand sidebar-brand"
       >
         Health Ecosystem
@@ -111,17 +112,21 @@ export function StaffLayout() {
             </NavLink>
             <NavLink to="/dashboard/phlebotomist/reports">Reports</NavLink>
             {isHrStaff(roles) && <NavLink to="/dashboard/hr">HR self-service</NavLink>}
+            {isHrStaff(roles) && <NavLink to="/people">People HRMS</NavLink>}
             {isHrStaff(roles) && <NavLink to="/dashboard/performance">Training & appraisal</NavLink>}
           </>
         ) : labTech ? (
           <>
             <span className="sidebar-section">Lab bench</span>
-            <NavLink to="/dashboard/lab-tech" end>
-              Bench
+            <NavLink to="/dashboard/lab-reports" end>
+              Result entry
             </NavLink>
+            <NavLink to="/dashboard/report-lifecycle">Report lifecycle</NavLink>
+            <NavLink to="/dashboard/lab-tech">Barcode bench</NavLink>
             <NavLink to="/bookings">All bookings</NavLink>
             <NavLink to="/dashboard/reagents">Reagents</NavLink>
             {isHrStaff(roles) && <NavLink to="/dashboard/hr">HR self-service</NavLink>}
+            {isHrStaff(roles) && <NavLink to="/people">People HRMS</NavLink>}
             {isHrStaff(roles) && <NavLink to="/dashboard/performance">Training & appraisal</NavLink>}
             <span className="sidebar-section">Account</span>
             <NavLink to="/account">Profile</NavLink>
@@ -133,6 +138,7 @@ export function StaffLayout() {
             {isFranchisee(roles) && <NavLink to="/dashboard/franchisee">Franchisee hub</NavLink>}
             {isStaff(roles) && <NavLink to="/dashboard/staff">Operations</NavLink>}
             {isHrStaff(roles) && <NavLink to="/dashboard/hr">HR self-service</NavLink>}
+            {isHrStaff(roles) && <NavLink to="/people">People HRMS</NavLink>}
             {isHrStaff(roles) && <NavLink to="/dashboard/performance">Training & appraisal</NavLink>}
 
             {patientPortal && (
@@ -153,6 +159,8 @@ export function StaffLayout() {
               <>
                 <span className="sidebar-section">Operations</span>
                 <NavLink to="/bookings">All bookings</NavLink>
+                <NavLink to="/dashboard/lab-reports">Lab result entry</NavLink>
+                <NavLink to="/dashboard/report-lifecycle">Report lifecycle</NavLink>
                 <NavLink to="/journey">Care journeys</NavLink>
               </>
             )}

@@ -712,8 +712,13 @@ def _default_franchisee():
 	return name
 
 
-def _make_barcode():
-	return f"HEC{nowdate().replace('-', '')}{secrets.token_hex(3).upper()}"
+def _make_barcode(franchisee_id=None):
+	"""Deprecated wrapper — all paths must use DocType barcode mint."""
+	from health_ecosystem_core.health_ecosystem_core.doctype.customer_trf.customer_trf import (
+		generate_unique_customer_trf_barcode,
+	)
+
+	return generate_unique_customer_trf_barcode(franchisee_id)
 
 
 @frappe.whitelist()
@@ -764,7 +769,9 @@ def api_save_hec_lab_bill(data=None):
 
 	if is_new:
 		doc = frappe.new_doc("Customer TRF")
-		doc.unique_barcode = (payload.get("unique_barcode") or "").strip() or _make_barcode()
+		# Leave blank unless caller overrides — CustomerTRF.before_insert mints via
+		# generate_unique_customer_trf_barcode (single ERP-owned format).
+		doc.unique_barcode = (payload.get("unique_barcode") or "").strip()
 		doc.order_status = payload.get("order_status") or "Booked"
 		doc.razorpay_payment_status = payload.get("razorpay_payment_status") or "Pending"
 	else:

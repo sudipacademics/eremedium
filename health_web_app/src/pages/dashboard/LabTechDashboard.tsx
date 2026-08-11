@@ -42,12 +42,15 @@ function SampleCard({
       </div>
       <p className="muted">Payment: {order.razorpay_payment_status || 'Pending'}</p>
       <div className="toolbar-actions" style={{ marginTop: 12, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
+        <Link className="btn btn-sm" to={`/dashboard/lab-reports/${encodeURIComponent(order.trf_id)}`}>
+          Enter results
+        </Link>
         <Link className="btn secondary btn-sm" to={`/bookings/${encodeURIComponent(order.trf_id)}`}>
           Open sample
         </Link>
         {next ? (
           <button
-            className="btn btn-sm"
+            className="btn secondary btn-sm"
             type="button"
             disabled={acting === order.trf_id}
             onClick={() => onAdvance(order.trf_id, next)}
@@ -143,7 +146,18 @@ export function LabTechDashboard() {
     <>
       <section className="hero hero-compact">
         <h1>Lab technician</h1>
-        <p>Scan or enter a sample barcode, advance bench status, and open TRFs with LIS results.</p>
+        <p>
+          Primary work is result entry on the Lab Report grid. Use this bench for barcode lookup
+          and status advances; open In Lab samples in Result entry to import LIS and finalize.
+        </p>
+        <div className="toolbar-actions" style={{ marginTop: 12, gap: 8, display: 'flex', flexWrap: 'wrap' }}>
+          <Link className="btn" to="/dashboard/lab-reports">
+            Open result entry
+          </Link>
+          <Link className="btn secondary" to="/dashboard/report-lifecycle">
+            Report lifecycle
+          </Link>
+        </div>
       </section>
 
       <div className="grid grid-stats" style={{ marginBottom: 16 }}>
@@ -228,6 +242,13 @@ export function LabTechDashboard() {
             <button
               className="btn"
               type="button"
+              onClick={() => navigate(`/dashboard/lab-reports/${encodeURIComponent(preview.trf.trf_id)}`)}
+            >
+              Enter / edit results
+            </button>
+            <button
+              className="btn secondary"
+              type="button"
               onClick={() => navigate(`/bookings/${encodeURIComponent(preview.trf.trf_id)}`)}
             >
               Open full TRF
@@ -259,6 +280,9 @@ export function LabTechDashboard() {
       <div className="toolbar" style={{ marginTop: 24 }}>
         <h2>Active samples</h2>
         <div className="toolbar-actions">
+          <Link className="btn btn-sm" to="/dashboard/lab-reports">
+            Result entry
+          </Link>
           <Link className="btn secondary btn-sm" to="/dashboard/reagents">
             Reagents
           </Link>

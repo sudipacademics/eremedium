@@ -37,6 +37,28 @@ import { SalesTeamMapPage } from './pages/sales/SalesTeamMapPage';
 import { SalesB2bCentresPage } from './pages/sales/SalesB2bCentresPage';
 import { SalesB2bSalesPage } from './pages/sales/SalesB2bSalesPage';
 
+import { PeopleLayout } from './components/PeopleLayout';
+import { PeopleHomePage } from './pages/people/PeopleHomePage';
+import { PeopleProfilePage } from './pages/people/PeopleProfilePage';
+import { PeopleAttendancePage } from './pages/people/PeopleAttendancePage';
+import { PeopleLeavePage } from './pages/people/PeopleLeavePage';
+import { PeopleExpensesPage } from './pages/people/PeopleExpensesPage';
+import { PeoplePayslipsPage } from './pages/people/PeoplePayslipsPage';
+import { PeopleEmployeesPage } from './pages/people/PeopleEmployeesPage';
+import { PeopleDepartmentsPage } from './pages/people/PeopleDepartmentsPage';
+import { PeopleDesignationsPage } from './pages/people/PeopleDesignationsPage';
+import { PeopleRecruitmentPage } from './pages/people/PeopleRecruitmentPage';
+import { PeoplePlaceholderPage } from './pages/people/PeoplePlaceholderPage';
+import { PeopleOnboardingPage } from './pages/people/PeopleOnboardingPage';
+import { PeopleFranchiseTeamPage } from './pages/people/PeopleFranchiseTeamPage';
+import { PeoplePoliciesPage } from './pages/people/PeoplePoliciesPage';
+import { PeopleGradesPage } from './pages/people/PeopleGradesPage';
+
+import { PlanningLayout } from './components/PlanningLayout';
+import { PlanningDashboardPage } from './pages/planning/PlanningDashboardPage';
+import { PlanningNewPage } from './pages/planning/PlanningNewPage';
+import { PlanningDetailPage } from './pages/planning/PlanningDetailPage';
+
 import { CareersLayout } from './components/CareersLayout';
 import { CareersHrLayout } from './components/CareersHrLayout';
 import { CareersApplicantLayout } from './components/CareersApplicantLayout';
@@ -81,6 +103,12 @@ import { PhlebotomistDashboard } from './pages/dashboard/PhlebotomistDashboard';
 import { PhlebotomistReports } from './pages/dashboard/PhlebotomistReports';
 
 import { LabTechDashboard } from './pages/dashboard/LabTechDashboard';
+
+import { LabReportsQueuePage } from './pages/dashboard/LabReportsQueuePage';
+
+import { LabReportEditorPage } from './pages/dashboard/LabReportEditorPage';
+
+import { ReportLifecyclePage } from './pages/dashboard/ReportLifecyclePage';
 
 import { HrSelfServicePage } from './pages/dashboard/HrSelfServicePage';
 import { StaffPerformancePage } from './pages/dashboard/StaffPerformancePage';
@@ -156,6 +184,13 @@ const HR_ACCESS = [
 
 const SALES_ACCESS = [ROLES.SALES_REP, ROLES.SALES_MANAGER];
 
+const PLANNING_ACCESS = [
+  ROLES.ADMIN,
+  ROLES.SYSTEM_MANAGER,
+  'HR Manager',
+  'HR User',
+];
+
 
 
 export default function App() {
@@ -172,6 +207,7 @@ export default function App() {
             <Route element={<HostPortalGate />}>
 
             <Route element={<CareersLayout />}>
+              <Route path="career" element={<Navigate to="/careers" replace />} />
               <Route path="careers" element={<CareersLandingPage />} />
               <Route path="jobs" element={<JobOpeningsPage />} />
               <Route path="jobs/:jobId/apply" element={<JobApplyPage />} />
@@ -418,6 +454,22 @@ export default function App() {
 
               </Route>
 
+              <Route path="login" element={<LoginPage />} />
+              <Route path="signup" element={<SignupPage />} />
+              <Route path="forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="verify-email" element={<VerifyEmailPage />} />
+              <Route path="oauth/callback" element={<OAuthCallbackPage />} />
+
+              <Route path="legal/:docId" element={<LegalDocumentPage />} />
+              <Route path="privacy-policy" element={<Navigate to="/legal/privacy-policy" replace />} />
+              <Route path="disclaimer" element={<Navigate to="/legal/disclaimer" replace />} />
+              <Route path="terms" element={<Navigate to="/legal/terms-and-conditions" replace />} />
+              <Route path="terms-and-conditions" element={<Navigate to="/legal/terms-and-conditions" replace />} />
+              <Route path="refund-policy" element={<Navigate to="/legal/refund-policy" replace />} />
+              <Route path="data-use-policy" element={<Navigate to="/legal/data-use-policy" replace />} />
+
+            </Route>
+
               <Route path="b2b" element={<B2bLayout />}>
                 <Route index element={<B2bPortalPage />} />
                 <Route path="catalog" element={<B2bCatalogPage />} />
@@ -448,23 +500,57 @@ export default function App() {
                 <Route path="map" element={<SalesTeamMapPage />} />
               </Route>
 
-              <Route path="login" element={<LoginPage />} />
-              <Route path="signup" element={<SignupPage />} />
-              <Route path="forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="verify-email" element={<VerifyEmailPage />} />
-              <Route path="oauth/callback" element={<OAuthCallbackPage />} />
+              <Route
+                path="people"
+                element={
+                  <ProtectedRoute>
+                    <PeopleLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<PeopleHomePage />} />
+                <Route path="profile" element={<PeopleProfilePage />} />
+                <Route path="attendance" element={<PeopleAttendancePage />} />
+                <Route path="leave" element={<PeopleLeavePage />} />
+                <Route path="expenses" element={<PeopleExpensesPage />} />
+                <Route path="payslips" element={<PeoplePayslipsPage />} />
+                <Route path="employees" element={<PeopleEmployeesPage />} />
+                <Route path="departments" element={<PeopleDepartmentsPage />} />
+                <Route path="designations" element={<PeopleDesignationsPage />} />
+                <Route path="grades" element={<PeopleGradesPage />} />
+                <Route path="recruitment" element={<PeopleRecruitmentPage />} />
+                <Route path="franchise-team" element={<PeopleFranchiseTeamPage />} />
+                <Route path="policies" element={<PeoplePoliciesPage />} />
+                <Route path="performance" element={<PeoplePlaceholderPage slug="performance" />} />
+                <Route path="onboarding" element={<PeopleOnboardingPage />} />
+                <Route path="training" element={<PeoplePlaceholderPage slug="training" />} />
+                <Route path="career" element={<PeoplePlaceholderPage slug="career" />} />
+                <Route path="documents" element={<PeoplePlaceholderPage slug="documents" />} />
+                <Route path="assets" element={<PeoplePlaceholderPage slug="assets" />} />
+                <Route path="announcements" element={<PeoplePlaceholderPage slug="announcements" />} />
+                <Route path="calendar" element={<PeoplePlaceholderPage slug="calendar" />} />
+                <Route path="reports" element={<PeoplePlaceholderPage slug="reports" />} />
+                <Route path="analytics" element={<PeoplePlaceholderPage slug="analytics" />} />
+                <Route path="settings/company" element={<PeoplePlaceholderPage slug="company" />} />
+                <Route path="settings/roles" element={<PeoplePlaceholderPage slug="roles" />} />
+                <Route
+                  path="settings/integrations"
+                  element={<PeoplePlaceholderPage slug="integrations" />}
+                />
+              </Route>
 
-              <Route path="legal/:docId" element={<LegalDocumentPage />} />
-              <Route path="privacy-policy" element={<Navigate to="/legal/privacy-policy" replace />} />
-              <Route path="disclaimer" element={<Navigate to="/legal/disclaimer" replace />} />
-              <Route path="terms" element={<Navigate to="/legal/terms-and-conditions" replace />} />
-              <Route path="terms-and-conditions" element={<Navigate to="/legal/terms-and-conditions" replace />} />
-              <Route path="refund-policy" element={<Navigate to="/legal/refund-policy" replace />} />
-              <Route path="data-use-policy" element={<Navigate to="/legal/data-use-policy" replace />} />
-
-            </Route>
-
-
+              <Route
+                path="planning"
+                element={
+                  <ProtectedRoute roles={PLANNING_ACCESS}>
+                    <PlanningLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<PlanningDashboardPage />} />
+                <Route path="new" element={<PlanningNewPage />} />
+                <Route path=":planId" element={<PlanningDetailPage />} />
+              </Route>
 
             <Route
 
@@ -557,6 +643,54 @@ export default function App() {
                   <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER]}>
 
                     <LabTechDashboard />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="lab-reports"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <LabReportsQueuePage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="lab-reports/:trfId"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <LabReportEditorPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="report-lifecycle"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <ReportLifecyclePage />
 
                   </ProtectedRoute>
 
