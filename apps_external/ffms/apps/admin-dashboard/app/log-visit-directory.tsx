@@ -77,6 +77,9 @@ type ReachRep = {
   territory_region?: string;
   linked_user?: string;
   user?: string;
+  reach_user_id?: string;
+  employee_id?: string;
+  employee_number?: string;
 };
 
 const readable = (value?: string | null) => (value ?? '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -299,7 +302,12 @@ export function LogVisitDirectory({
                   <option value="">{reachReps.length ? 'Choose REACH user' : 'No REACH users loaded'}</option>
                   {reachReps.map((rep) => (
                     <option key={rep.name} value={rep.name}>
-                      {rep.full_name || rep.display_name || rep.name}{rep.territory_region ? ` · ${rep.territory_region}` : ''}{rep.rep_code ? ` (${rep.rep_code})` : ''}
+                      {rep.full_name || rep.display_name || rep.name}
+                      {rep.territory_region ? ` · ${rep.territory_region}` : ''}
+                      {rep.rep_code || rep.reach_user_id ? ` (${rep.rep_code || rep.reach_user_id})` : ''}
+                      {rep.employee_number || rep.employee_id
+                        ? ` · Emp ${rep.employee_number || rep.employee_id}`
+                        : ''}
                     </option>
                   ))}
                 </select>

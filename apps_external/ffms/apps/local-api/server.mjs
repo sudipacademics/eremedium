@@ -1691,12 +1691,30 @@ function ingestSalesVisitsIntoCrm(rows = []) {
   database.sales_visits = Array.isArray(database.sales_visits) ? database.sales_visits : [];
   const imported = [];
   const updated = [];
+  const stageFromReachStatus = {
+    New: 'new',
+    Contacted: 'contacted',
+    'Meeting Done': 'contacted',
+    Qualified: 'qualified',
+    Negotiation: 'follow_up',
+    Won: 'won',
+    Lost: 'lost',
+  };
   for (const row of rows.slice(0, 500)) {
     if (!row || typeof row !== 'object') continue;
     const hecVisitId = text(row.hec_visit_id, 120);
-    const existing = hecVisitId
+    let existing = hecVisitId
       ? database.sales_visits.find((item) => item.hec_visit_id === hecVisitId)
       : null;
+    // Prevent duplicate pending rows when hec_visit_id was missing on a prior stub.
+    if (!existing && text(row.hec_lead_id, 120) && text(row.sales_rep_id, 120)) {
+      existing = database.sales_visits.find((item) => (
+        item.hec_lead_id === text(row.hec_lead_id, 120)
+        && item.sales_rep_id === text(row.sales_rep_id, 120)
+        && String(item.visit_status || '').toLowerCase() === 'assigned'
+        && String(row.visit_status || '').toLowerCase() === 'assigned'
+      )) || null;
+    }
     const visit = salesVisitRecord({ ...(existing || {}), ...row, id: existing?.id }, existing?.id);
     if (!visit.rfms_lead_id && visit.hec_lead_id) {
       const lead = database.leads.find((item) => item.hec_lead_id === visit.hec_lead_id);
@@ -1714,13 +1732,22 @@ function ingestSalesVisitsIntoCrm(rows = []) {
       : (visit.hec_lead_id ? database.leads.find((item) => item.hec_lead_id === visit.hec_lead_id) : null);
     if (lead) {
       if (visit.reach_user) lead.assigned_to = visit.reach_user;
+      if (visit.sales_rep_id) lead.sales_rep_id = visit.sales_rep_id;
+      lead.assignee_role = lead.assignee_role || 'reach';
+      const status = String(row.visit_status || visit.visit_status || '').toLowerCase();
+      if (status === 'completed') {
+        const mappedStage = stageFromReachStatus[text(row.lead_status, 40)] || null;
+        if (mappedStage) lead.stage = mappedStage;
+        else if (['new', ''].includes(String(lead.stage || '').toLowerCase())) lead.stage = 'contacted';
+        lead.last_contacted_at = visit.updated_at || visit.created_at || new Date().toISOString();
+      }
       addLeadActivity(
         lead,
         'note',
-        `REACH visit logged · ${visit.purpose}${visit.outcome ? ` · ${visit.outcome}` : ''}${visit.notes ? ` — ${visit.notes.slice(0, 180)}` : ''}`,
+        `REACH visit ${status || 'logged'} · ${visit.purpose}${visit.outcome ? ` · ${visit.outcome}` : ''}${visit.notes ? ` — ${visit.notes.slice(0, 180)}` : ''}`,
         visit.reach_user || 'Reach sales',
       );
-      lead.last_contacted_at = visit.created_at;
+      if (status !== 'completed') lead.last_contacted_at = visit.created_at;
     }
   }
   return { imported, updated };
@@ -8995,16 +9022,26 @@ async function handle(request, response) {
       const salesRepId = text(body.sales_rep_id, 120);
       const reachUser = text(body.reach_user || body.assigned_to || body.assigned_to_name, 120);
       if (!reachUser && !salesRepId) return failure(request, response, 'VALIDATION_ERROR', 'Assignee is required.', 400);
+      const isReachAssign = assigneeRole === 'reach' || assigneeRole === 'log_visit';
+      if (isReachAssign && !salesRepId) {
+        return failure(request, response, 'VALIDATION_ERROR', 'Choose a REACH user (sales_rep_id) for Log Visit assignment.', 400);
+      }
+      if (isReachAssign) {
+        const phoneDigits = String(lead.mobile || '').replace(/\D/g, '').slice(-10);
+        if (!/^[6-9]\d{9}$/.test(phoneDigits)) {
+          return failure(request, response, 'VALIDATION_ERROR', 'Lead needs a valid 10-digit mobile before REACH Log Visit sync.', 400);
+        }
+      }
       const actor = leadActor(request);
       try {
-        if (lead.hec_lead_id || assigneeRole === 'reach' || assigneeRole === 'log_visit') {
+        if (lead.hec_lead_id || isReachAssign) {
           const remote = await assignReachLeadViaErp({
             hecLeadId: lead.hec_lead_id || '',
             rfmsLeadId: lead.id,
-            salesRepId: salesRepId || (assigneeRole === 'reach' ? reachUser : ''),
+            salesRepId: salesRepId || (isReachAssign ? reachUser : ''),
             assignedToName: reachUser,
             assigneeRole,
-            createVisit: assigneeRole === 'reach' || assigneeRole === 'log_visit',
+            createVisit: isReachAssign,
             assignedFrom: actor,
             lead: {
               name: lead.name,
@@ -9024,7 +9061,10 @@ async function handle(request, response) {
           if (remote?.lead_id) lead.hec_lead_id = text(remote.lead_id, 120);
           if (remote?.assigned_rep) lead.sales_rep_id = text(remote.assigned_rep, 120);
           if (salesRepId) lead.sales_rep_id = salesRepId;
-          if (remote?.visit_id && (assigneeRole === 'reach' || assigneeRole === 'log_visit')) {
+          if (isReachAssign) {
+            if (!remote?.visit_id) {
+              throw new Error('REACH Log Visit was not created in ERP. Assignment aborted — nothing synced to the field app.');
+            }
             ingestSalesVisitsIntoCrm([{
               hec_visit_id: remote.visit_id,
               hec_lead_id: lead.hec_lead_id || remote.lead_id || '',
@@ -9046,13 +9086,13 @@ async function handle(request, response) {
       lead.assigned_to = reachUser || lead.assigned_to;
       lead.assignee_role = assigneeRole;
       if (salesRepId) lead.sales_rep_id = salesRepId;
-      if (assigneeRole === 'reach' || assigneeRole === 'log_visit') {
+      if (isReachAssign) {
         lead.reach_user_name = reachUser || lead.reach_user_name;
       }
       addLeadActivity(
         lead,
         'owner_change',
-        `Assigned to ${lead.assigned_to} (${assigneeRole.replaceAll('_', ' ')}) for ${assigneeRole === 'reach' || assigneeRole === 'log_visit' ? 'Log Visit' : 'CRM handling'}.`,
+        `Assigned to ${lead.assigned_to} (${assigneeRole.replaceAll('_', ' ')}) for ${isReachAssign ? 'Log Visit' : 'CRM handling'}.`,
         actor,
       );
       await saveDatabase();

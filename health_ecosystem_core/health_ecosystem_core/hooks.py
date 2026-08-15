@@ -77,6 +77,11 @@ doc_events = {
     "Sales Invoice": {
         "on_submit": "health_ecosystem_core.health_ecosystem_core.clinical_phase51_employee_gamification.on_doc_on_submit",
     },
+    # Desk / form assignment of assigned_rep must create pending Reach Log Visit immediately.
+    "Franchise Sales Lead": {
+        "after_insert": "health_ecosystem_core.health_ecosystem_core.clinical_phase25.on_franchise_sales_lead_update",
+        "on_update": "health_ecosystem_core.health_ecosystem_core.clinical_phase25.on_franchise_sales_lead_update",
+    },
 }
 
 fixtures = [
