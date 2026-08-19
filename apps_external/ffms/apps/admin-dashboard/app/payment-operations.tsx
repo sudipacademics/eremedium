@@ -84,10 +84,16 @@ type PaymentDetail = {
   hec_hub_activated_at?: string;
   hec_wallet_recharge?: number | null;
   hec_hub_activation_error?: string;
+  payment_schedule?: {
+    contract_total: number;
+    total_paid: number;
+    total_remaining: number;
+    phases: { key: string; label: string; scheduled_amount: number; amount: number; status: string }[];
+  } | null;
   summary: { total_paid: number; total_pending: number; total_due: number; phases_total: number; phases_paid: number };
   payments: PaymentPhaseDetail[];
   history: { id: string; type: string; message: string; actor: string; created_at: string }[];
-  permissions: { can_view: boolean; can_download_receipt: boolean; can_unlock_phase_2: boolean; can_unlock_phase_3: boolean };
+  permissions: { can_view: boolean; can_download_receipt: boolean; can_unlock_phase_2: boolean; can_unlock_phase_3: boolean; can_record_variable_payment?: boolean; can_edit_payment_schedule?: boolean };
 };
 
 type LedgerMetrics = { open_items: number; pending_verification?: number; completed_this_month: number; verification_rate: number };
@@ -225,8 +231,13 @@ function PaymentDetailModal({
 
       {canManageUnlocks && detail.permissions.can_unlock_phase_3 ? <div className="payment-unlock-panel">
         <b>Unlock Phase 3 security deposit</b>
-        <span>Branding Signage and HR Process are approved. Release the security deposit when management is ready for the applicant to proceed.</span>
+        <span>Phase 2 is paid. Release the security deposit when management is ready. Onboarding modules are controlled separately.</span>
         <button type="button" disabled={Boolean(busy)} onClick={onUnlockPhase3}>{busy === 'unlock-phase-3' ? 'Unlocking…' : 'Unlock Phase 3 payment'}</button>
+      </div> : null}
+
+      {detail.franchise_model === 'FOCO' && detail.payment_schedule ? <div className="payment-variable-summary">
+        <b>Variable FOCO payment schedule</b>
+        <span>Contract ₹{detail.payment_schedule.contract_total.toLocaleString('en-IN')} · Paid ₹{detail.payment_schedule.total_paid.toLocaleString('en-IN')} · Remaining ₹{detail.payment_schedule.total_remaining.toLocaleString('en-IN')}</span>
       </div> : null}
 
       <div className="payment-phase-list">

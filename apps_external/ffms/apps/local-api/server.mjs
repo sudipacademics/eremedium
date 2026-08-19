@@ -188,6 +188,16 @@ import {
   validateOfflineSubmission,
 } from './payment-submissions-workflow.mjs';
 import {
+  ensureFocoPaymentSchedule,
+  ensureOnboardingModules,
+  focoTotalRemaining,
+  onboardingModulesSummary,
+  paymentScheduleSummary,
+  recalculateFocoRemainingPhases,
+  recordManagerDirectPayment,
+  setPhaseScheduledAmount,
+} from './variable-payment-workflow.mjs';
+import {
   assignFranchiseeId,
   findApplicationByFranchiseeIdentifier,
   franchiseeIdForApplication,
@@ -209,8 +219,11 @@ import {
   createRfmsRazorpayOrderViaErp,
   verifyRfmsRazorpayPaymentViaErp,
   activateRfmsPaidFranchiseeViaErp,
+  mapFofoParentFocoViaErp,
   provisionPartnerPortalCredentialsViaErp,
   syncRfmsHubFromDirectoryViaErp,
+  scheduleFranchiseOnboardCampaignsViaErp,
+  createReachFocoB2bOnPhase1ViaErp,
   fetchWbGeoHierarchy,
   resolveWbPincodeViaErp,
   fetchFranchiseWhatsappThreadViaErp,
@@ -223,6 +236,9 @@ import {
   disablePartnerPortalViaErp,
   deboardFranchiseeViaErp,
   updateB2bSalesStatusViaErp,
+  deleteB2bSalesViaErp,
+  deleteB2bCentreViaErp,
+  agencyOnboardDecisionViaErp,
 } from './hec-frappe-bridge.mjs';
 import {
   hardDeleteLead,
@@ -237,8 +253,11 @@ import {
   ingestB2bCentres,
   ingestB2bSales,
   b2bOperationsSummary,
+  b2bSalesPerformance,
   b2bCentreRecord,
   b2bSalesRecord,
+  hardDeleteB2bCentre,
+  hardDeleteB2bSalesEntry,
 } from './b2b-operations-workflow.mjs';
 import {
   applyBulkPinAvailability,
@@ -444,6 +463,7 @@ async function loadDatabase() {
     database.applications = Array.isArray(database.applications) ? database.applications : [];
     database.leads = Array.isArray(database.leads) ? database.leads.map((item) => leadRecord(item, item?.id)) : [];
     database.sales_visits = Array.isArray(database.sales_visits) ? database.sales_visits.map((item) => salesVisitRecord(item, item?.id)) : [];
+    database.agency_onboard_requests = Array.isArray(database.agency_onboard_requests) ? database.agency_onboard_requests : [];
     ensureB2bCollections(database);
     database.b2b_collection_centres = database.b2b_collection_centres.map((item) => b2bCentreRecord(item, item?.id));
     database.b2b_sales_entries = database.b2b_sales_entries.map((item) => b2bSalesRecord(item, item?.id));
@@ -1527,7 +1547,7 @@ function territoryAllotmentConflicts(application, latitude, longitude, radiusKm)
 }
 
 const leadStages = new Set(['new', 'contacted', 'no_response', 'qualified', 'follow_up', 'application_started', 'won', 'lost', 'disqualified', 'completed']);
-const leadSources = new Set(['website', 'meta_ads', 'google_ads', 'whatsapp_ads', 'manual', 'csv_upload', 'appointment', 'reach_sales']);
+const leadSources = new Set(['website', 'meta_ads', 'google_ads', 'whatsapp_ads', 'manual', 'csv_upload', 'appointment', 'reach_sales', 'agency_agents']);
 const leadPriorities = new Set(['hot', 'warm', 'normal', 'low']);
 const leadActivityTypes = new Set(['created', 'imported', 'call', 'whatsapp', 'email', 'note', 'follow_up', 'stage_change', 'owner_change', 'claim']);
 
@@ -1563,6 +1583,7 @@ function sourceLabel(source) {
     csv_upload: 'CSV upload',
     appointment: 'Appointment conversion',
     reach_sales: 'Reach sales handoff',
+    agency_agents: 'Agency agents onboard',
   })[source] ?? 'Manual entry';
 }
 
@@ -1587,8 +1608,10 @@ function leadRecord(value, id = randomUUID()) {
             ? 'Lead created from a completed business consultation appointment.'
           : sourceName === 'reach_sales'
             ? 'Lead created from Reach sales handoff. Applicant will choose FOFO or FOCO on the portal.'
+          : sourceName === 'agency_agents'
+            ? 'Lead created from Agency Agents franchisee onboard request.'
           : 'Lead created manually in RFMS CRM.';
-    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' || sourceName === 'reach_sales' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : sourceName === 'reach_sales' ? 'Reach sales' : sourceName.endsWith('_ads') ? 'Ads webhook' : 'RFMS officer', message: initialMessage }, createdAt));
+    history.push(leadActivity({ type: sourceName === 'manual' || sourceName === 'website' || sourceName === 'reach_sales' || sourceName === 'agency_agents' ? 'created' : 'imported', actor: sourceName === 'website' ? 'Website form' : sourceName === 'reach_sales' ? 'Reach sales' : sourceName === 'agency_agents' ? 'Agency Agents' : sourceName.endsWith('_ads') ? 'Ads webhook' : 'RFMS officer', message: initialMessage }, createdAt));
     if (notes) history.push(leadActivity({ type: 'note', actor: 'Lead source', message: notes }, createdAt));
   }
   const model = text(source.franchise_model, 10).toUpperCase();
@@ -3363,7 +3386,117 @@ async function markApplicationOnboarded(application, actor, request) {
     aadhaarRef: application.agreement_workflow?.applicant?.esign_reference || '',
     notes: 'FFMS marked application onboarded',
   });
+  await maybeScheduleFranchiseOnboardCampaigns(application, webpage, request);
   return { application, webpage };
+}
+
+async function maybeScheduleFranchiseOnboardCampaigns(application, webpage, request) {
+  if (!application) return null;
+  if (application.hec_onboard_campaigns_at && Array.isArray(application.hec_onboard_campaigns) && application.hec_onboard_campaigns.length) {
+    return application.hec_onboard_campaigns;
+  }
+  const fields = hubDirectoryFieldsFromApplication(application);
+  const webpageUrl = String(webpage?.public_url || application.franchise_webpage?.public_url || '').trim();
+  try {
+    const result = await scheduleFranchiseOnboardCampaignsViaErp({
+      applicationId: fields.applicationId,
+      applicationNumber: fields.applicationNumber,
+      businessName: fields.businessName,
+      district: fields.district,
+      franchiseeId: String(application.franchisee_id || ''),
+      franchiseeProfile: fields.franchiseeProfile,
+      fullName: fields.fullName,
+      landingUrl: webpageUrl || 'https://www.e-remedium.in',
+      mobile: fields.mobile,
+      pincode: fields.pincode,
+      preferredLocation: fields.preferredLocation,
+      territoryRegion: fields.territoryRegion,
+      webpageUrl,
+    });
+    application.hec_onboard_campaigns_at = new Date().toISOString();
+    application.hec_onboard_campaigns = result?.campaigns || [];
+    application.hec_onboard_campaigns_error = '';
+    applicationReviewHistory(
+      application,
+      'onboard_campaigns_scheduled',
+      `Scheduled Meta/WhatsApp campaigns for Phlebotomist, Receptionist and local blood-test booking (${(result?.campaigns || []).length} plan(s)).`,
+      request,
+    );
+    workflowNotify({
+      module: 'marketing',
+      action: 'onboard_campaigns_scheduled',
+      title: 'Franchise area campaigns scheduled',
+      message: `${fields.businessName || application.full_name} · hiring + blood-test booking campaigns queued for ${fields.territoryRegion || fields.district || 'local area'}.`,
+      actor: workflowActor(request),
+      href: `admin:Applications:${application.id}`,
+      entityType: 'application',
+      entityId: application.id,
+      applicationId: application.id,
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Onboard campaign scheduling failed.';
+    application.hec_onboard_campaigns_error = message.slice(0, 500);
+    console.error('[phase93] onboard campaigns failed', application.application_number, message);
+    applicationReviewHistory(application, 'onboard_campaigns_failed', message, request);
+    return null;
+  }
+}
+
+async function maybeCreateReachFocoB2bOnPhase1(application, payment, request) {
+  if (!application || (payment?.key !== 'application_fee' && !payment?.foco_full_payment)) return null;
+  if (String(application.franchise_model || '').toUpperCase() !== 'FOCO') return null;
+  if (application.hec_foco_b2b_code) return { foco_code: application.hec_foco_b2b_code, idempotent: true };
+  const fields = hubDirectoryFieldsFromApplication(application);
+  const lead = application.hec_lead_id
+    ? database.leads.find((item) => item.hec_lead_id === application.hec_lead_id || item.id === application.hec_lead_id)
+    : null;
+  try {
+    const result = await createReachFocoB2bOnPhase1ViaErp({
+      applicationFeeAmount: Number(payment.amount) || 10000,
+      applicationId: fields.applicationId,
+      applicationNumber: fields.applicationNumber,
+      businessName: fields.businessName,
+      centreName: `FOCO · ${fields.businessName || fields.fullName}`,
+      createdByReachUser: String(lead?.sales_rep_id || lead?.assigned_to || ''),
+      franchiseModel: 'FOCO',
+      fullName: fields.fullName,
+      googleMapLocation: '',
+      mobile: fields.mobile,
+      preferredLocation: fields.preferredLocation,
+      reachUser: String(lead?.sales_rep_id || lead?.assigned_to || 'Administrator'),
+      registeredAddress: fields.registeredAddress,
+      salesRepId: String(lead?.sales_rep_id || ''),
+    });
+    const code = String(result?.foco_code || result?.centre?.name || '').trim();
+    application.hec_foco_b2b_code = code;
+    application.hec_foco_b2b_at = new Date().toISOString();
+    application.hec_foco_b2b_error = '';
+    applicationReviewHistory(
+      application,
+      'foco_b2b_code_created',
+      `Reach B2B FOCO code ${code || '(pending)'} created after Phase-1 payment.`,
+      request,
+    );
+    workflowNotify({
+      module: 'payments',
+      action: 'foco_b2b_code_created',
+      title: 'FOCO B2B code created',
+      message: `${fields.businessName || application.full_name} · Reach FOCO code ${code || 'created'} after Phase 1 payment.`,
+      actor: workflowActor(request),
+      href: `admin:Payments:${application.id}`,
+      entityType: 'application',
+      entityId: application.id,
+      applicationId: application.id,
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'FOCO B2B code creation failed.';
+    application.hec_foco_b2b_error = message.slice(0, 500);
+    console.error('[phase93] FOCO B2B create failed', application.application_number, message);
+    applicationReviewHistory(application, 'foco_b2b_code_failed', message, request);
+    return null;
+  }
 }
 
 async function videoKycEvidencePdfImage(evidence) {
@@ -3621,9 +3754,9 @@ function agreementDocumentData(value) {
 function paymentPlan(model) {
   if (model === 'FOFO') return [{ key: 'fofo_one_time_fee', label: 'FOFO one-time franchise fee', amount: 45000, purpose: 'Application submission, document review and franchise processing', status: 'due' }];
   return [
-    { key: 'application_fee', label: 'Phase 1 — Application fee', amount: 10000, purpose: 'Document verification and location allotment', status: 'due' },
-    { key: 'franchise_fee', label: 'Phase 2 — Franchise fee', amount: 110000, purpose: 'Onboarding process', status: 'locked' },
-    { key: 'security_deposit', label: 'Phase 3 — Security deposit', amount: 200000, purpose: 'Final agreement and onboarding', status: 'locked' },
+    { key: 'application_fee', label: 'Phase 1 — Application fee', amount: 10000, scheduled_amount: 10000, purpose: 'Document verification and location allotment', status: 'due' },
+    { key: 'franchise_fee', label: 'Phase 2 — Franchise fee', amount: 110000, scheduled_amount: 110000, purpose: 'Onboarding process', status: 'locked' },
+    { key: 'security_deposit', label: 'Phase 3 — Security deposit', amount: 200000, scheduled_amount: 200000, purpose: 'Final agreement and onboarding', status: 'locked' },
   ];
 }
 
@@ -3708,6 +3841,8 @@ function territoryAllotmentsFor(application) {
 }
 
 function applicationSummary(application) {
+  if (application?.franchise_model === 'FOCO') ensureFocoPaymentSchedule(application);
+  ensureOnboardingModules(application, { territoryAllotted, paymentIsPaid });
   reconcileAgreementWorkflow(application.agreement_workflow);
   const assignedTerritory = database.territories.find((territory) => territory.id === application.territory_id);
   const documentVerifications = application.document_verifications && typeof application.document_verifications === 'object' ? application.document_verifications : {};
@@ -3771,6 +3906,8 @@ function applicationSummary(application) {
     branding_signage: brandingSignageSummary(application.branding_signage),
     hr_process: hrProcessSummary(application.hr_process),
     payments: application.payments,
+    payment_schedule: application.franchise_model === 'FOCO' ? paymentScheduleSummary(application) : null,
+    onboarding_modules: onboardingModulesSummary(application),
     agreement_workflow: agreementWorkflowSummary(application.agreement_workflow, resolveUploadUrl),
     training: trainingWorkflowSummary(application, database.training_videos, resolveUploadUrl),
     onboarding_certificate: onboardingCertificateWorkflowSummary(application, resolveUploadUrl),
@@ -3782,6 +3919,9 @@ function applicationSummary(application) {
     hec_hub_activated_at: application.hec_hub_activated_at ?? '',
     hec_wallet_recharge: application.hec_wallet_recharge ?? null,
     hec_hub_activation_error: application.hec_hub_activation_error ?? '',
+    parent_foco_id: application.parent_foco_id ?? '',
+    parent_foco_name: application.parent_foco_name ?? '',
+    parent_foco_mapped_at: application.parent_foco_mapped_at ?? '',
     partner_portal: application.partner_portal && typeof application.partner_portal === 'object'
       ? {
           login_url: String(application.partner_portal.login_url || partnerPortalLoginUrl()).trim() || partnerPortalLoginUrl(),
@@ -4276,17 +4416,105 @@ async function storeSupportAttachments(application, attachments) {
   return stored;
 }
 
-function territoryAllotted(application) { return Boolean(application?.territory_allotment?.letter_number); }
+function syncApplicantProfileSessions(application) {
+  if (!application?.id) return;
+  for (const [token, session] of tokens.entries()) {
+    if (session?.application_id === application.id) {
+      tokens.set(token, {
+        ...session,
+        name: application.full_name,
+        mobile: application.mobile,
+        email: application.email,
+      });
+    }
+  }
+  database.sessions = database.sessions.map((session) => (
+    session.application_id === application.id
+      ? { ...session, name: application.full_name, mobile: application.mobile, email: application.email }
+      : session
+  ));
+}
+
+async function updateApplicantProfileFromManager(application, body, request) {
+  const fullName = Object.prototype.hasOwnProperty.call(body, 'full_name') ? text(body.full_name, 120) : application.full_name;
+  const email = Object.prototype.hasOwnProperty.call(body, 'email') ? contactValue('email', body.email) : application.email;
+  const mobile = Object.prototype.hasOwnProperty.call(body, 'mobile') ? contactValue('mobile', body.mobile) : application.mobile;
+  const address = Object.prototype.hasOwnProperty.call(body, 'address') ? text(body.address, 500) : application.address;
+  const city = Object.prototype.hasOwnProperty.call(body, 'city') ? text(body.city, 100) : application.city;
+  const district = Object.prototype.hasOwnProperty.call(body, 'district') ? text(body.district, 100) : application.district;
+  const pincode = Object.prototype.hasOwnProperty.call(body, 'pincode') ? text(body.pincode, 10) : application.pincode;
+
+  if (!fullName) return { error: 'VALIDATION_ERROR', message: 'Enter the applicant name.', status: 400 };
+  if (!isEmail(email)) return { error: 'VALIDATION_ERROR', message: 'Enter a valid registered email address.', status: 400 };
+  if (!mobile) return { error: 'VALIDATION_ERROR', message: 'Enter the applicant mobile number.', status: 400 };
+  if (!address) return { error: 'VALIDATION_ERROR', message: 'Enter the applicant address.', status: 400 };
+  if (!city) return { error: 'VALIDATION_ERROR', message: 'Enter the applicant city.', status: 400 };
+  if (!district) return { error: 'VALIDATION_ERROR', message: 'Enter the applicant district.', status: 400 };
+  if (!/^\d{6}$/.test(pincode)) return { error: 'VALIDATION_ERROR', message: 'Enter a valid 6-digit PIN code.', status: 400 };
+  if (database.applications.some((item) => item.id !== application.id && item.email?.toLowerCase() === email.toLowerCase())) {
+    return { error: 'EMAIL_TAKEN', message: 'This email address is already registered to another application.', status: 409 };
+  }
+
+  const changes = [];
+  if (fullName !== application.full_name) changes.push(`name updated from ${application.full_name} to ${fullName}`);
+  if (email !== application.email) changes.push(`email updated from ${application.email} to ${email}`);
+  if (mobile !== application.mobile) changes.push(`mobile updated from ${application.mobile} to ${mobile}`);
+  if (address !== application.address) changes.push('address updated');
+  if (city !== application.city) changes.push(`city updated to ${city}`);
+  if (district !== application.district) changes.push(`district updated to ${district}`);
+  if (pincode !== application.pincode) changes.push(`PIN code updated to ${pincode}`);
+  if (!changes.length) return { error: 'NO_CHANGES', message: 'Update at least one applicant profile field before saving.', status: 400 };
+
+  application.full_name = fullName;
+  application.email = email;
+  application.mobile = mobile;
+  application.address = address;
+  application.city = city;
+  application.district = district;
+  application.pincode = pincode;
+  application.updated_at = new Date().toISOString();
+
+  const territory = application.territory_id ? database.territories.find((item) => item.id === application.territory_id) : null;
+  if (territory) {
+    const allocation = territory.allocations?.find((item) => item.application_id === application.id);
+    if (allocation) allocation.applicant_name = fullName;
+  }
+
+  syncApplicantProfileSessions(application);
+  const message = `Manager updated applicant profile: ${changes.join('; ')}.`;
+  applicationReviewHistory(application, 'applicant_profile_updated', message, request);
+  auditAdminAction(request, {
+    action: 'applicant_profile_updated',
+    details: `${application.application_number}: ${changes.join('; ')}`,
+    target_application_id: application.id,
+  });
+  workflowNotify({
+    module: 'applications',
+    action: 'applicant_profile_updated',
+    title: 'Applicant profile updated',
+    message,
+    actor: workflowActor(request),
+    href: `admin:Applicants:${application.id}`,
+    portalHref: 'portal:application',
+    entityType: 'application',
+    entityId: application.id,
+    applicationId: application.id,
+    applicantOnly: true,
+  });
+  await syncHubDirectoryDetailsToErp(application, request);
+  return { application, message, changes };
+}
+
 function paymentIsPaid(application, key) { return application?.payments?.some((payment) => payment.key === key && payment.status === 'paid'); }
 function brandingUnlocked(application) {
   if (application.franchise_model === 'FOFO') return territoryAllotted(application) && paymentIsPaid(application, 'fofo_one_time_fee');
-  if (focoAllPaymentsPaid(application)) return true;
-  return territoryAllotted(application) && paymentIsPaid(application, 'franchise_fee');
+  ensureOnboardingModules(application, { territoryAllotted, paymentIsPaid });
+  return territoryAllotted(application) && Boolean(application.onboarding_modules?.branding_released);
 }
 function hrUnlocked(application) {
   if (application.franchise_model !== 'FOCO') return false;
-  if (focoAllPaymentsPaid(application)) return true;
-  return territoryAllotted(application) && paymentIsPaid(application, 'franchise_fee');
+  ensureOnboardingModules(application, { territoryAllotted, paymentIsPaid });
+  return territoryAllotted(application) && Boolean(application.onboarding_modules?.hr_released);
 }
 
 function resolvePaymentPricing(application, payment, couponCode, options = {}) {
@@ -4318,7 +4546,7 @@ function applyApplicationStageAfterPayment(application, payment, request, focoFu
   else if (payment.key === 'application_fee') application.stage = 'payment_1_received';
   else if (payment.key === 'franchise_fee') {
     application.stage = 'payment_2_received';
-    applicationReviewHistory(application, 'foco_phase_2_payment_received', 'FOCO Phase 2 franchise fee received. Branding Signage and HR Process are now unlocked.', request);
+    applicationReviewHistory(application, 'foco_phase_2_payment_received', 'FOCO Phase 2 franchise fee received. Onboarding modules remain under separate manager control.', request);
   } else if (payment.key === 'security_deposit') {
     application.stage = 'payment_3_received';
     applicationReviewHistory(application, 'foco_phase_3_payment_received', 'FOCO security deposit received. Final agreement and onboarding can now proceed.', request);
@@ -4344,6 +4572,57 @@ function depositAmountForHubActivation(application, payment) {
     return Number(payment.amount) || 0;
   }
   return Number(payment?.amount) || 0;
+}
+
+function onboardedFocoCentres() {
+  const helpers = franchiseeDirectoryHelpers();
+  return onboardedFranchiseeApplications()
+    .filter((item) => String(item.franchise_model || '').toUpperCase() === 'FOCO')
+    .map((application) => {
+      const row = franchiseeDirectoryListItem(application, helpers);
+      return {
+        parent_foco_id: String(application.hec_franchisee_profile || row.franchisee_id || '').trim(),
+        franchisee_id: row.franchisee_id,
+        application_id: row.application_id,
+        franchise_name: row.business_name || row.franchisee_name || application.full_name,
+        franchise_code: row.franchisee_id,
+        address: [row.territory, row.location].filter(Boolean).join(' · '),
+        district: row.district || '',
+        pincode: row.pincode || '',
+        onboarding_status: row.current_status || 'Onboarded',
+      };
+    })
+    .filter((item) => item.parent_foco_id || item.franchisee_id);
+}
+
+async function maybeSyncFofoParentFoco(application, request, { actor = '' } = {}) {
+  if (!application || String(application.franchise_model || '').toUpperCase() !== 'FOFO') return null;
+  const parentFoco = String(application.parent_foco_id || '').trim();
+  const fofoId = String(application.hec_franchisee_profile || '').trim();
+  if (!parentFoco || !fofoId) return null;
+  try {
+    const result = await mapFofoParentFocoViaErp({
+      applicationId: application.id,
+      applicationNumber: application.application_number,
+      fofoFranchisee: fofoId,
+      parentFoco,
+    });
+    application.parent_foco_mapped_at = new Date().toISOString();
+    application.parent_foco_error = '';
+    applicationReviewHistory(
+      application,
+      'fofo_mapped_under_foco',
+      `FOFO permanently mapped under FOCO ${application.parent_foco_name || parentFoco}.`,
+      request,
+      actor || reviewActor(request),
+    );
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'FOFO→FOCO map failed.';
+    application.parent_foco_error = message.slice(0, 500);
+    console.error('[phase111] FOFO parent FOCO map failed', application.application_number, message);
+    return null;
+  }
 }
 
 async function maybeActivateFranchiseeHub(application, payment, request) {
@@ -4372,6 +4651,7 @@ async function maybeActivateFranchiseeHub(application, payment, request) {
     application.hec_hub_activated_at = new Date().toISOString();
     application.hec_wallet_recharge = Number(result?.wallet_recharge) || 0;
     application.hec_hub_activation_error = '';
+    await maybeSyncFofoParentFoco(application, request);
     applicationReviewHistory(
       application,
       'franchisee_hub_activated',
@@ -4433,6 +4713,7 @@ async function finalizeVerifiedPayment(application, payment, request, couponResu
   application.updated_at = new Date().toISOString();
   if (payment.key === 'application_fee') automaticallyReserveMatchingTerritory(application);
   await maybeActivateFranchiseeHub(application, payment, request);
+  await maybeCreateReachFocoB2bOnPhase1(application, payment, request);
 }
 
 function paymentsPendingVerification(application, payment) {
@@ -4485,7 +4766,11 @@ async function verifyPaymentRecord(application, payment, request) {
   });
   application.updated_at = new Date().toISOString();
   if (primary.key === 'application_fee' || primary.foco_full_payment) automaticallyReserveMatchingTerritory(application);
+  if (application.franchise_model === 'FOCO' && !primary.foco_full_payment) {
+    recalculateFocoRemainingPhases(application, { actor: reviewActor(request) });
+  }
   await maybeActivateFranchiseeHub(application, primary, request);
+  await maybeCreateReachFocoB2bOnPhase1(application, primary, request);
   return { payment: primary, verified_count: targets.length };
 }
 
@@ -5685,8 +5970,9 @@ async function handle(request, response) {
         franchise_model: model, preferred_location: text(body.preferred_location, 180), business_experience: text(body.business_experience, 2000),
         user_id: userId, account_password_salt: account?.salt ?? '', account_password_hash: account?.hash ?? '',
         terms_model: model, terms_text: termsText, terms_accepted_at: termsAccepted ? new Date().toISOString() : '',
-        documents, document_verifications: {}, review_notes: '', review_history: [], payment_terms: {}, video_kyc_sessions: [], video_kyc_current_session_id: '', field_visit: null, onboarding_documents: [], branding_signage: null, hr_process: null, payments: paymentPlan(model), stage: 'payment_1_due', visible_to_admin: false,
+        documents, document_verifications: {}, review_notes: '', review_history: [], payment_terms: {}, video_kyc_sessions: [], video_kyc_current_session_id: '', field_visit: null, onboarding_documents: [], branding_signage: null, hr_process: null, onboarding_modules: { branding_released: false, branding_released_at: '', branding_released_by: '', hr_released: false, hr_released_at: '', hr_released_by: '' }, payments: paymentPlan(model), stage: 'payment_1_due', visible_to_admin: false,
         employee_referral_number: '',
+        parent_foco_id: '', parent_foco_name: '', parent_foco_mapped_at: '',
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
       const referralRaw = text(body.employee_referral_number ?? body.employee_referral ?? body.referral_number, 40).toUpperCase();
@@ -5762,6 +6048,7 @@ async function handle(request, response) {
         if (hecFranchisee) linkedLead.hec_franchisee_profile = hecFranchisee;
         addLeadActivity(linkedLead, 'note', `Applicant started ${model} application ${application.application_number} from the franchise portal.`, 'Applicant portal');
       }
+      if (model === 'FOCO') ensureFocoPaymentSchedule(application);
       database.applications.push(application);
       contactVerificationTokens.get(text(body.mobile_verification_token, 100)).used = true;
       contactVerificationTokens.get(text(body.email_verification_token, 100)).used = true;
@@ -6554,6 +6841,11 @@ async function handle(request, response) {
         videoKycAudit(record.application, record.session, 'video_kyc_started', `Video KYC attempt ${record.session.attempt} started by ${reviewActor(request)}.`, request);
         record.application.updated_at = new Date().toISOString();
         await saveDatabase();
+      } else if (record.session.status === 'in_progress') {
+        // Manager refreshed / re-opened the room — clear stale SDP so a fresh two-way offer can form.
+        record.session.signals = [];
+        record.application.updated_at = new Date().toISOString();
+        await saveDatabase();
       }
       return success(request, response, { application: applicationSummary(record.application), session: videoKycSessionSummary(record.session) });
     }
@@ -6764,8 +7056,6 @@ async function handle(request, response) {
       if (application.franchise_model !== 'FOCO') return failure(request, response, 'PAYMENT_UNAVAILABLE', 'The security deposit applies only to a FOCO franchise application.', 409);
       if (!territoryAllotted(application)) return failure(request, response, 'TERRITORY_ALLOTMENT_REQUIRED', 'Issue the Territory Allotment Letter before unlocking the security deposit.', 409);
       if (!paymentIsPaid(application, 'franchise_fee')) return failure(request, response, 'PAYMENT_UNAVAILABLE', 'The FOCO franchise fee must be paid before the security deposit can be unlocked.', 409);
-      if (application.branding_signage?.status !== 'approved') return failure(request, response, 'BRANDING_APPROVAL_REQUIRED', 'Approve Branding Signage before unlocking the security deposit.', 409);
-      if (application.hr_process?.status !== 'approved') return failure(request, response, 'HR_APPROVAL_REQUIRED', 'Approve the HR Process before unlocking the security deposit.', 409);
       const phaseThree = application.payments.find((payment) => payment.key === 'security_deposit');
       if (!phaseThree) return failure(request, response, 'PAYMENT_UNAVAILABLE', 'FOCO Phase 3 payment was not found for this application.', 409);
       if (phaseThree.status === 'paid') return failure(request, response, 'PAYMENT_ALREADY_PAID', 'The FOCO security deposit has already been received.', 409);
@@ -6871,7 +7161,7 @@ async function handle(request, response) {
       if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can manage Branding Signage.', 403);
       const application = database.applications.find((item) => item.id === applicationBrandingMatch[1] && item.visible_to_admin);
       if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
-      if (!brandingUnlocked(application)) return failure(request, response, 'BRANDING_LOCKED', application.franchise_model === 'FOCO' ? 'FOCO Branding Signage unlocks after the Territory Allotment and verified Phase 2 payment.' : 'Branding Signage unlocks after Territory Allotment and the FOFO payment.', 409);
+      if (!brandingUnlocked(application)) return failure(request, response, 'BRANDING_LOCKED', application.franchise_model === 'FOCO' ? 'FOCO Branding Signage unlocks after the Territory Allotment Letter and a manager releases the Branding module.' : 'Branding Signage unlocks after Territory Allotment and the FOFO payment.', 409);
       const body = await readJson(request, 8_000_000); const now = new Date().toISOString();
       const branding = application.branding_signage && typeof application.branding_signage === 'object' ? application.branding_signage : { id: randomUUID(), secure_token: randomBytes(32).toString('hex'), status: 'not_started', vendor: null, materials: [], photographs: [], completion_details: '', manager_remarks: '', installation_cost: 0, invoice: null, history: [] };
       branding.materials = Array.isArray(branding.materials) ? branding.materials : [];
@@ -6934,7 +7224,7 @@ async function handle(request, response) {
       if (!requireOfficer(request)) return failure(request, response, 'FORBIDDEN', 'Only an authorised RFMS officer can manage HR Process.', 403);
       const application = database.applications.find((item) => item.id === applicationHrProcessMatch[1] && item.visible_to_admin);
       if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
-      if (!hrUnlocked(application)) return failure(request, response, 'HR_PROCESS_LOCKED', 'HR Process is available only for a FOCO franchise after Territory Allotment and verified Phase 2 payment.', 409);
+      if (!hrUnlocked(application)) return failure(request, response, 'HR_PROCESS_LOCKED', 'HR Process is available only for a FOCO franchise after Territory Allotment and a manager releases the HR module.', 409);
       const hr = application.hr_process && typeof application.hr_process === 'object' ? application.hr_process : { id: randomUUID(), secure_token: randomBytes(32).toString('hex'), status: 'assigned', employees: [], manager_remarks: '', history: [] };
       if (hr.status !== 'approved') hr.status = 'assigned'; application.hr_process = hr; application.updated_at = new Date().toISOString();
       applicationWorkflowAudit(application, hr, 'hr_process_assigned', 'Secure HR employee-onboarding submission link generated.', request); await saveDatabase();
@@ -7025,38 +7315,146 @@ async function handle(request, response) {
       const application = database.applications.find((item) => item.id === applicationContactMatch[1] && item.visible_to_admin);
       if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
       const body = await readJson(request);
-      const email = text(body.email, 160).toLowerCase();
-      const mobile = text(body.mobile, 20);
-      if (!isEmail(email)) return failure(request, response, 'VALIDATION_ERROR', 'Enter a valid registered email address.', 400);
-      if (!mobile) return failure(request, response, 'VALIDATION_ERROR', 'Enter the applicant mobile number.', 400);
-      if (database.applications.some((item) => item.id !== application.id && item.email?.toLowerCase() === email)) return failure(request, response, 'EMAIL_TAKEN', 'This email address is already registered to another application.', 409);
-      const changes = [];
-      if (email !== application.email) changes.push(`email updated from ${application.email} to ${email}`);
-      if (mobile !== application.mobile) changes.push(`mobile updated from ${application.mobile} to ${mobile}`);
-      if (!changes.length) return failure(request, response, 'NO_CHANGES', 'Update the email address or mobile number before saving.', 400);
-      application.email = email;
-      application.mobile = mobile;
+      const result = await updateApplicantProfileFromManager(application, body, request);
+      if (result.error) return failure(request, response, result.error, result.message, result.status ?? 400);
+      await saveDatabase();
+      return success(request, response, applicationSummary(application));
+    }
+
+    const applicationProfileMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/applicant-profile$/);
+    if (applicationProfileMatch && request.method === 'PATCH') {
+      if (!requirePermission(request, response, 'applicants')) return;
+      const session = sessionFor(request);
+      const role = normalizeRole(session?.role ?? '');
+      if (!['super_admin', 'manager'].includes(role)) return failure(request, response, 'FORBIDDEN', 'Only a manager or administrator can update applicant profile details.', 403);
+      const application = database.applications.find((item) => item.id === applicationProfileMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      const body = await readJson(request);
+      const result = await updateApplicantProfileFromManager(application, body, request);
+      if (result.error) return failure(request, response, result.error, result.message, result.status ?? 400);
+      await saveDatabase();
+      return success(request, response, applicationSummary(application));
+    }
+
+    const applicationPaymentScheduleMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/payment-schedule$/);
+    if (applicationPaymentScheduleMatch && request.method === 'PATCH') {
+      const session = requirePermission(request, response, 'payments');
+      if (!session) return;
+      if (!['super_admin', 'manager'].includes(String(session.role ?? '').replace('franchise_manager', 'manager'))) {
+        return failure(request, response, 'FORBIDDEN', 'Only a manager or administrator can edit the FOCO payment schedule.', 403);
+      }
+      const application = database.applications.find((item) => item.id === applicationPaymentScheduleMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      if (application.franchise_model !== 'FOCO') return failure(request, response, 'NOT_FOCO', 'Variable payment scheduling applies only to FOCO applications.', 409);
+      const body = await readJson(request);
+      ensureFocoPaymentSchedule(application);
+      const actor = reviewActor(request);
+      const phaseAmounts = body.phase_amounts && typeof body.phase_amounts === 'object' ? body.phase_amounts : {};
+      const updates = [];
+      for (const [phaseKey, rawAmount] of Object.entries(phaseAmounts)) {
+        const result = setPhaseScheduledAmount(application, text(phaseKey, 40), rawAmount, actor);
+        if (result.error) return failure(request, response, result.error, result.message, result.error === 'SCHEDULE_OVERFLOW' ? 409 : 400);
+        updates.push(`${phaseKey}: ₹${Number(result.scheduled_amount).toLocaleString('en-IN')}`);
+      }
+      if (body.auto_recalculate === true || (!updates.length && body.recalculate === true)) {
+        recalculateFocoRemainingPhases(application, { actor });
+        applicationReviewHistory(application, 'foco_payment_schedule_recalculated', `FOCO remaining balance auto-adjusted across unpaid phases. Remaining payable: ₹${focoTotalRemaining(application).toLocaleString('en-IN')}.`, request);
+      }
+      if (!updates.length && body.auto_recalculate !== true && body.recalculate !== true) {
+        return failure(request, response, 'NO_CHANGES', 'Provide phase_amounts or set recalculate to true.', 400);
+      }
+      if (updates.length) {
+        applicationReviewHistory(application, 'foco_payment_schedule_updated', `Manager updated FOCO payment schedule — ${updates.join('; ')}. Remaining payable: ₹${focoTotalRemaining(application).toLocaleString('en-IN')}.`, request);
+      }
       application.updated_at = new Date().toISOString();
-      const message = `Manager updated registered contact details: ${changes.join('; ')}.`;
-      applicationReviewHistory(application, 'applicant_contact_updated', message, request);
-      auditAdminAction(request, {
-        action: 'applicant_contact_updated',
-        details: `${application.application_number}: ${changes.join('; ')}`,
-        target_application_id: application.id,
+      await saveDatabase();
+      return success(request, response, {
+        application: applicationSummary(application),
+        payment_schedule: paymentScheduleSummary(application),
       });
-      workflowNotify({
-        module: 'applications',
-        action: 'applicant_contact_updated',
-        title: 'Registered contact details updated',
-        message,
-        actor: workflowActor(request),
-        href: `admin:Applicants:${application.id}`,
-        portalHref: 'portal:application',
-        entityType: 'application',
-        entityId: application.id,
-        applicationId: application.id,
-        applicantOnly: true,
+    }
+
+    const applicationPaymentRecordMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/payments\/([^/]+)\/record$/);
+    if (applicationPaymentRecordMatch && request.method === 'POST') {
+      const session = requirePermission(request, response, 'payments');
+      if (!session) return;
+      if (!['super_admin', 'manager', 'accountant'].includes(String(session.role ?? '').replace('franchise_manager', 'manager'))) {
+        return failure(request, response, 'FORBIDDEN', 'Only a manager or accountant can record a direct FOCO payment.', 403);
+      }
+      const application = database.applications.find((item) => item.id === applicationPaymentRecordMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      if (application.franchise_model !== 'FOCO') return failure(request, response, 'NOT_FOCO', 'Variable manager payment recording applies only to FOCO applications.', 409);
+      const phaseKey = applicationPaymentRecordMatch[2];
+      const body = await readJson(request);
+      const actor = reviewActor(request);
+      const result = recordManagerDirectPayment(application, phaseKey, body, actor);
+      if (result.error) return failure(request, response, result.error, result.message, result.error === 'ALREADY_PAID' ? 409 : 400);
+      await finalizeVerifiedPayment(application, result.payment, request);
+      applicationReviewHistory(
+        application,
+        'foco_variable_payment_recorded',
+        `Manager recorded ${result.payment.label} of ₹${Number(result.amount).toLocaleString('en-IN')}. Remaining FOCO payable: ₹${focoTotalRemaining(application).toLocaleString('en-IN')}.`,
+        request,
+      );
+      await saveDatabase();
+      return success(request, response, {
+        application: applicationSummary(application),
+        payment: paymentPhaseDetail(result.payment),
+        payment_schedule: paymentScheduleSummary(application),
       });
+    }
+
+    const onboardingModuleReleaseMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/onboarding-modules\/(branding|hr)\/release$/);
+    if (onboardingModuleReleaseMatch && request.method === 'POST') {
+      if (!canManageTerritory(request)) return failure(request, response, 'FORBIDDEN', 'Only a franchise manager or administrator can release onboarding modules.', 403);
+      const application = database.applications.find((item) => item.id === onboardingModuleReleaseMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      if (!territoryAllotted(application)) return failure(request, response, 'TERRITORY_ALLOTMENT_REQUIRED', 'Issue the Territory Allotment Letter before releasing onboarding modules.', 409);
+      const moduleKey = onboardingModuleReleaseMatch[2];
+      const modules = ensureOnboardingModules(application, { territoryAllotted, paymentIsPaid });
+      const actor = reviewActor(request);
+      const now = new Date().toISOString();
+      if (moduleKey === 'branding') {
+        if (modules.branding_released) return failure(request, response, 'ALREADY_RELEASED', 'Branding Signage is already released for this applicant.', 409);
+        modules.branding_released = true;
+        modules.branding_released_at = now;
+        modules.branding_released_by = actor;
+        applicationReviewHistory(application, 'branding_module_released', 'Manager released Branding Signage for the applicant portal.', request);
+        workflowNotify({
+          module: 'applications',
+          action: 'branding_module_released',
+          title: 'Branding module released',
+          message: `${application.full_name} · Branding Signage is now available in the applicant portal.`,
+          actor: workflowActor(request),
+          href: `admin:Applicants:${application.id}`,
+          portalHref: 'portal:application',
+          entityType: 'application',
+          entityId: application.id,
+          applicationId: application.id,
+          applicantOnly: true,
+        });
+      } else {
+        if (application.franchise_model !== 'FOCO') return failure(request, response, 'NOT_FOCO', 'HR Process release applies only to FOCO applications.', 409);
+        if (modules.hr_released) return failure(request, response, 'ALREADY_RELEASED', 'HR Process is already released for this applicant.', 409);
+        modules.hr_released = true;
+        modules.hr_released_at = now;
+        modules.hr_released_by = actor;
+        applicationReviewHistory(application, 'hr_module_released', 'Manager released HR Process for the applicant portal.', request);
+        workflowNotify({
+          module: 'applications',
+          action: 'hr_module_released',
+          title: 'HR module released',
+          message: `${application.full_name} · HR Process is now available in the applicant portal.`,
+          actor: workflowActor(request),
+          href: `admin:Applicants:${application.id}`,
+          portalHref: 'portal:application',
+          entityType: 'application',
+          entityId: application.id,
+          applicationId: application.id,
+          applicantOnly: true,
+        });
+      }
+      application.updated_at = now;
       await saveDatabase();
       return success(request, response, applicationSummary(application));
     }
@@ -8285,6 +8683,44 @@ async function handle(request, response) {
       return success(request, response, paged);
     }
 
+    if (request.method === 'GET' && route === '/api/v1/admin/foco-centres') {
+      if (!requirePermission(request, response, 'applicants')) return;
+      return success(request, response, { centres: onboardedFocoCentres() });
+    }
+
+    const applicationParentFocoMatch = route.match(/^\/api\/v1\/admin\/applications\/([^/]+)\/parent-foco$/);
+    if (applicationParentFocoMatch && request.method === 'POST') {
+      if (!canManageTerritory(request)) return failure(request, response, 'FORBIDDEN', 'Only a franchise manager or administrator can map a FOFO under a FOCO.', 403);
+      const application = database.applications.find((item) => item.id === applicationParentFocoMatch[1] && item.visible_to_admin);
+      if (!application) return failure(request, response, 'NOT_FOUND', 'Application not found.', 404);
+      if (String(application.franchise_model || '').toUpperCase() !== 'FOFO') {
+        return failure(request, response, 'NOT_FOFO', 'Under Which FOCO applies only to FOFO onboarding.', 409);
+      }
+      const body = await readJson(request);
+      const parentId = text(body.parent_foco_id || body.parent_foco, 120);
+      const parentName = text(body.parent_foco_name, 180);
+      if (!parentId) return failure(request, response, 'FOCO_REQUIRED', 'Select an active FOCO centre.', 400);
+      const already = String(application.parent_foco_id || '').trim();
+      const onboarded = isOnboardedFranchisee(application);
+      if (already && already !== parentId && onboarded) {
+        return failure(request, response, 'MAPPING_LOCKED', `This FOFO is already mapped under ${application.parent_foco_name || already}. Mapping is permanent after onboarding.`, 409);
+      }
+      const known = onboardedFocoCentres().find((item) => item.parent_foco_id === parentId || item.franchisee_id === parentId);
+      application.parent_foco_id = parentId;
+      application.parent_foco_name = parentName || known?.franchise_name || parentId;
+      application.parent_foco_mapped_at = already === parentId ? (application.parent_foco_mapped_at || new Date().toISOString()) : new Date().toISOString();
+      application.updated_at = new Date().toISOString();
+      applicationReviewHistory(
+        application,
+        'fofo_parent_foco_selected',
+        `Under Which FOCO set to ${application.parent_foco_name} (${parentId}).`,
+        request,
+      );
+      await maybeSyncFofoParentFoco(application, request);
+      await saveDatabase();
+      return success(request, response, { application: applicationSummary(application) });
+    }
+
     const franchiseeDetailMatch = route.match(/^\/api\/v1\/admin\/franchisees\/([^/]+)$/);
     if (franchiseeDetailMatch && request.method === 'GET') {
       const session = requirePermission(request, response, 'franchisee_directory');
@@ -8863,6 +9299,131 @@ async function handle(request, response) {
       }, 201);
     }
 
+    // --- Agency Agents (BA/MLM) franchisee onboard requests ---
+    if (request.method === 'POST' && route === '/api/v1/agency/onboard-requests') {
+      if (!requireFranchiseAdsSecret(request, response)) return;
+      const body = await readJson(request, 50_000);
+      database.agency_onboard_requests = Array.isArray(database.agency_onboard_requests) ? database.agency_onboard_requests : [];
+      const hecRequestId = text(body.request_id, 120);
+      let existing = hecRequestId
+        ? database.agency_onboard_requests.find((item) => item.hec_request_id === hecRequestId)
+        : null;
+      const now = new Date().toISOString();
+      const prospectName = text(body.prospect_name, 160) || 'Agency prospect';
+      const mobile = String(body.mobile || '').replace(/\D/g, '').slice(-10);
+      // Mirror into CRM leads for FFMS visibility.
+      const lead = leadRecord({
+        name: prospectName,
+        email: text(body.email, 160) || `agency-${mobile || randomUUID().slice(0, 8)}@agency.ffms.local`,
+        mobile: mobile || '0000000000',
+        franchise_model: ['FOFO', 'FOCO'].includes(String(body.franchise_model || '').toUpperCase())
+          ? String(body.franchise_model).toUpperCase()
+          : '',
+        territory_query: text(body.territory, 200) || 'Agency territory TBD',
+        notes: `Agency agent onboard request ${hecRequestId}. Agent: ${text(body.agent_name, 120)} (${text(body.agent_id, 80)}). ${text(body.notes, 1000)}`,
+        source: 'agency_agents',
+        stage: 'new',
+        priority: 'hot',
+        assigned_to: 'Unassigned',
+      });
+      if (!existing) {
+        database.leads = Array.isArray(database.leads) ? database.leads : [];
+        database.leads.unshift(lead);
+      }
+      const row = {
+        id: existing?.id || randomUUID(),
+        hec_request_id: hecRequestId,
+        lead_id: existing?.lead_id || lead.id,
+        agent_id: text(body.agent_id, 120),
+        agent_name: text(body.agent_name, 160),
+        agent_email: text(body.agent_email, 160),
+        agent_mobile: text(body.agent_mobile, 20),
+        agent_level: text(body.agent_level, 40),
+        prospect_name: prospectName,
+        mobile,
+        email: text(body.email, 160),
+        territory: text(body.territory, 200),
+        franchise_model: text(body.franchise_model, 20),
+        deal_value: Number(body.deal_value) || 0,
+        notes: text(body.notes, 2000),
+        status: existing?.status || 'pending',
+        decided_by: existing?.decided_by || '',
+        decided_at: existing?.decided_at || '',
+        decision_notes: existing?.decision_notes || '',
+        created_at: existing?.created_at || now,
+        updated_at: now,
+        source: 'agency_agents',
+      };
+      if (existing) Object.assign(existing, row);
+      else database.agency_onboard_requests.unshift(row);
+      workflowNotify({
+        module: 'leads',
+        action: 'agency_onboard_request',
+        title: 'Agency franchisee onboard request',
+        message: `${row.agent_name || 'Agency agent'} requested onboarding for ${prospectName}.`,
+        actor: { name: row.agent_name || 'Agency Agents', role: 'agency' },
+        href: 'admin:Agency Onboard',
+        entityType: 'agency_onboard_request',
+        entityId: row.id,
+      });
+      await saveDatabase();
+      return success(request, response, { id: row.id, lead_id: row.lead_id, hec_request_id: row.hec_request_id, status: row.status }, 201);
+    }
+
+    if (request.method === 'GET' && route === '/api/v1/agency/onboard-requests') {
+      if (!requirePermission(request, response, 'leads')) return;
+      database.agency_onboard_requests = Array.isArray(database.agency_onboard_requests) ? database.agency_onboard_requests : [];
+      const status = text(new URL(request.url, 'http://localhost').searchParams.get('status') || '', 40).toLowerCase();
+      let rows = [...database.agency_onboard_requests];
+      if (status) rows = rows.filter((item) => String(item.status || '').toLowerCase() === status);
+      return success(request, response, { requests: rows, count: rows.length });
+    }
+
+    if (request.method === 'POST' && /^\/api\/v1\/agency\/onboard-requests\/[^/]+\/decide$/.test(route)) {
+      if (!requirePermission(request, response, 'leads')) return;
+      if (!canManageCrm(request)) return failure(request, response, 'FORBIDDEN', 'Only CRM managers can approve agency onboard requests.', 403);
+      const requestId = route.split('/')[5];
+      database.agency_onboard_requests = Array.isArray(database.agency_onboard_requests) ? database.agency_onboard_requests : [];
+      const row = database.agency_onboard_requests.find((item) => item.id === requestId);
+      if (!row) return failure(request, response, 'NOT_FOUND', 'Agency onboard request not found.', 404);
+      const body = await readJson(request, 8_000);
+      const decision = text(body.decision || body.status, 20).toLowerCase();
+      if (!['approved', 'rejected'].includes(decision)) {
+        return failure(request, response, 'VALIDATION_ERROR', 'decision must be approved or rejected.', 400);
+      }
+      const actor = leadActor(request);
+      try {
+        await agencyOnboardDecisionViaErp({
+          requestId: row.hec_request_id,
+          decision,
+          decidedBy: actor,
+          notes: text(body.notes, 2000),
+          ffmsLeadId: row.lead_id,
+        });
+      } catch (error) {
+        return failure(request, response, 'REACH_SYNC_ERROR', error instanceof Error ? error.message : 'Unable to sync decision to ERP.', 502);
+      }
+      row.status = decision;
+      row.decided_by = actor;
+      row.decided_at = new Date().toISOString();
+      row.decision_notes = text(body.notes, 2000);
+      row.updated_at = row.decided_at;
+      if (row.lead_id) {
+        const lead = database.leads.find((item) => item.id === row.lead_id);
+        if (lead) {
+          addLeadActivity(
+            lead,
+            'note',
+            `Agency onboard request ${decision} by ${actor}.${row.decision_notes ? ` ${row.decision_notes}` : ''}`,
+            actor,
+          );
+          if (decision === 'approved' && lead.stage === 'new') lead.stage = 'qualified';
+        }
+      }
+      await saveDatabase();
+      return success(request, response, row);
+    }
+
     if (request.method === 'POST' && route === '/api/v1/b2b-centres/ingest') {
       if (!requireFranchiseAdsSecret(request, response)) return;
       const body = await readJson(request, 1_000_000);
@@ -8899,7 +9460,46 @@ async function handle(request, response) {
       return success(request, response, [...database.b2b_sales_entries].sort((a, b) => String(b.sales_date || b.updated_at).localeCompare(String(a.sales_date || a.updated_at))));
     }
 
+    if (request.method === 'GET' && route === '/api/v1/admin/b2b/performance') {
+      if (!requirePermission(request, response, 'b2b_operations')) return;
+      ensureB2bCollections(database);
+      const url = new URL(request.url, 'http://localhost');
+      return success(request, response, b2bSalesPerformance(database, {
+        centre_id: url.searchParams.get('centre_id') || '',
+        from: url.searchParams.get('from') || '',
+        to: url.searchParams.get('to') || '',
+        period: url.searchParams.get('period') || 'daily',
+      }));
+    }
+
     const b2bSalesPatchMatch = route.match(/^\/api\/v1\/admin\/b2b\/sales\/([^/]+)$/);
+    if (b2bSalesPatchMatch && request.method === 'DELETE') {
+      const session = requirePermission(request, response, 'b2b_hard_delete');
+      if (!session) return;
+      ensureB2bCollections(database);
+      const result = hardDeleteB2bSalesEntry(database, decodeURIComponent(b2bSalesPatchMatch[1]), session);
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      let erp = null;
+      try {
+        if (result.cascade.hec_sales_id) {
+          erp = await deleteB2bSalesViaErp({
+            hecSalesId: result.cascade.hec_sales_id,
+            reason: `Hard-deleted by ${session.name} from FFMS B2B Operations`,
+          });
+        }
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, {
+        deleted: true,
+        entity: 'b2b_sales_entry',
+        id: result.entry.id,
+        confirm_message: hardDeleteConfirmMessage(),
+        erp,
+      });
+    }
+
     if (b2bSalesPatchMatch && request.method === 'PATCH') {
       const session = requirePermission(request, response, 'b2b_operations');
       if (!session) return;
@@ -8931,6 +9531,35 @@ async function handle(request, response) {
     }
 
     const b2bCentrePatchMatch = route.match(/^\/api\/v1\/admin\/b2b\/centres\/([^/]+)$/);
+    if (b2bCentrePatchMatch && request.method === 'DELETE') {
+      const session = requirePermission(request, response, 'b2b_hard_delete');
+      if (!session) return;
+      ensureB2bCollections(database);
+      const result = hardDeleteB2bCentre(database, decodeURIComponent(b2bCentrePatchMatch[1]), session, { cascadeSales: true });
+      if (result.error) return failure(request, response, 'NOT_FOUND', result.error, 404);
+      let erp = null;
+      try {
+        if (result.cascade.hec_centre_id) {
+          erp = await deleteB2bCentreViaErp({
+            hecCentreId: result.cascade.hec_centre_id,
+            reason: `Hard-deleted by ${session.name} from FFMS B2B Operations`,
+            cascadeSales: true,
+          });
+        }
+      } catch (error) {
+        erp = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      await saveDatabase();
+      return success(request, response, {
+        deleted: true,
+        entity: 'b2b_collection_centre',
+        id: result.centre.id,
+        sales_deleted: result.cascade.sales_count,
+        confirm_message: hardDeleteConfirmMessage(),
+        erp,
+      });
+    }
+
     if (b2bCentrePatchMatch && request.method === 'PATCH') {
       const session = requirePermission(request, response, 'b2b_operations');
       if (!session) return;

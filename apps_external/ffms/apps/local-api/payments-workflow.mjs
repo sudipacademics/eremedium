@@ -1,3 +1,5 @@
+import { paymentScheduleSummary } from './variable-payment-workflow.mjs';
+
 const PAYMENT_HISTORY_TYPES = new Set([
   'foco_phase_2_payment_received',
   'foco_phase_3_payment_received',
@@ -205,8 +207,6 @@ function paymentPermissions(application, role) {
   const territoryIssued = Boolean(application.territory_allotment?.letter_number || application.territory_allotments?.length);
   const phaseOnePaid = application.payments?.some((payment) => payment.key === 'application_fee' && payment.status === 'paid');
   const phaseTwoPaid = application.payments?.some((payment) => payment.key === 'franchise_fee' && payment.status === 'paid');
-  const brandingApproved = application.branding_signage?.status === 'approved';
-  const hrApproved = application.hr_process?.status === 'approved';
 
   const canVerifyPayments = ['super_admin', 'manager', 'accountant'].includes(normalized);
 
@@ -215,14 +215,19 @@ function paymentPermissions(application, role) {
     can_download_receipt: true,
     can_verify_payments: canVerifyPayments,
     can_unlock_phase_2: canManageUnlocks && application.franchise_model === 'FOCO' && phaseTwo?.status === 'locked' && phaseOnePaid && territoryIssued,
-    can_unlock_phase_3: canManageUnlocks && application.franchise_model === 'FOCO' && phaseThree?.status === 'locked' && phaseTwoPaid && brandingApproved && hrApproved,
+    can_unlock_phase_3: canManageUnlocks && application.franchise_model === 'FOCO' && phaseThree?.status === 'locked' && phaseTwoPaid,
+    can_record_variable_payment: canManageUnlocks && application.franchise_model === 'FOCO',
+    can_edit_payment_schedule: canManageUnlocks && application.franchise_model === 'FOCO',
   };
 }
 
 export function paymentDetailForApplication(application, role, options = {}) {
   const payments = Array.isArray(application.payments) ? application.payments : [];
   const paidTotal = payments.filter((payment) => payment.status === 'paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const pendingTotal = payments.filter((payment) => payment.status !== 'paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const schedule = application.franchise_model === 'FOCO' ? paymentScheduleSummary(application) : null;
+  const pendingTotal = schedule
+    ? schedule.total_remaining
+    : payments.filter((payment) => payment.status !== 'paid').reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const history = (Array.isArray(application.review_history) ? application.review_history : [])
     .filter((entry) => PAYMENT_HISTORY_TYPES.has(entry.type))
     .slice(-20)
@@ -239,8 +244,9 @@ export function paymentDetailForApplication(application, role, options = {}) {
     hec_hub_activated_at: application.hec_hub_activated_at ?? '',
     hec_wallet_recharge: application.hec_wallet_recharge ?? null,
     hec_hub_activation_error: application.hec_hub_activation_error ?? '',
+    payment_schedule: schedule,
     summary: {
-      total_paid: paidTotal,
+      total_paid: schedule?.total_paid ?? paidTotal,
       total_pending: pendingTotal,
       total_due: pendingTotal,
       phases_total: payments.length,

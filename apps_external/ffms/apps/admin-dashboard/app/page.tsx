@@ -10,6 +10,7 @@ import { ContentStudio } from './content-studio';
 import { TerritorySetup } from './territory-setup';
 import { LeadDirectory as CrmLeadDirectory } from './lead-directory';
 import { LogVisitDirectory } from './log-visit-directory';
+import { AgencyOnboardQueue } from './agency-onboard-queue';
 import { AppointmentDirectory } from './appointment-directory';
 import './modules.css';
 import './content-studio.css';
@@ -47,7 +48,7 @@ import './payment-operations.css';
 import { HardDeleteButton } from './hard-delete-button';
 
 type Page = AdminPage;
-type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Log Visit' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'LIS Bridge' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'B2B Operations' | 'Support' | 'User Management' | 'Payments'>;
+type OperationalPage = Exclude<Page, 'Overview' | 'Content CMS' | 'Leads' | 'Log Visit' | 'Agency Onboard' | 'Appointments' | 'Applicants' | 'Video KYC' | 'Training' | 'LIS Bridge' | 'Franchisee Webpage Index' | 'Franchisee Directory' | 'B2B Operations' | 'Support' | 'User Management' | 'Payments'>;
 type AdminSession = { token: string; name: string; role: string; allowedPages: Page[] };
 type LeadRecord = { id: string; name: string; email: string; mobile: string; franchise_model: string; territory_query: string; stage: string; created_at: string };
 type AppointmentRecord = { id: string; name: string; email: string; mobile: string; preferred_date: string; preferred_time: string; topic: string; status: string; created_at: string };
@@ -74,7 +75,9 @@ type AgreementWorkflow = { id?: string; status: string; status_label?: string; r
 type TrainingVideoSummary = { id: string; title: string; description: string; video_url: string; mime: string; duration_minutes: number; sort_order: number; sequence: number; accessible: boolean; locked_reason: string; completed: boolean; completed_at: string };
 type TrainingSummary = { unlocked: boolean; unlocked_at: string; unlocked_by: string; business_name: string; franchise_address: string; completed_at: string; progress: { total: number; completed: number; percent: number }; can_unlock: boolean; can_issue_certificate: boolean; can_regenerate_certificate: boolean; certificate: { certificate_number: string; business_name: string; franchise_address: string; issued_at: string; verification_url: string; qr_reference: string; pdf: { name: string; url: string; mime: string } | null } | null; videos: TrainingVideoSummary[] };
 type OnboardingCertificateSummary = { can_issue: boolean; can_download: boolean; can_mark_onboarded: boolean; is_onboarded: boolean; certificate: { certificate_number: string; business_name: string; franchise_model: string; franchise_model_label: string; issued_at: string; verification_url: string; qr_reference: string; pdf: { name: string; url: string; mime: string } | null } | null };
-type ApplicationRecord = { id: string; application_number: string; franchisee_id?: string; franchisee_id_issued_at?: string; full_name: string; email: string; mobile: string; date_of_birth?: string; pan_number?: string; aadhaar_number?: string; address?: string; city?: string; district?: string; pincode?: string; business_experience?: string; user_id?: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; territory_id?: string; territory_label?: string; territory_pincode?: string; territory_allotment?: TerritoryAllotment | null; territory_allotments?: TerritoryAllotment[]; stage: string; terms_accepted?: boolean; payment_terms?: Record<string, { terms_text?: string; accepted_at?: string; accepted_by?: string }>; documents: Record<string, ApplicationDocument>; document_verifications?: Record<string, ApplicationDocumentVerification>; review_notes?: string; review_history?: ApplicationReviewActivity[]; video_kyc_sessions?: VideoKycSession[]; video_kyc_current_session_id?: string; field_visit?: FieldVisit | null; onboarding_documents?: OnboardingDocument[]; branding_signage?: BrandingSignage | null; hr_process?: HrProcess | null; agreement_workflow?: AgreementWorkflow | null; training?: TrainingSummary | null; onboarding_certificate?: OnboardingCertificateSummary | null; franchise_webpage?: { id: string; public_url: string; enabled: boolean; settings: { business_name: string } } | null; partner_portal?: { login_url?: string; user_id?: string; password?: string; provisioned_at?: string; message?: string } | null; partner_portal_error?: string; payments: ApplicationPayment[]; employee_referral_number?: string; created_at: string; updated_at: string };
+type OnboardingModulesSummary = { branding_released: boolean; branding_released_at?: string; branding_released_by?: string; hr_released: boolean; hr_released_at?: string; hr_released_by?: string };
+type PaymentScheduleSummary = { mode: string; variable_payment_enabled: boolean; contract_total: number; total_paid: number; total_remaining: number; phases: { key: string; label: string; scheduled_amount: number; amount: number; status: string; paid_amount: number; manager_recorded?: boolean }[] };
+type ApplicationRecord = { id: string; application_number: string; franchisee_id?: string; franchisee_id_issued_at?: string; full_name: string; email: string; mobile: string; date_of_birth?: string; pan_number?: string; aadhaar_number?: string; address?: string; city?: string; district?: string; pincode?: string; business_experience?: string; user_id?: string; franchise_model: 'FOFO' | 'FOCO'; preferred_location: string; territory_id?: string; territory_label?: string; territory_pincode?: string; territory_allotment?: TerritoryAllotment | null; territory_allotments?: TerritoryAllotment[]; stage: string; terms_accepted?: boolean; payment_terms?: Record<string, { terms_text?: string; accepted_at?: string; accepted_by?: string }>; documents: Record<string, ApplicationDocument>; document_verifications?: Record<string, ApplicationDocumentVerification>; review_notes?: string; review_history?: ApplicationReviewActivity[]; video_kyc_sessions?: VideoKycSession[]; video_kyc_current_session_id?: string; field_visit?: FieldVisit | null; onboarding_documents?: OnboardingDocument[]; branding_signage?: BrandingSignage | null; hr_process?: HrProcess | null; onboarding_modules?: OnboardingModulesSummary; payment_schedule?: PaymentScheduleSummary | null; agreement_workflow?: AgreementWorkflow | null; training?: TrainingSummary | null; onboarding_certificate?: OnboardingCertificateSummary | null; franchise_webpage?: { id: string; public_url: string; enabled: boolean; settings: { business_name: string } } | null; partner_portal?: { login_url?: string; user_id?: string; password?: string; provisioned_at?: string; message?: string } | null; partner_portal_error?: string; payments: ApplicationPayment[]; employee_referral_number?: string; parent_foco_id?: string; parent_foco_name?: string; parent_foco_mapped_at?: string; hec_franchisee_profile?: string; created_at: string; updated_at: string };
 
 const API_BASE = RFMS_API_BASE;
 const API_ORIGIN = new URL(API_BASE).origin;
@@ -135,7 +138,7 @@ async function resolveAllocationGoogleMapsKey(token: string): Promise<string> {
   }
   return BAKED_GOOGLE_MAPS_API_KEY || runtimeGoogleMapsApiKey;
 }
-const pages: Page[] = ['Overview', 'Leads', 'Log Visit', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'LIS Bridge', 'Franchisee Webpage Index', 'Franchisee Directory', 'B2B Operations', 'Support', 'Content CMS', 'User Management'];
+const pages: Page[] = ['Overview', 'Leads', 'Log Visit', 'Agency Onboard', 'Appointments', 'Applicants', 'Territory', 'Video KYC', 'Agreements', 'Payments', 'Training', 'LIS Bridge', 'Franchisee Webpage Index', 'Franchisee Directory', 'B2B Operations', 'Support', 'Content CMS', 'User Management'];
 
 const data: Record<OperationalPage, { title: string; note: string; action: string; headers: string[]; rows: string[][] }> = {
   Territory: { title: 'Territory availability', note: 'West Bengal territory controls with exclusive-allocation safeguards.', action: 'Create territory', headers: ['Territory', 'District', 'Model', 'Status', 'Reservation'], rows: [['Kolkata - Ward 114', 'Kolkata', 'FOFO', 'Available', '-'], ['Siliguri North', 'Darjeeling', 'FOCO', 'Reserved', 'Expires 19 Jul'], ['Bardhaman Central', 'Purba Bardhaman', 'FOFO', 'Occupied', 'Medilife Diagnostics']] },
@@ -252,7 +255,7 @@ export default function Dashboard() {
           <ProfileMenu initials={initials} onLogout={signOut} />
         </header>
         <div className="content">
-          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Log Visit' ? <LogVisitDirectory token={session.token} search={search} notify={notify} viewer={{ name: session.name, role: session.role }} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'LIS Bridge' ? <LisBridgeAdminPanel token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'B2B Operations' ? <B2bOperationsModule token={session.token} search={search} notify={notify} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
+          {page === 'Overview' ? <Overview userName={session.name} token={session.token} go={setPage} notify={notify} /> : page === 'Leads' ? <CrmLeadDirectory token={session.token} search={search} notify={notify} createRequest={leadCreateRequest} viewer={{ name: session.name, role: session.role }} /> : page === 'Log Visit' ? <LogVisitDirectory token={session.token} search={search} notify={notify} viewer={{ name: session.name, role: session.role }} /> : page === 'Agency Onboard' ? <AgencyOnboardQueue token={session.token} notify={notify} /> : page === 'Appointments' ? <AppointmentDirectory token={session.token} search={search} viewer={{ name: session.name, role: session.role }} /> : page === 'Applicants' ? <ApplicationDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Territory' ? <TerritorySetup token={session.token} search={search} notify={notify} /> : page === 'Video KYC' ? <VideoKycDashboard token={session.token} search={search} notify={notify} /> : page === 'Agreements' ? <AgreementQueueModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Payments' ? <PaymentOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Training' ? <TrainingStudio token={session.token} notify={notify} /> : page === 'LIS Bridge' ? <LisBridgeAdminPanel token={session.token} notify={notify} /> : page === 'Franchisee Webpage Index' ? <FranchiseWebpageIndex token={session.token} search={search} notify={notify} /> : page === 'Franchisee Directory' ? <FranchiseeDirectory token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'B2B Operations' ? <B2bOperationsModule token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Support' ? <SupportDesk token={session.token} search={search} notify={notify} viewerRole={session.role} /> : page === 'Content CMS' ? <ContentStudio notify={notify} /> : page === 'User Management' ? <UserManagementPanel notify={notify} /> : <Module page={page as OperationalPage} search={search} notify={notify} />}
         </div>
       </section>
       {toast ? <div className="toast">Saved: {toast}</div> : null}
@@ -1223,23 +1226,31 @@ function OnboardingDocumentsReviewSection({ application, token, onApplicationUpd
 }
 
 function BrandingSignageReviewSection({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
-  const branding = application.branding_signage; const unlocked = Boolean(application.territory_allotment?.letter_number) && (application.franchise_model === 'FOFO' ? application.payments.some((payment) => payment.key === 'fofo_one_time_fee' && payment.status === 'paid') : application.payments.some((payment) => payment.key === 'franchise_fee' && payment.status === 'paid'));
+  const branding = application.branding_signage;
+  const unlocked = application.franchise_model === 'FOFO'
+    ? Boolean(application.territory_allotment?.letter_number) && application.payments.some((payment) => payment.key === 'fofo_one_time_fee' && payment.status === 'paid')
+    : Boolean(application.onboarding_modules?.branding_released);
   const [vendor, setVendor] = useState({ name: branding?.vendor?.name ?? '', shop_name: branding?.vendor?.shop_name ?? '', address: branding?.vendor?.address ?? '', phone: branding?.vendor?.phone ?? '' }); const [asset, setAsset] = useState({ title: '', url: '' }); const [materialFile, setMaterialFile] = useState<File | null>(null); const [link, setLink] = useState(''); const [remarks, setRemarks] = useState(branding?.manager_remarks ?? ''); const [cost, setCost] = useState(String(branding?.installation_cost ?? '')); const [invoice, setInvoice] = useState<File | null>(null); const [busy, setBusy] = useState(''); const [error, setError] = useState('');
   useEffect(() => { if (!branding || branding.status === 'approved') return; let active = true; void (async () => { try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { headers: { Authorization: `Bearer ${token}` } }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { vendor_submission_url?: string } } | null; if (active && response.ok && payload?.success) setLink(payload.data?.vendor_submission_url ?? ''); } catch { /* A manager can regenerate the link below. */ } })(); return () => { active = false; }; }, [application.id, branding?.status, token]);
   async function saveSetup() { setBusy('setup'); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ vendor_name: vendor.name, vendor_shop_name: vendor.shop_name, vendor_address: vendor.address, vendor_phone: vendor.phone, materials: asset.title && asset.url ? [asset] : [], material_title: materialFile?.name ?? '', material_name: materialFile?.name ?? '', material_data_url: materialFile ? await asDataUrl(materialFile) : '' }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; vendor_submission_url?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save Branding Signage details.'); onApplicationUpdated(payload.data.application); setLink(payload.data.vendor_submission_url ?? ''); setAsset({ title: '', url: '' }); setMaterialFile(null); notify('Branding vendor workspace saved. Share the secure vendor link.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save Branding Signage details.'); } finally { setBusy(''); } }
   async function review(action: 'save' | 'approve' | 'reject' | 'request_correction') { setBusy(action); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/branding-signage`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, manager_remarks: remarks, installation_cost: cost === '' ? undefined : Number(cost), invoice_name: invoice?.name ?? '', invoice_data_url: invoice ? await asDataUrl(invoice) : '' }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; vendor_submission_url?: string; payment_voucher?: { voucher_number?: string } | null }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save the Branding Signage review.'); onApplicationUpdated(payload.data.application); setLink(payload.data.vendor_submission_url ?? link); setInvoice(null); const voucherNumber = payload.data.payment_voucher?.voucher_number; notify(action === 'approve' ? (voucherNumber ? `Branding approved. Payment voucher ${voucherNumber} created for the accountant.` : 'Branding Signage approved and published to the applicant portal.') : action === 'reject' ? 'Branding submission rejected. Vendor can revise amount and bill from the same secure link.' : action === 'request_correction' ? 'Vendor was asked to correct the branding amount, bill or evidence.' : 'Branding Signage review saved.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save the Branding Signage review.'); } finally { setBusy(''); } }
-  if (!unlocked) return <section className="application-review-section workflow-module locked"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>Available after Territory Allotment and the required payment. FOFO unlocks after its one-time payment; FOCO unlocks after Phase 2.</p></div><span>Payment gate</span></div></section>;
+  if (!unlocked) return <section className="application-review-section workflow-module locked"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>FOFO unlocks after its one-time payment. FOCO unlocks only when a manager releases the Branding module after Territory Allotment.</p></div><span>Manager release required</span></div></section>;
   const submitted = branding?.status === 'submitted' || branding?.status === 'revision_requested' || branding?.status === 'rejected';
   return <section className="application-review-section workflow-module branding-module"><div className="application-review-section-head"><div><h3>Branding Signage</h3><p>Share approved assets, assign a vendor, verify completed installation evidence, total amount and bill. Approval creates an accountant payment voucher.</p></div><span>{branding ? branding.status.replaceAll('_', ' ') : 'Ready to set up'}</span></div>{!branding || !branding.vendor ? <div className="workflow-setup-grid"><label>Vendor name<input value={vendor.name} onChange={(event) => setVendor((current) => ({ ...current, name: event.target.value }))} /></label><label>Shop name<input value={vendor.shop_name} onChange={(event) => setVendor((current) => ({ ...current, shop_name: event.target.value }))} /></label><label>Contact number<input value={vendor.phone} onChange={(event) => setVendor((current) => ({ ...current, phone: event.target.value }))} /></label><label className="workflow-wide">Vendor address<textarea value={vendor.address} onChange={(event) => setVendor((current) => ({ ...current, address: event.target.value }))} /></label><label>Material title<input value={asset.title} onChange={(event) => setAsset((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Exterior signage artwork" /></label><label>Material link<input type="url" value={asset.url} onChange={(event) => setAsset((current) => ({ ...current, url: event.target.value }))} placeholder="https://..." /></label><label className="workflow-wide">Or upload approved material<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setMaterialFile(event.target.files?.[0] ?? null)} /></label><button type="button" disabled={busy === 'setup'} onClick={() => void saveSetup()}>{busy === 'setup' ? 'Saving...' : 'Assign vendor and create secure link'}</button></div> : <><div className="workflow-assignment"><div><b>{branding.vendor.name} · {branding.vendor.shop_name}</b><small>{branding.vendor.phone} · {branding.vendor.address}</small></div>{branding.status !== 'approved' ? <button type="button" className="secondary" onClick={() => void navigator.clipboard?.writeText(link).then(() => notify('Secure vendor link copied.')).catch(() => setError('Copy the secure link manually.'))}>Copy secure vendor link</button> : null}</div>{link ? <label className="secure-link-field">Vendor submission link<input readOnly value={link} /></label> : null}{branding.materials?.length ? <div className="workflow-assets">{branding.materials.map((item) => <a key={item.id || item.url} href={resolveUploadUrl(item.url)} target="_blank" rel="noreferrer">{item.title}</a>)}</div> : null}{branding.photographs?.length ? <div className="branding-photo-grid">{branding.photographs.map((photo) => <a key={photo.id || photo.url} href={resolveUploadUrl(photo.url)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(photo.url)} alt={photo.name} /><span>{photo.name}</span></a>)}</div> : null}{(branding.installation_cost || branding.invoice) ? <div className="workflow-assignment"><div><b>Vendor total amount: {branding.installation_cost ? `₹${Number(branding.installation_cost).toLocaleString('en-IN')}` : '—'}</b><small>{branding.completion_details || 'No completion notes'}</small></div>{branding.invoice ? <a href={resolveUploadUrl(branding.invoice.url)} target="_blank" rel="noreferrer">View vendor bill</a> : <span>No bill uploaded</span>}</div> : null}{submitted ? <><label className="workflow-wide">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Approval note or correction instructions for amount, bill or photographs" /></label><div className="workflow-review-grid"><label>Override amount (INR, optional)<input type="number" min="0" value={cost} onChange={(event) => setCost(event.target.value)} placeholder={branding.installation_cost ? String(branding.installation_cost) : '0'} /></label><label>Replace bill (optional)<input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => setInvoice(event.target.files?.[0] ?? null)} /></label></div><div className="workflow-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void review('save')}>Save review</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void review('request_correction')}>Request correction</button><button type="button" className="danger" disabled={Boolean(busy)} onClick={() => void review('reject')}>Reject</button><button type="button" disabled={Boolean(busy)} onClick={() => void review('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve branding work'}</button></div></> : branding.status === 'approved' ? <p className="workflow-final">Approved {branding.approved_at ? displayDate(branding.approved_at) : ''}. {branding.payment_voucher_number ? `Payment voucher ${branding.payment_voucher_number} was created for the accountant.` : 'Branding evidence, invoice and cost are now visible to the applicant.'}</p> : <p className="workflow-awaiting">Awaiting the vendor’s completed-installation submission, total amount and bill through the secure link.</p>}</>}{error ? <p className="application-review-error">{error}</p> : null}</section>;
 }
 
 function HrProcessReviewSection({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
-  const hr = application.hr_process; const unlocked = application.franchise_model === 'FOCO' && Boolean(application.territory_allotment?.letter_number) && application.payments.some((payment) => payment.key === 'franchise_fee' && payment.status === 'paid'); const [link, setLink] = useState(''); const [remarks, setRemarks] = useState(hr?.manager_remarks ?? ''); const [busy, setBusy] = useState(''); const [error, setError] = useState('');
+  const hr = application.hr_process;
+  const unlocked = application.franchise_model === 'FOCO' && Boolean(application.onboarding_modules?.hr_released);
+  const [link, setLink] = useState('');
+  const [remarks, setRemarks] = useState(hr?.manager_remarks ?? '');
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
   useEffect(() => { if (!hr || hr.status === 'approved') return; let active = true; void (async () => { try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/hr-process`, { headers: { Authorization: `Bearer ${token}` } }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { hr_submission_url?: string } } | null; if (active && response.ok && payload?.success) setLink(payload.data?.hr_submission_url ?? ''); } catch { /* Regenerate below if needed. */ } })(); return () => { active = false; }; }, [application.id, hr?.status, token]);
   async function assign() { setBusy('assign'); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/hr-process`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; hr_submission_url?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to generate the secure HR link.'); onApplicationUpdated(payload.data.application); setLink(payload.data.hr_submission_url ?? ''); notify('Secure HR submission link created.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to generate the secure HR link.'); } finally { setBusy(''); } }
   async function review(action: 'save' | 'approve' | 'reject' | 'request_correction') { setBusy(action); setError(''); try { const response = await fetch(`${API_BASE}/admin/applications/${application.id}/hr-process`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, manager_remarks: remarks }) }); const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord; hr_submission_url?: string }; error?: { message?: string } } | null; if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to save HR review.'); onApplicationUpdated(payload.data.application); setLink(payload.data.hr_submission_url ?? link); notify(action === 'approve' ? 'HR employee onboarding approved and published to the applicant portal.' : action === 'request_correction' ? 'HR was asked to correct the employee submission.' : 'HR review saved.'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to save HR review.'); } finally { setBusy(''); } }
   if (application.franchise_model !== 'FOCO') return null;
-  if (!unlocked) return <section className="application-review-section workflow-module locked"><div className="application-review-section-head"><div><h3>HR Process</h3><p>FOCO HR onboarding unlocks after Territory Allotment and verified Phase 2 payment.</p></div><span>Phase 2 required</span></div></section>;
+  if (!unlocked) return <section className="application-review-section workflow-module locked"><div className="application-review-section-head"><div><h3>HR Process</h3><p>FOCO HR onboarding unlocks only when a manager releases the HR module after Territory Allotment.</p></div><span>Manager release required</span></div></section>;
   return <section className="application-review-section workflow-module hr-module"><div className="application-review-section-head"><div><h3>HR Process</h3><p>Generate a secure HR link for up to two employee assignments and review the submitted Offer Letters.</p></div><span>{hr ? hr.status.replaceAll('_', ' ') : 'Ready to assign'}</span></div>{!hr ? <button type="button" disabled={busy === 'assign'} onClick={() => void assign()}>{busy === 'assign' ? 'Generating...' : 'Generate secure HR submission link'}</button> : <>{hr.status !== 'approved' && link ? <div className="workflow-assignment"><label className="secure-link-field">HR submission link<input readOnly value={link} /></label><button type="button" className="secondary" onClick={() => void navigator.clipboard?.writeText(link).then(() => notify('Secure HR link copied.')).catch(() => setError('Copy the secure link manually.'))}>Copy link</button></div> : null}{hr.employees?.length ? <div className="hr-employee-cards">{hr.employees.map((employee) => <article key={employee.id}><b>{employee.name}</b><span>{employee.designation} · {employee.phone}</span><small>Joining {employee.joining_date}</small>{employee.details ? <p>{employee.details}</p> : null}{employee.offer_letter ? <a href={resolveUploadUrl(employee.offer_letter.url)} target="_blank" rel="noreferrer">View Offer Letter</a> : null}</article>)}</div> : <p className="workflow-awaiting">Awaiting HR’s employee assignments and Offer Letters.</p>}{['submitted', 'revision_requested', 'rejected'].includes(hr.status) ? <><label className="workflow-wide">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Approval note or correction instructions" /></label><div className="workflow-actions"><button type="button" className="secondary" disabled={Boolean(busy)} onClick={() => void review('save')}>Save review</button><button type="button" className="warning" disabled={Boolean(busy)} onClick={() => void review('request_correction')}>Request correction</button><button type="button" className="danger" disabled={Boolean(busy)} onClick={() => void review('reject')}>Reject</button><button type="button" disabled={Boolean(busy)} onClick={() => void review('approve')}>{busy === 'approve' ? 'Approving...' : 'Approve HR onboarding'}</button></div></> : hr.status === 'approved' ? <p className="workflow-final">Approved employee records and Offer Letters are now visible to the applicant.</p> : null}</>}{error ? <p className="application-review-error">{error}</p> : null}</section>;
 }
 
@@ -1272,8 +1283,6 @@ function FocoPhaseTwoUnlock({ application, token, onApplicationUpdated, notify }
 
 function FocoSecurityDepositUnlock({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
   const phaseTwoPaid = application.payments.some((payment) => payment.key === 'franchise_fee' && payment.status === 'paid');
-  const brandingApproved = application.branding_signage?.status === 'approved';
-  const hrApproved = application.hr_process?.status === 'approved';
   const phaseThree = application.payments.find((payment) => payment.key === 'security_deposit');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1295,7 +1304,7 @@ function FocoSecurityDepositUnlock({ application, token, onApplicationUpdated, n
   if (phaseThree.status === 'paid') return <div className="phase-two-unlock released"><div><b>FOCO Phase 3 payment received</b><span>The security deposit has been paid and the final onboarding record is retained in the audit trail.</span></div><span className="phase-two-status">Paid</span></div>;
   if (phaseThree.status === 'due') return <div className="phase-two-unlock released"><div><b>FOCO Phase 3 payment released</b><span>The applicant can now read and accept the latest Phase 3 security deposit terms before paying.</span></div><span className="phase-two-status">Awaiting applicant</span></div>;
 
-  return <div className="phase-two-unlock"><div><b>Unlock Third Payment Phase (Security Deposit)</b><span>{!phaseTwoPaid ? 'Phase 2 payment must be received first.' : !brandingApproved ? 'Branding Signage must be approved before releasing this payment.' : !hrApproved ? 'HR Process must be approved before releasing this payment.' : 'Branding and HR are approved. Release the security deposit only when management is ready for the applicant to proceed.'}</span></div><button type="button" disabled={busy || !phaseTwoPaid || !brandingApproved || !hrApproved} onClick={() => void unlock()}>{busy ? 'Unlocking...' : 'Unlock Phase 3 payment'}</button>{error ? <p className="application-review-error">{error}</p> : null}</div>;
+  return <div className="phase-two-unlock"><div><b>Unlock Third Payment Phase (Security Deposit)</b><span>{!phaseTwoPaid ? 'Phase 2 payment must be received first.' : 'Release the security deposit when management is ready. Onboarding modules are controlled separately.'}</span></div><button type="button" disabled={busy || !phaseTwoPaid} onClick={() => void unlock()}>{busy ? 'Unlocking...' : 'Unlock Phase 3 payment'}</button>{error ? <p className="application-review-error">{error}</p> : null}</div>;
 }
 
 function TrainingReviewSection({ application, token, agreementExecuted, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; agreementExecuted: boolean; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
@@ -1545,33 +1554,219 @@ function PartnerPortalCredentialsPanel({ application, token, onApplicationUpdate
   );
 }
 
+function OnboardingModuleReleasePanel({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+  if (application.franchise_model !== 'FOCO') return null;
+  const territoryIssued = Boolean(application.territory_allotment?.letter_number);
+  const modules = application.onboarding_modules;
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  async function release(module: 'branding' | 'hr') {
+    setBusy(module);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/onboarding-modules/${module}/release`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: ApplicationRecord; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? `Unable to release ${module === 'branding' ? 'Branding' : 'HR'}.`);
+      onApplicationUpdated(payload.data);
+      notify(module === 'branding' ? 'Branding Signage released to the applicant portal.' : 'HR Process released to the applicant portal.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to release this onboarding module.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <section className="application-review-section onboarding-release-panel">
+      <div className="application-review-section-head">
+        <div>
+          <h3>Onboarding module release</h3>
+          <p>Payment phase unlock does not open Branding or HR automatically. Release each module separately after Territory Allotment.</p>
+        </div>
+      </div>
+      <div className="onboarding-release-grid">
+        <article>
+          <b>Branding Signage</b>
+          <span>{modules?.branding_released ? `Released ${modules.branding_released_at ? displayDate(modules.branding_released_at) : ''}${modules.branding_released_by ? ` by ${modules.branding_released_by}` : ''}` : 'Locked for applicant'}</span>
+          {!modules?.branding_released ? <button type="button" disabled={Boolean(busy) || !territoryIssued} onClick={() => void release('branding')}>{busy === 'branding' ? 'Releasing…' : 'Release Branding'}</button> : null}
+        </article>
+        <article>
+          <b>HR Process</b>
+          <span>{modules?.hr_released ? `Released ${modules.hr_released_at ? displayDate(modules.hr_released_at) : ''}${modules.hr_released_by ? ` by ${modules.hr_released_by}` : ''}` : 'Locked for applicant'}</span>
+          {!modules?.hr_released ? <button type="button" disabled={Boolean(busy) || !territoryIssued} onClick={() => void release('hr')}>{busy === 'hr' ? 'Releasing…' : 'Release HR'}</button> : null}
+        </article>
+      </div>
+      {!territoryIssued ? <p className="application-review-note">Issue the Territory Allotment Letter before releasing onboarding modules.</p> : null}
+      {error ? <p className="application-review-error">{error}</p> : null}
+    </section>
+  );
+}
+
+function FocoVariablePaymentPanel({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+  if (application.franchise_model !== 'FOCO') return null;
+  const schedule = application.payment_schedule;
+  const [phaseAmounts, setPhaseAmounts] = useState<Record<string, string>>({});
+  const [recordPhase, setRecordPhase] = useState('application_fee');
+  const [recordAmount, setRecordAmount] = useState('');
+  const [recordReference, setRecordReference] = useState('');
+  const [recordRemarks, setRecordRemarks] = useState('');
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const phase of schedule?.phases ?? application.payments) {
+      const key = 'key' in phase ? phase.key : (phase as ApplicationPayment).key;
+      const amount = 'scheduled_amount' in phase ? phase.scheduled_amount : (phase as ApplicationPayment).amount;
+      next[key] = String(amount ?? '');
+    }
+    setPhaseAmounts(next);
+  }, [application.id, application.updated_at, schedule, application.payments]);
+
+  async function saveSchedule(recalculate = false) {
+    setBusy('schedule');
+    setError('');
+    try {
+      const body: { phase_amounts?: Record<string, number>; recalculate?: boolean } = recalculate ? { recalculate: true } : {
+        phase_amounts: Object.fromEntries(Object.entries(phaseAmounts).map(([key, value]) => [key, Number(value) || 0])),
+      };
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/payment-schedule`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to update the FOCO payment schedule.');
+      onApplicationUpdated(payload.data.application);
+      notify(recalculate ? 'Remaining FOCO balance redistributed across unpaid phases.' : 'FOCO payment phase amounts updated.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to update the FOCO payment schedule.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function recordPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy('record');
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/payments/${recordPhase}/record`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: Number(recordAmount),
+          method: 'bank_transfer',
+          transaction_reference: recordReference,
+          remarks: recordRemarks,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to record this payment.');
+      onApplicationUpdated(payload.data.application);
+      setRecordAmount('');
+      setRecordReference('');
+      setRecordRemarks('');
+      notify(`Recorded ₹${Number(recordAmount).toLocaleString('en-IN')} against ${recordPhase.replaceAll('_', ' ')}. Receipt is available in Payments.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to record this payment.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  const recordTarget = application.payments.find((payment) => payment.key === recordPhase);
+
+  return (
+    <div className="foco-variable-payment-panel">
+      <div className="foco-variable-payment-summary">
+        <div><span>FOCO contract total</span><b>₹{(schedule?.contract_total ?? 320000).toLocaleString('en-IN')}</b></div>
+        <div><span>Total paid</span><b>₹{(schedule?.total_paid ?? 0).toLocaleString('en-IN')}</b></div>
+        <div><span>Remaining payable</span><b>₹{(schedule?.total_remaining ?? 0).toLocaleString('en-IN')}</b></div>
+      </div>
+      <div className="foco-variable-payment-grid">
+        {application.payments.map((payment) => (
+          <label key={payment.key}>
+            {payment.label} ({payment.status})
+            <input
+              type="number"
+              min="0"
+              value={phaseAmounts[payment.key] ?? String(payment.amount)}
+              disabled={payment.status === 'paid' || busy === 'schedule'}
+              onChange={(event) => setPhaseAmounts((current) => ({ ...current, [payment.key]: event.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="foco-variable-payment-actions">
+        <button type="button" disabled={busy === 'schedule'} onClick={() => void saveSchedule(false)}>{busy === 'schedule' ? 'Saving…' : 'Save phase amounts'}</button>
+        <button type="button" className="secondary" disabled={busy === 'schedule'} onClick={() => void saveSchedule(true)}>Auto-adjust remaining balance</button>
+      </div>
+      <form className="foco-variable-payment-record" onSubmit={(event) => void recordPayment(event)}>
+        <b>Record exact payment (manager)</b>
+        <p>Record the actual amount received, generate a receipt, and auto-adjust remaining phases. Unlock the payment phase first if it is still locked.</p>
+        <label>Payment phase
+          <select value={recordPhase} onChange={(event) => setRecordPhase(event.target.value)}>
+            {application.payments.map((payment) => <option key={payment.key} value={payment.key} disabled={payment.status === 'paid'}>{payment.label} · {payment.status}</option>)}
+          </select>
+        </label>
+        <label>Amount received (INR)
+          <input required type="number" min="1" value={recordAmount} onChange={(event) => setRecordAmount(event.target.value)} placeholder={recordTarget ? String(recordTarget.amount) : '200000'} />
+        </label>
+        <label>Transaction / UTR reference
+          <input value={recordReference} onChange={(event) => setRecordReference(event.target.value)} placeholder="NEFT / UTR / cheque reference" />
+        </label>
+        <label>Remarks
+          <input value={recordRemarks} onChange={(event) => setRecordRemarks(event.target.value)} placeholder="Optional manager note" />
+        </label>
+        <button type="submit" disabled={busy === 'record' || recordTarget?.status === 'locked' || recordTarget?.status === 'paid'}>{busy === 'record' ? 'Recording…' : 'Record payment & generate receipt'}</button>
+      </form>
+      {error ? <p className="application-review-error">{error}</p> : null}
+    </div>
+  );
+}
+
 function ApplicationContactEditor({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+  const [fullName, setFullName] = useState(application.full_name);
   const [email, setEmail] = useState(application.email);
   const [mobile, setMobile] = useState(application.mobile);
+  const [address, setAddress] = useState(application.address ?? '');
+  const [city, setCity] = useState(application.city ?? '');
+  const [district, setDistrict] = useState(application.district ?? '');
+  const [pincode, setPincode] = useState(application.pincode ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    setFullName(application.full_name);
     setEmail(application.email);
     setMobile(application.mobile);
-  }, [application.email, application.mobile]);
+    setAddress(application.address ?? '');
+    setCity(application.city ?? '');
+    setDistrict(application.district ?? '');
+    setPincode(application.pincode ?? '');
+  }, [application.full_name, application.email, application.mobile, application.address, application.city, application.district, application.pincode]);
 
-  async function saveContact(event: FormEvent<HTMLFormElement>) {
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/contact-details`, {
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/applicant-profile`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mobile }),
+        body: JSON.stringify({ full_name: fullName, email, mobile, address, city, district, pincode }),
       });
       const payload = await response.json().catch(() => null) as { success?: boolean; data?: ApplicationRecord; error?: { message?: string } } | null;
-      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to update applicant contact details.');
+      if (!response.ok || !payload?.success || !payload.data) throw new Error(payload?.error?.message ?? 'Unable to update applicant profile.');
       onApplicationUpdated(payload.data);
-      notify('Applicant contact details updated and synced to the applicant profile.');
+      notify('Applicant profile updated and synced to the portal and related records.');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to update applicant contact details.');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to update applicant profile.');
     } finally {
       setBusy(false);
     }
@@ -1581,16 +1776,102 @@ function ApplicationContactEditor({ application, token, onApplicationUpdated, no
     <section className="application-review-section application-contact-editor">
       <div className="application-review-section-head">
         <div>
-          <h3>Registered contact details</h3>
-          <p>Applicants cannot change email or mobile directly. Updates here sync immediately to the applicant profile and are recorded in the audit log.</p>
+          <h3>Applicant profile</h3>
+          <p>Edit name, address, registered mobile and email. Changes sync immediately to the Applicant Portal and ERP without creating duplicate records.</p>
         </div>
       </div>
-      <form className="application-contact-form" onSubmit={(event) => void saveContact(event)}>
+      <form className="application-contact-form application-profile-form" onSubmit={(event) => void saveProfile(event)}>
+        <label>Full name<input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label>
         <label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <label>Mobile number<input required inputMode="tel" value={mobile} onChange={(event) => setMobile(event.target.value)} /></label>
+        <label>Registered mobile<input required inputMode="tel" value={mobile} onChange={(event) => setMobile(event.target.value)} /></label>
+        <label className="workflow-wide">Address<textarea required value={address} onChange={(event) => setAddress(event.target.value)} /></label>
+        <label>City<input required value={city} onChange={(event) => setCity(event.target.value)} /></label>
+        <label>District<input required value={district} onChange={(event) => setDistrict(event.target.value)} /></label>
+        <label>PIN code<input required inputMode="numeric" pattern="\d{6}" value={pincode} onChange={(event) => setPincode(event.target.value)} /></label>
         {error ? <p className="application-review-error" role="alert">{error}</p> : null}
-        <button type="submit" disabled={busy}>{busy ? 'Saving contact details...' : 'Save contact details'}</button>
+        <button type="submit" disabled={busy}>{busy ? 'Saving profile…' : 'Save applicant profile'}</button>
       </form>
+    </section>
+  );
+}
+
+type FocoCentreOption = { parent_foco_id: string; franchisee_id: string; franchise_name: string; franchise_code: string; address: string; district: string; pincode: string; onboarding_status: string };
+
+function FofoParentFocoMapper({ application, token, onApplicationUpdated, notify }: { application: ApplicationRecord; token: string; onApplicationUpdated: (application: ApplicationRecord) => void; notify: (message: string) => void }) {
+  const [centres, setCentres] = useState<FocoCentreOption[]>([]);
+  const [selected, setSelected] = useState(application.parent_foco_id || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const locked = Boolean(application.parent_foco_id) && Boolean(application.onboarding_certificate?.is_onboarded);
+
+  useEffect(() => {
+    setSelected(application.parent_foco_id || '');
+  }, [application.parent_foco_id]);
+
+  useEffect(() => {
+    if (application.franchise_model !== 'FOFO') return;
+    let current = true;
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/admin/foco-centres`, { headers: { Authorization: `Bearer ${token}` } });
+        const payload = await response.json().catch(() => null) as { success?: boolean; data?: { centres?: FocoCentreOption[] }; error?: { message?: string } } | null;
+        if (!response.ok || !payload?.success) throw new Error(payload?.error?.message ?? 'Unable to load active FOCO centres.');
+        if (current) setCentres(payload.data?.centres || []);
+      } catch (loadError) {
+        if (current) setError(loadError instanceof Error ? loadError.message : 'Unable to load active FOCO centres.');
+      }
+    })();
+    return () => { current = false; };
+  }, [application.franchise_model, token]);
+
+  if (application.franchise_model !== 'FOFO') return null;
+
+  async function save() {
+    if (!selected) { setError('Select an active FOCO centre.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const chosen = centres.find((item) => item.parent_foco_id === selected || item.franchisee_id === selected);
+      const response = await fetch(`${API_BASE}/admin/applications/${application.id}/parent-foco`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_foco_id: selected, parent_foco_name: chosen?.franchise_name || '' }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; data?: { application?: ApplicationRecord }; error?: { message?: string } } | null;
+      if (!response.ok || !payload?.success || !payload.data?.application) throw new Error(payload?.error?.message ?? 'Unable to map this FOFO under the selected FOCO.');
+      onApplicationUpdated(payload.data.application);
+      notify(`FOFO mapped under ${payload.data.application.parent_foco_name || selected}.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save FOCO mapping.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="application-review-section">
+      <div className="application-review-section-head">
+        <div>
+          <h3>Under Which FOCO?</h3>
+          <p>Permanently map this FOFO to an active FOCO. Eligible FOFO business then earns Override Upsell Commission for that FOCO (default 20%, editable on the FOCO Franchisee Profile).</p>
+        </div>
+        <span>{application.parent_foco_name || 'Not mapped'}</span>
+      </div>
+      {application.parent_foco_id ? <p>Currently mapped to <b>{application.parent_foco_name || application.parent_foco_id}</b>{application.parent_foco_mapped_at ? ` · ${displayDate(application.parent_foco_mapped_at)}` : ''}.</p> : null}
+      <div className="territory-allotment-form">
+        <label>Active FOCO centre
+          <select value={selected} disabled={locked || busy} onChange={(event) => setSelected(event.target.value)}>
+            <option value="">Select an active FOCO</option>
+            {centres.map((item) => (
+              <option key={item.parent_foco_id || item.franchisee_id} value={item.parent_foco_id || item.franchisee_id}>
+                {item.franchise_name}{item.address ? ` · ${item.address}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        {locked ? <p>Mapping is permanent after onboarding.</p> : <button type="button" disabled={busy || !selected} onClick={() => void save()}>{busy ? 'Saving…' : application.parent_foco_id ? 'Update FOCO map' : 'Save FOCO map'}</button>}
+        {error ? <p className="application-review-error">{error}</p> : null}
+      </div>
     </section>
   );
 }
@@ -1621,6 +1902,7 @@ function ApplicationReviewModal({ application, token, busyId, error, viewerRole,
       <section className="application-review-section"><div className="application-review-section-head"><div><h3>Applicant and franchise request</h3><p>Check the submitted details against the supporting KYC files.</p></div><span>{application.terms_accepted ? 'Terms accepted' : 'Terms not recorded'}</span></div><div className="application-details-grid"><div><small>Date of birth</small><b>{application.date_of_birth || '—'}</b></div><div><small>Applicant user ID</small><b>{application.user_id || '—'}</b></div><div><small>PAN number</small><b>{application.pan_number || '—'}</b></div><div><small>Aadhaar number</small><b>{application.aadhaar_number || '—'}</b></div><div><small>Franchise model</small><b>{application.franchise_model}</b></div><div><small>Preferred location</small><b>{application.preferred_location}</b></div><div><small>PIN code</small><b>{application.pincode || '—'}</b></div><div><small>Assigned territory</small><b>{territory}</b></div><div><small>Employee Referral Number</small><b>{application.employee_referral_number || '—'}</b></div><div><small>Reach internal reference</small><b>{application.employee_referral_number ? 'Locked from Reach handoff' : 'Not provided'}</b></div><div className="application-detail-full"><small>Residential address</small><b>{[application.address, application.city, application.district, application.pincode].filter(Boolean).join(', ') || '—'}</b></div><div className="application-detail-full"><small>Business experience</small><b>{application.business_experience || 'Not provided'}</b></div></div></section>
 
       <ApplicationContactEditor application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
+      <FofoParentFocoMapper application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
 
       <section className="application-review-section"><div className="application-review-section-head"><div><h3>KYC document verification</h3><p>Open each file, then choose <b>Upload again</b> for a correction or <b>Verified</b> when it is accepted. Both choices are available until the manager saves a decision.</p></div><span>{uploadedCount}/4 uploaded</span></div><div className="application-document-grid">{requiredApplicationDocuments.map((document) => { const file = application.documents?.[document.key]; const verification = application.document_verifications?.[document.key]; const verified = verification?.status === 'verified'; const uploadAgainRequested = verification?.status === 'upload_requested'; const reviewDecisionSaved = verified || uploadAgainRequested; const documentBusy = busyId === `document:${application.id}:${document.key}`; return <article key={document.key} className={verified ? 'application-document verified' : uploadAgainRequested ? 'application-document upload-requested' : 'application-document'}><div><span>{document.shortLabel}</span><h4>{document.label}</h4><p>{file?.name || 'Not uploaded'}</p>{verified ? <small>Verified by {verification?.verified_by || 'RFMS Officer'}{verification?.verified_at ? ` · ${displayDate(verification.verified_at)}` : ''}</small> : uploadAgainRequested ? <small>Upload again requested. The applicant has been notified.</small> : <small>Ready for manager review.</small>}</div><div className="application-document-actions">{file?.url ? <a href={resolveUploadUrl(file.url)} target="_blank" rel="noreferrer">View file</a> : <span className="application-document-missing">Missing</span>}<div className="application-document-review-actions"><button className={`document-upload-again${uploadAgainRequested ? ' selected' : ''}`} type="button" disabled={!file?.url || documentBusy || reviewDecisionSaved} onClick={() => onDocumentVerification(document.key, false)}>{documentBusy ? 'Saving…' : 'Upload again'}</button><button className={`document-verified${verified ? ' selected' : ''}`} type="button" disabled={!file?.url || documentBusy || reviewDecisionSaved} onClick={() => onDocumentVerification(document.key, true)}>{documentBusy ? 'Saving…' : 'Verified'}</button></div></div></article>; })}</div></section>
 
@@ -1629,12 +1911,13 @@ function ApplicationReviewModal({ application, token, busyId, error, viewerRole,
       <FieldVisitReviewSection application={application} token={token} eligible={Boolean(completedVideoKyc)} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       <OnboardingDocumentsReviewSection application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       <EnhancedTerritoryAllotmentSection application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
+      <OnboardingModuleReleasePanel application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       <BrandingSignageReviewSection application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       <HrProcessReviewSection application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       {agreementExecuted ? <section className="application-review-section agreement-process-banner executed"><div><b>Agreement executed</b><span>Download the executed agreement from Agreement Queue. After onboarding, the complete franchise record is available in Franchisee Directory.</span></div>{application.agreement_workflow?.executed?.agreement_url ? <a href={resolveUploadUrl(application.agreement_workflow.executed.agreement_url)} target="_blank" rel="noreferrer">Download executed agreement</a> : null}</section> : null}
       <TrainingReviewSection application={application} token={token} agreementExecuted={agreementExecuted} onApplicationUpdated={onApplicationUpdated} notify={notify} />
       <OnboardingCertificateReviewSection application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} />
-      <section className="application-review-section application-payment-review"><div className="application-review-section-head"><div><h3>Payment and workflow</h3><p>Payment release is controlled by the manager. FOCO Phase 2 requires a Territory Allotment Letter, manager unlock and separate applicant acceptance of the current Phase 2 terms. FOCO Phase 3 unlocks only after Branding Signage and HR Process are approved.</p></div><span>{applicationStage(application.stage)}</span></div><div className="application-payment-list">{application.payments.map((payment) => <article key={payment.key}><div><b>{payment.label}</b><small>{payment.purpose}</small></div><div><b>₹{payment.amount.toLocaleString('en-IN')}</b><small className={`application-payment-status ${payment.status}`}>{applicationStage(payment.status)}</small></div></article>)}</div><FocoPhaseTwoUnlock application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /><FocoSecurityDepositUnlock application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /></section>
+      <section className="application-review-section application-payment-review"><div className="application-review-section-head"><div><h3>Payment and workflow</h3><p>FOCO supports variable payments against a ₹3,20,000 contract total. Managers unlock payment phases, record exact amounts, customize next phase balances, and release onboarding modules separately.</p></div><span>{applicationStage(application.stage)}</span></div><div className="application-payment-list">{application.payments.map((payment) => <article key={payment.key}><div><b>{payment.label}</b><small>{payment.purpose}</small></div><div><b>₹{payment.amount.toLocaleString('en-IN')}</b><small className={`application-payment-status ${payment.status}`}>{applicationStage(payment.status)}</small></div></article>)}</div><FocoVariablePaymentPanel application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /><FocoPhaseTwoUnlock application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /><FocoSecurityDepositUnlock application={application} token={token} onApplicationUpdated={onApplicationUpdated} notify={notify} /></section>
 
       <section className="application-review-section"><label className="application-review-notes">Manager review note <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Record any document check, clarification or approval note for the applicant file." /></label><div className="application-review-history"><div><h3>Review history</h3><span>{history.length} recorded action{history.length === 1 ? '' : 's'}</span></div>{history.length ? history.map((entry) => <article key={entry.id}><b>{reviewActivityLabel(entry.type)}</b><p>{entry.message}</p><small>{entry.actor} · {displayDate(entry.created_at)}</small></article>) : <p>No manager review actions have been recorded yet.</p>}</div></section>
 
@@ -1684,19 +1967,101 @@ function VideoKycDashboard({ token, search, notify }: { token: string; search: s
   </section>;
 }
 
-function attachVideoElement(video: HTMLVideoElement | null, stream: MediaStream | null) {
+const VIDEO_KYC_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  // Public TURN fallback so both cameras work across mobile / office NATs (STUN-only often goes one-way).
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
+async function openVideoKycMedia() {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera access needs HTTPS (or localhost). Open the admin portal on https://ffms.e-remedium.in.');
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+  } catch (firstError) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch {
+      throw firstError instanceof Error ? firstError : new Error('Unable to open camera or microphone.');
+    }
+  }
+}
+
+async function attachVideoElement(video: HTMLVideoElement | null, stream: MediaStream | null, preferUnmute = false) {
   if (!video || !stream) return;
+  stream.getAudioTracks().forEach((track) => { track.enabled = true; });
   if (video.srcObject !== stream) video.srcObject = stream;
-  void video.play().catch(() => undefined);
+  try {
+    if (preferUnmute) {
+      video.muted = false;
+      video.volume = 1;
+      await video.play();
+      return;
+    }
+    // Local preview / blocked remote autoplay — keep muted so picture still plays.
+    video.muted = true;
+    await video.play();
+  } catch {
+    if (preferUnmute) {
+      try {
+        video.muted = true;
+        await video.play();
+      } catch {
+        /* Polled attach retries while the room stays open. */
+      }
+    }
+  }
+}
+
+function bindRemoteMicElement(audio: HTMLAudioElement | null, remote: MediaStream | null) {
+  if (!audio) return null;
+  if (!remote) {
+    audio.srcObject = null;
+    return null;
+  }
+  // Same MediaStream as remote <video> — cloning audio tracks into a new stream is a common
+  // Chrome cause of "track present but silent".
+  remote.getAudioTracks().forEach((track) => {
+    track.enabled = true;
+  });
+  if (audio.srcObject !== remote) {
+    audio.srcObject = remote;
+  }
+  audio.volume = 1;
+  return remote;
+}
+
+function appendRemoteTrack(remoteStreamRef: { current: MediaStream | null }, track: MediaStreamTrack, inbound?: MediaStream | null) {
+  let remote = remoteStreamRef.current;
+  if (!remote) {
+    remote = inbound || new MediaStream();
+    remoteStreamRef.current = remote;
+  }
+  if (!remote.getTracks().some((existing) => existing.id === track.id)) {
+    if (inbound && inbound !== remote) {
+      inbound.getTracks().forEach((piece) => {
+        if (!remote!.getTracks().some((existing) => existing.id === piece.id)) remote!.addTrack(piece);
+      });
+    } else {
+      remote.addTrack(track);
+    }
+  }
+  return remote;
 }
 
 function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { token: string; session: VideoKycSession; onClose: () => void; onChanged: (session: VideoKycSession) => void; notify: (message: string) => void }) {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
+  const pendingAnswer = useRef<RTCSessionDescriptionInit | null>(null);
   const processedSignals = useRef(new Set<string>());
   const offerSentRef = useRef(false);
   const [live, setLive] = useState(false);
@@ -1704,6 +2069,9 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
   const [captureBusy, setCaptureBusy] = useState(false);
   const [remarks, setRemarks] = useState(session.remarks || '');
   const [error, setError] = useState('');
+  const [callState, setCallState] = useState('');
+  const [hearingApplicant, setHearingApplicant] = useState(false);
+  const [hasRemoteAudio, setHasRemoteAudio] = useState(false);
   const [currentSession, setCurrentSession] = useState(session);
 
   const request = useCallback(async (path: string, method = 'POST', body?: unknown) => {
@@ -1717,6 +2085,32 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
     await request(`/video-kyc/${currentSession.id}/signals`, 'POST', { type, signal });
   }, [currentSession.id, request]);
 
+  const hearingApplicantRef = useRef(false);
+  const syncRemoteMediaElements = useCallback((remote: MediaStream | null) => {
+    remoteStreamRef.current = remote;
+    const video = remoteVideoRef.current;
+    const audio = remoteAudioRef.current;
+    if (video) {
+      video.muted = true;
+      void attachVideoElement(video, remote, false);
+    }
+    if (!audio) return;
+    if (!remote) {
+      audio.srcObject = null;
+      setHasRemoteAudio(false);
+      return;
+    }
+    const audioTracks = remote.getAudioTracks();
+    setHasRemoteAudio(audioTracks.length > 0);
+    bindRemoteMicElement(audio, remote);
+    if (!hearingApplicantRef.current) {
+      audio.muted = true;
+      return;
+    }
+    audio.muted = false;
+    void audio.play().catch(() => undefined);
+  }, []);
+
   const stopRoom = useCallback(() => {
     peerRef.current?.close(); peerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
@@ -1724,39 +2118,127 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
     offerSentRef.current = false;
     processedSignals.current = new Set();
     pendingCandidates.current = [];
+    pendingAnswer.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.pause();
+      remoteAudioRef.current.srcObject = null;
+    }
+    setCallState('');
+    hearingApplicantRef.current = false;
+    setHearingApplicant(false);
+    setHasRemoteAudio(false);
     setLive(false);
   }, []);
+
+  const enableApplicantAudio = useCallback(async () => {
+    setError('');
+    const remote = remoteStreamRef.current;
+    const audio = remoteAudioRef.current;
+    if (!remote) {
+      setError('Wait until the applicant camera appears, then click Hear Applicant again.');
+      return;
+    }
+    const audioTracks = remote.getAudioTracks();
+    if (!audioTracks.length) {
+      setError('No applicant microphone track yet. Ask the applicant to allow mic access and rejoin.');
+      setHasRemoteAudio(false);
+      return;
+    }
+    audioTracks.forEach((track) => { track.enabled = true; });
+    setHasRemoteAudio(true);
+    if (!audio) {
+      setError('Audio player is missing in this browser window. Refresh admin and reopen Video KYC.');
+      return;
+    }
+    bindRemoteMicElement(audio, remote);
+    audio.muted = false;
+    audio.volume = 1;
+    try {
+      await audio.play();
+      hearingApplicantRef.current = true;
+      setHearingApplicant(true);
+      if (remoteVideoRef.current) remoteVideoRef.current.muted = true;
+      notify('Applicant microphone is on — you should hear them now.');
+    } catch (playError) {
+      // Last resort: unmute remote video player for applicant mic.
+      const video = remoteVideoRef.current;
+      if (video) {
+        try {
+          video.muted = false;
+          video.volume = 1;
+          await video.play();
+          hearingApplicantRef.current = true;
+          setHearingApplicant(true);
+          notify('Applicant microphone is on (video fallback) — you should hear them now.');
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      hearingApplicantRef.current = false;
+      setHearingApplicant(false);
+      setError(playError instanceof Error ? playError.message : 'Browser blocked applicant sound. Click Hear Applicant once more.');
+    }
+  }, [notify]);
+
+  const bindRemoteStream = useCallback((remote: MediaStream) => {
+    syncRemoteMediaElements(remote);
+  }, [syncRemoteMediaElements]);
 
   const publishOffer = useCallback(async () => {
     const peer = peerRef.current;
     if (!peer || offerSentRef.current || peer.signalingState !== 'stable') return;
     offerSentRef.current = true;
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    await sendSignal('offer', offer);
+    try {
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      await sendSignal('offer', offer);
+      if (pendingAnswer.current) {
+        try {
+          await peer.setRemoteDescription(pendingAnswer.current);
+          pendingAnswer.current = null;
+          for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate).catch(() => undefined);
+        } catch {
+          /* Answer may arrive again on the next poll once the local offer is stable. */
+        }
+      }
+    } catch (offerError) {
+      offerSentRef.current = false;
+      throw offerError;
+    }
   }, [sendSignal]);
 
   const applySignal = useCallback(async (entry: { id: string; type: string; signal: unknown }) => {
     if (processedSignals.current.has(entry.id) || !peerRef.current) return;
-    processedSignals.current.add(entry.id);
     const peer = peerRef.current;
     if (entry.type === 'answer') {
+      const answer = entry.signal as RTCSessionDescriptionInit;
       if (peer.signalingState === 'have-local-offer') {
-        await peer.setRemoteDescription(entry.signal as RTCSessionDescriptionInit);
-        for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate);
+        processedSignals.current.add(entry.id);
+        await peer.setRemoteDescription(answer);
+        for (const candidate of pendingCandidates.current.splice(0)) await peer.addIceCandidate(candidate).catch(() => undefined);
+      } else if (peer.signalingState === 'stable' && !peer.currentRemoteDescription) {
+        pendingAnswer.current = answer;
+        processedSignals.current.add(entry.id);
+      } else if (peer.signalingState !== 'stable') {
+        pendingAnswer.current = answer;
+      } else {
+        processedSignals.current.add(entry.id);
       }
     } else if (entry.type === 'candidate') {
-      if (peer.remoteDescription) await peer.addIceCandidate(entry.signal as RTCIceCandidateInit); else pendingCandidates.current.push(entry.signal as RTCIceCandidateInit);
+      processedSignals.current.add(entry.id);
+      if (peer.remoteDescription) await peer.addIceCandidate(entry.signal as RTCIceCandidateInit).catch(() => undefined);
+      else pendingCandidates.current.push(entry.signal as RTCIceCandidateInit);
     }
   }, []);
 
   useEffect(() => () => stopRoom(), [stopRoom]);
   useEffect(() => {
-    attachVideoElement(localVideoRef.current, streamRef.current);
-    attachVideoElement(remoteVideoRef.current, remoteStreamRef.current);
-  }, [live, currentSession.applicant_joined_at]);
+    void attachVideoElement(localVideoRef.current, streamRef.current, false);
+    syncRemoteMediaElements(remoteStreamRef.current);
+  }, [live, currentSession.applicant_joined_at, hearingApplicant, syncRemoteMediaElements]);
 
   useEffect(() => {
     if (!live || currentSession.status !== 'in_progress') return;
@@ -1782,13 +2264,13 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
           }
         }
         for (const signal of payload.data?.signals ?? []) await applySignal(signal);
-        attachVideoElement(localVideoRef.current, streamRef.current);
-        attachVideoElement(remoteVideoRef.current, remoteStreamRef.current);
+        void attachVideoElement(localVideoRef.current, streamRef.current, false);
+        syncRemoteMediaElements(remoteStreamRef.current);
       } catch { /* The next poll retries while the room is open. */ }
     };
-    void poll(); const timer = window.setInterval(() => void poll(), 1200);
+    void poll(); const timer = window.setInterval(() => void poll(), 900);
     return () => { active = false; window.clearInterval(timer); };
-  }, [applySignal, currentSession.id, currentSession.status, live, onChanged, publishOffer, token]);
+  }, [applySignal, currentSession.id, currentSession.status, live, onChanged, publishOffer, syncRemoteMediaElements, token]);
 
   async function startRoom() {
     setBusy(true); setError('');
@@ -1800,22 +2282,36 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
       offerSentRef.current = false;
       processedSignals.current = new Set();
       pendingCandidates.current = [];
-      const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+      pendingAnswer.current = null;
+      peerRef.current?.close();
+      setHearingApplicant(false);
+      setHasRemoteAudio(false);
+      const media = await openVideoKycMedia();
       streamRef.current = media;
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+      const peer = new RTCPeerConnection({ iceServers: VIDEO_KYC_ICE_SERVERS });
       peerRef.current = peer;
-      media.getTracks().forEach((track) => peer.addTrack(track, media));
+      media.getTracks().forEach((track) => {
+        track.enabled = true;
+        peer.addTrack(track, media);
+      });
       peer.ontrack = (event) => {
-        const remote = event.streams[0] || new MediaStream([event.track]);
-        remoteStreamRef.current = remote;
-        attachVideoElement(remoteVideoRef.current, remote);
+        const remote = appendRemoteTrack(remoteStreamRef, event.track, event.streams[0] || null);
+        bindRemoteStream(remote);
       };
       peer.onicecandidate = (event) => { if (event.candidate) void sendSignal('candidate', event.candidate.toJSON()).catch(() => undefined); };
+      peer.oniceconnectionstatechange = () => {
+        setCallState(peer.iceConnectionState);
+        if (peer.iceConnectionState === 'failed') {
+          peer.restartIce();
+          offerSentRef.current = false;
+          void publishOffer().catch(() => undefined);
+        }
+      };
+      peer.onconnectionstatechange = () => setCallState((previous) => peer.connectionState || previous);
       setLive(true);
-      // Wait a frame so local <video> is painted, then mirror the manager camera.
-      window.requestAnimationFrame(() => attachVideoElement(localVideoRef.current, media));
+      window.requestAnimationFrame(() => void attachVideoElement(localVideoRef.current, media, false));
       if (mergedSession.applicant_joined_at) await publishOffer();
-      notify('Video KYC is live. Waiting for the applicant to join — then both cameras connect.');
+      notify('Video KYC is live. After the applicant joins, click the orange Hear Applicant button to hear their microphone.');
     } catch (roomError) {
       stopRoom(); setError(roomError instanceof Error ? roomError.message : 'Unable to start the camera or Video KYC room.');
     } finally { setBusy(false); }
@@ -1846,7 +2342,8 @@ function VideoKycManagerRoom({ token, session, onClose, onChanged, notify }: { t
     finally { setBusy(false); }
   }
 
-  return <div className="video-kyc-overlay" role="presentation" onMouseDown={onClose}><section className="video-kyc-room" role="dialog" aria-modal="true" aria-labelledby="video-kyc-room-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p>Secure Video KYC workspace</p><h2 id="video-kyc-room-title">{currentSession.applicant_name} · Attempt {currentSession.attempt}</h2><span>{currentSession.application_number} · {currentSession.franchise_model} · {currentSession.preferred_location}</span></div><button type="button" onClick={onClose}>Close</button></header><div className="video-kyc-room-status"><span className={`video-kyc-status ${currentSession.status}`}>{applicationStage(currentSession.status)}</span><b>{currentSession.applicant_joined_at ? 'Applicant camera joined' : live ? 'Waiting for applicant to join' : 'Manager has not started the session'}</b></div><div className="video-kyc-video-grid"><figure><video ref={localVideoRef} autoPlay muted playsInline /><figcaption>Manager camera</figcaption></figure><figure><video ref={remoteVideoRef} autoPlay playsInline /><figcaption>{currentSession.applicant_joined_at ? 'Applicant camera' : 'Applicant camera will appear when they join'}</figcaption></figure></div><div className="video-kyc-room-actions">{!live ? <button className="video-kyc-primary" type="button" disabled={busy} onClick={() => void startRoom()}>{busy ? 'Starting…' : 'Start Video KYC'}</button> : <button className="video-kyc-capture" type="button" disabled={captureBusy} onClick={() => void captureEvidence()}>{captureBusy ? 'Saving evidence…' : 'Capture screenshot evidence'}</button>}<span>{currentSession.screenshots.length} timestamped screenshot{currentSession.screenshots.length === 1 ? '' : 's'} saved</span></div><label className="video-kyc-remarks">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Record identity checks, applicant response or any reason for reassignment." /></label>{currentSession.screenshots.length ? <div className="video-kyc-shot-list">{currentSession.screenshots.map((shot, index) => <a key={shot.id} href={shot.url} target="_blank" rel="noreferrer">Evidence {index + 1} · {displayDate(shot.captured_at)}</a>)}</div> : null}{error ? <p className="application-review-error" role="alert">{error}</p> : null}<footer><button type="button" className="video-kyc-reassign" disabled={busy} onClick={() => void finish('reassign')}>Reassign Video KYC</button><button type="button" className="video-kyc-primary" disabled={busy || !live} onClick={() => void finish('complete')}>{busy ? 'Saving…' : 'Complete Video KYC'}</button></footer></section></div>;
+  return <div className="video-kyc-overlay" role="presentation" onMouseDown={onClose}><section className="video-kyc-room" role="dialog" aria-modal="true" aria-labelledby="video-kyc-room-title" onMouseDown={(event) => event.stopPropagation()}><header><div><p>Secure Video KYC workspace</p><h2 id="video-kyc-room-title">{currentSession.applicant_name} · Attempt {currentSession.attempt}</h2><span>{currentSession.application_number} · {currentSession.franchise_model} · {currentSession.preferred_location}</span></div><button type="button" onClick={onClose}>Close</button></header>{live ? <div className={`video-kyc-hear-bar${hearingApplicant ? ' is-on' : ''}`}><div><b>{hearingApplicant ? 'Applicant microphone is ON' : 'Applicant sound is OFF until you click Hear Applicant'}</b><small>{hasRemoteAudio ? 'Microphone track received from applicant.' : 'Waiting for applicant microphone track…'}{callState ? ` · Link: ${callState}` : ''}</small></div><button type="button" className="video-kyc-hear-primary" onClick={() => void enableApplicantAudio()}>{hearingApplicant ? 'Replay / keep hearing' : 'Hear Applicant'}</button></div> : null}<div className="video-kyc-room-status"><span className={`video-kyc-status ${currentSession.status}`}>{applicationStage(currentSession.status)}</span><b>{currentSession.applicant_joined_at ? 'Applicant camera joined' : live ? 'Waiting for applicant to join' : 'Manager has not started the session'}</b></div><div className="video-kyc-video-grid"><figure><video ref={localVideoRef} autoPlay muted playsInline /><figcaption>Manager camera</figcaption></figure><figure><video ref={remoteVideoRef} autoPlay muted playsInline /><figcaption>{currentSession.applicant_joined_at ? 'Applicant camera (picture only — use Hear Applicant for sound)' : 'Applicant camera will appear when they join'}</figcaption></figure></div><audio ref={remoteAudioRef} autoPlay playsInline />
+<div className="video-kyc-room-actions">{!live ? <button className="video-kyc-primary" type="button" disabled={busy} onClick={() => void startRoom()}>{busy ? 'Starting…' : 'Start Video KYC'}</button> : <><button className="video-kyc-capture" type="button" disabled={captureBusy} onClick={() => void captureEvidence()}>{captureBusy ? 'Saving evidence…' : 'Capture screenshot evidence'}</button><button className="video-kyc-hear-primary" type="button" onClick={() => void enableApplicantAudio()}>{hearingApplicant ? 'Applicant sound ON' : 'Hear Applicant'}</button></>}<span>{currentSession.screenshots.length} timestamped screenshot{currentSession.screenshots.length === 1 ? '' : 's'} saved</span></div><label className="video-kyc-remarks">Manager remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Record identity checks, applicant response or any reason for reassignment." /></label>{currentSession.screenshots.length ? <div className="video-kyc-shot-list">{currentSession.screenshots.map((shot, index) => <a key={shot.id} href={shot.url} target="_blank" rel="noreferrer">Evidence {index + 1} · {displayDate(shot.captured_at)}</a>)}</div> : null}{error ? <p className="application-review-error" role="alert">{error}</p> : null}<footer><button type="button" className="video-kyc-reassign" disabled={busy} onClick={() => void finish('reassign')}>Reassign Video KYC</button><button type="button" className="video-kyc-primary" disabled={busy || !live} onClick={() => void finish('complete')}>{busy ? 'Saving…' : 'Complete Video KYC'}</button></footer></section></div>;
 }
 
 function Module({ page, search, notify }: { page: OperationalPage; search: string; notify: (message: string) => void }) {
