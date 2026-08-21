@@ -32,6 +32,7 @@ export const API_MODULES = {
   rxDiagnostics: `${CORE}.clinical_phase49_rx_diagnostics`,
   erxFulfillment: `${CORE}.clinical_phase50_erx_fulfillment`,
   yogaSubscriptions: `${CORE}.clinical_yoga_subscriptions`,
+  wellnessSessions: `${CORE}.clinical_phase110_wellness_sessions`,
   providerOnboarding: `${CORE}.clinical_phase41_provider_onboarding`,
   providerPortal: `${CORE}.clinical_phase46_provider_portal`,
   opsQueues: `${CORE}.clinical_phase45_ops_queues`,

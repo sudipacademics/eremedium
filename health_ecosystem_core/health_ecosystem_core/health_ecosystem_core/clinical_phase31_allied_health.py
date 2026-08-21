@@ -233,12 +233,18 @@ def book_allied_health_appointment(
     appointment_time=None,
     notes=None,
     payment_method=None,
+    consultation_mode=None,
+    use_session_card=None,
     sid=None,
 ):
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
 
     service_code = _parse_request_value("service_code", service_code)
+    consultation_mode = (_parse_request_value("consultation_mode", consultation_mode) or "").strip()
+    use_session_card_raw = _parse_request_value("use_session_card", use_session_card)
+    use_session_card = str(use_session_card_raw or "1").strip().lower() not in ("0", "false", "no")
+
     service = None
     for row in _load_services():
         if row["service_code"] == service_code:
@@ -260,19 +266,45 @@ def book_allied_health_appointment(
     if not frappe.db.exists("Consultation Type", ctype):
         return _error(_("Consultation type not configured on server"))
 
+    # Default online for yoga when mode allows, or when caller asks for Online
+    service_mode = (service.get("mode") or "").lower()
+    if not consultation_mode:
+        if "online" in service_mode and "in" not in service_mode:
+            consultation_mode = "Online"
+        elif wing["id"] == "yoga" and "online" in service_mode:
+            consultation_mode = "Online"
+        else:
+            consultation_mode = "In-person"
+    if consultation_mode not in ("Online", "In-person"):
+        consultation_mode = "In-person"
+
     detail = (
         f"Allied service: {service['service_name']}\n"
         f"Wing: {wing['title']}\n"
         f"Duration: {service.get('duration') or '—'}\n"
-        f"Mode: {service.get('mode') or '—'}\n"
+        f"Mode: {consultation_mode} ({service.get('mode') or '—'})\n"
         f"Code: {service_code}"
     )
     extra = _parse_request_value("notes", notes) or ""
     combined_notes = f"{detail}\n{extra}".strip()
 
+    amount = service.get("rate") or 0
+    # Preview: if card will be used, book at zero
+    if use_session_card:
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase110_wellness_sessions import (
+                find_active_session_card,
+            )
+
+            if find_active_session_card(wing_id=wing["id"]):
+                amount = 0
+                payment_method = payment_method or "Pay at Hub"
+        except Exception:
+            pass
+
     from health_ecosystem_core.health_ecosystem_core.appointments import book_patient_appointment
 
-    return book_patient_appointment(
+    result = book_patient_appointment(
         patient_name=patient_name,
         patient_phone=patient_phone,
         gender=gender,
@@ -283,9 +315,38 @@ def book_allied_health_appointment(
         department=dept_name,
         notes=combined_notes,
         payment_method=payment_method,
-        amount=service.get("rate") or 0,
+        amount=amount,
         sid=sid,
     )
+    if result.get("status") != "success":
+        return result
+
+    apt_id = (result.get("data") or {}).get("appointment_id")
+    extras = {}
+    if apt_id:
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase110_wellness_sessions import (
+                apply_session_card_to_booking,
+                attach_online_meeting,
+            )
+
+            card_info = apply_session_card_to_booking(
+                apt_id, wing["id"], use_card=use_session_card
+            )
+            extras.update(card_info or {})
+            if consultation_mode == "Online":
+                meeting = attach_online_meeting(apt_id, force=True)
+                extras.update(meeting or {})
+            frappe.db.commit()
+        except Exception:
+            frappe.log_error(title="allied_session_hooks", message=frappe.get_traceback())
+
+        data = result.get("data") or {}
+        data.update(extras)
+        data["wellness_wing"] = wing["id"]
+        data["consultation_mode"] = consultation_mode
+        result["data"] = data
+    return result
 
 
 def setup_allied_health_masters():

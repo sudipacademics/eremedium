@@ -2155,11 +2155,34 @@ export const api = {
       },
     ),
 
-  getTeleconsultSession: (appointmentId: string) =>
+  getTeleconsultSession: (appointmentId: string, token?: string) =>
     request<{ session: TeleconsultSession }>('get_teleconsult_session', {
       method: 'POST',
-      body: { appointment_id: appointmentId },
-      auth: true,
+      body: {
+        appointment_id: appointmentId,
+        ...(token ? { token } : {}),
+      },
+      auth: !token,
+      module: 'telemedicine',
+    }),
+
+  joinVideoSession: (appointmentId: string, token?: string) =>
+    request<{
+      appointment_id: string;
+      meeting_link: string;
+      portal_join_url?: string;
+      patient_name?: string;
+      doctor_name?: string;
+      appointment_date?: string;
+      appointment_time?: string;
+      provider?: string;
+    }>('join_video_session', {
+      method: 'POST',
+      body: {
+        appointment_id: appointmentId,
+        ...(token ? { token } : {}),
+      },
+      auth: !token,
       module: 'telemedicine',
     }),
 
@@ -2214,7 +2237,15 @@ export const api = {
     }),
 
   bookAlliedHealthAppointment: (body: Record<string, string>) =>
-    request<{ appointment_id: string; amount?: number }>('book_allied_health_appointment', {
+    request<{
+      appointment_id: string;
+      amount?: number;
+      meeting_link?: string;
+      portal_join_url?: string;
+      consultation_mode?: string;
+      session_card?: string;
+      sessions_remaining?: number;
+    }>('book_allied_health_appointment', {
       method: 'POST',
       body,
       auth: true,
@@ -2422,6 +2453,81 @@ export const api = {
       method: 'POST',
       auth: true,
       module: 'yogaSubscriptions',
+    }),
+
+  listWellnessSessionPacks: (wingId?: string) =>
+    request<{
+      packs: Array<{
+        plan_code: string;
+        title: string;
+        description?: string;
+        price: number;
+        billing_interval?: string;
+        wellness_wing?: string;
+        included_sessions: number;
+        unlimited?: boolean;
+      }>;
+      wings: string[];
+    }>('list_wellness_session_packs', {
+      method: 'POST',
+      body: wingId ? { wing_id: wingId } : {},
+      auth: false,
+      module: 'wellnessSessions',
+    }),
+
+  getMySessionCards: (wingId?: string) =>
+    request<{
+      cards: Array<{
+        subscription_id: string;
+        status: string;
+        plan_code?: string;
+        title?: string;
+        description?: string;
+        wellness_wing?: string;
+        sessions_total: number;
+        sessions_remaining: number;
+        sessions_used: number;
+        unlimited?: boolean;
+        last_session_on?: string | null;
+      }>;
+    }>('get_my_session_cards', {
+      method: 'POST',
+      body: wingId ? { wing_id: wingId } : {},
+      auth: true,
+      module: 'wellnessSessions',
+    }),
+
+  purchaseSessionCard: (planCode: string, paymentMethod?: string) =>
+    request<{ card: Record<string, unknown> }>('purchase_session_card', {
+      method: 'POST',
+      body: {
+        plan_code: planCode,
+        ...(paymentMethod ? { payment_method: paymentMethod } : {}),
+      },
+      auth: true,
+      module: 'wellnessSessions',
+    }),
+
+  punchSessionCard: (subscriptionId: string, appointmentId?: string) =>
+    request<{ card: Record<string, unknown>; sessions_remaining: number }>('punch_session_card', {
+      method: 'POST',
+      body: {
+        subscription_id: subscriptionId,
+        ...(appointmentId ? { appointment_id: appointmentId } : {}),
+      },
+      auth: true,
+      module: 'wellnessSessions',
+    }),
+
+  listSessionCardOps: (wingId?: string, limit = 50) =>
+    request<{ appointments: Array<Record<string, unknown>> }>('list_session_card_ops', {
+      method: 'POST',
+      body: {
+        limit,
+        ...(wingId ? { wing_id: wingId } : {}),
+      },
+      auth: true,
+      module: 'wellnessSessions',
     }),
 
   getMyHealthSubscription: () =>

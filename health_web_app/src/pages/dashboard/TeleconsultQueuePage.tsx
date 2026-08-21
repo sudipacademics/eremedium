@@ -142,9 +142,15 @@ export function TeleconsultQueuePage() {
                 </td>
                 <td>{row.follow_up_date || (row.needs_followup ? 'Pending' : '—')}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <Link
+                    to={`/teleconsult/join/${row.appointment_id}`}
+                    className="btn btn-sm secondary"
+                  >
+                    Join video
+                  </Link>{' '}
                   {row.meeting_link ? (
                     <a href={row.meeting_link} target="_blank" rel="noreferrer" className="btn btn-sm secondary">
-                      Join
+                      Open room
                     </a>
                   ) : null}{' '}
                   <button type="button" className="btn btn-sm" onClick={() => openFollowup(row)}>
@@ -230,6 +236,8 @@ export function TeleconsultQueuePage() {
       ) : null}
 
       <p className="muted" style={{ marginTop: 16 }}>
+        <Link to="/dashboard/session-ops">Wellness session desk</Link>
+        {' · '}
         <Link to="/dashboard/staff">Back to operations</Link>
       </p>
     </>

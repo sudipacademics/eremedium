@@ -70,6 +70,10 @@ export function StaffDashboard() {
             {ops.teleconsults_upcoming ? ` · ${ops.teleconsults_upcoming} scheduled` : ''}.
           </p>
         </Link>
+        <Link className="card card-action" to="/dashboard/session-ops">
+          <h3>Wellness sessions</h3>
+          <p className="muted">Physio & aesthetic card punches and yoga/video rooms.</p>
+        </Link>
       </div>
 
       <BookingsTable title="Recent TRFs (staff scope)" />

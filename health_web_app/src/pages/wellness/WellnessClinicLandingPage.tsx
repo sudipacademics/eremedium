@@ -194,6 +194,19 @@ function ClinicLandingView({
             <a className="btn secondary aesthetics-cta-ghost" href="#treatments">
               View sessions
             </a>
+            {config.wingId === 'physiotherapy' || config.wingId === 'aesthetics' ? (
+              <Link
+                className="btn secondary aesthetics-cta-ghost"
+                to={`/wellness/sessions?wing=${config.wingId}`}
+              >
+                Session cards
+              </Link>
+            ) : null}
+            {config.wingId === 'yoga' ? (
+              <Link className="btn secondary aesthetics-cta-ghost" to="/yoga-memberships">
+                Memberships
+              </Link>
+            ) : null}
           </div>
         </div>
       </section>

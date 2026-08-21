@@ -132,6 +132,10 @@ import { WellnessHubPage } from './pages/wellness/WellnessHubPage';
 import { WellnessWingPage } from './pages/wellness/WellnessWingPage';
 import { WellnessBookPage } from './pages/wellness/WellnessBookPage';
 import { WellnessClinicLandingPage } from './pages/wellness/WellnessClinicLandingPage';
+import { SessionCardsPage } from './pages/wellness/SessionCardsPage';
+import { TeleconsultJoinPage } from './pages/teleconsult/TeleconsultJoinPage';
+import { SessionOpsPage } from './pages/dashboard/SessionOpsPage';
+import { YogaSubscriptionsPage } from './pages/YogaSubscriptionsPage';
 
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
@@ -268,6 +272,12 @@ export default function App() {
                 <Route path="wellness" element={<WellnessHubPage />} />
 
                 <Route path="wellness/aesthetics" element={<WellnessClinicLandingPage wingId="aesthetics" />} />
+
+                <Route path="wellness/sessions" element={<SessionCardsPage />} />
+
+                <Route path="yoga-memberships" element={<YogaSubscriptionsPage />} />
+
+                <Route path="teleconsult/join/:appointmentId" element={<TeleconsultJoinPage />} />
 
                 <Route path="wellness/:wingId" element={<WellnessWingPage />} />
 
@@ -739,6 +749,22 @@ export default function App() {
                   <ProtectedRoute roles={[ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
 
                     <StaffDashboard />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="session-ops"
+
+                element={
+
+                  <ProtectedRoute roles={STAFF_ACCESS}>
+
+                    <SessionOpsPage />
 
                   </ProtectedRoute>
 
