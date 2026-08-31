@@ -1,0 +1,19 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.tsbuildinfo
+
+__pycache__/
+*.py[cod]
+.venv/
+
+# Swiss Ephemeris binary data files
+backend/astro-service/ephemeris/*.se1
+backend/astro-service/ephemeris/*.bin
+
+# TLS material
+nginx/certs/*
+!nginx/certs/.gitkeep

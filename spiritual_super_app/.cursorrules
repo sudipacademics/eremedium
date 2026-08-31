@@ -1,0 +1,33 @@
+# Spiritual-Tech Super App — Engineering Rules (non-negotiable)
+
+## Financial integrity
+- Every balance deduction or financial ledger entry MUST use explicit PostgreSQL transactions
+  (`BEGIN...COMMIT`) with row-level locks (`SELECT ... FOR UPDATE`). No read-modify-write on
+  `Wallet.balance` outside a locked transaction.
+- Never use floating-point numbers for currency; use numeric/decimal with 2 decimal places
+  (`Decimal(12,2)` in Prisma, `decimal.Decimal` in Python, `Prisma.Decimal` in TypeScript).
+  `number`/`float` for money is a review-blocking defect.
+- Every wallet mutation MUST write a matching `WalletTransaction` row inside the same transaction,
+  with `reference_type` and `reference_id` populated.
+- `Wallet.balance` carries a `CHECK (balance >= 0)` constraint; code must pre-check solvency rather
+  than relying on the constraint to fail.
+
+## Ephemeris correctness
+- Ephemeris calculations must strictly use Chitra Paksha (Lahiri) Ayanamsha (`SIDM_LAHIRI`) and
+  True Node positions (`swe.TRUE_NODE`). Mean node and tropical output are forbidden.
+- Always pass `swe.FLG_SIDEREAL | swe.FLG_SWIEPH | swe.FLG_SPEED` to `swe.calc_ut`.
+- Ketu is always derived as the exact 180° opposite of the True Node, never computed independently.
+
+## Real-time / RTC
+- All WebSocket and RTC room events must validate user auth tokens and check real-time wallet
+  solvency before admitting participants.
+- LiveKit tokens are minted server-side only, are single-room scoped, and are never issued when
+  `wallet.balance < astrologer.per_minute_rate * MIN_CALL_MINUTES_BUFFER`.
+- Per-minute billing runs under a Redis (Redlock) distributed lock keyed by call session id; a tick
+  must never execute concurrently on two workers.
+
+## General
+- TypeScript is `strict`; no `any`, no non-null assertions on external input. Validate all input
+  with Zod (Node) or Pydantic (Python).
+- No placeholder code, no `TODO` stubs in committed logic paths.
+- Secrets come from environment variables only; never commit keys or `.env`.
