@@ -16,6 +16,10 @@
 # /auth/token with real OTP verification and makes the payment webhook the only way to credit a
 # wallet. Delete it (and the `if` guards in astro.conf) once that lands.
 
+# Required: the default bucket size of 64 bytes is too small to hash a long random token as a map
+# key, and nginx fails with "could not build map_hash" rather than anything self-explanatory.
+map_hash_bucket_size 128;
+
 # Optional: IP allowlist. Any address listed here reaches the API without the header. Left empty by
 # default so the header is the single source of access; add your office/home IP if convenient.
 geo $ssa_ip_allowed {
