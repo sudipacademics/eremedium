@@ -211,7 +211,9 @@ services:
     logging: *default-logging
 
   livekit-rtc:
-    image: livekit/livekit-server:v1.8
+    # v1.9.12+ serves the /rtc/v1 signalling path. On v1.8 that path 404s, so every modern
+    # livekit-client wasted three requests discovering it before falling back to legacy /rtc.
+    image: livekit/livekit-server:v1.9.12
     container_name: ssa-livekit-rtc
     restart: unless-stopped
     command: --config /etc/livekit.yaml
