@@ -37,8 +37,15 @@ export async function livekitWebhookRoutes(app: FastifyInstance): Promise<void> 
 
     let event: Awaited<ReturnType<typeof receiver.receive>>;
     try {
-      // Validates the JWT in the Authorization header AND that its sha256 claim matches the body.
-      event = await receiver.receive(raw, authorization, true);
+      /*
+       * Validates the JWT in the Authorization header AND that its sha256 claim matches the body.
+       *
+       * The third parameter is `skipAuth`. It was previously passed as `true`, which disabled
+       * signature verification entirely: this endpoint accepted any unsigned POST, so anyone able to
+       * reach it could end a stranger's call or start the billing clock on one. Verification is the
+       * entire reason the raw body is preserved, so the flag must stay false.
+       */
+      event = await receiver.receive(raw, authorization, false);
     } catch (error) {
       webhookLogger.warn({ err: error, ip: request.ip }, 'Rejected LiveKit webhook with bad signature');
       return reply.code(401).send({ error: 'INVALID_SIGNATURE' });

@@ -1,0 +1,111 @@
+name: Spiritual Super App
+
+# Scoped to this project's paths: the repository holds several unrelated applications, and a
+# workflow that ran for all of them would fail on code this suite knows nothing about.
+on:
+  push:
+    paths:
+      - 'spiritual_super_app/**'
+      - '.github/workflows/spiritual-super-app.yml'
+  pull_request:
+    paths:
+      - 'spiritual_super_app/**'
+      - '.github/workflows/spiritual-super-app.yml'
+
+concurrency:
+  group: ssa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    name: Core gateway (money paths)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spiritual_super_app/backend/core-gateway
+
+    # Real PostgreSQL and Redis, because the invariants under test are enforced by the database:
+    # the wallet row lock, the unique index that makes a retried billing tick a no-op, and the
+    # unique idempotency key that absorbs a replayed payment webhook.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ssa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # The database name must contain "test": the suite truncates every table and refuses to run
+      # against anything not obviously disposable.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ssa_test?schema=public
+      # Index 1, not 0: the suite calls FLUSHDB.
+      TEST_REDIS_URL: redis://localhost:6379/1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: spiritual_super_app/backend/core-gateway/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Typecheck tests
+        run: npm run typecheck:tests
+
+      - name: Test
+        run: npm test
+
+  frontend:
+    name: Web app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spiritual_super_app/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: spiritual_super_app/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

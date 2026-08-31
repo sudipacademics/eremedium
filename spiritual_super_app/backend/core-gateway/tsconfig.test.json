@@ -1,0 +1,11 @@
+{
+  // The build config compiles only src/ (rootDir), so tests would otherwise never be typechecked
+  // and could rot silently. This config checks them without emitting anything.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+}

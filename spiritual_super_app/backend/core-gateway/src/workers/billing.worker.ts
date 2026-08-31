@@ -98,8 +98,11 @@ function splitMinute(
  *
  * The wallet debit, the ledger insert and the CallSession roll-up all happen in a single PostgreSQL
  * transaction with `SELECT ... FOR UPDATE` on the wallet row (see WalletService.debitByUserId).
+ *
+ * Exported for the test suite: this is the function that decides whether a user is charged, and
+ * driving it through a live BullMQ worker to test it would assert timing rather than behaviour.
  */
-async function processTick(job: Job<BillingTickJobData>): Promise<TickOutcome> {
+export async function processTick(job: Job<BillingTickJobData>): Promise<TickOutcome> {
   const { callSessionId, tickNumber } = job.data;
   const lockKey = redisKeys.billingLock(callSessionId);
 
@@ -225,7 +228,8 @@ async function processTick(job: Job<BillingTickJobData>): Promise<TickOutcome> {
   return result;
 }
 
-async function handleOutcome(job: Job<BillingTickJobData>, outcome: TickOutcome): Promise<void> {
+/** Exported alongside processTick so tests can assert the consequences of each outcome. */
+export async function handleOutcome(job: Job<BillingTickJobData>, outcome: TickOutcome): Promise<void> {
   const { callSessionId, tickNumber } = job.data;
   const session = await loadActiveSession(callSessionId);
 
