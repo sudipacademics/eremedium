@@ -81,7 +81,11 @@ services:
   livekit-rtc:
     # Signalling and TCP fallback on loopback only: the host Nginx proxies /rtc to 127.0.0.1:7880.
     # The UDP media range must stay publicly reachable or WebRTC cannot connect.
-    ports:
+    #
+    # `!override` is required: Compose MERGES `ports` across -f files rather than replacing them, so
+    # without it the base file's "7880:7880" survives alongside "127.0.0.1:7880:7880" and the
+    # container fails to start with "address already in use" against itself.
+    ports: !override
       - "127.0.0.1:7880:7880"
       - "127.0.0.1:7881:7881"
       - "50000-50100:50000-50100/udp"
