@@ -19,6 +19,9 @@ const TABLES = [
   'puja_bookings',
   'puja_offerings',
   'temples',
+  // Not owned by a user, so a users CASCADE leaves it behind: a leaked chart makes the next test's
+  // cache-miss assertion fail as a cache hit.
+  'natal_charts',
   'astrologers',
   'wallets',
   'users',

@@ -4,6 +4,7 @@ import { Room, RoomEvent, Track, type RemoteTrack } from 'livekit-client';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { ClientKundali } from '@/components/ClientKundali';
 import { RemedyCard } from '@/components/RemedyCard';
 import { RemedyDispatcher } from '@/components/RemedyDispatcher';
 import { api, session as store, type CallSessionView, type RtcToken } from '@/lib/api';
@@ -272,6 +273,14 @@ export default function CallPage() {
         <RemedyDispatcher callSessionId={sessionId} />
       ) : (
         <RemedyCard callSessionId={sessionId} />
+      )}
+
+      {/*
+        The chart the consultation is actually about. Authorised by the live call rather than by the
+        astrologer role, so it closes when the call does.
+      */}
+      {isAstrologer && session?.client && (
+        <ClientKundali userId={session.client.id} clientName={session.client.name} />
       )}
 
       {warning && (

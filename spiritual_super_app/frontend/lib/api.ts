@@ -90,6 +90,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   get: <T,>(path: string) => request<T>('GET', path),
   post: <T,>(path: string, body?: unknown) => request<T>('POST', path, body),
+  put: <T,>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T,>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   del: <T,>(path: string) => request<T>('DELETE', path),
 };
@@ -121,6 +122,83 @@ export interface WalletBalance {
   walletId: string;
   balance: string;
   currency: string;
+}
+
+export interface PlaceMatch {
+  label: string;
+  name: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  population: number;
+}
+
+export interface BirthProfile {
+  complete: boolean;
+  birthDate: string | null;
+  birthTime: string | null;
+  birthTimeKnown: boolean;
+  timezone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  placeLabel: string | null;
+  utcOffset: string | null;
+  birthInstantUtc: string | null;
+}
+
+export interface ChartPlanet {
+  body: string;
+  sidereal_longitude: number;
+  degrees_in_sign: number;
+  zodiac_sign: number;
+  zodiac_sign_name: string;
+  nakshatra: number;
+  nakshatra_name: string;
+  nakshatra_pada: number;
+  house: number;
+  speed_deg_per_day: number;
+  is_retrograde: boolean;
+}
+
+export interface ChartAscendant {
+  sidereal_longitude: number;
+  degrees_in_sign: number;
+  zodiac_sign: number;
+  zodiac_sign_name: string;
+  nakshatra_name: string;
+  nakshatra_pada: number;
+}
+
+export interface DashaPeriod {
+  level: number;
+  level_name: string;
+  lord: string;
+  start_utc: string;
+  end_utc: string;
+  duration_days: number;
+  children: DashaPeriod[];
+}
+
+export interface Kundali {
+  profile: BirthProfile;
+  chart: {
+    ayanamsha: number;
+    ayanamsha_system: string;
+    node_type: string;
+    ascendant: ChartAscendant;
+    planets: ChartPlanet[];
+  };
+  dasha: {
+    birth_nakshatra_name: string;
+    birth_nakshatra_lord: string;
+    balance_of_dasha_days: number;
+    periods: DashaPeriod[];
+  };
+  /** True when no birth time is known, which makes the ascendant and houses meaningless. */
+  birthTimeAssumed: boolean;
+  engineRevision: string;
+  fromCache: boolean;
 }
 
 export interface PujaOffering {
@@ -195,6 +273,8 @@ export interface CallSessionView {
   status: string;
   channelId: string;
   astrologer: { id: string; displayName: string };
+  /** Sent only to the astrologer, who needs it to open the client's kundali. */
+  client?: { id: string; name: string };
   ratePerMinute: string;
   totalMinutes: number;
   totalDeducted: string;

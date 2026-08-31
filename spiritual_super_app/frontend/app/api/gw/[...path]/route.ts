@@ -83,6 +83,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pa
   return forward(request, (await context.params).path);
 }
 
+export async function PUT(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await context.params).path);
+}
+
 export async function PATCH(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return forward(request, (await context.params).path);
 }

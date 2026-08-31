@@ -62,10 +62,37 @@ model User {
   id                String    @id @default(uuid()) @db.Uuid
   phone             String    @unique @db.VarChar(20)
   name              String    @db.VarChar(160)
+  /**
+   * The birth moment as a UTC instant, derived from the local fields below. Everything the ephemeris
+   * does starts here, so it is computed once on save rather than re-derived per request.
+   */
   dob               DateTime? @db.Timestamptz(3)
   birthPlace        String?   @map("birth_place") @db.VarChar(180)
   latitude          Decimal?  @db.Decimal(9, 6)
   longitude         Decimal?  @db.Decimal(9, 6)
+  /**
+   * The local wall-clock birth date and time, kept alongside the UTC instant.
+   *
+   * A UTC timestamp alone cannot be shown back to the user as the time they were born, and it cannot
+   * be recomputed if the zone was wrong, because the offset is not recoverable from the instant.
+   */
+  birthDateLocal    DateTime? @map("birth_date_local") @db.Date
+  /** "HH:mm" in the birthplace's own zone. */
+  birthTimeLocal    String?   @map("birth_time_local") @db.VarChar(5)
+  /**
+   * IANA zone of the birthplace, e.g. Asia/Kolkata. Required to turn the local time into an instant:
+   * India used +05:30 from 1955 but +06:30 during the 1942-45 wartime shifts, so a fixed offset would
+   * silently misplace older births by an hour.
+   */
+  birthTimezone     String?   @map("birth_timezone") @db.VarChar(64)
+  /**
+   * False when the person does not know their birth time.
+   *
+   * The ascendant and the house positions move roughly one degree every four minutes, so without a
+   * time they are not merely approximate, they are meaningless. This flag exists so the UI can refuse
+   * to present a lagna as if it were known.
+   */
+  birthTimeKnown    Boolean   @default(false) @map("birth_time_known")
   gotra             String?   @db.VarChar(120)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -78,6 +105,38 @@ model User {
   ayurvedicProfiles AyurvedicProfile[]
 
   @@map("users")
+}
+
+/**
+ * Cache of computed charts.
+ *
+ * A chart is a pure function of the birth instant, the coordinates and the engine's conventions, so a
+ * cached row can never go stale: the same inputs will produce the same planetary longitudes forever.
+ * That is why the cache key is a fingerprint of the inputs and there is no expiry. Charts are shared
+ * across users too -- twins born in the same place get one row.
+ *
+ * It exists because the astrologer opens the client's chart during a live consultation, where a
+ * round-trip to the Python service on every glance is latency the caller can hear.
+ */
+model NatalChart {
+  id String @id @default(uuid()) @db.Uuid
+  /** sha256 of the birth instant, rounded coordinates and the engine revision. */
+  fingerprint  String   @unique @db.VarChar(64)
+  birthInstant DateTime @map("birth_instant") @db.Timestamptz(3)
+  latitude     Decimal  @db.Decimal(9, 6)
+  longitude    Decimal  @db.Decimal(9, 6)
+  /**
+   * The conventions the chart was computed under. Changing ayanamsha, node type or house system
+   * changes every number in the payload, so it belongs in the fingerprint rather than being assumed.
+   */
+  engineRevision String @map("engine_revision") @db.VarChar(60)
+  ayanamsha      Decimal @db.Decimal(9, 6)
+  /** The compute service's response, stored verbatim. */
+  chart     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([birthInstant])
+  @@map("natal_charts")
 }
 
 model Wallet {

@@ -59,6 +59,7 @@ function Nav({ profile }: { profile: Profile }) {
 
   const links = [
     { href: '/', label: 'Astrologers' },
+    { href: '/kundali', label: 'Kundali' },
     { href: '/pujas', label: 'E-Puja' },
     { href: '/wallet', label: 'Wallet' },
     ...(profile.astrologerId ? [{ href: '/astrologer', label: 'My console' }] : []),

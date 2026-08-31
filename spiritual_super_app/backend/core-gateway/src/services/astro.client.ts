@@ -43,29 +43,75 @@ export interface NatalChartInput {
 export interface NatalChartPlanet {
   readonly body: string;
   readonly sidereal_longitude: number;
+  readonly sidereal_latitude: number;
+  readonly degrees_in_sign: number;
   readonly zodiac_sign: number;
   readonly zodiac_sign_name: string;
+  readonly nakshatra: number;
+  readonly nakshatra_name: string;
+  readonly nakshatra_pada: number;
   readonly house: number;
   readonly speed_deg_per_day: number;
   readonly is_retrograde: boolean;
 }
 
+export interface NatalChartAscendant {
+  readonly sidereal_longitude: number;
+  readonly degrees_in_sign: number;
+  readonly zodiac_sign: number;
+  readonly zodiac_sign_name: string;
+  readonly nakshatra: number;
+  readonly nakshatra_name: string;
+  readonly nakshatra_pada: number;
+}
+
+export interface NatalChartHouseCusp {
+  readonly house: number;
+  readonly sidereal_longitude: number;
+  readonly zodiac_sign: number;
+  readonly zodiac_sign_name: string;
+}
+
+/** Mirrors NatalChartResponse in the compute service's schemas.py. */
 export interface NatalChartOutput {
+  readonly dob_utc: string;
+  readonly julian_day_ut: number;
   readonly ayanamsha: number;
-  readonly ascendant: { readonly sidereal_longitude: number; readonly zodiac_sign: number };
+  readonly ayanamsha_system: string;
+  readonly node_type: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly ascendant: NatalChartAscendant;
   readonly planets: readonly NatalChartPlanet[];
+  readonly house_cusps: readonly NatalChartHouseCusp[];
 }
 
 export interface DashaInput {
   readonly moon_sidereal_longitude: number;
   readonly birth_utc: string;
   readonly depth?: number;
+  readonly horizon_years?: number;
+}
+
+export interface DashaPeriod {
+  readonly level: number;
+  readonly level_name: string;
+  readonly lord: string;
+  readonly start_utc: string;
+  readonly end_utc: string;
+  readonly duration_days: number;
+  readonly children: readonly DashaPeriod[];
 }
 
 export interface DashaOutput {
+  readonly birth_utc: string;
+  readonly moon_sidereal_longitude: number;
+  readonly birth_nakshatra: number;
   readonly birth_nakshatra_name: string;
   readonly birth_nakshatra_lord: string;
-  readonly periods: readonly unknown[];
+  readonly balance_of_dasha_days: number;
+  readonly depth: number;
+  readonly periods: readonly DashaPeriod[];
 }
 
 export interface PrakritiInput {

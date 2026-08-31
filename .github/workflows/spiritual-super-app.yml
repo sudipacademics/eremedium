@@ -82,6 +82,37 @@ jobs:
       - name: Test
         run: npm test
 
+  astro:
+    name: Compute engine (ephemeris)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spiritual_super_app/backend/astro-service
+
+    # This job did not exist while the service was being built, so a Python syntax error in the
+    # ephemeris engine reached the server without anything objecting.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: spiritual_super_app/backend/astro-service/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Catches an import-time or syntax error even if every test were skipped.
+      - name: Import the app
+        run: python -c "import app.main; print('app imports cleanly')"
+
+      # The .se1 binaries are licensed data and deliberately not committed, so the tests that call
+      # Swiss Ephemeris skip here and the pure-arithmetic ones still run. The nakshatra boundaries,
+      # the dasha proportions and the token gate do not need the data files.
+      - name: Test
+        run: python -m pytest -rs
+
   frontend:
     name: Web app
     runs-on: ubuntu-latest

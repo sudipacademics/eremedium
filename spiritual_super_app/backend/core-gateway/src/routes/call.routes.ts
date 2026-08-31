@@ -133,12 +133,14 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
         userId: true,
         astrologerId: true,
         astrologer: { select: { userId: true, displayName: true } },
+        user: { select: { id: true, name: true } },
       },
     });
     if (!session) {
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'Call session not found' });
     }
-    if (claims.sub !== session.userId && claims.sub !== session.astrologer.userId) {
+    const isAstrologer = claims.sub === session.astrologer.userId;
+    if (claims.sub !== session.userId && !isAstrologer) {
       return reply.code(403).send({ error: 'FORBIDDEN', message: 'Not a participant of this session' });
     }
 
@@ -147,6 +149,12 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
       status: session.status,
       channelId: session.channelId,
       astrologer: { id: session.astrologerId, displayName: session.astrologer.displayName },
+      /*
+       * Only sent to the astrologer, who needs it to open the client's chart. The devotee already
+       * knows who they are, and sending each party the other's identity by default is how a field
+       * ends up somewhere it was not meant to go.
+       */
+      ...(isAstrologer ? { client: { id: session.user.id, name: session.user.name } } : {}),
       ratePerMinute: money(session.ratePerMinute).toFixed(2),
       totalMinutes: session.totalMinutes,
       totalDeducted: money(session.totalDeducted).toFixed(2),
