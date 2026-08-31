@@ -5,11 +5,6 @@ import { authenticate, requireUser } from '../plugins/authenticate.js';
 import { prisma } from '../lib/prisma.js';
 import { WalletService } from '../services/wallet.service.js';
 
-const rechargeSchema = z.object({
-  amount: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, 'amount must be a decimal string with <= 2 places'),
-  paymentReferenceId: z.string().min(6).max(120),
-});
-
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().uuid().optional(),
@@ -28,18 +23,17 @@ export async function walletRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post('/recharge', async (request, reply) => {
-    const claims = requireUser(request);
-    const body = rechargeSchema.parse(request.body);
-    // In production this handler runs only after the payment gateway webhook has been verified.
-    const movement = await WalletService.recharge(claims.sub, body.amount, body.paymentReferenceId);
-    return reply.code(201).send({
-      transactionId: movement.transactionId,
-      credited: movement.amount.toFixed(2),
-      balance: movement.balanceAfter.toFixed(2),
-      currency: movement.currency,
-    });
-  });
+  /**
+   * `POST /recharge` used to live here and credited a wallet from a caller-supplied payment
+   * reference, letting any authenticated user mint balance. Top-ups now start at
+   * `POST /api/v1/payments/order` and are credited only by the signed provider webhook.
+   */
+  app.post('/recharge', async (_request, reply) =>
+    reply.code(410).send({
+      error: 'ENDPOINT_REMOVED',
+      message: 'Use POST /api/v1/payments/order; wallets are credited only by a verified payment webhook',
+    }),
+  );
 
   app.get('/transactions', async (request) => {
     const claims = requireUser(request);

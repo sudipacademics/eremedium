@@ -20,6 +20,16 @@ enum ReferenceType {
   RECHARGE
 }
 
+enum PaymentProvider {
+  RAZORPAY
+}
+
+enum PaymentOrderStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
 enum AstrologerStatus {
   OFFLINE
   IDLE
@@ -62,6 +72,7 @@ model User {
 
   wallet            Wallet?
   astrologer        Astrologer?
+  paymentOrders     PaymentOrder[]
   callSessions      CallSession[]
   pujaBookings      PujaBooking[]
   ayurvedicProfiles AyurvedicProfile[]
@@ -99,6 +110,34 @@ model WalletTransaction {
   @@index([walletId, createdAt])
   @@index([referenceType, referenceId])
   @@map("wallet_transactions")
+}
+
+/**
+ * A top-up intent. Money reaches a wallet only when a signed provider webhook flips a row here to
+ * PAID, so this table is the audit trail linking external payments to internal ledger entries.
+ */
+model PaymentOrder {
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @map("user_id") @db.Uuid
+  provider          PaymentProvider    @default(RAZORPAY)
+  providerOrderId   String             @unique @map("provider_order_id") @db.VarChar(120)
+  /** Unique: the database, not application logic, is the final guard against double-crediting a replayed webhook. */
+  providerPaymentId String?            @unique @map("provider_payment_id") @db.VarChar(120)
+  amount            Decimal            @db.Decimal(12, 2)
+  currency          String             @default("INR") @db.Char(3)
+  status            PaymentOrderStatus @default(CREATED)
+  /** Set when the credit lands, giving a two-way link between payment and ledger. */
+  walletTransactionId String?          @unique @map("wallet_transaction_id") @db.Uuid
+  failureReason     String?            @map("failure_reason") @db.VarChar(300)
+  paidAt            DateTime?          @map("paid_at") @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payment_orders")
 }
 
 model Astrologer {

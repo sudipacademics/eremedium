@@ -37,6 +37,9 @@ export const redisKeys = {
   sessionTickCounter: (sessionId: string) => `ssa:billing:ticks:${sessionId}`,
   billingLock: (sessionId: string) => `ssa:lock:billing:${sessionId}`,
   remedyCard: (cardId: string) => `ssa:remedy:card:${cardId}`,
+  otpChallenge: (phone: string) => `ssa:otp:challenge:${phone}`,
+  otpCooldown: (phone: string) => `ssa:otp:cooldown:${phone}`,
+  otpRequestCount: (phone: string) => `ssa:otp:count:${phone}`,
 } as const;
 
 export const redisChannels = {

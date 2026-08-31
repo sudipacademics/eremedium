@@ -221,14 +221,9 @@ export const WalletService = {
     return balance.greaterThanOrEqualTo(money(required));
   },
 
-  async recharge(userId: string, amount: string, referenceId: string): Promise<LedgerMovement> {
-    return this.creditByUserId(userId, {
-      amount,
-      referenceType: ReferenceType.RECHARGE,
-      referenceId,
-      idempotencyKey: `recharge:${referenceId}`,
-    });
-  },
+  // `recharge()` was removed deliberately. It credited a wallet from a caller-supplied reference
+  // with nothing verifying that money had actually arrived. Top-ups now go through
+  // PaymentService.handleCapturedPayment, which only runs behind a verified webhook signature.
 
   ReferenceType,
   TransactionType,

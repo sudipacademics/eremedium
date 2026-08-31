@@ -3,10 +3,23 @@ import { z } from 'zod';
 
 import { AppRole, signAccessToken } from '../auth/jwt.js';
 import { prisma } from '../lib/prisma.js';
+import { OtpService } from '../services/otp.service.js';
 
-const registerSchema = z.object({
-  phone: z.string().regex(/^\+?[1-9]\d{7,14}$/, 'phone must be in E.164 form'),
-  name: z.string().min(2).max(160),
+const phoneSchema = z
+  .string()
+  .regex(/^\+?[1-9]\d{7,14}$/, 'phone must be in E.164 form')
+  // Normalising here means the OTP redis key and the users.phone column always agree.
+  .transform((value) => (value.startsWith('+') ? value : `+${value}`));
+
+const requestOtpSchema = z.object({
+  phone: phoneSchema,
+});
+
+const verifyOtpSchema = z.object({
+  phone: phoneSchema,
+  code: z.string().regex(/^\d{4,8}$/, 'code must be numeric'),
+  /** Supplied on first login only; ignored for existing accounts. */
+  name: z.string().min(2).max(160).optional(),
   dob: z.string().datetime({ offset: true }).optional(),
   birthPlace: z.string().min(2).max(180).optional(),
   latitude: z.number().min(-90).max(90).optional(),
@@ -14,62 +27,68 @@ const registerSchema = z.object({
   gotra: z.string().min(2).max(120).optional(),
 });
 
-const loginSchema = z.object({
-  phone: z.string().min(6).max(20),
-});
-
 /**
- * Sprint 1 exposes deterministic phone-based issuance so the rest of the platform can be exercised
- * end to end. OTP verification lands in Sprint 2 and plugs in ahead of `signAccessToken`.
+ * Possession of the phone number is the only credential. Sprint 1 shipped `/register` and `/token`,
+ * which minted a token for any phone number with no proof of ownership whatsoever; both are gone.
  */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/register', async (request, reply) => {
-    const body = registerSchema.parse(request.body);
+  app.post('/otp/request', async (request, reply) => {
+    const { phone } = requestOtpSchema.parse(request.body);
+    const challenge = await OtpService.request(phone);
 
-    const created = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          phone: body.phone,
-          name: body.name,
-          ...(body.dob === undefined ? {} : { dob: new Date(body.dob) }),
-          ...(body.birthPlace === undefined ? {} : { birthPlace: body.birthPlace }),
-          ...(body.latitude === undefined ? {} : { latitude: body.latitude }),
-          ...(body.longitude === undefined ? {} : { longitude: body.longitude }),
-          ...(body.gotra === undefined ? {} : { gotra: body.gotra }),
-        },
-        select: { id: true, phone: true, name: true },
-      });
-      await tx.wallet.create({ data: { userId: user.id, balance: 0, currency: 'INR' } });
-      return user;
-    });
-
-    return reply.code(201).send({
-      user: created,
-      accessToken: signAccessToken({ sub: created.id, role: AppRole.USER, phone: created.phone }),
+    // The response is identical for known and unknown numbers: differing status codes, bodies or
+    // timings here would turn this route into a "does this person have an account?" oracle.
+    return reply.code(202).send({
+      sent: true,
+      expiresInSeconds: challenge.expiresInSeconds,
+      resendAfterSeconds: challenge.resendAfterSeconds,
+      ...(challenge.debugCode === undefined ? {} : { debugCode: challenge.debugCode }),
     });
   });
 
-  app.post('/token', async (request, reply) => {
-    const { phone } = loginSchema.parse(request.body);
-    const user = await prisma.user.findUnique({
-      where: { phone },
+  app.post('/otp/verify', async (request, reply) => {
+    const body = verifyOtpSchema.parse(request.body);
+
+    // Throws before any account is touched, so a wrong code can never create a user.
+    await OtpService.verify(body.phone, body.code);
+
+    const existing = await prisma.user.findUnique({
+      where: { phone: body.phone },
       select: { id: true, phone: true, name: true, astrologer: { select: { id: true } } },
     });
-    if (!user) {
-      return reply.code(404).send({ error: 'NOT_FOUND', message: 'No account for this phone number' });
-    }
 
-    const accessToken = signAccessToken({
-      sub: user.id,
-      phone: user.phone,
-      role: user.astrologer ? AppRole.ASTROLOGER : AppRole.USER,
-      ...(user.astrologer ? { astrologerId: user.astrologer.id } : {}),
-    });
+    const user =
+      existing ??
+      (await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            phone: body.phone,
+            name: body.name ?? 'Devotee',
+            ...(body.dob === undefined ? {} : { dob: new Date(body.dob) }),
+            ...(body.birthPlace === undefined ? {} : { birthPlace: body.birthPlace }),
+            ...(body.latitude === undefined ? {} : { latitude: body.latitude }),
+            ...(body.longitude === undefined ? {} : { longitude: body.longitude }),
+            ...(body.gotra === undefined ? {} : { gotra: body.gotra }),
+          },
+          select: { id: true, phone: true, name: true },
+        });
+        // Same transaction as the user: an account without a wallet would break every debit path.
+        await tx.wallet.create({ data: { userId: created.id, balance: 0, currency: 'INR' } });
+        return { ...created, astrologer: null as { id: string } | null };
+      }));
 
-    return reply.send({
+    const role = user.astrologer ? AppRole.ASTROLOGER : AppRole.USER;
+
+    return reply.code(existing ? 200 : 201).send({
       user: { id: user.id, name: user.name, phone: user.phone },
-      role: user.astrologer ? AppRole.ASTROLOGER : AppRole.USER,
-      accessToken,
+      role,
+      isNewAccount: !existing,
+      accessToken: signAccessToken({
+        sub: user.id,
+        phone: user.phone,
+        role,
+        ...(user.astrologer ? { astrologerId: user.astrologer.id } : {}),
+      }),
     });
   });
 }

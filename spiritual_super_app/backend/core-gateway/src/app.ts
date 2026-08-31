@@ -13,6 +13,7 @@ import { redis } from './lib/redis.js';
 import { astroRoutes } from './routes/astro.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { callRoutes } from './routes/call.routes.js';
+import { paymentRoutes, paymentWebhookRoutes } from './routes/payment.routes.js';
 import { remedyRoutes } from './routes/remedy.routes.js';
 import { walletRoutes } from './routes/wallet.routes.js';
 import { websocketRoutes } from './routes/ws.routes.js';
@@ -89,6 +90,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(walletRoutes, { prefix: '/api/v1/wallet' });
+  await app.register(paymentRoutes, { prefix: '/api/v1/payments' });
+  // Separate registration keeps the raw-body parser and the absent auth hook scoped to the webhook.
+  await app.register(paymentWebhookRoutes, { prefix: '/api/v1/payments/webhook' });
   await app.register(callRoutes, { prefix: '/api/v1/calls' });
   await app.register(remedyRoutes, { prefix: '/api/v1/remedies' });
   await app.register(astroRoutes, { prefix: '/api/v1/vedic' });
