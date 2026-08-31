@@ -1,0 +1,235 @@
+name: spiritual-super-app
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: ssa-postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ssa_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-ssa_core}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - synchronous_commit=on
+      - -c
+      - default_transaction_isolation=read committed
+      - -c
+      - statement_timeout=15000
+      - -c
+      - idle_in_transaction_session_timeout=30000
+      - -c
+      - lock_timeout=5000
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-ssa_admin} -d ${POSTGRES_DB:-ssa_core} && psql -U ${POSTGRES_USER:-ssa_admin} -d ${POSTGRES_DB:-ssa_core} -c 'SELECT 1' >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+  redis-state:
+    image: redis:7-alpine
+    container_name: ssa-redis-state
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --auto-aof-rewrite-percentage
+      - "100"
+      - --auto-aof-rewrite-min-size
+      - 64mb
+      - --save
+      - ""
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+  fastapi-astro:
+    build:
+      context: ./backend/astro-service
+      dockerfile: Dockerfile
+    container_name: fastapi-astro
+    restart: always
+    environment:
+      ASTRO_SERVICE_PORT: "8001"
+      EPHE_PATH: /app/ephemeris
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
+    volumes:
+      - ./backend/astro-service/ephemeris:/app/ephemeris:ro
+    expose:
+      - "8001"
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/healthz').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+  core-gateway:
+    build:
+      context: ./backend/core-gateway
+      dockerfile: Dockerfile
+    container_name: ssa-core-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis-state:
+        condition: service_healthy
+      fastapi-astro:
+        condition: service_started
+      livekit-rtc:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ssa_admin}:${POSTGRES_PASSWORD}@postgres-db:5432/${POSTGRES_DB:-ssa_core}?schema=public&connection_limit=25&pool_timeout=10
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-state:6379/0
+      ASTRO_SERVICE_URL: http://fastapi-astro:8001
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      LIVEKIT_URL: ws://livekit-rtc:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-wss://localhost/rtc}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required}
+      BILLING_TICK_SECONDS: "60"
+      MIN_CALL_MINUTES_BUFFER: "5"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+  livekit-rtc:
+    image: livekit/livekit-server:v1.8
+    container_name: ssa-livekit-rtc
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: ssa-coturn
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=51000
+      - --max-port=51200
+      - --realm=${TURN_REALM:-turn.localhost}
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:?TURN_SHARED_SECRET is required}
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
+    logging: *default-logging
+
+  nginx-proxy:
+    image: nginx:1.27-alpine
+    container_name: ssa-nginx-proxy
+    restart: unless-stopped
+    depends_on:
+      core-gateway:
+        condition: service_started
+      fastapi-astro:
+        condition: service_started
+      livekit-rtc:
+        condition: service_started
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/templates:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    environment:
+      SERVER_NAME: ${PUBLIC_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        envsubst '$$SERVER_NAME' < /etc/nginx/templates/app.conf.template > /etc/nginx/conf.d/app.conf
+        exec nginx -g 'daemon off;'
+    networks:
+      - ssa-internal
+    logging: *default-logging
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  ssa-internal:
+    driver: bridge

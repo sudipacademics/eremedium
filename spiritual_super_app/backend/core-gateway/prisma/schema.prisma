@@ -1,0 +1,202 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum ReferenceType {
+  CALL_SESSION
+  PUJA_BOOKING
+  AYURVEDA_ORDER
+  RECHARGE
+}
+
+enum AstrologerStatus {
+  OFFLINE
+  IDLE
+  BUSY
+  IN_CALL
+}
+
+enum CallSessionStatus {
+  INITIATED
+  ACTIVE
+  COMPLETED
+  DROPPED_INSUFFICIENT_FUNDS
+}
+
+enum PujaBookingStatus {
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  PRASAD_DISPATCHED
+}
+
+enum Dosha {
+  VATA
+  PITTA
+  KAPHA
+  TRIDOSHIC
+}
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  phone             String    @unique @db.VarChar(20)
+  name              String    @db.VarChar(160)
+  dob               DateTime? @db.Timestamptz(3)
+  birthPlace        String?   @map("birth_place") @db.VarChar(180)
+  latitude          Decimal?  @db.Decimal(9, 6)
+  longitude         Decimal?  @db.Decimal(9, 6)
+  gotra             String?   @db.VarChar(120)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  wallet            Wallet?
+  astrologer        Astrologer?
+  callSessions      CallSession[]
+  pujaBookings      PujaBooking[]
+  ayurvedicProfiles AyurvedicProfile[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  currency  String   @default("INR") @db.Char(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id             String          @id @default(uuid()) @db.Uuid
+  walletId       String          @map("wallet_id") @db.Uuid
+  amount         Decimal         @db.Decimal(12, 2)
+  type           TransactionType
+  referenceType  ReferenceType   @map("reference_type")
+  referenceId    String          @map("reference_id") @db.VarChar(120)
+  balanceAfter   Decimal         @map("balance_after") @db.Decimal(12, 2)
+  idempotencyKey String?         @unique @map("idempotency_key") @db.VarChar(160)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("wallet_transactions")
+}
+
+model Astrologer {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @unique @map("user_id") @db.Uuid
+  displayName     String           @map("display_name") @db.VarChar(160)
+  perMinuteRate   Decimal          @map("per_minute_rate") @db.Decimal(12, 2)
+  commissionSplit Decimal          @default("0.50") @map("commission_split") @db.Decimal(5, 4)
+  status          AstrologerStatus @default(OFFLINE)
+  languages       String[]         @default([])
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  callSessions CallSession[]
+  pujaReferals PujaBooking[] @relation("PujaReferral")
+
+  @@index([status])
+  @@map("astrologers")
+}
+
+model CallSession {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  astrologerId   String            @map("astrologer_id") @db.Uuid
+  channelId      String            @unique @map("channel_id") @db.VarChar(120)
+  ratePerMinute  Decimal           @map("rate_per_minute") @db.Decimal(12, 2)
+  startTime      DateTime?         @map("start_time") @db.Timestamptz(3)
+  endTime        DateTime?         @map("end_time") @db.Timestamptz(3)
+  totalMinutes   Int               @default(0) @map("total_minutes")
+  totalDeducted  Decimal           @default(0) @map("total_deducted") @db.Decimal(12, 2)
+  status         CallSessionStatus @default(INITIATED)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  astrologer Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([astrologerId, createdAt])
+  @@index([status])
+  @@map("call_sessions")
+}
+
+model Temple {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(180)
+  location       String   @db.VarChar(180)
+  primaryDeity   String   @map("primary_deity") @db.VarChar(120)
+  liveStreamUrl  String?  @map("live_stream_url") @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  pujaBookings PujaBooking[]
+
+  @@unique([name, location])
+  @@map("temples")
+}
+
+model PujaBooking {
+  id                     String            @id @default(uuid()) @db.Uuid
+  userId                 String            @map("user_id") @db.Uuid
+  templeId               String            @map("temple_id") @db.Uuid
+  referredByAstrologerId String?           @map("referred_by_astrologer_id") @db.Uuid
+  sankalpName            String            @map("sankalp_name") @db.VarChar(160)
+  sankalpGotra           String?           @map("sankalp_gotra") @db.VarChar(120)
+  sankalpWish            String?           @map("sankalp_wish") @db.VarChar(1000)
+  packagePrice           Decimal           @map("package_price") @db.Decimal(12, 2)
+  status                 PujaBookingStatus @default(CONFIRMED)
+  videoProofUrl          String?           @map("video_proof_url") @db.VarChar(500)
+  prasadAwb              String?           @map("prasad_awb") @db.VarChar(80)
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  temple               Temple      @relation(fields: [templeId], references: [id], onDelete: Restrict)
+  referredByAstrologer Astrologer? @relation("PujaReferral", fields: [referredByAstrologerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([templeId, status])
+  @@map("puja_bookings")
+}
+
+model AyurvedicProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  prakritiPrimary Dosha    @map("prakriti_primary")
+  vikritiCurrent  Dosha?   @map("vikriti_current")
+  dominantGuna    String?  @map("dominant_guna") @db.VarChar(40)
+  digestiveFire   String?  @map("digestive_fire") @db.VarChar(40)
+  vataScore       Decimal  @default(0) @map("vata_score") @db.Decimal(5, 2)
+  pittaScore      Decimal  @default(0) @map("pitta_score") @db.Decimal(5, 2)
+  kaphaScore      Decimal  @default(0) @map("kapha_score") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ayurvedic_profiles")
+}

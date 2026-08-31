@@ -1,0 +1,10 @@
+# Shell scripts must keep LF endings or the shebang breaks on Linux hosts.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.conf text eol=lf
+*.template text eol=lf
+
+# Swiss Ephemeris data files are binary.
+*.se1 binary
