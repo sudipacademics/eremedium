@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { prisma } from '../lib/prisma.js';
 import { CallService, TERMINAL_STATUSES } from '../services/call.service.js';
+import { LiveKitTokenService } from '../services/livekit.service.js';
 
 const receiver = new WebhookReceiver(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
 
@@ -61,14 +62,29 @@ export async function livekitWebhookRoutes(app: FastifyInstance): Promise<void> 
 
     switch (event.event) {
       case 'participant_joined': {
-        // Start the clock only once both sides are actually in the room. activate() is guarded to
-        // the INITIATED state, so repeated joins are harmless.
-        const participantCount = event.room?.numParticipants ?? 0;
-        if (!alreadyFinished && participantCount >= 2) {
+        if (alreadyFinished) {
+          return reply.code(200).send({ received: true, action: 'ignored', reason: 'already_ended' });
+        }
+
+        /*
+         * Ask LiveKit how many participants are in the room rather than trusting the payload.
+         *
+         * event.room.numParticipants is NOT the live count in a participant_joined event -- it
+         * arrives as 0 -- so gating on it meant activate() never fired. A two-party call with real
+         * media then sat at INITIATED for its whole duration and billed nothing: the billing worker
+         * only ticks on ACTIVE. The client also calls /activate, which masked this whenever that
+         * request happened to succeed, but a native client or one failed request was a free
+         * consultation and an unpaid astrologer.
+         */
+        const liveCount = await LiveKitTokenService.countParticipants(roomName);
+        const participantCount = liveCount ?? event.room?.numParticipants ?? 0;
+
+        if (participantCount >= 2) {
+          // activate() is guarded to the INITIATED state, so both joins racing here is harmless.
           await CallService.activate(session.id);
           return reply.code(200).send({ received: true, action: 'activated' });
         }
-        return reply.code(200).send({ received: true, action: 'waiting_for_peer' });
+        return reply.code(200).send({ received: true, action: 'waiting_for_peer', participantCount });
       }
 
       case 'participant_left': {
