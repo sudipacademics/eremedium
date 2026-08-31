@@ -1,0 +1,29 @@
+# TEMPLATE for /etc/nginx/conf.d/ssa-gate.conf
+#
+# The real file lives ONLY on the server and is NOT in git, because it contains the shared secret.
+# astro.conf references both variables defined here; if this file is missing nginx refuses to start
+# on an undefined variable, which is intentional so the staging gate cannot silently vanish.
+#
+# Install:
+#   TOKEN=$(openssl rand -hex 24)
+#   sed "s/REPLACE_WITH_SECRET/$TOKEN/" ssa-gate.conf.example > /etc/nginx/conf.d/ssa-gate.conf
+#   nginx -t && systemctl reload nginx
+#
+# Call the API with:
+#   curl -H "X-SSA-Gate: $TOKEN" https://astro.e-remedium.in/api/v1/...
+#
+# This is a blunt staging lock, NOT an authorization model. It buys time until Sprint 2 replaces
+# /auth/token with real OTP verification and makes the payment webhook the only way to credit a
+# wallet. Delete it (and the `if` guards in astro.conf) once that lands.
+
+# Optional: IP allowlist. Any address listed here reaches the API without the header. Left empty by
+# default so the header is the single source of access; add your office/home IP if convenient.
+geo $ssa_ip_allowed {
+    default 0;
+    # 203.0.113.4/32 1;
+}
+
+map $http_x_ssa_gate $ssa_gate_header_ok {
+    default              0;
+    "REPLACE_WITH_SECRET" 1;
+}
