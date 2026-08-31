@@ -72,6 +72,19 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (hasStatusCode(error) && error.statusCode >= 400 && error.statusCode < 500) {
       return reply.code(error.statusCode).send({ error: error.name, message: error.message });
     }
+
+    /*
+     * Deliberate 5xx (an upstream provider failing, a feature not configured) must keep its own
+     * status and message. Collapsing them into a generic 500 left callers unable to tell "the
+     * payment provider rejected us" from "we have a bug", and made a misconfigured environment look
+     * like a crash.
+     */
+    if (hasStatusCode(error) && error.statusCode >= 500 && error.statusCode < 600) {
+      request.log.error({ err: error }, 'Upstream or configuration failure');
+      return reply.code(error.statusCode).send({ error: error.name, message: error.message });
+    }
+
+    // Undeclared errors stay opaque: the message could contain anything.
     request.log.error({ err: error }, 'Unhandled request error');
     return reply.code(500).send({ error: 'INTERNAL_ERROR', message: 'Unexpected server error' });
   });
