@@ -12,9 +12,12 @@ rtc:
 turn:
   enabled: false
 
-redis:
-  address: redis-state:6379
-  db: 1
+# No `redis:` block on purpose. LiveKit only needs Redis for multi-node routing, and this is a
+# single instance, so in-memory state is correct. Configuring it here would also mean either
+# committing REDIS_PASSWORD to the repo or templating this file at deploy time -- our Redis runs
+# with requirepass, so a passwordless block just crash-loops on "NOAUTH Authentication required".
+# When you scale to a second LiveKit node, inject the whole config via the LIVEKIT_CONFIG env var
+# so the password can come from .env.
 
 logging:
   level: info
@@ -26,7 +29,6 @@ room:
   departure_timeout: 20
   max_participants: 2
 
-webhook:
-  api_key: ""
-  urls:
-    - http://core-gateway:8000/api/v1/rtc/webhook
+# Webhooks are deliberately not configured yet: the gateway has no /api/v1/rtc/webhook handler
+# (Sprint 2), and LiveKit requires `api_key` to name a key from LIVEKIT_KEYS in order to sign the
+# callbacks. Session activation currently happens via POST /api/v1/calls/sessions/:id/activate.
