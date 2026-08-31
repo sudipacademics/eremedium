@@ -201,8 +201,10 @@ services:
       NEXT_PUBLIC_WS_URL: ${PUBLIC_WS_URL:-}
     expose:
       - "3000"
+    # Published on 3100, not 3000: something else on the shared host already owns loopback:3000 and
+    # the container refused to start against it. The in-container port stays 3000.
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3100:3000"
     networks:
       - ssa-internal
     logging: *default-logging
