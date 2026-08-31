@@ -7,6 +7,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
 import { authenticate, requireUser } from '../plugins/authenticate.js';
+import { QueueService } from '../services/queue.service.js';
 
 export class AstrologerError extends Error {
   readonly statusCode: number;
@@ -131,17 +132,17 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
       throw new AstrologerError(`Cannot change availability while ${astrologer.status}`);
     }
 
-    const target = body.online ? AstrologerStatus.IDLE : AstrologerStatus.OFFLINE;
-    // Conditional update: refuses if the engine changed status underneath us.
-    const updated = await prisma.astrologer.updateMany({
-      where: { id: astrologer.id, status: { in: [AstrologerStatus.IDLE, AstrologerStatus.OFFLINE] } },
-      data: { status: target },
-    });
-    if (updated.count !== 1) {
-      throw new AstrologerError('Availability changed concurrently; retry');
-    }
+    /*
+     * Delegate rather than update the row directly. Going offline has to drain the waiting queue and
+     * tell those users, and coming online has to kick the matching worker; a bare status write would
+     * silently strand anyone already queued.
+     */
+    const status = await QueueService.setAstrologerPresence(
+      astrologer.id,
+      body.online ? 'ONLINE' : 'OFFLINE',
+    );
 
-    return { id: astrologer.id, status: target };
+    return { id: astrologer.id, status };
   });
 
   app.get('/me/earnings', async (request) => {
