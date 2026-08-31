@@ -145,6 +145,20 @@ services:
       BILLING_TICK_SECONDS: "60"
       MIN_CALL_MINUTES_BUFFER: "5"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Phone OTP. Unset values fall back to the defaults in src/config/env.ts.
+      SMS_PROVIDER: ${SMS_PROVIDER:-log}
+      OTP_DEBUG_ECHO: ${OTP_DEBUG_ECHO:-false}
+      OTP_PEPPER: ${OTP_PEPPER:-}
+      MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
+      MSG91_TEMPLATE_ID: ${MSG91_TEMPLATE_ID:-}
+      MSG91_SENDER: ${MSG91_SENDER:-}
+      # Wallet top-up. Compose passes ONLY the variables named here, so a secret added to .env
+      # without a line in this block is invisible to the container and payments stay disabled.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      TOPUP_MIN_AMOUNT: ${TOPUP_MIN_AMOUNT:-10.00}
+      TOPUP_MAX_AMOUNT: ${TOPUP_MAX_AMOUNT:-100000.00}
     expose:
       - "8000"
     ports:

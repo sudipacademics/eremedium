@@ -5,6 +5,20 @@ const booleanFromEnv = z.enum(['true', 'false']).transform((value) => value === 
 
 const decimalAmount = /^\d{1,10}(\.\d{1,2})?$/;
 
+/**
+ * Treats an empty string as absent.
+ *
+ * docker-compose renders an unset `${VAR:-}` as an empty string rather than omitting the variable,
+ * and a bare `.optional()` would then fail its own `.min()` check and take the whole gateway down at
+ * boot instead of leaving the optional feature switched off.
+ */
+function optionalSecret(minLength: number) {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(minLength).optional(),
+  );
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
   HOST: z.string().default('0.0.0.0'),
@@ -35,7 +49,7 @@ const envSchema = z.object({
   // --- Phone OTP -----------------------------------------------------------------------------
   // Codes are peppered before hashing so a Redis dump alone cannot be brute-forced offline.
   // Defaults to JWT_SECRET to avoid a mandatory new secret on already-deployed environments.
-  OTP_PEPPER: z.string().min(16).optional(),
+  OTP_PEPPER: optionalSecret(16),
   OTP_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
   OTP_LENGTH: z.coerce.number().int().min(4).max(8).default(6),
   OTP_MAX_VERIFY_ATTEMPTS: z.coerce.number().int().min(3).max(10).default(5),
@@ -46,16 +60,16 @@ const envSchema = z.object({
   OTP_DEBUG_ECHO: booleanFromEnv.default('false'),
 
   SMS_PROVIDER: z.enum(['log', 'msg91']).default('log'),
-  MSG91_AUTH_KEY: z.string().min(8).optional(),
-  MSG91_TEMPLATE_ID: z.string().min(4).optional(),
-  MSG91_SENDER: z.string().min(3).max(11).optional(),
+  MSG91_AUTH_KEY: optionalSecret(8),
+  MSG91_TEMPLATE_ID: optionalSecret(4),
+  MSG91_SENDER: optionalSecret(3),
 
   // --- Wallet top-up via Razorpay -------------------------------------------------------------
   // Optional so the service still boots unconfigured; the routes answer 503 until all three are
   // present, rather than the whole gateway refusing to start.
-  RAZORPAY_KEY_ID: z.string().min(8).optional(),
-  RAZORPAY_KEY_SECRET: z.string().min(8).optional(),
-  RAZORPAY_WEBHOOK_SECRET: z.string().min(8).optional(),
+  RAZORPAY_KEY_ID: optionalSecret(8),
+  RAZORPAY_KEY_SECRET: optionalSecret(8),
+  RAZORPAY_WEBHOOK_SECRET: optionalSecret(8),
   RAZORPAY_API_BASE: z.string().url().default('https://api.razorpay.com/v1'),
   TOPUP_MIN_AMOUNT: z.string().regex(decimalAmount).default('10.00'),
   TOPUP_MAX_AMOUNT: z.string().regex(decimalAmount).default('100000.00'),
