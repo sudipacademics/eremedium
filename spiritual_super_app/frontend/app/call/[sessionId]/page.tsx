@@ -4,7 +4,9 @@ import { Room, RoomEvent, Track, type RemoteTrack } from 'livekit-client';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, type CallSessionView, type RtcToken } from '@/lib/api';
+import { RemedyCard } from '@/components/RemedyCard';
+import { RemedyDispatcher } from '@/components/RemedyDispatcher';
+import { api, session as store, type CallSessionView, type RtcToken } from '@/lib/api';
 import { useSocketEvent } from '@/lib/socket';
 
 interface BillingTick {
@@ -34,6 +36,8 @@ export default function CallPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
   const router = useRouter();
+  // Both parties land on this screen; which half of the remedy feature they get depends on this.
+  const isAstrologer = store.profile?.astrologerId != null;
 
   const roomRef = useRef<Room | null>(null);
   const audioContainerRef = useRef<HTMLDivElement | null>(null);
@@ -259,6 +263,16 @@ export default function CallPage() {
           </p>
         )}
       </div>
+
+      {/*
+        Two sides of the same feature on one screen: the astrologer prescribes a puja from the
+        catalog, and the devotee gets the card with a one-tap authorisation.
+      */}
+      {isAstrologer ? (
+        <RemedyDispatcher callSessionId={sessionId} />
+      ) : (
+        <RemedyCard callSessionId={sessionId} />
+      )}
 
       {warning && (
         <p className="card border-amber-400/30 bg-amber-500/10 text-sm text-amber-100">{warning}</p>

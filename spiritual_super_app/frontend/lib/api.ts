@@ -123,6 +123,55 @@ export interface WalletBalance {
   currency: string;
 }
 
+export interface PujaOffering {
+  id: string;
+  name: string;
+  description: string | null;
+  /** A decimal string, never a number: money must not pass through a float. */
+  price: string;
+  durationLabel: string | null;
+  prasadIncluded: string | null;
+}
+
+export interface PujaTemple {
+  id: string;
+  name: string;
+  location: string;
+  primaryDeity: string;
+  liveStreamUrl: string | null;
+  offerings: PujaOffering[];
+}
+
+export type PujaBookingStatus = 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'PRASAD_DISPATCHED';
+
+export interface PujaBooking {
+  id: string;
+  status: PujaBookingStatus;
+  pujaName: string;
+  packagePrice: string;
+  templeId: string;
+  templeName: string;
+  templeLocation: string;
+  liveStreamUrl: string | null;
+  sankalpName: string;
+  sankalpGotra: string | null;
+  sankalpWish: string | null;
+  referredByAstrologerId: string | null;
+  scheduledFor: string | null;
+  performedAt: string | null;
+  videoProofUrl: string | null;
+  prasadAwb: string | null;
+  prasadCourier: string | null;
+  prasadDispatchedAt: string | null;
+  createdAt: string;
+}
+
+export interface PujaBookingResult {
+  booking: PujaBooking;
+  amountDebited: string;
+  walletBalanceAfter: string;
+}
+
 export interface WalletTransaction {
   id: string;
   amount: string;

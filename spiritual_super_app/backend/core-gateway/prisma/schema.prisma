@@ -222,36 +222,88 @@ model Temple {
   location       String   @db.VarChar(180)
   primaryDeity   String   @map("primary_deity") @db.VarChar(120)
   liveStreamUrl  String?  @map("live_stream_url") @db.VarChar(500)
+  /** Hides a temple from the catalog without deleting it, which bookings would forbid anyway. */
+  active         Boolean  @default(true)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   pujaBookings PujaBooking[]
+  offerings    PujaOffering[]
 
   @@unique([name, location])
+  @@index([active])
   @@map("temples")
+}
+
+/**
+ * The priced catalog of pujas a temple performs.
+ *
+ * This table exists because price was previously whatever the caller put in the request body: the
+ * astrologer's in-call remedy card carried its own `packagePrice`, so the amount a devotee was
+ * charged was decided by the client rather than by the platform. Every booking now takes its price
+ * from here, and the offering is recorded on the booking so a later price change cannot rewrite what
+ * somebody already paid.
+ */
+model PujaOffering {
+  id            String   @id @default(uuid()) @db.Uuid
+  templeId      String   @map("temple_id") @db.Uuid
+  name          String   @db.VarChar(160)
+  description   String?  @db.VarChar(1000)
+  /** What the devotee pays. The single source of truth for the price of this puja. */
+  price         Decimal  @db.Decimal(12, 2)
+  /** Indicative duration shown in the catalog, e.g. "45 minutes". */
+  durationLabel String?  @map("duration_label") @db.VarChar(60)
+  /** What arrives by post afterwards, e.g. "Prasad, rudraksha and photographs". */
+  prasadIncluded String? @map("prasad_included") @db.VarChar(300)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  temple   Temple        @relation(fields: [templeId], references: [id], onDelete: Cascade)
+  bookings PujaBooking[]
+
+  @@unique([templeId, name])
+  @@index([templeId, active])
+  @@map("puja_offerings")
 }
 
 model PujaBooking {
   id                     String            @id @default(uuid()) @db.Uuid
   userId                 String            @map("user_id") @db.Uuid
   templeId               String            @map("temple_id") @db.Uuid
+  /** Nullable only for bookings made before the catalog existed. */
+  pujaOfferingId         String?           @map("puja_offering_id") @db.Uuid
+  /** Snapshot of the offering name, so renaming a puja cannot rewrite an existing booking. */
+  pujaName               String            @map("puja_name") @db.VarChar(160)
   referredByAstrologerId String?           @map("referred_by_astrologer_id") @db.Uuid
   sankalpName            String            @map("sankalp_name") @db.VarChar(160)
   sankalpGotra           String?           @map("sankalp_gotra") @db.VarChar(120)
   sankalpWish            String?           @map("sankalp_wish") @db.VarChar(1000)
   packagePrice           Decimal           @map("package_price") @db.Decimal(12, 2)
   status                 PujaBookingStatus @default(CONFIRMED)
+  /** Set when the temple performs the puja. */
+  scheduledFor           DateTime?         @map("scheduled_for") @db.Timestamptz(3)
+  performedAt            DateTime?         @map("performed_at") @db.Timestamptz(3)
   videoProofUrl          String?           @map("video_proof_url") @db.VarChar(500)
   prasadAwb              String?           @map("prasad_awb") @db.VarChar(80)
+  prasadCourier          String?           @map("prasad_courier") @db.VarChar(80)
+  prasadDispatchedAt     DateTime?         @map("prasad_dispatched_at") @db.Timestamptz(3)
+  /**
+   * Makes a retried booking request return the original booking instead of creating a second one.
+   * A double-tapped confirm button would otherwise buy the same puja twice.
+   */
+  idempotencyKey         String?           @unique @map("idempotency_key") @db.VarChar(160)
   createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user                 User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  temple               Temple      @relation(fields: [templeId], references: [id], onDelete: Restrict)
-  referredByAstrologer Astrologer? @relation("PujaReferral", fields: [referredByAstrologerId], references: [id], onDelete: SetNull)
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  temple               Temple        @relation(fields: [templeId], references: [id], onDelete: Restrict)
+  offering             PujaOffering? @relation(fields: [pujaOfferingId], references: [id], onDelete: Restrict)
+  referredByAstrologer Astrologer?   @relation("PujaReferral", fields: [referredByAstrologerId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([templeId, status])
+  @@index([status, createdAt])
   @@map("puja_bookings")
 }
 

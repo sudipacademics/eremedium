@@ -7,9 +7,9 @@ import { InCallRemedyDispatcher } from '../services/remedy.service.js';
 
 const dispatchBody = z.object({
   callSessionId: z.string().uuid(),
-  templeId: z.string().uuid(),
-  pujaName: z.string().min(3).max(160),
-  packagePrice: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, 'packagePrice must be a decimal string'),
+  // No price and no puja name: both come from the catalog entry this id points at, so the astrologer
+  // on the call cannot set what the devotee is charged.
+  pujaOfferingId: z.string().uuid(),
   sankalpWish: z.string().max(1000).optional(),
   expiresInSeconds: z.number().int().min(30).max(1800).default(600),
 });
@@ -25,9 +25,7 @@ export async function remedyRoutes(app: FastifyInstance): Promise<void> {
     const card = await InCallRemedyDispatcher.dispatch({
       astrologerId,
       callSessionId: body.callSessionId,
-      templeId: body.templeId,
-      pujaName: body.pujaName,
-      packagePrice: body.packagePrice,
+      pujaOfferingId: body.pujaOfferingId,
       sankalpWish: body.sankalpWish,
       expiresInSeconds: body.expiresInSeconds,
     });

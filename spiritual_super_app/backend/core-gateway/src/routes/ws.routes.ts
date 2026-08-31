@@ -113,9 +113,7 @@ export async function websocketRoutes(app: FastifyInstance): Promise<void> {
           const card = await InCallRemedyDispatcher.dispatch({
             astrologerId: claims.astrologerId,
             callSessionId: message.callSessionId,
-            templeId: message.templeId,
-            pujaName: message.pujaName,
-            packagePrice: message.packagePrice,
+            pujaOfferingId: message.pujaOfferingId,
             sankalpWish: message.sankalpWish,
             expiresInSeconds: message.expiresInSeconds,
           });

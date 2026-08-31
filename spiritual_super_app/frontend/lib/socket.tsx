@@ -26,7 +26,8 @@ export type ServerEventName =
   | 'FORCE_DISCONNECT'
   | 'ASTROLOGER_STATUS'
   | 'PUJA_REMEDY_CARD'
-  | 'PUJA_REMEDY_RESULT';
+  | 'PUJA_REMEDY_RESULT'
+  | 'PUJA_BOOKING_UPDATED';
 
 export interface Envelope<T = Record<string, unknown>> {
   event: ServerEventName;

@@ -15,6 +15,8 @@ export const ServerEvent = {
   ASTROLOGER_STATUS: 'ASTROLOGER_STATUS',
   PUJA_REMEDY_CARD: 'PUJA_REMEDY_CARD',
   PUJA_REMEDY_RESULT: 'PUJA_REMEDY_RESULT',
+  /** Fulfilment progress on a booked puja: scheduled, performed, prasad posted. */
+  PUJA_BOOKING_UPDATED: 'PUJA_BOOKING_UPDATED',
 } as const;
 
 export type ServerEvent = (typeof ServerEvent)[keyof typeof ServerEvent];
@@ -41,11 +43,12 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ASTROLOGER_PUSH_REMEDY'),
     callSessionId: z.string().uuid(),
-    templeId: z.string().uuid(),
-    pujaName: z.string().min(3).max(160),
-    packagePrice: z
-      .string()
-      .regex(/^\d{1,10}(\.\d{1,2})?$/, 'packagePrice must be a decimal string with <= 2 places'),
+    /*
+     * The offering identifies the puja AND its price. This message used to carry `templeId`,
+     * `pujaName` and `packagePrice`, which meant the astrologer on the call decided what the devotee
+     * was charged -- the client set the price. Both now come from the catalog.
+     */
+    pujaOfferingId: z.string().uuid(),
     sankalpWish: z.string().max(1000).optional(),
     expiresInSeconds: z.number().int().min(30).max(1800).default(600),
   }),

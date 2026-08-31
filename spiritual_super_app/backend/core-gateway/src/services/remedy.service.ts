@@ -7,6 +7,7 @@ import { Prisma, money, prisma } from '../lib/prisma.js';
 import { redis, redisKeys } from '../lib/redis.js';
 import { hub } from '../ws/hub.js';
 import { ServerEvent } from '../ws/protocol.js';
+import { PujaService } from './puja.service.js';
 import { WalletService } from './wallet.service.js';
 
 export class RemedyError extends Error {
@@ -28,6 +29,7 @@ export interface PujaRemedyCard {
   readonly templeLocation: string;
   readonly primaryDeity: string;
   readonly liveStreamUrl: string | null;
+  readonly pujaOfferingId: string;
   readonly pujaName: string;
   readonly packagePrice: string;
   readonly sankalpName: string;
@@ -49,9 +51,8 @@ export interface RemedyAuthorizationResult {
 interface DispatchInput {
   readonly callSessionId: string;
   readonly astrologerId: string;
-  readonly templeId: string;
-  readonly pujaName: string;
-  readonly packagePrice: string;
+  /** Identifies both the puja and its price; see the comment in dispatch(). */
+  readonly pujaOfferingId: string;
   readonly sankalpWish?: string | undefined;
   readonly expiresInSeconds: number;
 }
@@ -82,18 +83,16 @@ export const InCallRemedyDispatcher = {
       throw new RemedyError(`Session is ${session.status}; remedies require an ACTIVE call`);
     }
 
-    const temple = await prisma.temple.findUnique({
-      where: { id: input.templeId },
-      select: { id: true, name: true, location: true, primaryDeity: true, liveStreamUrl: true },
-    });
-    if (!temple) {
-      throw new RemedyError(`Temple ${input.templeId} not found`);
-    }
-
-    const price = money(input.packagePrice);
-    if (price.lessThanOrEqualTo(0)) {
-      throw new RemedyError('packagePrice must be greater than zero');
-    }
+    /*
+     * Price and puja name come from the catalog, never from the caller.
+     *
+     * This method used to accept `packagePrice` and `pujaName` as free text from the astrologer on
+     * the call, so the amount a devotee was asked to authorise was set by a client. An astrologer
+     * could name any figure, and nothing recorded which puja had actually been sold.
+     */
+    const offering = await PujaService.requireBookableOffering(input.pujaOfferingId);
+    const temple = offering.temple;
+    const price = money(offering.price);
 
     const cardId = randomUUID();
     const card: PujaRemedyCard = {
@@ -106,7 +105,8 @@ export const InCallRemedyDispatcher = {
       templeLocation: temple.location,
       primaryDeity: temple.primaryDeity,
       liveStreamUrl: temple.liveStreamUrl,
-      pujaName: input.pujaName,
+      pujaOfferingId: offering.id,
+      pujaName: offering.name,
       packagePrice: price.toFixed(2),
       sankalpName: session.user.name,
       sankalpGotra: session.user.gotra,
@@ -186,12 +186,17 @@ export const InCallRemedyDispatcher = {
           data: {
             userId: actingUserId,
             templeId: card.templeId,
+            pujaOfferingId: card.pujaOfferingId,
+            // The name as it was shown on the card: renaming the offering later must not rewrite
+            // what this devotee believes they bought.
+            pujaName: card.pujaName,
             referredByAstrologerId: card.astrologerId,
             sankalpName: card.sankalpName,
             sankalpGotra: card.sankalpGotra,
             sankalpWish: card.sankalpWish,
             packagePrice: price,
             status: PujaBookingStatus.CONFIRMED,
+            idempotencyKey: `remedy:${cardId}`,
           },
           select: { id: true, status: true },
         });

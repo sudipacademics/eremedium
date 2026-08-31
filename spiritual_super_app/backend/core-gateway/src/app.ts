@@ -16,6 +16,7 @@ import { authRoutes } from './routes/auth.routes.js';
 import { callRoutes } from './routes/call.routes.js';
 import { livekitWebhookRoutes } from './routes/livekit.routes.js';
 import { paymentRoutes, paymentWebhookRoutes } from './routes/payment.routes.js';
+import { pujaRoutes } from './routes/puja.routes.js';
 import { remedyRoutes } from './routes/remedy.routes.js';
 import { walletRoutes } from './routes/wallet.routes.js';
 import { websocketRoutes } from './routes/ws.routes.js';
@@ -113,6 +114,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Own plugin: LiveKit signs the raw body, and the caller is not a logged-in user.
   await app.register(livekitWebhookRoutes, { prefix: '/api/v1/rtc/webhook' });
   await app.register(remedyRoutes, { prefix: '/api/v1/remedies' });
+  await app.register(pujaRoutes, { prefix: '/api/v1/pujas' });
   await app.register(astroRoutes, { prefix: '/api/v1/vedic' });
   await app.register(websocketRoutes, { prefix: '/api/v1' });
 
