@@ -198,6 +198,10 @@ services:
     image: nginx:1.27-alpine
     container_name: ssa-nginx-proxy
     restart: unless-stopped
+    # Opt-in only: on a shared host where another Nginx already owns 80/443, start this with
+    # `docker compose --profile edge up -d`. Without the profile it is never created.
+    profiles:
+      - edge
     depends_on:
       core-gateway:
         condition: service_started
