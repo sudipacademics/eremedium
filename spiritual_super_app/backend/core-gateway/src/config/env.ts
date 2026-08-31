@@ -36,7 +36,13 @@ const envSchema = z.object({
   INTERNAL_SERVICE_TOKEN: z.string().min(8),
 
   LIVEKIT_URL: z.string().url(),
-  LIVEKIT_PUBLIC_URL: z.string().default('wss://localhost/rtc'),
+  /*
+   * Host ROOT, with no /rtc suffix. livekit-client appends its own path to whatever base it is
+   * given -- createRtcUrl() appends "rtc" then "v1" -- so advertising ".../rtc" made clients
+   * request "/rtc/rtc/v1", which LiveKit rejected and no call could ever connect. nginx routes the
+   * whole /rtc prefix, so /rtc, /rtc/v1 and /rtc/validate all reach LiveKit unchanged.
+   */
+  LIVEKIT_PUBLIC_URL: z.string().default('wss://localhost'),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(16),
   LIVEKIT_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 2),
