@@ -121,7 +121,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     const token = session.token;
     setProfile(stored);
     setChecked(true);
-    if (!token && !PUBLIC_ROUTES.includes(pathname)) {
+    // Both halves are required: a corrupt profile blob reads back as null while the token survives,
+    // and that state has to redirect too or the guard below renders nothing forever.
+    if (!(token && stored) && !PUBLIC_ROUTES.includes(pathname)) {
       router.replace('/login');
     }
   }, [pathname, router]);
@@ -130,8 +132,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     return null;
   }
 
-  if (PUBLIC_ROUTES.includes(pathname) || !profile) {
+  if (PUBLIC_ROUTES.includes(pathname)) {
     return <main className="mx-auto max-w-md px-4 py-10">{children}</main>;
+  }
+
+  /*
+   * Protected route with no session: render nothing while the redirect above runs.
+   *
+   * Never render `children` here. Every protected page calls useSocket, and SocketProvider is only
+   * mounted in the authenticated branch below, so rendering the page bare threw
+   * "useSocket must be used inside SocketProvider" and replaced the whole app with React's
+   * client-side exception screen. That made the bare domain -- the first thing any new visitor
+   * loads -- a crash instead of a redirect to the login page.
+   */
+  if (!profile) {
+    return null;
   }
 
   return (
