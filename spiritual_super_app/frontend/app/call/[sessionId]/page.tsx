@@ -109,7 +109,17 @@ export default function CallPage() {
       });
 
       await room.connect(credentials.serverUrl, credentials.accessToken);
-      await room.localParticipant.setMicrophoneEnabled(true);
+
+      /*
+       * A refused or missing microphone must not fail the join. The user is already in the room and
+       * being billed from the moment both parties are present, so dropping them out of a paid call
+       * over a permission prompt is the wrong trade: let them listen and tell them what is wrong.
+       */
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch {
+        setWarning('We could not access your microphone. You can hear them, but they cannot hear you.');
+      }
 
       setPeerPresent(room.remoteParticipants.size > 0);
 
