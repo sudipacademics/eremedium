@@ -69,6 +69,24 @@ const envSchema = z.object({
     ),
 
   // --- Phone OTP -----------------------------------------------------------------------------
+  // "phone:code" pairs, comma separated, that receive a FIXED code instead of a random SMS. Lets the
+  // web app be demonstrated without an SMS vendor. Empty by default; never list a real user's number.
+  OTP_TEST_NUMBERS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      Object.fromEntries(
+        value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.includes(':'))
+          .map((entry) => {
+            const separator = entry.lastIndexOf(':');
+            return [entry.slice(0, separator).trim(), entry.slice(separator + 1).trim()] as const;
+          })
+          .filter(([phone, code]) => phone.length > 0 && /^\d{4,8}$/.test(code)),
+      ),
+    ),
   // Codes are peppered before hashing so a Redis dump alone cannot be brute-forced offline.
   // Defaults to JWT_SECRET to avoid a mandatory new secret on already-deployed environments.
   OTP_PEPPER: optionalSecret(16),

@@ -88,12 +88,24 @@ export const OtpService = {
       );
     }
 
-    const code = generateCode();
+    /*
+     * Staging test numbers get a fixed code so the app can be demonstrated without a live SMS
+     * vendor. Deliberately implemented by seeding the NORMAL challenge rather than adding a bypass
+     * in verify(): the hash, TTL, attempt cap and single-use deletion all still apply, and there is
+     * no code path that skips verification. Only numbers explicitly listed in env are affected, and
+     * the list is empty by default.
+     */
+    const fixedCode = env.OTP_TEST_NUMBERS[phone];
+    const code = fixedCode ?? generateCode();
     const record: OtpRecord = { hash: hashCode(phone, code), attempts: 0 };
     await redis.set(redisKeys.otpChallenge(phone), JSON.stringify(record), 'EX', env.OTP_TTL_SECONDS);
     await redis.set(cooldownKey, '1', 'EX', env.OTP_RESEND_COOLDOWN_SECONDS);
 
-    await sendSms(phone, code);
+    if (fixedCode) {
+      logger.warn({ phone }, 'Issued fixed staging OTP for an allowlisted test number');
+    } else {
+      await sendSms(phone, code);
+    }
 
     return {
       expiresInSeconds: env.OTP_TTL_SECONDS,

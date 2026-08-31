@@ -78,6 +78,12 @@ services:
         limits:
           memory: 640M
 
+  web:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   livekit-rtc:
     # Signalling and TCP fallback on loopback only: the host Nginx proxies /rtc to 127.0.0.1:7880.
     # The UDP media range must stay publicly reachable or WebRTC cannot connect.
