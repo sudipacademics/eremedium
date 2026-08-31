@@ -11,8 +11,10 @@ import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
 import { astroRoutes } from './routes/astro.routes.js';
+import { astrologerRoutes } from './routes/astrologer.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { callRoutes } from './routes/call.routes.js';
+import { livekitWebhookRoutes } from './routes/livekit.routes.js';
 import { paymentRoutes, paymentWebhookRoutes } from './routes/payment.routes.js';
 import { remedyRoutes } from './routes/remedy.routes.js';
 import { walletRoutes } from './routes/wallet.routes.js';
@@ -94,6 +96,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Separate registration keeps the raw-body parser and the absent auth hook scoped to the webhook.
   await app.register(paymentWebhookRoutes, { prefix: '/api/v1/payments/webhook' });
   await app.register(callRoutes, { prefix: '/api/v1/calls' });
+  await app.register(astrologerRoutes, { prefix: '/api/v1/astrologers' });
+  // Own plugin: LiveKit signs the raw body, and the caller is not a logged-in user.
+  await app.register(livekitWebhookRoutes, { prefix: '/api/v1/rtc/webhook' });
   await app.register(remedyRoutes, { prefix: '/api/v1/remedies' });
   await app.register(astroRoutes, { prefix: '/api/v1/vedic' });
   await app.register(websocketRoutes, { prefix: '/api/v1' });

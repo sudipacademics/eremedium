@@ -159,6 +159,12 @@ services:
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
       TOPUP_MIN_AMOUNT: ${TOPUP_MIN_AMOUNT:-10.00}
       TOPUP_MAX_AMOUNT: ${TOPUP_MAX_AMOUNT:-100000.00}
+      # Astrologer supply side and call-lifecycle backstops.
+      ASTROLOGER_DEFAULT_RATE: ${ASTROLOGER_DEFAULT_RATE:-20.00}
+      ADMIN_PHONES: ${ADMIN_PHONES:-}
+      STALE_INITIATED_SESSION_SECONDS: ${STALE_INITIATED_SESSION_SECONDS:-300}
+      STALE_ACTIVE_SESSION_SECONDS: ${STALE_ACTIVE_SESSION_SECONDS:-180}
+      STALE_SESSION_SWEEP_SECONDS: ${STALE_SESSION_SWEEP_SECONDS:-120}
     expose:
       - "8000"
     ports:
@@ -180,6 +186,10 @@ services:
     command: --config /etc/livekit.yaml
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+      # livekit.yaml cannot interpolate env vars, and the webhook signing key must name a key from
+      # LIVEKIT_KEYS. LiveKit maps config paths onto LIVEKIT_* variables, so this fills in
+      # webhook.api_key for the urls declared in the config file.
+      LIVEKIT_WEBHOOK_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required}
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     ports:

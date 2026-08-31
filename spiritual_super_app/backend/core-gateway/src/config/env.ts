@@ -46,6 +46,28 @@ const envSchema = z.object({
   BILLING_LOCK_TTL_MS: z.coerce.number().int().min(1_000).default(10_000),
   CALL_QUEUE_CLAIM_TTL_SECONDS: z.coerce.number().int().min(10).default(120),
 
+  // --- Call lifecycle backstops ----------------------------------------------------------------
+  // An INITIATED session reserves the astrologer, so an invite nobody joins must expire or that
+  // astrologer stays unbookable forever.
+  STALE_INITIATED_SESSION_SECONDS: z.coerce.number().int().min(60).default(300),
+  STALE_ACTIVE_SESSION_SECONDS: z.coerce.number().int().min(60).default(180),
+  STALE_SESSION_SWEEP_SECONDS: z.coerce.number().int().min(30).default(120),
+
+  // --- Astrologer supply side ------------------------------------------------------------------
+  // Applied to new astrologer profiles. Pricing is a platform decision, never caller-supplied.
+  ASTROLOGER_DEFAULT_RATE: z.string().regex(decimalAmount).default('20.00'),
+  // Phone numbers (E.164, comma separated) that receive the ADMIN role at OTP login. The only way
+  // to obtain admin rights, since no endpoint grants them.
+  ADMIN_PHONES: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+
   // --- Phone OTP -----------------------------------------------------------------------------
   // Codes are peppered before hashing so a Redis dump alone cannot be brute-forced offline.
   // Defaults to JWT_SECRET to avoid a mandatory new secret on already-deployed environments.

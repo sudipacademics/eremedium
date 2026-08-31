@@ -8,6 +8,7 @@ import { redis, redisKeys } from '../lib/redis.js';
 import { withLock } from '../lib/redlock.js';
 import { QueueName, type BillingTickJobData } from '../queues/index.js';
 import { CallService } from '../services/call.service.js';
+import { LiveKitTokenService } from '../services/livekit.service.js';
 import { InsufficientFundsError, WalletService } from '../services/wallet.service.js';
 import { hub } from '../ws/hub.js';
 import { ServerEvent } from '../ws/protocol.js';
@@ -20,7 +21,19 @@ const LOW_BALANCE_WARNING_MINUTES = 2;
 type TickOutcome =
   | { kind: 'BILLED'; minute: number; deducted: Prisma.Decimal; balanceAfter: Prisma.Decimal }
   | { kind: 'STOPPED'; reason: string }
-  | { kind: 'DROPPED'; reason: string };
+  | { kind: 'DROPPED'; reason: string }
+  /** Room looked short-handed but within grace: charge nothing, keep the loop alive. */
+  | { kind: 'SKIPPED'; reason: string }
+  /** Room has been short-handed past grace: the call is over, end it. */
+  | { kind: 'ABANDONED'; reason: string };
+
+/**
+ * How many consecutive ticks may see fewer than both participants before we declare the call over.
+ * One tolerated miss absorbs a brief reconnect; the user is not charged for a tolerated miss either,
+ * so the cost of being wrong is a free minute rather than a wrongly billed one.
+ */
+const ABSENCE_STRIKES_BEFORE_TERMINATION = 2;
+const EXPECTED_PARTICIPANTS = 2;
 
 interface ActiveSession {
   id: string;
@@ -29,6 +42,7 @@ interface ActiveSession {
   astrologerUserId: string;
   channelId: string;
   ratePerMinute: Prisma.Decimal;
+  commissionSplit: Prisma.Decimal;
   totalMinutes: number;
   status: CallSessionStatus;
 }
@@ -44,7 +58,7 @@ async function loadActiveSession(callSessionId: string): Promise<ActiveSession |
       ratePerMinute: true,
       totalMinutes: true,
       status: true,
-      astrologer: { select: { userId: true } },
+      astrologer: { select: { userId: true, commissionSplit: true } },
     },
   });
   if (!session) {
@@ -57,9 +71,25 @@ async function loadActiveSession(callSessionId: string): Promise<ActiveSession |
     astrologerUserId: session.astrologer.userId,
     channelId: session.channelId,
     ratePerMinute: money(session.ratePerMinute),
+    commissionSplit: new Prisma.Decimal(session.astrologer.commissionSplit),
     totalMinutes: session.totalMinutes,
     status: session.status,
   };
+}
+
+/**
+ * Splits a billed minute between astrologer and platform.
+ *
+ * The platform takes the remainder rather than its own rounded share, so the two halves always sum
+ * to exactly the gross. Rounding the platform side independently is how a ledger ends up a paisa
+ * short (or long) of what the user actually paid.
+ */
+function splitMinute(
+  gross: Prisma.Decimal,
+  commissionSplit: Prisma.Decimal,
+): { net: Prisma.Decimal; platformFee: Prisma.Decimal } {
+  const net = money(gross.times(commissionSplit));
+  return { net, platformFee: money(gross.minus(net)) };
 }
 
 /**
@@ -81,6 +111,37 @@ async function processTick(job: Job<BillingTickJobData>): Promise<TickOutcome> {
     if (session.status !== CallSessionStatus.ACTIVE) {
       return { kind: 'STOPPED', reason: `SESSION_${session.status}` };
     }
+
+    /*
+     * Ask LiveKit whether the call is still happening BEFORE taking any money.
+     *
+     * Nothing else stops this loop when a client vanishes without hanging up: a crashed app, a dead
+     * battery or a dropped network leaves the row ACTIVE and would otherwise bill every minute until
+     * the wallet fell below the per-minute rate. A null answer means LiveKit was unreachable, which
+     * is NOT evidence of an empty room, so we skip the minute rather than either billing blindly or
+     * killing a live call.
+     */
+    const absenceKey = redisKeys.sessionAbsenceStrikes(callSessionId);
+    const participants = await LiveKitTokenService.countParticipants(session.channelId);
+
+    if (participants === null) {
+      return { kind: 'SKIPPED', reason: 'LIVEKIT_UNREACHABLE' };
+    }
+
+    if (participants < EXPECTED_PARTICIPANTS) {
+      const strikes = await redis.incr(absenceKey);
+      await redis.expire(absenceKey, 3_600);
+      if (strikes >= ABSENCE_STRIKES_BEFORE_TERMINATION) {
+        return {
+          kind: 'ABANDONED',
+          reason: `ROOM_HELD_${participants}_PARTICIPANTS_FOR_${strikes}_TICKS`,
+        };
+      }
+      return { kind: 'SKIPPED', reason: `ROOM_HELD_${participants}_PARTICIPANTS` };
+    }
+
+    // Both present: clear any earlier strike so a single blip never accumulates across a long call.
+    await redis.del(absenceKey);
 
     const rate = session.ratePerMinute;
 
@@ -110,6 +171,29 @@ async function processTick(job: Job<BillingTickJobData>): Promise<TickOutcome> {
               totalMinutes: { increment: 1 },
               totalDeducted: { increment: rate },
             },
+          });
+
+          // Same transaction as the debit: the astrologer's payable and the user's charge either both
+          // exist or neither does. The unique (callSessionId, minuteNumber) index makes a retried
+          // tick a no-op instead of a double payment.
+          const { net, platformFee } = splitMinute(rate, session.commissionSplit);
+          await tx.astrologerEarning.upsert({
+            where: {
+              callSessionId_minuteNumber: {
+                callSessionId: session.id,
+                minuteNumber: tickNumber,
+              },
+            },
+            create: {
+              astrologerId: session.astrologerId,
+              callSessionId: session.id,
+              minuteNumber: tickNumber,
+              grossAmount: rate,
+              netAmount: net,
+              platformFee,
+              commissionSplit: session.commissionSplit,
+            },
+            update: {},
           });
 
           return debit;
@@ -174,6 +258,20 @@ async function handleOutcome(job: Job<BillingTickJobData>, outcome: TickOutcome)
         CallSessionStatus.DROPPED_INSUFFICIENT_FUNDS,
         outcome.reason,
       );
+      return;
+    }
+    case 'SKIPPED': {
+      // No charge, but the clock must keep running or a recovered call would continue for free.
+      workerLogger.warn({ callSessionId, tickNumber, reason: outcome.reason }, 'Minute not billed');
+      await CallService.scheduleNextTick(callSessionId, tickNumber + 1);
+      return;
+    }
+    case 'ABANDONED': {
+      workerLogger.warn(
+        { callSessionId, tickNumber, reason: outcome.reason },
+        'Ending call: participants gone without a hangup',
+      );
+      await CallService.terminate(callSessionId, CallSessionStatus.COMPLETED, outcome.reason);
       return;
     }
     case 'STOPPED': {

@@ -7,6 +7,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
 import { redis, redisKeys } from '../lib/redis.js';
+import { withLock } from '../lib/redlock.js';
 import { billingJobId, billingQueue, matchingQueue } from '../queues/index.js';
 import { hub } from '../ws/hub.js';
 import { ServerEvent } from '../ws/protocol.js';
@@ -261,5 +262,67 @@ export const CallService = {
     );
 
     logger.info({ callSessionId, status, reason }, 'Call session terminated');
+  },
+
+  /**
+   * Last-resort sweep for sessions that neither the client, the webhook nor the billing tick closed.
+   *
+   * Two distinct leaks are handled:
+   *
+   *  - INITIATED sessions nobody ever joined. `initiate()` flips the astrologer to IN_CALL up front,
+   *    so an abandoned invite would otherwise keep that astrologer unbookable forever.
+   *  - ACTIVE sessions whose LiveKit room no longer exists. The billing tick normally catches these,
+   *    but if its queue job was lost the row would sit ACTIVE indefinitely.
+   *
+   * Serialised across replicas by a Redlock, so running this in every API instance is safe.
+   */
+  async reapStaleSessions(): Promise<{ initiated: number; active: number }> {
+    const result = await withLock(
+      redisKeys.staleSessionReaperLock,
+      async () => {
+        const now = Date.now();
+        const initiatedCutoff = new Date(now - env.STALE_INITIATED_SESSION_SECONDS * 1_000);
+        let initiated = 0;
+        let active = 0;
+
+        const abandonedInvites = await prisma.callSession.findMany({
+          where: { status: CallSessionStatus.INITIATED, createdAt: { lt: initiatedCutoff } },
+          select: { id: true },
+          take: 100,
+        });
+        for (const session of abandonedInvites) {
+          await this.terminate(session.id, CallSessionStatus.COMPLETED, 'NEVER_ACTIVATED');
+          initiated += 1;
+        }
+
+        // Only sessions old enough to have had a chance to start, so we never race a room that is
+        // still being created.
+        const activeCutoff = new Date(now - env.STALE_ACTIVE_SESSION_SECONDS * 1_000);
+        const stillActive = await prisma.callSession.findMany({
+          where: { status: CallSessionStatus.ACTIVE, startTime: { lt: activeCutoff } },
+          select: { id: true, channelId: true },
+          take: 100,
+        });
+        for (const session of stillActive) {
+          const participants = await LiveKitTokenService.countParticipants(session.channelId);
+          // null means LiveKit was unreachable: leave the session alone rather than ending a live call.
+          if (participants !== null && participants === 0) {
+            await this.terminate(session.id, CallSessionStatus.COMPLETED, 'ROOM_EMPTY_REAPED');
+            active += 1;
+          }
+        }
+
+        return { initiated, active };
+      },
+      env.BILLING_LOCK_TTL_MS,
+    );
+
+    if (result === null) {
+      return { initiated: 0, active: 0 };
+    }
+    if (result.initiated > 0 || result.active > 0) {
+      logger.warn(result, 'Stale call sessions reaped');
+    }
+    return result;
   },
 } as const;

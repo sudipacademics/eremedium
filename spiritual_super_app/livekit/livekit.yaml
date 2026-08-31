@@ -29,6 +29,20 @@ room:
   departure_timeout: 20
   max_participants: 2
 
-# Webhooks are deliberately not configured yet: the gateway has no /api/v1/rtc/webhook handler
-# (Sprint 2), and LiveKit requires `api_key` to name a key from LIVEKIT_KEYS in order to sign the
-# callbacks. Session activation currently happens via POST /api/v1/calls/sessions/:id/activate.
+# LiveKit is the authoritative source for "is this call still happening?". Without these callbacks a
+# client that vanished without hanging up left the session ACTIVE and billing every minute until the
+# wallet drained, because nothing else could observe the departure.
+#
+# LiveKit signs each callback as a JWT whose sha256 claim covers the raw body, and the gateway
+# verifies both. The signing key is named by `webhook.api_key`, which must match a key in
+# LIVEKIT_KEYS.
+#
+# This file does NOT interpolate environment variables, so api_key is supplied separately as
+# LIVEKIT_WEBHOOK_API_KEY (LiveKit maps config paths to LIVEKIT_* vars). Leaving it out here is
+# deliberate: LiveKit refuses to start when webhook urls are set without an api_key, so a wrong
+# variable name fails loudly at boot instead of silently disabling the callbacks.
+#
+# The URL is the in-cluster address, so callbacks never traverse nginx or the public internet.
+webhook:
+  urls:
+    - http://core-gateway:8000/api/v1/rtc/webhook/livekit

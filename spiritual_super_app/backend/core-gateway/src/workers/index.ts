@@ -11,6 +11,7 @@ import { closeQueues } from '../queues/index.js';
 import { hub } from '../ws/hub.js';
 import { createBillingWorker } from './billing.worker.js';
 import { createMatchingWorker } from './matching.worker.js';
+import { startStaleSessionReaper } from './reaper.js';
 
 async function main(): Promise<void> {
   // Workers publish client events through the same Redis fan-out the API consumes.
@@ -18,9 +19,11 @@ async function main(): Promise<void> {
 
   const billingWorker = createBillingWorker();
   const matchingWorker = createMatchingWorker();
+  const reaper = startStaleSessionReaper();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Worker shutting down');
+    reaper.stop();
     await Promise.allSettled([billingWorker.close(), matchingWorker.close()]);
     await closeQueues();
     await disconnectPrisma();

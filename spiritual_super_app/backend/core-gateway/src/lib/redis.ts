@@ -35,6 +35,9 @@ export const redisKeys = {
   astrologerActiveClaim: (astrologerId: string) => `ssa:claim:astrologer:${astrologerId}`,
   userQueueMembership: (userId: string) => `ssa:queue:user:${userId}`,
   sessionTickCounter: (sessionId: string) => `ssa:billing:ticks:${sessionId}`,
+  /** Consecutive ticks that saw an under-populated LiveKit room. */
+  sessionAbsenceStrikes: (sessionId: string) => `ssa:billing:absent:${sessionId}`,
+  staleSessionReaperLock: 'ssa:lock:reaper:sessions',
   billingLock: (sessionId: string) => `ssa:lock:billing:${sessionId}`,
   remedyCard: (cardId: string) => `ssa:remedy:card:${cardId}`,
   otpChallenge: (phone: string) => `ssa:otp:challenge:${phone}`,

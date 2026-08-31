@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { AppRole, signAccessToken } from '../auth/jwt.js';
+import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { OtpService } from '../services/otp.service.js';
 
@@ -26,6 +27,17 @@ const verifyOtpSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   gotra: z.string().min(2).max(120).optional(),
 });
+
+/**
+ * ADMIN comes from an env allowlist rather than any endpoint, so admin rights cannot be granted over
+ * the API even by another admin. Changing the list requires a deploy, which is the intended friction.
+ */
+function resolveRole(phone: string, isAstrologer: boolean): AppRole {
+  if (env.ADMIN_PHONES.includes(phone)) {
+    return AppRole.ADMIN;
+  }
+  return isAstrologer ? AppRole.ASTROLOGER : AppRole.USER;
+}
 
 /**
  * Possession of the phone number is the only credential. Sprint 1 shipped `/register` and `/token`,
@@ -77,7 +89,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         return { ...created, astrologer: null as { id: string } | null };
       }));
 
-    const role = user.astrologer ? AppRole.ASTROLOGER : AppRole.USER;
+    const role = resolveRole(user.phone, user.astrologer !== null);
 
     return reply.code(existing ? 200 : 201).send({
       user: { id: user.id, name: user.name, phone: user.phone },

@@ -147,6 +147,26 @@ export const LiveKitTokenService = {
     };
   },
 
+  /**
+   * Asks LiveKit who is actually in the room.
+   *
+   * This is the authoritative answer to "is this call still happening?", used by the billing tick as
+   * a backstop that does not depend on a webhook arriving or a client behaving. Returns null when
+   * LiveKit cannot be reached, which callers MUST treat as "unknown" rather than "empty" -- billing
+   * decisions must never be made on a failed admin call.
+   */
+  async countParticipants(roomName: string): Promise<number | null> {
+    try {
+      const participants = await roomService.listParticipants(roomName);
+      return participants.length;
+    } catch (error) {
+      // A deleted/expired room throws here too, but we cannot distinguish that from a transport
+      // failure, so the caller decides.
+      logger.warn({ err: error, roomName }, 'Could not list room participants');
+      return null;
+    }
+  },
+
   /** Broadcast a structured data message into the room (used for FORCE_DISCONNECT). */
   async publishRoomData(roomName: string, payload: unknown): Promise<void> {
     const encoded = new TextEncoder().encode(JSON.stringify(payload));

@@ -145,18 +145,51 @@ model Astrologer {
   userId          String           @unique @map("user_id") @db.Uuid
   displayName     String           @map("display_name") @db.VarChar(160)
   perMinuteRate   Decimal          @map("per_minute_rate") @db.Decimal(12, 2)
+  /** The ASTROLOGER's share of each billed minute, 0..1. The platform keeps (1 - commissionSplit). */
   commissionSplit Decimal          @default("0.50") @map("commission_split") @db.Decimal(5, 4)
   status          AstrologerStatus @default(OFFLINE)
   languages       String[]         @default([])
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   callSessions CallSession[]
-  pujaReferals PujaBooking[] @relation("PujaReferral")
+  earnings     AstrologerEarning[]
+  pujaReferals PujaBooking[]       @relation("PujaReferral")
 
   @@index([status])
   @@map("astrologers")
+}
+
+/**
+ * One row per billed minute, written in the SAME transaction as the user's debit.
+ *
+ * Without this an astrologer earned nothing: `commissionSplit` existed but no code ever read it.
+ * Splitting inside the billing transaction means platform revenue and astrologer payable can never
+ * disagree with what the user was actually charged.
+ */
+model AstrologerEarning {
+  id            String   @id @default(uuid()) @db.Uuid
+  astrologerId  String   @map("astrologer_id") @db.Uuid
+  callSessionId String   @map("call_session_id") @db.Uuid
+  /** Which billing minute this covers; pairs with callSessionId for replay safety. */
+  minuteNumber  Int      @map("minute_number")
+  /** What the user was charged for this minute. */
+  grossAmount   Decimal  @map("gross_amount") @db.Decimal(12, 2)
+  /** Astrologer's share, gross * commissionSplit at the time of the call. */
+  netAmount     Decimal  @map("net_amount") @db.Decimal(12, 2)
+  /** Platform's share, always gross - net. */
+  platformFee   Decimal  @map("platform_fee") @db.Decimal(12, 2)
+  /** Snapshot of the rate applied, so later rate changes cannot rewrite history. */
+  commissionSplit Decimal @map("commission_split") @db.Decimal(5, 4)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  astrologer  Astrologer  @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
+  callSession CallSession @relation(fields: [callSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([callSessionId, minuteNumber])
+  @@index([astrologerId, createdAt])
+  @@map("astrologer_earnings")
 }
 
 model CallSession {
@@ -173,8 +206,9 @@ model CallSession {
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
-  astrologer Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  astrologer Astrologer          @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
+  earnings   AstrologerEarning[]
 
   @@index([userId, createdAt])
   @@index([astrologerId, createdAt])

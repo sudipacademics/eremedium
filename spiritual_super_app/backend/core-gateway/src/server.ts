@@ -6,6 +6,7 @@ import { closeRedis } from './lib/redis.js';
 import { closeQueues } from './queues/index.js';
 import { createBillingWorker } from './workers/billing.worker.js';
 import { createMatchingWorker } from './workers/matching.worker.js';
+import { startStaleSessionReaper } from './workers/reaper.js';
 import { hub } from './ws/hub.js';
 
 /**
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
   const app = await buildApp();
 
   const workers = runWorkersInApi ? [createBillingWorker(), createMatchingWorker()] : [];
+  const reaper = runWorkersInApi ? startStaleSessionReaper() : null;
 
   await app.listen({ host: env.HOST, port: env.PORT });
   logger.info(
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
     }
     shuttingDown = true;
     logger.info({ signal }, 'Graceful shutdown started');
+    reaper?.stop();
     hub.closeAll();
     await app.close();
     await Promise.allSettled(workers.map((worker) => worker.close()));
