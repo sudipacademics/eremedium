@@ -166,6 +166,10 @@ services:
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
       TOPUP_MIN_AMOUNT: ${TOPUP_MIN_AMOUNT:-10.00}
       TOPUP_MAX_AMOUNT: ${TOPUP_MAX_AMOUNT:-100000.00}
+      # Jyotish AI (OpenAI). Empty → /vedic/ai-predict returns 503 until set.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AI_PREDICT_MAX_TOKENS: ${AI_PREDICT_MAX_TOKENS:-1200}
       # Astrologer supply side and call-lifecycle backstops.
       ASTROLOGER_DEFAULT_RATE: ${ASTROLOGER_DEFAULT_RATE:-20.00}
       ADMIN_PHONES: ${ADMIN_PHONES:-}

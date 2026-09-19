@@ -312,6 +312,29 @@ export interface Kundali {
   fromCache: boolean;
 }
 
+export interface AiPredictStatus {
+  configured: boolean;
+  model: string;
+  ready: boolean;
+}
+
+export interface AiPredictTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AiPredictResult {
+  answer: string;
+  model: string;
+  birthTimeAssumed: boolean;
+  chartBrief: string;
+  disclaimer: string;
+  usage: {
+    promptTokens: number | null;
+    completionTokens: number | null;
+  };
+}
+
 export interface PujaOffering {
   id: string;
   name: string;

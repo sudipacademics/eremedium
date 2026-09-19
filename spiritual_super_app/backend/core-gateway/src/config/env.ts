@@ -143,6 +143,12 @@ const envSchema = z.object({
   RAZORPAY_API_BASE: z.string().url().default('https://api.razorpay.com/v1'),
   TOPUP_MIN_AMOUNT: z.string().regex(decimalAmount).default('10.00'),
   TOPUP_MAX_AMOUNT: z.string().regex(decimalAmount).default('100000.00'),
+
+  // --- Jyotish AI predictions (OpenAI) --------------------------------------------------------
+  // Optional: gateway boots without a key; /vedic/ai-predict answers 503 until configured.
+  OPENAI_API_KEY: optionalSecret(20),
+  OPENAI_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  AI_PREDICT_MAX_TOKENS: z.coerce.number().int().min(256).max(4_096).default(1_200),
 })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && value.OTP_DEBUG_ECHO) {

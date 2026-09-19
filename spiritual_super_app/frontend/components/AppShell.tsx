@@ -62,6 +62,7 @@ function Nav({ profile }: { profile: Profile }) {
     { href: '/kundali', label: 'Kundali' },
     { href: '/match', label: 'Match' },
     { href: '/gochar', label: 'Gochar' },
+    { href: '/ai', label: 'Jyotish AI' },
     { href: '/panchang', label: 'Panchang' },
     { href: '/pujas', label: 'E-Puja' },
     { href: '/ayurveda', label: 'Ayurveda' },
