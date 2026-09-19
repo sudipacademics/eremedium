@@ -64,6 +64,7 @@ function Nav({ profile }: { profile: Profile }) {
     { href: '/gochar', label: 'Gochar' },
     { href: '/panchang', label: 'Panchang' },
     { href: '/pujas', label: 'E-Puja' },
+    { href: '/ayurveda', label: 'Ayurveda' },
     { href: '/wallet', label: 'Wallet' },
     ...(profile.astrologerId ? [{ href: '/astrologer', label: 'My console' }] : []),
   ];

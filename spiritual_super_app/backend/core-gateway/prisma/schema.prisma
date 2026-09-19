@@ -51,6 +51,12 @@ enum PujaBookingStatus {
   PRASAD_DISPATCHED
 }
 
+enum AyurvedaOrderStatus {
+  CONFIRMED
+  PACKED
+  DISPATCHED
+}
+
 enum Dosha {
   VATA
   PITTA
@@ -103,6 +109,7 @@ model User {
   callSessions      CallSession[]
   pujaBookings      PujaBooking[]
   ayurvedicProfiles AyurvedicProfile[]
+  ayurvedaOrders    AyurvedaOrder[]
 
   @@map("users")
 }
@@ -383,4 +390,58 @@ model AyurvedicProfile {
 
   @@index([userId, createdAt])
   @@map("ayurvedic_profiles")
+}
+
+/**
+ * Priced Ayurveda catalog — kits, churnas, oils.
+ *
+ * Same rule as puja offerings: the amount charged is always read from here, never from the client.
+ * `suitedDoshas` is a soft recommendation tag for the storefront, not a medical claim.
+ */
+model AyurvedaProduct {
+  id           String   @id @default(uuid()) @db.Uuid
+  /** Stable catalog key used by seed upserts, e.g. "vata-balance-kit". */
+  sku          String   @unique @db.VarChar(80)
+  name         String   @db.VarChar(160)
+  description  String?  @db.VarChar(1000)
+  price        Decimal  @db.Decimal(12, 2)
+  suitedDoshas Dosha[]  @map("suited_doshas")
+  /** kit | churna | oil | syrup — display only. */
+  formFactor   String   @default("kit") @map("form_factor") @db.VarChar(40)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  orders AyurvedaOrder[]
+
+  @@index([active, price])
+  @@map("ayurveda_products")
+}
+
+model AyurvedaOrder {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  productId       String?             @map("product_id") @db.Uuid
+  /** Snapshots so a later catalog rename/price change cannot rewrite what was paid for. */
+  productSku      String              @map("product_sku") @db.VarChar(80)
+  productName     String              @map("product_name") @db.VarChar(160)
+  unitPrice       Decimal             @map("unit_price") @db.Decimal(12, 2)
+  status          AyurvedaOrderStatus @default(CONFIRMED)
+  shippingName    String              @map("shipping_name") @db.VarChar(160)
+  shippingPhone   String              @map("shipping_phone") @db.VarChar(20)
+  shippingAddress String              @map("shipping_address") @db.VarChar(500)
+  packedAt        DateTime?           @map("packed_at") @db.Timestamptz(3)
+  awb             String?             @db.VarChar(80)
+  courier         String?             @db.VarChar(80)
+  dispatchedAt    DateTime?           @map("dispatched_at") @db.Timestamptz(3)
+  idempotencyKey  String?             @unique @map("idempotency_key") @db.VarChar(160)
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  product AyurvedaProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("ayurveda_orders")
 }

@@ -361,6 +361,43 @@ export interface PujaBookingResult {
   walletBalanceAfter: string;
 }
 
+export type AyurvedaDosha = 'VATA' | 'PITTA' | 'KAPHA' | 'TRIDOSHIC';
+
+export interface AyurvedaProduct {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: string;
+  suitedDoshas: AyurvedaDosha[];
+  formFactor: string;
+}
+
+export type AyurvedaOrderStatus = 'CONFIRMED' | 'PACKED' | 'DISPATCHED';
+
+export interface AyurvedaOrder {
+  id: string;
+  status: AyurvedaOrderStatus;
+  productId: string | null;
+  productSku: string;
+  productName: string;
+  unitPrice: string;
+  shippingName: string;
+  shippingPhone: string;
+  shippingAddress: string;
+  packedAt: string | null;
+  awb: string | null;
+  courier: string | null;
+  dispatchedAt: string | null;
+  createdAt: string;
+}
+
+export interface AyurvedaOrderResult {
+  order: AyurvedaOrder;
+  amountDebited: string;
+  walletBalanceAfter: string;
+}
+
 export interface WalletTransaction {
   id: string;
   amount: string;

@@ -17,6 +17,8 @@ export const ServerEvent = {
   PUJA_REMEDY_RESULT: 'PUJA_REMEDY_RESULT',
   /** Fulfilment progress on a booked puja: scheduled, performed, prasad posted. */
   PUJA_BOOKING_UPDATED: 'PUJA_BOOKING_UPDATED',
+  /** Fulfilment progress on an Ayurveda kit order: packed, dispatched. */
+  AYURVEDA_ORDER_UPDATED: 'AYURVEDA_ORDER_UPDATED',
 } as const;
 
 export type ServerEvent = (typeof ServerEvent)[keyof typeof ServerEvent];

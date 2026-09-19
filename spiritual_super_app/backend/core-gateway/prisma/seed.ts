@@ -184,6 +184,103 @@ async function main(): Promise<void> {
 
   const offeringCount = await prisma.pujaOffering.count();
 
+  /*
+   * Ayurveda kit catalog. Prices live here only — orders snapshot sku/name/price at purchase time.
+   * suitedDoshas is a soft storefront filter, not a diagnosis.
+   */
+  const ayurvedaCatalog: ReadonlyArray<{
+    sku: string;
+    name: string;
+    description: string;
+    price: string;
+    suitedDoshas: Array<'VATA' | 'PITTA' | 'KAPHA'>;
+    formFactor: string;
+  }> = [
+    {
+      sku: 'vata-balance-kit',
+      name: 'Vata Balance Kit',
+      description:
+        'Warming sesame oil, ashwagandha churna and a digestive tea blend for dry, irregular Vata days.',
+      price: '899.00',
+      suitedDoshas: ['VATA'],
+      formFactor: 'kit',
+    },
+    {
+      sku: 'pitta-cool-kit',
+      name: 'Pitta Cool Kit',
+      description:
+        'Coconut oil, amalaki rasayana and a cooling coriander-fennel infusion for heat and irritability.',
+      price: '949.00',
+      suitedDoshas: ['PITTA'],
+      formFactor: 'kit',
+    },
+    {
+      sku: 'kapha-light-kit',
+      name: 'Kapha Light Kit',
+      description:
+        'Mustard oil massage blend, trikatu churna and a stimulating ginger tea for sluggish Kapha.',
+      price: '879.00',
+      suitedDoshas: ['KAPHA'],
+      formFactor: 'kit',
+    },
+    {
+      sku: 'triphala-churna',
+      name: 'Triphala Churna (100g)',
+      description: 'Classic three-fruit powder for gentle daily elimination. Suited to all three doshas.',
+      price: '249.00',
+      suitedDoshas: ['VATA', 'PITTA', 'KAPHA'],
+      formFactor: 'churna',
+    },
+    {
+      sku: 'ashwagandha-churna',
+      name: 'Ashwagandha Churna (100g)',
+      description: 'Root powder traditionally used for strength and restful sleep — often paired with Vata care.',
+      price: '349.00',
+      suitedDoshas: ['VATA', 'KAPHA'],
+      formFactor: 'churna',
+    },
+    {
+      sku: 'brahmi-oil',
+      name: 'Brahmi Tailam (100ml)',
+      description: 'Medicated oil for scalp massage, traditionally used to settle the mind.',
+      price: '449.00',
+      suitedDoshas: ['VATA', 'PITTA'],
+      formFactor: 'oil',
+    },
+    {
+      sku: 'digestive-agni-kit',
+      name: 'Agni Deepana Kit',
+      description: 'Hingvastak, cumin-coriander-fennel tea and a simple meal guide to kindle weak digestion.',
+      price: '699.00',
+      suitedDoshas: ['VATA', 'KAPHA'],
+      formFactor: 'kit',
+    },
+  ];
+
+  for (const entry of ayurvedaCatalog) {
+    await prisma.ayurvedaProduct.upsert({
+      where: { sku: entry.sku },
+      update: {
+        name: entry.name,
+        description: entry.description,
+        price: entry.price,
+        suitedDoshas: entry.suitedDoshas,
+        formFactor: entry.formFactor,
+        active: true,
+      },
+      create: {
+        sku: entry.sku,
+        name: entry.name,
+        description: entry.description,
+        price: entry.price,
+        suitedDoshas: entry.suitedDoshas,
+        formFactor: entry.formFactor,
+      },
+    });
+  }
+
+  const ayurvedaProductCount = await prisma.ayurvedaProduct.count();
+
   console.info(
     JSON.stringify(
       {
@@ -191,6 +288,7 @@ async function main(): Promise<void> {
         astrologerId: astrologer.id,
         temples: templeIds,
         offeringCount,
+        ayurvedaProductCount,
       },
       null,
       2,
