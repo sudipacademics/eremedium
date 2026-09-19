@@ -56,9 +56,9 @@ async function seedProduct(price = '899.00', sku = `sku-${randomUUID().slice(0, 
   });
 }
 
-describe('GET /api/v1/ayurveda-shop/products', () => {
+describe('GET /api/v1/ayurveda/shop/products', () => {
   it('requires a signed-in user', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/v1/ayurveda-shop/products' });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/ayurveda/shop/products' });
     expect(response.statusCode).toBe(401);
   });
 
@@ -68,7 +68,7 @@ describe('GET /api/v1/ayurveda-shop/products', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/api/v1/ayurveda-shop/products',
+      url: '/api/v1/ayurveda/shop/products',
       headers: auth(tokenFor(userId)),
     });
 
@@ -92,7 +92,7 @@ describe('GET /api/v1/ayurveda-shop/products', () => {
 
     const response = await app.inject({
       method: 'GET',
-      url: '/api/v1/ayurveda-shop/products?dosha=PITTA',
+      url: '/api/v1/ayurveda/shop/products?dosha=PITTA',
       headers: auth(tokenFor(userId)),
     });
 
@@ -103,7 +103,7 @@ describe('GET /api/v1/ayurveda-shop/products', () => {
   });
 });
 
-describe('POST /api/v1/ayurveda-shop/orders', () => {
+describe('POST /api/v1/ayurveda/shop/orders', () => {
   const ship = {
     shippingName: 'Ananya Sharma',
     shippingPhone: '+919000000001',
@@ -117,7 +117,7 @@ describe('POST /api/v1/ayurveda-shop/orders', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/api/v1/ayurveda-shop/orders',
+      url: '/api/v1/ayurveda/shop/orders',
       headers: auth(tokenFor(userId)),
       payload: { productId: product.id, ...ship, idempotencyKey: key },
     });
@@ -141,13 +141,13 @@ describe('POST /api/v1/ayurveda-shop/orders', () => {
 
     const first = await app.inject({
       method: 'POST',
-      url: '/api/v1/ayurveda-shop/orders',
+      url: '/api/v1/ayurveda/shop/orders',
       headers: auth(tokenFor(userId)),
       payload,
     });
     const second = await app.inject({
       method: 'POST',
-      url: '/api/v1/ayurveda-shop/orders',
+      url: '/api/v1/ayurveda/shop/orders',
       headers: auth(tokenFor(userId)),
       payload,
     });
@@ -164,7 +164,7 @@ describe('POST /api/v1/ayurveda-shop/orders', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/api/v1/ayurveda-shop/orders',
+      url: '/api/v1/ayurveda/shop/orders',
       headers: auth(tokenFor(userId)),
       payload: { productId: product.id, ...ship, idempotencyKey: randomUUID() },
     });
@@ -180,7 +180,7 @@ describe('admin fulfilment', () => {
     const product = await seedProduct('249.00');
     const placed = await app.inject({
       method: 'POST',
-      url: '/api/v1/ayurveda-shop/orders',
+      url: '/api/v1/ayurveda/shop/orders',
       headers: auth(tokenFor(userId)),
       payload: {
         productId: product.id,
@@ -194,7 +194,7 @@ describe('admin fulfilment', () => {
 
     const packed = await app.inject({
       method: 'POST',
-      url: `/api/v1/ayurveda-shop/admin/orders/${orderId}/advance`,
+      url: `/api/v1/ayurveda/shop/admin/orders/${orderId}/advance`,
       headers: auth(tokenFor(userId, AppRole.ADMIN)),
       payload: { status: AyurvedaOrderStatus.PACKED },
     });
@@ -203,7 +203,7 @@ describe('admin fulfilment', () => {
 
     const dispatched = await app.inject({
       method: 'POST',
-      url: `/api/v1/ayurveda-shop/admin/orders/${orderId}/advance`,
+      url: `/api/v1/ayurveda/shop/admin/orders/${orderId}/advance`,
       headers: auth(tokenFor(userId, AppRole.ADMIN)),
       payload: { status: AyurvedaOrderStatus.DISPATCHED, awb: 'AWB123456', courier: 'Delhivery' },
     });

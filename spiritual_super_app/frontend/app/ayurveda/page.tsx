@@ -29,7 +29,7 @@ export default function AyurvedaPage() {
 
   const loadOrders = useCallback(() => {
     void api
-      .get<{ orders: AyurvedaOrder[] }>('ayurveda-shop/orders')
+      .get<{ orders: AyurvedaOrder[] }>('ayurveda/shop/orders')
       .then((result) => setOrders(result.orders))
       .catch(() => undefined);
   }, []);
@@ -38,7 +38,7 @@ export default function AyurvedaPage() {
     setLoading(true);
     const query = filter === 'ALL' ? '' : `?dosha=${filter}`;
     void api
-      .get<{ products: AyurvedaProduct[] }>(`ayurveda-shop/products${query}`)
+      .get<{ products: AyurvedaProduct[] }>(`ayurveda/shop/products${query}`)
       .then((result) => setProducts(result.products))
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Could not load the catalog'),
@@ -257,7 +257,7 @@ function CheckoutDialog({
     setBusy(true);
     setError(null);
     try {
-      const ordered = await api.post<AyurvedaOrderResult>('ayurveda-shop/orders', {
+      const ordered = await api.post<AyurvedaOrderResult>('ayurveda/shop/orders', {
         productId: product.id,
         shippingName: shippingName.trim(),
         shippingPhone: shippingPhone.trim(),

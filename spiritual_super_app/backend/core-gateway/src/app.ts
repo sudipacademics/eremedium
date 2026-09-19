@@ -116,8 +116,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(livekitWebhookRoutes, { prefix: '/api/v1/rtc/webhook' });
   await app.register(remedyRoutes, { prefix: '/api/v1/remedies' });
   await app.register(pujaRoutes, { prefix: '/api/v1/pujas' });
-  // Not /api/v1/ayurveda — nginx sends that prefix to the FastAPI prakriti service.
-  await app.register(ayurvedaRoutes, { prefix: '/api/v1/ayurveda-shop' });
+  // Commerce under /api/v1/ayurveda/shop so nginx can keep FastAPI on /prakriti* only.
+  await app.register(ayurvedaRoutes, { prefix: '/api/v1/ayurveda/shop' });
   await app.register(astroRoutes, { prefix: '/api/v1/vedic' });
   await app.register(websocketRoutes, { prefix: '/api/v1' });
 

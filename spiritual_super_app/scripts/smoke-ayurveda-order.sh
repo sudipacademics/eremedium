@@ -79,7 +79,7 @@ pass "wallet funded to ≥ ₹$TOPUP (now ₹$BALANCE)"
 
 banner "catalog"
 CATALOG=$(curl -s --max-time 10 -H "X-SSA-Gate: $GATE" -H "authorization: Bearer $SEEKER_JWT" \
-  "$BASE_URL/api/v1/ayurveda-shop/products")
+  "$BASE_URL/api/v1/ayurveda/shop/products")
 echo "$CATALOG" | grep -q "$SKU" && pass "catalog lists $SKU" || fail "catalog missing $SKU"
 
 banner "place order"
@@ -87,7 +87,7 @@ KEY=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)
 ORDER_JSON=$(curl -s --max-time 15 -H "X-SSA-Gate: $GATE" -H "authorization: Bearer $SEEKER_JWT" \
   -H 'content-type: application/json' \
   -d "{\"productId\":\"$PRODUCT_ID\",\"shippingName\":\"Smoke Seeker\",\"shippingPhone\":\"$SEEKER_PHONE\",\"shippingAddress\":\"12 Assi Ghat Road, Varanasi, UP 221005\",\"idempotencyKey\":\"$KEY\"}" \
-  "$BASE_URL/api/v1/ayurveda-shop/orders")
+  "$BASE_URL/api/v1/ayurveda/shop/orders")
 ORDER_ID=$(echo "$ORDER_JSON" | sed -n 's/.*"order":{[^}]*"id":"\([^"]*\)".*/\1/p')
 if [ -z "$ORDER_ID" ]; then
   ORDER_ID=$(echo "$ORDER_JSON" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
@@ -104,7 +104,7 @@ banner "idempotent replay"
 REPLAY=$(curl -s --max-time 15 -H "X-SSA-Gate: $GATE" -H "authorization: Bearer $SEEKER_JWT" \
   -H 'content-type: application/json' \
   -d "{\"productId\":\"$PRODUCT_ID\",\"shippingName\":\"Smoke Seeker\",\"shippingPhone\":\"$SEEKER_PHONE\",\"shippingAddress\":\"12 Assi Ghat Road, Varanasi, UP 221005\",\"idempotencyKey\":\"$KEY\"}" \
-  "$BASE_URL/api/v1/ayurveda-shop/orders")
+  "$BASE_URL/api/v1/ayurveda/shop/orders")
 REPLAY_ID=$(echo "$REPLAY" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
 [ "$REPLAY_ID" = "$ORDER_ID" ] && pass "replay returned same order" || fail "replay id='$REPLAY_ID'"
 
