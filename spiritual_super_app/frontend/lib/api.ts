@@ -134,6 +134,34 @@ export interface PlaceMatch {
   population: number;
 }
 
+export interface PanchangaAnga {
+  number: number;
+  name: string;
+  paksha: string | null;
+  pada: number | null;
+  start_utc: string;
+  end_utc: string;
+}
+
+export interface Panchang {
+  date: string;
+  timezone: string;
+  latitude: number;
+  longitude: number;
+  ayanamsha: number;
+  ayanamsha_system: string;
+  vaara: string;
+  sunrise: { utc: string; local: string };
+  sunset: { utc: string; local: string };
+  next_sunrise_utc: string;
+  sun_sign: string;
+  moon_sign: string;
+  tithi: PanchangaAnga;
+  nakshatra: PanchangaAnga;
+  yoga: PanchangaAnga;
+  karana: PanchangaAnga;
+}
+
 export interface BirthProfile {
   complete: boolean;
   birthDate: string | null;

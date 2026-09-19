@@ -59,6 +59,13 @@ const kundaliQuery = z.object({
 
 const consultationParams = z.object({ userId: z.string().uuid() });
 
+const panchangBody = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  timezone: z.string().min(3).max(64),
+});
+
 /**
  * Thin proxy over the Python compute service. Nginx routes `/api/v1/astro/*` straight to FastAPI for
  * anonymous chart lookups; these authenticated variants additionally persist results against a user.
@@ -169,5 +176,25 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
     const { astrologerId } = requireAstrologer(request);
     const { userId } = consultationParams.parse(request.params);
     return KundaliService.kundaliForConsultation(astrologerId, userId);
+  });
+
+  /**
+   * Daily panchang for a civil date at a place.
+   *
+   * The angas are evaluated at local sunrise, so the date is place-relative and the timezone is
+   * required -- a UTC midnight would put the wrong sunrise under the wrong day near the dateline.
+   */
+  app.post('/panchang', async (request, reply) => {
+    requireUser(request);
+    const body = panchangBody.parse(request.body);
+    if (!PlaceService.isKnownTimezone(body.timezone)) {
+      return reply.code(400).send({ error: 'BAD_REQUEST', message: `Unknown timezone "${body.timezone}"` });
+    }
+    return AstroServiceClient.panchang({
+      date: body.date,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      timezone: body.timezone,
+    });
   });
 }

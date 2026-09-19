@@ -1,3 +1,4 @@
+from datetime import date as Date
 from datetime import datetime
 from enum import Enum
 from typing import Literal
@@ -110,6 +111,51 @@ class DashaResponse(BaseModel):
     balance_of_dasha_days: float
     depth: int
     periods: list[DashaPeriod]
+
+
+class PanchangRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Field is named `date` because that is the civil calendar day; the type is aliased so it does
+    # not collide with the field name under Pydantic's annotation collector.
+    date: Date = Field(description="Civil date at the place, YYYY-MM-DD")
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    timezone: str = Field(min_length=3, max_length=64, description="IANA zone, e.g. Asia/Kolkata")
+
+
+class SunEvent(BaseModel):
+    utc: datetime
+    # Local wall-clock time in the requested zone, HH:MM:SS.
+    local: str
+
+
+class PanchangaAnga(BaseModel):
+    number: int
+    name: str
+    paksha: str | None = None
+    pada: int | None = Field(default=None, ge=1, le=4)
+    start_utc: datetime
+    end_utc: datetime
+
+
+class PanchangResponse(BaseModel):
+    date: str
+    timezone: str
+    latitude: float
+    longitude: float
+    ayanamsha: float
+    ayanamsha_system: Literal["CHITRA_PAKSHA_LAHIRI"] = "CHITRA_PAKSHA_LAHIRI"
+    vaara: str
+    sunrise: SunEvent
+    sunset: SunEvent
+    next_sunrise_utc: datetime
+    sun_sign: str
+    moon_sign: str
+    tithi: PanchangaAnga
+    nakshatra: PanchangaAnga
+    yoga: PanchangaAnga
+    karana: PanchangaAnga
 
 
 class PrakritiRequest(BaseModel):

@@ -130,8 +130,44 @@ export interface PrakritiOutput {
   readonly digestive_fire: string;
 }
 
+export interface PanchangInput {
+  readonly date: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly timezone: string;
+}
+
+export interface PanchangaAnga {
+  readonly number: number;
+  readonly name: string;
+  readonly paksha: string | null;
+  readonly pada: number | null;
+  readonly start_utc: string;
+  readonly end_utc: string;
+}
+
+export interface PanchangOutput {
+  readonly date: string;
+  readonly timezone: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly ayanamsha: number;
+  readonly ayanamsha_system: string;
+  readonly vaara: string;
+  readonly sunrise: { readonly utc: string; readonly local: string };
+  readonly sunset: { readonly utc: string; readonly local: string };
+  readonly next_sunrise_utc: string;
+  readonly sun_sign: string;
+  readonly moon_sign: string;
+  readonly tithi: PanchangaAnga;
+  readonly nakshatra: PanchangaAnga;
+  readonly yoga: PanchangaAnga;
+  readonly karana: PanchangaAnga;
+}
+
 export const AstroServiceClient = {
   natalChart: (input: NatalChartInput) => postJson<NatalChartOutput>('/api/v1/astro/natal-chart', input),
   vimshottariDasha: (input: DashaInput) => postJson<DashaOutput>('/api/v1/astro/vimshottari-dasha', input),
   prakritiScore: (input: PrakritiInput) => postJson<PrakritiOutput>('/api/v1/ayurveda/prakriti-score', input),
+  panchang: (input: PanchangInput) => postJson<PanchangOutput>('/api/v1/astro/panchang', input),
 } as const;

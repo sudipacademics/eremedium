@@ -130,6 +130,8 @@ describe('a signed-in user', () => {
     render(<AppShell><ProtectedPage /></AppShell>);
 
     await waitFor(() => expect(screen.getByText('Astrologers')).toBeInTheDocument());
+    expect(screen.getByText('Kundali')).toBeInTheDocument();
+    expect(screen.getByText('Panchang')).toBeInTheDocument();
     expect(screen.getByText('Wallet')).toBeInTheDocument();
     expect(screen.getByText('Sign out')).toBeInTheDocument();
   });

@@ -7,9 +7,10 @@ import { seedAstrologer, seedCallSession, seedUser } from './helpers/factories.j
 
 const natalChart = vi.hoisted(() => vi.fn());
 const vimshottariDasha = vi.hoisted(() => vi.fn());
+const panchang = vi.hoisted(() => vi.fn());
 
 vi.mock('../src/services/astro.client.js', () => ({
-  AstroServiceClient: { natalChart, vimshottariDasha, prakritiScore: vi.fn() },
+  AstroServiceClient: { natalChart, vimshottariDasha, prakritiScore: vi.fn(), panchang },
   AstroServiceError: class AstroServiceError extends Error {},
 }));
 
@@ -88,6 +89,52 @@ const DASHA = {
 beforeEach(() => {
   natalChart.mockReset().mockResolvedValue(CHART);
   vimshottariDasha.mockReset().mockResolvedValue(DASHA);
+  panchang.mockReset().mockResolvedValue({
+    date: '1994-08-17',
+    timezone: 'Asia/Kolkata',
+    latitude: 25.317645,
+    longitude: 83.005495,
+    ayanamsha: 23.781997,
+    ayanamsha_system: 'CHITRA_PAKSHA_LAHIRI',
+    vaara: 'Budhavara',
+    sunrise: { utc: '1994-08-17T00:15:00Z', local: '05:45:00' },
+    sunset: { utc: '1994-08-17T12:45:00Z', local: '18:15:00' },
+    next_sunrise_utc: '1994-08-18T00:15:00Z',
+    sun_sign: 'Simha',
+    moon_sign: 'Dhanu',
+    tithi: {
+      number: 10,
+      name: 'Dashami',
+      paksha: 'Shukla',
+      pada: null,
+      start_utc: '1994-08-17T00:15:00Z',
+      end_utc: '1994-08-17T20:00:00Z',
+    },
+    nakshatra: {
+      number: 19,
+      name: 'Mula',
+      paksha: null,
+      pada: 2,
+      start_utc: '1994-08-17T00:15:00Z',
+      end_utc: '1994-08-17T14:00:00Z',
+    },
+    yoga: {
+      number: 1,
+      name: 'Vishkambha',
+      paksha: null,
+      pada: null,
+      start_utc: '1994-08-17T00:15:00Z',
+      end_utc: '1994-08-17T16:00:00Z',
+    },
+    karana: {
+      number: 1,
+      name: 'Bava',
+      paksha: null,
+      pada: null,
+      start_utc: '1994-08-17T00:15:00Z',
+      end_utc: '1994-08-17T10:00:00Z',
+    },
+  });
 });
 
 function tokenFor(userId: string, role: AppRole = AppRole.USER, astrologerId?: string): string {
@@ -370,5 +417,66 @@ describe('GET /api/v1/vedic/kundali/consultation/:userId', () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('POST /api/v1/vedic/panchang', () => {
+  const payload = {
+    date: '1994-08-17',
+    latitude: 25.317645,
+    longitude: 83.005495,
+    timezone: 'Asia/Kolkata',
+  };
+
+  it('returns the five angas for a civil date at a place', async () => {
+    const { userId } = await seedUser('0.00');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/panchang',
+      headers: auth(tokenFor(userId)),
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().vaara).toBe('Budhavara');
+    expect(response.json().tithi.name).toBe('Dashami');
+    expect(panchang).toHaveBeenCalledWith(payload);
+  });
+
+  it('refuses an invented timezone before calling the compute service', async () => {
+    const { userId } = await seedUser('0.00');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/panchang',
+      headers: auth(tokenFor(userId)),
+      payload: { ...payload, timezone: 'Asia/Ujjain' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(panchang).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed date', async () => {
+    const { userId } = await seedUser('0.00');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/panchang',
+      headers: auth(tokenFor(userId)),
+      payload: { ...payload, date: '17-08-1994' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('needs a signed-in user', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/panchang',
+      payload,
+    });
+    expect(response.statusCode).toBe(401);
   });
 });
