@@ -316,6 +316,7 @@ export interface AiPredictStatus {
   configured: boolean;
   model: string;
   ready: boolean;
+  provider?: string;
 }
 
 export interface AiPredictTurn {

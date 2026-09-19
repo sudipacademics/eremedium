@@ -359,7 +359,7 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Whether Jyotish AI is configured (OPENAI_API_KEY present). Safe to call before asking.
+   * Whether Jyotish AI is ready (cloud key or local trial engine).
    */
   app.get('/ai-predict/status', async () => AiPredictionService.status());
 

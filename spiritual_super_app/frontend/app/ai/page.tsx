@@ -119,6 +119,7 @@ export default function JyotishAiPage() {
         {status && (
           <p className="mt-2 text-xs text-slate-500">
             Model: {status.model}
+            {status.provider ? ` · ${status.provider}` : ''}
             {status.ready ? ' · ready' : ' · not configured'}
           </p>
         )}
@@ -136,8 +137,14 @@ export default function JyotishAiPage() {
 
       {!aiReady && status && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-          AI predictions are not configured on this host yet (missing OpenAI key). Kundali and live
-          consults still work.
+          AI predictions are not configured on this host yet. Kundali and live consults still work.
+        </div>
+      )}
+
+      {aiReady && status?.provider === 'trial' && (
+        <div className="rounded-xl border border-saffron-500/30 bg-saffron-500/10 px-4 py-3 text-sm text-saffron-100">
+          Running the <strong>local trial engine</strong> (no cloud key). Answers are chart-grounded
+          sketches — set Gemini, Groq, or OpenAI for fuller Astro-GPT prose.
         </div>
       )}
 

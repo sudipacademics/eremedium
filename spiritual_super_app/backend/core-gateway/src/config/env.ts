@@ -144,10 +144,16 @@ const envSchema = z.object({
   TOPUP_MIN_AMOUNT: z.string().regex(decimalAmount).default('10.00'),
   TOPUP_MAX_AMOUNT: z.string().regex(decimalAmount).default('100000.00'),
 
-  // --- Jyotish AI predictions (OpenAI) --------------------------------------------------------
-  // Optional: gateway boots without a key; /vedic/ai-predict answers 503 until configured.
+  // --- Jyotish AI predictions -----------------------------------------------------------------
+  // AI_PROVIDER: auto | openai | gemini | groq | trial
+  // auto picks the first available cloud key, else the local trial engine (no key required).
+  AI_PROVIDER: z.enum(['auto', 'openai', 'gemini', 'groq', 'trial']).default('auto'),
   OPENAI_API_KEY: optionalSecret(20),
   OPENAI_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  GEMINI_API_KEY: optionalSecret(20),
+  GEMINI_MODEL: z.string().min(1).default('gemini-2.0-flash'),
+  GROQ_API_KEY: optionalSecret(20),
+  GROQ_MODEL: z.string().min(1).default('llama-3.3-70b-versatile'),
   AI_PREDICT_MAX_TOKENS: z.coerce.number().int().min(256).max(4_096).default(1_200),
 })
   .superRefine((value, ctx) => {

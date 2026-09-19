@@ -47,6 +47,7 @@ export interface AiPredictStatus {
   readonly configured: boolean;
   readonly model: string;
   readonly ready: boolean;
+  readonly provider: string;
 }
 
 const DISCLAIMER =
@@ -72,6 +73,7 @@ export const AiPredictionService = {
       configured,
       model: OpenAiClient.model(),
       ready: configured,
+      provider: OpenAiClient.provider(),
     };
   },
 
