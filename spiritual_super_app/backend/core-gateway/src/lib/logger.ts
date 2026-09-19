@@ -6,7 +6,21 @@ export const logger: Logger = pino({
   level: env.LOG_LEVEL,
   base: { service: 'core-gateway' },
   redact: {
-    paths: ['req.headers.authorization', 'token', '*.token', 'accessToken'],
+    paths: [
+      'req.headers.authorization',
+      'token',
+      '*.token',
+      'accessToken',
+      'code',
+      '*.code',
+      'debugCode',
+      '*.debugCode',
+      'phone',
+      '*.phone',
+      'req.body.phone',
+      'req.body.code',
+      'req.query.token',
+    ],
     censor: '[redacted]',
   },
   formatters: {

@@ -149,12 +149,16 @@ services:
       # Phone OTP. Unset values fall back to the defaults in src/config/env.ts.
       SMS_PROVIDER: ${SMS_PROVIDER:-log}
       OTP_DEBUG_ECHO: ${OTP_DEBUG_ECHO:-false}
+      # Required when NODE_ENV=production and SMS_PROVIDER=log or OTP_TEST_NUMBERS is set.
+      ALLOW_STAGING_AUTH: ${ALLOW_STAGING_AUTH:-false}
       OTP_PEPPER: ${OTP_PEPPER:-}
       MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
       MSG91_TEMPLATE_ID: ${MSG91_TEMPLATE_ID:-}
       MSG91_SENDER: ${MSG91_SENDER:-}
       # "phone:code" pairs that get a fixed OTP, so the web app is demonstrable without an SMS vendor.
       OTP_TEST_NUMBERS: ${OTP_TEST_NUMBERS:-}
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       # Wallet top-up. Compose passes ONLY the variables named here, so a secret added to .env
       # without a line in this block is invisible to the container and payments stay disabled.
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}

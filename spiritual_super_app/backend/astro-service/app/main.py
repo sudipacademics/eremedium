@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -17,6 +18,12 @@ from .services.ephemeris import (
 )
 
 logger = logging.getLogger("astro-service")
+
+_is_dev = os.environ.get("NODE_ENV", os.environ.get("ENVIRONMENT", "production")).lower() in {
+    "development",
+    "dev",
+    "test",
+}
 
 
 @asynccontextmanager
@@ -45,8 +52,9 @@ app = FastAPI(
     version=__version__,
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
-    docs_url="/docs",
-    openapi_url="/openapi.json",
+    # Docs expose every internal compute shape; leave them off outside local/dev.
+    docs_url="/docs" if _is_dev else None,
+    openapi_url="/openapi.json" if _is_dev else None,
 )
 
 app.include_router(astro.router)
@@ -55,24 +63,13 @@ app.include_router(ayurveda.router)
 
 @app.get("/healthz", include_in_schema=False)
 async def healthz() -> dict[str, object]:
-    settings = get_settings()
     try:
-        files = verify_ephemeris_files()
-        ephemeris_status = "ok"
-        detail: str | None = None
-    except EphemerisDataMissingError as exc:
-        files = []
-        ephemeris_status = "degraded"
-        detail = str(exc)
+        verify_ephemeris_files()
+        ephemeris_ok = True
+    except EphemerisDataMissingError:
+        ephemeris_ok = False
 
     return {
-        "status": "ok" if ephemeris_status == "ok" else "degraded",
+        "status": "ok" if ephemeris_ok else "degraded",
         "version": __version__,
-        "swisseph": str(swe.version),
-        "ephemeris_path": str(settings.ephemeris_path),
-        "ephemeris_files": files,
-        "ephemeris_status": ephemeris_status,
-        "ephemeris_detail": detail,
-        "ayanamsha": "CHITRA_PAKSHA_LAHIRI",
-        "node_type": "TRUE_NODE",
     }

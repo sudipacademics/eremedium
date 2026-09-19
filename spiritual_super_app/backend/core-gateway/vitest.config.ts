@@ -35,7 +35,7 @@ export default defineConfig({
       REDIS_URL: process.env.TEST_REDIS_URL ?? process.env.REDIS_URL ?? '',
       JWT_SECRET: 'test-jwt-secret-that-is-long-enough-to-pass-validation',
       ASTRO_SERVICE_URL: 'http://astro-service.invalid',
-      INTERNAL_SERVICE_TOKEN: 'test-internal-token',
+      INTERNAL_SERVICE_TOKEN: 'test-internal-token-that-is-long-enough',
       LIVEKIT_URL: 'http://livekit.invalid',
       LIVEKIT_PUBLIC_URL: 'wss://livekit.invalid',
       LIVEKIT_API_KEY: 'test-livekit-key',

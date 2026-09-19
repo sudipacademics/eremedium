@@ -17,8 +17,13 @@ export class SmsDeliveryError extends Error {
  * Deliberately logs at warn so an unconfigured vendor in a real environment is noisy rather than
  * silently "working".
  */
-async function sendViaLog(phone: string, code: string): Promise<void> {
-  logger.warn({ phone, code, provider: 'log' }, 'SMS provider not configured; OTP written to logs only');
+async function sendViaLog(phone: string, _code: string): Promise<void> {
+  // Never log the code: production fail-closed still allows this provider under ALLOW_STAGING_AUTH,
+  // and a warn with the OTP would undo that control.
+  logger.warn(
+    { phoneLast4: phone.slice(-4), provider: 'log' },
+    'SMS provider not configured; OTP not delivered (log sink)',
+  );
 }
 
 /**

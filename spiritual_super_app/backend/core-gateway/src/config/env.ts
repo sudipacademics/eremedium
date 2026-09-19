@@ -33,7 +33,7 @@ const envSchema = z.object({
   JWT_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 12),
 
   ASTRO_SERVICE_URL: z.string().url(),
-  INTERNAL_SERVICE_TOKEN: z.string().min(8),
+  INTERNAL_SERVICE_TOKEN: z.string().min(32, 'INTERNAL_SERVICE_TOKEN must be at least 32 characters'),
 
   LIVEKIT_URL: z.string().url(),
   /*
@@ -105,10 +105,34 @@ const envSchema = z.object({
   // Returns the code in the API response. Staging convenience ONLY; rejected in production below.
   OTP_DEBUG_ECHO: booleanFromEnv.default('false'),
 
+  /**
+   * Explicit opt-in for insecure auth shortcuts in a production NODE_ENV (log SMS, fixed test OTPs).
+   *
+   * Required because this host still runs as NODE_ENV=production while the demo numbers are live.
+   * Real SMS (msg91) with an empty OTP_TEST_NUMBERS list does not need this flag.
+   */
+  ALLOW_STAGING_AUTH: booleanFromEnv.default('false'),
+
   SMS_PROVIDER: z.enum(['log', 'msg91']).default('log'),
   MSG91_AUTH_KEY: optionalSecret(8),
   MSG91_TEMPLATE_ID: optionalSecret(4),
   MSG91_SENDER: optionalSecret(3),
+
+  /**
+   * Comma-separated browser origins allowed for credentialed CORS.
+   * Empty in production → only https://PUBLIC_DOMAIN (and its www.) are accepted.
+   * Browser traffic is same-origin via /api/gw; this only matters for direct gateway calls.
+   */
+  CORS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  PUBLIC_DOMAIN: z.string().default('localhost'),
 
   // --- Wallet top-up via Razorpay -------------------------------------------------------------
   // Optional so the service still boots unconfigured; the routes answer 503 until all three are
@@ -127,6 +151,24 @@ const envSchema = z.object({
         path: ['OTP_DEBUG_ECHO'],
         message: 'OTP_DEBUG_ECHO must be false in production: it returns login codes to any caller',
       });
+    }
+    if (value.NODE_ENV === 'production' && !value.ALLOW_STAGING_AUTH) {
+      if (value.SMS_PROVIDER === 'log') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['SMS_PROVIDER'],
+          message:
+            'SMS_PROVIDER=log writes OTP codes to logs; set SMS_PROVIDER=msg91 or ALLOW_STAGING_AUTH=true',
+        });
+      }
+      if (Object.keys(value.OTP_TEST_NUMBERS).length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OTP_TEST_NUMBERS'],
+          message:
+            'OTP_TEST_NUMBERS are fixed login codes; clear them or set ALLOW_STAGING_AUTH=true',
+        });
+      }
     }
     if (value.SMS_PROVIDER === 'msg91' && !value.MSG91_AUTH_KEY) {
       ctx.addIssue({

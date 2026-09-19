@@ -46,7 +46,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
-    origin: env.NODE_ENV === 'production' ? /\.?[a-z0-9-]+\.[a-z]{2,}$/i : true,
+    origin: corsOriginAllowlist(),
     credentials: true,
   });
   await app.register(rateLimit, {
@@ -97,12 +97,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       redis.ping(),
     ]);
     const healthy = dbCheck.status === 'fulfilled' && redisCheck.status === 'fulfilled';
-    return {
-      status: healthy ? 'ok' : 'degraded',
-      postgres: dbCheck.status === 'fulfilled' ? 'up' : 'down',
-      redis: redisCheck.status === 'fulfilled' ? 'up' : 'down',
-      websocketConnections: hub.localConnectionCount(),
-    };
+    // Public surface: status only. Dependency detail stays out of the response so scanners learn less.
+    return { status: healthy ? 'ok' : 'degraded' };
   });
 
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -122,4 +118,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(websocketRoutes, { prefix: '/api/v1' });
 
   return app;
+}
+
+/** Production: explicit origins only. Dev/test: reflect any origin for local tooling. */
+function corsOriginAllowlist(): boolean | string[] | RegExp {
+  if (env.NODE_ENV !== 'production') {
+    return true;
+  }
+  if (env.CORS_ORIGINS.length > 0) {
+    return env.CORS_ORIGINS;
+  }
+  const domain = env.PUBLIC_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return [`https://${domain}`, `https://www.${domain}`];
 }

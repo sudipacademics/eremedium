@@ -9,16 +9,24 @@
 #   sed "s/REPLACE_WITH_SECRET/$TOKEN/" ssa-gate.conf.example > /etc/nginx/conf.d/ssa-gate.conf
 #   nginx -t && systemctl reload nginx
 #
-# Call the API with:
+# Call direct /api/v1/* tooling with:
 #   curl -H "X-SSA-Gate: $TOKEN" https://astro.e-remedium.in/api/v1/...
 #
-# This is a blunt staging lock, NOT an authorization model. It buys time until Sprint 2 replaces
-# /auth/token with real OTP verification and makes the payment webhook the only way to credit a
-# wallet. Delete it (and the `if` guards in astro.conf) once that lands.
+# Lifecycle note (post Sprint 2):
+# The live product path is the Next.js BFF at /api/gw → gateway on the container network, which
+# never sees this gate. The gate still protects raw /api/v1/* and /api/v1/astro from the public
+# internet (curl, scanners). Keep it until MSG91 is live and ALLOW_STAGING_AUTH is false, then
+# decide whether to remove the if-guards in astro.conf.
 
 # Required: the default bucket size of 64 bytes is too small to hash a long random token as a map
 # key, and nginx fails with "could not build map_hash" rather than anything self-explanatory.
 map_hash_bucket_size 128;
+
+# Strip ?token= from access logs. The browser WebSocket handshake must put the JWT in the query
+# string (custom headers are unavailable), and a full $request would retain it for the JWT TTL.
+log_format scrubbed '$remote_addr - $remote_user [$time_local] '
+                    '"$request_method $uri" $status $body_bytes_sent '
+                    '"$http_referer" "$http_user_agent"';
 
 # Optional: IP allowlist. Any address listed here reaches the API without the header. Left empty by
 # default so the header is the single source of access; add your office/home IP if convenient.

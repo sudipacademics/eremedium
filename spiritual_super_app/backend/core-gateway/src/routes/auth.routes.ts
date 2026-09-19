@@ -44,63 +44,76 @@ function resolveRole(phone: string, isAstrologer: boolean): AppRole {
  * which minted a token for any phone number with no proof of ownership whatsoever; both are gone.
  */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/otp/request', async (request, reply) => {
-    const { phone } = requestOtpSchema.parse(request.body);
-    const challenge = await OtpService.request(phone);
+  /*
+   * Tighter than the global 300/min: OTP endpoints are the blast radius for credential stuffing and
+   * SMS cost. Per-phone limits in OtpService still apply; this caps abuse across many numbers from
+   * one IP (including the BFF, which now forwards a trusted client IP).
+   */
+  app.post(
+    '/otp/request',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { phone } = requestOtpSchema.parse(request.body);
+      const challenge = await OtpService.request(phone);
 
-    // The response is identical for known and unknown numbers: differing status codes, bodies or
-    // timings here would turn this route into a "does this person have an account?" oracle.
-    return reply.code(202).send({
-      sent: true,
-      expiresInSeconds: challenge.expiresInSeconds,
-      resendAfterSeconds: challenge.resendAfterSeconds,
-      ...(challenge.debugCode === undefined ? {} : { debugCode: challenge.debugCode }),
-    });
-  });
+      // The response is identical for known and unknown numbers: differing status codes, bodies or
+      // timings here would turn this route into a "does this person have an account?" oracle.
+      return reply.code(202).send({
+        sent: true,
+        expiresInSeconds: challenge.expiresInSeconds,
+        resendAfterSeconds: challenge.resendAfterSeconds,
+        ...(challenge.debugCode === undefined ? {} : { debugCode: challenge.debugCode }),
+      });
+    },
+  );
 
-  app.post('/otp/verify', async (request, reply) => {
-    const body = verifyOtpSchema.parse(request.body);
+  app.post(
+    '/otp/verify',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const body = verifyOtpSchema.parse(request.body);
 
-    // Throws before any account is touched, so a wrong code can never create a user.
-    await OtpService.verify(body.phone, body.code);
+      // Throws before any account is touched, so a wrong code can never create a user.
+      await OtpService.verify(body.phone, body.code);
 
-    const existing = await prisma.user.findUnique({
-      where: { phone: body.phone },
-      select: { id: true, phone: true, name: true, astrologer: { select: { id: true } } },
-    });
+      const existing = await prisma.user.findUnique({
+        where: { phone: body.phone },
+        select: { id: true, phone: true, name: true, astrologer: { select: { id: true } } },
+      });
 
-    const user =
-      existing ??
-      (await prisma.$transaction(async (tx) => {
-        const created = await tx.user.create({
-          data: {
-            phone: body.phone,
-            name: body.name ?? 'Devotee',
-            ...(body.dob === undefined ? {} : { dob: new Date(body.dob) }),
-            ...(body.birthPlace === undefined ? {} : { birthPlace: body.birthPlace }),
-            ...(body.latitude === undefined ? {} : { latitude: body.latitude }),
-            ...(body.longitude === undefined ? {} : { longitude: body.longitude }),
-            ...(body.gotra === undefined ? {} : { gotra: body.gotra }),
-          },
-          select: { id: true, phone: true, name: true },
-        });
-        // Same transaction as the user: an account without a wallet would break every debit path.
-        await tx.wallet.create({ data: { userId: created.id, balance: 0, currency: 'INR' } });
-        return { ...created, astrologer: null as { id: string } | null };
-      }));
+      const user =
+        existing ??
+        (await prisma.$transaction(async (tx) => {
+          const created = await tx.user.create({
+            data: {
+              phone: body.phone,
+              name: body.name ?? 'Devotee',
+              ...(body.dob === undefined ? {} : { dob: new Date(body.dob) }),
+              ...(body.birthPlace === undefined ? {} : { birthPlace: body.birthPlace }),
+              ...(body.latitude === undefined ? {} : { latitude: body.latitude }),
+              ...(body.longitude === undefined ? {} : { longitude: body.longitude }),
+              ...(body.gotra === undefined ? {} : { gotra: body.gotra }),
+            },
+            select: { id: true, phone: true, name: true },
+          });
+          // Same transaction as the user: an account without a wallet would break every debit path.
+          await tx.wallet.create({ data: { userId: created.id, balance: 0, currency: 'INR' } });
+          return { ...created, astrologer: null as { id: string } | null };
+        }));
 
-    const role = resolveRole(user.phone, user.astrologer !== null);
+      const role = resolveRole(user.phone, user.astrologer !== null);
 
-    return reply.code(existing ? 200 : 201).send({
-      user: { id: user.id, name: user.name, phone: user.phone },
-      role,
-      isNewAccount: !existing,
-      accessToken: signAccessToken({
-        sub: user.id,
-        phone: user.phone,
+      return reply.code(existing ? 200 : 201).send({
+        user: { id: user.id, name: user.name, phone: user.phone },
         role,
-        ...(user.astrologer ? { astrologerId: user.astrologer.id } : {}),
-      }),
-    });
-  });
+        isNewAccount: !existing,
+        accessToken: signAccessToken({
+          sub: user.id,
+          phone: user.phone,
+          role,
+          ...(user.astrologer ? { astrologerId: user.astrologer.id } : {}),
+        }),
+      });
+    },
+  );
 }
