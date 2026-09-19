@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { PanchangResult } from '@/app/panchang/page';
+import { PanchangResult } from '@/components/PanchangResult';
 import type { Panchang } from '@/lib/api';
 
 const SAMPLE: Panchang = {
