@@ -8,9 +8,11 @@ import { seedAstrologer, seedCallSession, seedUser } from './helpers/factories.j
 const natalChart = vi.hoisted(() => vi.fn());
 const vimshottariDasha = vi.hoisted(() => vi.fn());
 const panchang = vi.hoisted(() => vi.fn());
+const ashtakoot = vi.hoisted(() => vi.fn());
+const gochar = vi.hoisted(() => vi.fn());
 
 vi.mock('../src/services/astro.client.js', () => ({
-  AstroServiceClient: { natalChart, vimshottariDasha, prakritiScore: vi.fn(), panchang },
+  AstroServiceClient: { natalChart, vimshottariDasha, prakritiScore: vi.fn(), panchang, ashtakoot, gochar },
   AstroServiceError: class AstroServiceError extends Error {},
 }));
 
@@ -69,6 +71,20 @@ const CHART = {
       nakshatra_pada: 2,
       house: 6,
       speed_deg_per_day: 13.92292,
+      is_retrograde: false,
+    },
+    {
+      body: 'Mars',
+      sidereal_longitude: 120.0,
+      sidereal_latitude: 0,
+      degrees_in_sign: 0,
+      zodiac_sign: 5,
+      zodiac_sign_name: 'Simha',
+      nakshatra: 10,
+      nakshatra_name: 'Magha',
+      nakshatra_pada: 1,
+      house: 7,
+      speed_deg_per_day: 0.5,
       is_retrograde: false,
     },
   ],
@@ -134,6 +150,48 @@ beforeEach(() => {
       start_utc: '1994-08-17T00:15:00Z',
       end_utc: '1994-08-17T10:00:00Z',
     },
+  });
+  ashtakoot.mockReset().mockResolvedValue({
+    total_guna: 24,
+    max_guna: 36,
+    kootas: [{ name: 'Nadi', max_points: 8, score: 8, detail: 'Adi/Madhya' }],
+    manglik: {
+      boy: { is_manglik: true, mars_house: 7, notes: 'Mars in house 7' },
+      girl: { is_manglik: true, mars_house: 7, notes: 'Mars in house 7' },
+      compatible: true,
+    },
+    boy_nakshatra: 19,
+    girl_nakshatra: 19,
+    boy_moon_sign: 9,
+    girl_moon_sign: 9,
+  });
+  gochar.mockReset().mockResolvedValue({
+    transit_utc: '2026-09-19T06:30:00.000Z',
+    julian_day_ut: 2460942.770833,
+    ayanamsha: 24.21,
+    ayanamsha_system: 'CHITRA_PAKSHA_LAHIRI',
+    node_type: 'TRUE_NODE',
+    latitude: 25.317645,
+    longitude: 83.005495,
+    transit_ascendant: CHART.ascendant,
+    planets: [
+      {
+        body: 'Sun',
+        sidereal_longitude: 152.0,
+        degrees_in_sign: 2.0,
+        zodiac_sign: 6,
+        zodiac_sign_name: 'Kanya',
+        nakshatra: 12,
+        nakshatra_name: 'Uttara Phalguni',
+        nakshatra_pada: 2,
+        speed_deg_per_day: 0.98,
+        is_retrograde: false,
+        house_from_natal_lagna: 3,
+        house_from_transit_lagna: 3,
+      },
+    ],
+    natal_moon_sign: 'Dhanu',
+    natal_moon_nakshatra: 'Mula',
   });
 });
 
@@ -478,5 +536,126 @@ describe('POST /api/v1/vedic/panchang', () => {
       payload,
     });
     expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('POST /api/v1/vedic/match', () => {
+  const person = {
+    birthDate: '1994-08-17',
+    birthTime: '03:45',
+    timezone: 'Asia/Kolkata',
+    latitude: 25.317645,
+    longitude: 83.005495,
+    placeLabel: 'Varanasi, IN',
+  };
+
+  it('casts both charts then scores ashtakoot', async () => {
+    const { userId } = await seedUser('0.00');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/match',
+      headers: auth(tokenFor(userId)),
+      payload: { boy: { ...person, label: 'A' }, girl: { ...person, label: 'B' } },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(natalChart).toHaveBeenCalledTimes(2);
+    expect(ashtakoot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        boy_nakshatra: 19,
+        girl_nakshatra: 19,
+        boy_mars_house: 7,
+        girl_mars_house: 7,
+        boy_birth_time_known: true,
+      }),
+    );
+    expect(response.json().total_guna).toBe(24);
+    expect(response.json().boy.moonNakshatra).toBe('Mula');
+  });
+
+  it('skips Mars house when birth time is omitted', async () => {
+    const { userId } = await seedUser('0.00');
+    const { birthTime: _t, ...noTime } = person;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/match',
+      headers: auth(tokenFor(userId)),
+      payload: { boy: noTime, girl: noTime },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ashtakoot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        boy_mars_house: null,
+        girl_mars_house: null,
+        boy_birth_time_known: false,
+      }),
+    );
+  });
+});
+
+describe('POST /api/v1/vedic/gochar', () => {
+  const payload = {
+    date: '2026-09-19',
+    time: '12:00',
+    timezone: 'Asia/Kolkata',
+    latitude: 25.317645,
+    longitude: 83.005495,
+  };
+
+  it('returns the transit sky without natal overlay when no profile exists', async () => {
+    const { userId } = await seedUser('0.00');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/gochar',
+      headers: auth(tokenFor(userId)),
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(gochar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: 25.317645,
+        natal_ascendant_longitude: undefined,
+      }),
+    );
+    expect(response.json().natalOverlayApplied).toBe(false);
+    expect(response.json().planets[0].body).toBe('Sun');
+  });
+
+  it('overlays natal Lagna when a birth profile is saved', async () => {
+    const { userId } = await seedUser('0.00');
+    await app.inject({
+      method: 'PUT',
+      url: '/api/v1/vedic/birth-profile',
+      headers: auth(tokenFor(userId)),
+      payload: {
+        birthDate: '1994-08-17',
+        birthTime: '03:45',
+        timezone: 'Asia/Kolkata',
+        latitude: 25.317645,
+        longitude: 83.005495,
+        placeLabel: 'Varanasi, IN',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/vedic/gochar',
+      headers: auth(tokenFor(userId)),
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(gochar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        natal_ascendant_longitude: CHART.ascendant.sidereal_longitude,
+        natal_moon_longitude: 245.026887,
+      }),
+    );
+    expect(response.json().natalOverlayApplied).toBe(true);
   });
 });

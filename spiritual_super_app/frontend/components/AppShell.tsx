@@ -60,6 +60,8 @@ function Nav({ profile }: { profile: Profile }) {
   const links = [
     { href: '/', label: 'Astrologers' },
     { href: '/kundali', label: 'Kundali' },
+    { href: '/match', label: 'Match' },
+    { href: '/gochar', label: 'Gochar' },
     { href: '/panchang', label: 'Panchang' },
     { href: '/pujas', label: 'E-Puja' },
     { href: '/wallet', label: 'Wallet' },

@@ -165,9 +165,88 @@ export interface PanchangOutput {
   readonly karana: PanchangaAnga;
 }
 
+export interface AshtakootInput {
+  readonly boy_nakshatra: number;
+  readonly girl_nakshatra: number;
+  readonly boy_moon_sign: number;
+  readonly girl_moon_sign: number;
+  readonly include_manglik?: boolean;
+  readonly boy_mars_house?: number | null;
+  readonly girl_mars_house?: number | null;
+  readonly boy_birth_time_known?: boolean;
+  readonly girl_birth_time_known?: boolean;
+}
+
+export interface KootaScore {
+  readonly name: string;
+  readonly max_points: number;
+  readonly score: number;
+  readonly detail: string;
+}
+
+export interface ManglikPerson {
+  readonly is_manglik: boolean | null;
+  readonly mars_house: number | null;
+  readonly notes: string;
+}
+
+export interface AshtakootOutput {
+  readonly total_guna: number;
+  readonly max_guna: number;
+  readonly kootas: readonly KootaScore[];
+  readonly manglik: {
+    readonly boy: ManglikPerson;
+    readonly girl: ManglikPerson;
+    readonly compatible: boolean | null;
+  } | null;
+  readonly boy_nakshatra: number;
+  readonly girl_nakshatra: number;
+  readonly boy_moon_sign: number;
+  readonly girl_moon_sign: number;
+}
+
+export interface GocharInput {
+  readonly transit_utc: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly natal_ascendant_longitude?: number | null;
+  readonly natal_moon_longitude?: number | null;
+}
+
+export interface GocharPlanet {
+  readonly body: string;
+  readonly sidereal_longitude: number;
+  readonly degrees_in_sign: number;
+  readonly zodiac_sign: number;
+  readonly zodiac_sign_name: string;
+  readonly nakshatra: number;
+  readonly nakshatra_name: string;
+  readonly nakshatra_pada: number;
+  readonly speed_deg_per_day: number;
+  readonly is_retrograde: boolean;
+  readonly house_from_natal_lagna: number | null;
+  readonly house_from_transit_lagna: number | null;
+}
+
+export interface GocharOutput {
+  readonly transit_utc: string;
+  readonly julian_day_ut: number;
+  readonly ayanamsha: number;
+  readonly ayanamsha_system: string;
+  readonly node_type: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly transit_ascendant: NatalChartAscendant;
+  readonly planets: readonly GocharPlanet[];
+  readonly natal_moon_sign: string | null;
+  readonly natal_moon_nakshatra: string | null;
+}
+
 export const AstroServiceClient = {
   natalChart: (input: NatalChartInput) => postJson<NatalChartOutput>('/api/v1/astro/natal-chart', input),
   vimshottariDasha: (input: DashaInput) => postJson<DashaOutput>('/api/v1/astro/vimshottari-dasha', input),
   prakritiScore: (input: PrakritiInput) => postJson<PrakritiOutput>('/api/v1/ayurveda/prakriti-score', input),
   panchang: (input: PanchangInput) => postJson<PanchangOutput>('/api/v1/astro/panchang', input),
+  ashtakoot: (input: AshtakootInput) => postJson<AshtakootOutput>('/api/v1/astro/ashtakoot', input),
+  gochar: (input: GocharInput) => postJson<GocharOutput>('/api/v1/astro/gochar', input),
 } as const;

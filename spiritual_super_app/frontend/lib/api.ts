@@ -162,6 +162,89 @@ export interface Panchang {
   karana: PanchangaAnga;
 }
 
+export interface MatchPersonInput {
+  label?: string;
+  birthDate: string;
+  birthTime?: string;
+  timezone: string;
+  latitude: number;
+  longitude: number;
+  placeLabel?: string;
+}
+
+export interface MatchKoota {
+  name: string;
+  max_points: number;
+  score: number;
+  detail: string;
+}
+
+export interface MatchResult {
+  total_guna: number;
+  max_guna: number;
+  kootas: MatchKoota[];
+  manglik: {
+    boy: { is_manglik: boolean | null; mars_house: number | null; notes: string };
+    girl: { is_manglik: boolean | null; mars_house: number | null; notes: string };
+    compatible: boolean | null;
+  } | null;
+  boy: {
+    label: string;
+    moonSign: string;
+    moonNakshatra: string;
+    moonPada: number;
+    birthTimeKnown: boolean;
+    birthInstantUtc: string;
+  };
+  girl: {
+    label: string;
+    moonSign: string;
+    moonNakshatra: string;
+    moonPada: number;
+    birthTimeKnown: boolean;
+    birthInstantUtc: string;
+  };
+}
+
+export interface GocharPlanet {
+  body: string;
+  sidereal_longitude: number;
+  degrees_in_sign: number;
+  zodiac_sign: number;
+  zodiac_sign_name: string;
+  nakshatra: number;
+  nakshatra_name: string;
+  nakshatra_pada: number;
+  speed_deg_per_day: number;
+  is_retrograde: boolean;
+  house_from_natal_lagna: number | null;
+  house_from_transit_lagna: number | null;
+}
+
+export interface Gochar {
+  transit_utc: string;
+  ayanamsha: number;
+  ayanamsha_system: string;
+  node_type: string;
+  latitude: number;
+  longitude: number;
+  transit_ascendant: {
+    sidereal_longitude: number;
+    degrees_in_sign: number;
+    zodiac_sign: number;
+    zodiac_sign_name: string;
+    nakshatra: number;
+    nakshatra_name: string;
+    nakshatra_pada: number;
+  };
+  planets: GocharPlanet[];
+  natal_moon_sign: string | null;
+  natal_moon_nakshatra: string | null;
+  local: { date: string; time: string; timezone: string; offset: string };
+  natalOverlayApplied: boolean;
+  birthTimeAssumed: boolean;
+}
+
 export interface BirthProfile {
   complete: boolean;
   birthDate: string | null;

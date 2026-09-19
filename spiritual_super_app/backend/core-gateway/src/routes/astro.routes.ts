@@ -1,5 +1,6 @@
 import { Dosha } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { DateTime } from 'luxon';
 import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
@@ -7,7 +8,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAstrologer, requireRole, requireUser } from '../plugins/authenticate.js';
 import { AstroServiceClient } from '../services/astro.client.js';
 import { KundaliService } from '../services/kundali.service.js';
-import { PlaceService } from '../services/place.service.js';
+import { PlaceService, toBirthInstant } from '../services/place.service.js';
 
 const natalChartBody = z.object({
   dobUtc: z.string().datetime({ offset: true }),
@@ -64,6 +65,37 @@ const panchangBody = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   timezone: z.string().min(3).max(64),
+});
+
+const matchPersonBody = z.object({
+  label: z.string().min(1).max(80).optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'birthDate must be YYYY-MM-DD'),
+  birthTime: z
+    .string()
+    .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'birthTime must be HH:mm in 24-hour form')
+    .optional(),
+  timezone: z.string().min(3).max(64),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  placeLabel: z.string().min(2).max(180).optional(),
+});
+
+const matchBody = z.object({
+  boy: matchPersonBody,
+  girl: matchPersonBody,
+});
+
+const gocharBody = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+  time: z
+    .string()
+    .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'time must be HH:mm')
+    .optional(),
+  timezone: z.string().min(3).max(64),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  /** When true (default), overlay houses from the signed-in user's natal Lagna if a profile exists. */
+  useNatalOverlay: z.boolean().default(true),
 });
 
 /**
@@ -197,4 +229,157 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
       timezone: body.timezone,
     });
   });
+
+  /**
+   * Ashtakoot / Guna Milan for two birth details.
+   *
+   * Charts are cast first so Moon nakshatra/sign (and Mars house when time is known) come from the
+   * same Lahiri engine as kundali — not from a free-text nakshatra picker.
+   */
+  app.post('/match', async (request, reply) => {
+    requireUser(request);
+    const body = matchBody.parse(request.body);
+
+    for (const person of [body.boy, body.girl]) {
+      if (!PlaceService.isKnownTimezone(person.timezone)) {
+        return reply.code(400).send({
+          error: 'BAD_REQUEST',
+          message: `Unknown timezone "${person.timezone}"`,
+        });
+      }
+    }
+
+    const [boyChart, girlChart] = await Promise.all([
+      castForMatch(body.boy),
+      castForMatch(body.girl),
+    ]);
+
+    const score = await AstroServiceClient.ashtakoot({
+      boy_nakshatra: boyChart.moon.nakshatra,
+      girl_nakshatra: girlChart.moon.nakshatra,
+      boy_moon_sign: boyChart.moon.zodiac_sign,
+      girl_moon_sign: girlChart.moon.zodiac_sign,
+      include_manglik: true,
+      boy_mars_house: boyChart.marsHouse,
+      girl_mars_house: girlChart.marsHouse,
+      boy_birth_time_known: boyChart.birthTimeKnown,
+      girl_birth_time_known: girlChart.birthTimeKnown,
+    });
+
+    return {
+      ...score,
+      boy: {
+        label: body.boy.label ?? 'Boy',
+        moonSign: boyChart.moon.zodiac_sign_name,
+        moonNakshatra: boyChart.moon.nakshatra_name,
+        moonPada: boyChart.moon.nakshatra_pada,
+        birthTimeKnown: boyChart.birthTimeKnown,
+        birthInstantUtc: boyChart.dobUtc,
+      },
+      girl: {
+        label: body.girl.label ?? 'Girl',
+        moonSign: girlChart.moon.zodiac_sign_name,
+        moonNakshatra: girlChart.moon.nakshatra_name,
+        moonPada: girlChart.moon.nakshatra_pada,
+        birthTimeKnown: girlChart.birthTimeKnown,
+        birthInstantUtc: girlChart.dobUtc,
+      },
+    };
+  });
+
+  /**
+   * Gochar — the transit sky at a civil date/time, optionally housed from the user's natal Lagna.
+   */
+  app.post('/gochar', async (request, reply) => {
+    const claims = requireUser(request);
+    const body = gocharBody.parse(request.body);
+    if (!PlaceService.isKnownTimezone(body.timezone)) {
+      return reply.code(400).send({ error: 'BAD_REQUEST', message: `Unknown timezone "${body.timezone}"` });
+    }
+
+    const instant = toBirthInstant({
+      date: body.date,
+      time: body.time,
+      timezone: body.timezone,
+    });
+
+    let natalAscendant: number | undefined;
+    let natalMoon: number | undefined;
+    let natalOverlayApplied = false;
+    let birthTimeAssumed = false;
+
+    if (body.useNatalOverlay) {
+      try {
+        const kundali = await KundaliService.kundaliFor(claims.sub, 1);
+        natalAscendant = kundali.chart.ascendant.sidereal_longitude;
+        const moon = kundali.chart.planets.find((p) => p.body === 'Moon');
+        natalMoon = moon?.sidereal_longitude;
+        natalOverlayApplied = true;
+        birthTimeAssumed = kundali.birthTimeAssumed;
+      } catch {
+        // No birth profile yet — still return the transit sky without natal houses.
+      }
+    }
+
+    const sky = await AstroServiceClient.gochar({
+      transit_utc: instant.utc.toISOString(),
+      latitude: body.latitude,
+      longitude: body.longitude,
+      ...(natalAscendant === undefined ? {} : { natal_ascendant_longitude: natalAscendant }),
+      ...(natalMoon === undefined ? {} : { natal_moon_longitude: natalMoon }),
+    });
+
+    return {
+      ...sky,
+      local: {
+        date: body.date,
+        time: body.time ?? '12:00',
+        timezone: body.timezone,
+        offset: DateTime.fromJSDate(instant.utc, { zone: body.timezone }).toFormat('ZZ'),
+      },
+      natalOverlayApplied,
+      birthTimeAssumed,
+    };
+  });
+}
+
+async function castForMatch(person: z.infer<typeof matchPersonBody>): Promise<{
+  moon: {
+    nakshatra: number;
+    nakshatra_name: string;
+    nakshatra_pada: number;
+    zodiac_sign: number;
+    zodiac_sign_name: string;
+  };
+  marsHouse: number | null;
+  birthTimeKnown: boolean;
+  dobUtc: string;
+}> {
+  const instant = toBirthInstant({
+    date: person.birthDate,
+    time: person.birthTime,
+    timezone: person.timezone,
+  });
+  const chart = await AstroServiceClient.natalChart({
+    dob_utc: instant.utc.toISOString(),
+    latitude: person.latitude,
+    longitude: person.longitude,
+  });
+  const moon = chart.planets.find((p) => p.body === 'Moon');
+  const mars = chart.planets.find((p) => p.body === 'Mars');
+  if (!moon) {
+    throw new Error('Natal chart missing Moon');
+  }
+  return {
+    moon: {
+      nakshatra: moon.nakshatra,
+      nakshatra_name: moon.nakshatra_name,
+      nakshatra_pada: moon.nakshatra_pada,
+      zodiac_sign: moon.zodiac_sign,
+      zodiac_sign_name: moon.zodiac_sign_name,
+    },
+    marsHouse: instant.timeAssumed ? null : (mars?.house ?? null),
+    birthTimeKnown: !instant.timeAssumed,
+    dobUtc: instant.utc.toISOString(),
+  };
 }

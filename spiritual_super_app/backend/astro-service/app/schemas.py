@@ -158,6 +158,102 @@ class PanchangResponse(BaseModel):
     karana: PanchangaAnga
 
 
+class AshtakootRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    boy_nakshatra: int = Field(ge=1, le=27, description="Boy's Moon nakshatra, 1=Ashwini … 27=Revati")
+    girl_nakshatra: int = Field(ge=1, le=27)
+    boy_moon_sign: int = Field(ge=1, le=12, description="Boy's Moon rashi, 1=Mesha … 12=Meena")
+    girl_moon_sign: int = Field(ge=1, le=12)
+    include_manglik: bool = True
+    boy_mars_house: int | None = Field(default=None, ge=1, le=12)
+    girl_mars_house: int | None = Field(default=None, ge=1, le=12)
+    boy_birth_time_known: bool = False
+    girl_birth_time_known: bool = False
+
+
+class KootaScore(BaseModel):
+    name: str
+    max_points: int
+    score: float
+    detail: str
+
+
+class ManglikPerson(BaseModel):
+    is_manglik: bool | None
+    mars_house: int | None
+    notes: str
+
+
+class ManglikAssessment(BaseModel):
+    boy: ManglikPerson
+    girl: ManglikPerson
+    compatible: bool | None
+
+
+class AshtakootResponse(BaseModel):
+    total_guna: float
+    max_guna: int = 36
+    kootas: list[KootaScore]
+    manglik: ManglikAssessment | None
+    boy_nakshatra: int
+    girl_nakshatra: int
+    boy_moon_sign: int
+    girl_moon_sign: int
+
+
+class GocharRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Transit moment in UTC. Natal overlay is optional — without it houses from natal Lagna are omitted.
+    transit_utc: datetime = Field(description="Moment to cast the sky for, UTC ISO-8601")
+    latitude: float = Field(ge=-90.0, le=90.0, description="Place for the transit ascendant")
+    longitude: float = Field(ge=-180.0, le=180.0)
+    natal_ascendant_longitude: float | None = Field(
+        default=None,
+        ge=0.0,
+        lt=360.0,
+        description="Natal Lagna sidereal longitude; when set, each transit body gets a house from it",
+    )
+    natal_moon_longitude: float | None = Field(default=None, ge=0.0, lt=360.0)
+
+    @field_validator("transit_utc")
+    @classmethod
+    def _require_utc_transit(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("transit_utc must include a timezone offset; supply UTC (…Z)")
+        return value
+
+
+class GocharPlanet(BaseModel):
+    body: str
+    sidereal_longitude: float
+    degrees_in_sign: float
+    zodiac_sign: int
+    zodiac_sign_name: str
+    nakshatra: int
+    nakshatra_name: str
+    nakshatra_pada: int
+    speed_deg_per_day: float
+    is_retrograde: bool
+    house_from_natal_lagna: int | None = None
+    house_from_transit_lagna: int | None = None
+
+
+class GocharResponse(BaseModel):
+    transit_utc: datetime
+    julian_day_ut: float
+    ayanamsha: float
+    ayanamsha_system: Literal["CHITRA_PAKSHA_LAHIRI"] = "CHITRA_PAKSHA_LAHIRI"
+    node_type: Literal["TRUE_NODE"] = "TRUE_NODE"
+    latitude: float
+    longitude: float
+    transit_ascendant: AscendantPosition
+    planets: list[GocharPlanet]
+    natal_moon_sign: str | None = None
+    natal_moon_nakshatra: str | None = None
+
+
 class PrakritiRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
