@@ -6,6 +6,11 @@ import { AdminGate } from '@/components/admin/AdminGate';
 
 const CARDS = [
   {
+    href: '/admin/history',
+    title: 'History search',
+    body: 'Find past bookings, orders, calls, and ledger by phone.',
+  },
+  {
     href: '/admin/support',
     title: 'Support board',
     body: 'Open/stuck calls, fund-drops, and recent wallet debits.',
