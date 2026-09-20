@@ -163,6 +163,135 @@ export const PujaService = {
     }));
   },
 
+  /** Full catalog for admin UI (includes inactive temples/offerings). */
+  async listCatalogAdmin(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      location: string;
+      primaryDeity: string;
+      liveStreamUrl: string | null;
+      active: boolean;
+      offerings: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        price: string;
+        durationLabel: string | null;
+        prasadIncluded: string | null;
+        active: boolean;
+      }>;
+    }>
+  > {
+    const temples = await prisma.temple.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        offerings: { orderBy: { name: 'asc' } },
+      },
+    });
+    return temples.map((temple) => ({
+      id: temple.id,
+      name: temple.name,
+      location: temple.location,
+      primaryDeity: temple.primaryDeity,
+      liveStreamUrl: temple.liveStreamUrl,
+      active: temple.active,
+      offerings: temple.offerings.map((offering) => ({
+        id: offering.id,
+        name: offering.name,
+        description: offering.description,
+        price: money(offering.price).toFixed(2),
+        durationLabel: offering.durationLabel,
+        prasadIncluded: offering.prasadIncluded,
+        active: offering.active,
+      })),
+    }));
+  },
+
+  async updateTemple(
+    templeId: string,
+    input: {
+      readonly name?: string;
+      readonly location?: string;
+      readonly primaryDeity?: string;
+      readonly liveStreamUrl?: string | null;
+      readonly active?: boolean;
+    },
+  ) {
+    try {
+      return await prisma.temple.update({
+        where: { id: templeId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+          ...(input.location !== undefined ? { location: input.location.trim() } : {}),
+          ...(input.primaryDeity !== undefined ? { primaryDeity: input.primaryDeity.trim() } : {}),
+          ...(input.liveStreamUrl !== undefined
+            ? { liveStreamUrl: input.liveStreamUrl?.trim() || null }
+            : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          primaryDeity: true,
+          liveStreamUrl: true,
+          active: true,
+        },
+      });
+    } catch {
+      throw new PujaError(`Temple ${templeId} not found`, 404);
+    }
+  },
+
+  async updateOffering(
+    offeringId: string,
+    input: {
+      readonly name?: string;
+      readonly description?: string | null;
+      readonly price?: string;
+      readonly durationLabel?: string | null;
+      readonly prasadIncluded?: string | null;
+      readonly active?: boolean;
+    },
+  ) {
+    if (input.price !== undefined && money(input.price).lessThanOrEqualTo(0)) {
+      throw new PujaError('price must be greater than zero', 400);
+    }
+    try {
+      const offering = await prisma.pujaOffering.update({
+        where: { id: offeringId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+          ...(input.description !== undefined
+            ? { description: input.description?.trim() || null }
+            : {}),
+          ...(input.price !== undefined ? { price: money(input.price) } : {}),
+          ...(input.durationLabel !== undefined
+            ? { durationLabel: input.durationLabel?.trim() || null }
+            : {}),
+          ...(input.prasadIncluded !== undefined
+            ? { prasadIncluded: input.prasadIncluded?.trim() || null }
+            : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+        select: {
+          id: true,
+          templeId: true,
+          name: true,
+          description: true,
+          price: true,
+          durationLabel: true,
+          prasadIncluded: true,
+          active: true,
+        },
+      });
+      return { ...offering, price: money(offering.price).toFixed(2) };
+    } catch {
+      throw new PujaError(`Offering ${offeringId} not found`, 404);
+    }
+  },
+
   /**
    * Loads a bookable offering and its temple.
    *

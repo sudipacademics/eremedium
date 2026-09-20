@@ -84,4 +84,60 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
       return reply.send(order);
     },
   );
+
+  const productBody = z.object({
+    sku: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/, 'sku must be lowercase kebab-case'),
+    name: z.string().min(2).max(160),
+    description: z.string().max(1000).nullable().optional(),
+    price: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+    suitedDoshas: z.array(z.nativeEnum(Dosha)).min(1).max(3),
+    formFactor: z.string().min(2).max(40).default('kit'),
+    active: z.boolean().default(true),
+  });
+
+  const productPatch = productBody
+    .omit({ sku: true })
+    .partial()
+    .extend({
+      description: z.string().max(1000).nullable().optional(),
+    });
+
+  const productParams = z.object({ productId: z.string().uuid() });
+
+  app.get('/admin/products', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+    const products = await AyurvedaService.listProductsAdmin();
+    return reply.send({ products });
+  });
+
+  app.post('/admin/products', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+    const body = productBody.parse(request.body);
+    const product = await AyurvedaService.createProduct({
+      sku: body.sku,
+      name: body.name,
+      price: body.price,
+      suitedDoshas: body.suitedDoshas,
+      formFactor: body.formFactor,
+      active: body.active,
+      ...(body.description !== undefined ? { description: body.description } : {}),
+    });
+    return reply.code(201).send(product);
+  });
+
+  app.patch(
+    '/admin/products/:productId',
+    { preHandler: requireRole(AppRole.ADMIN) },
+    async (request, reply) => {
+      const { productId } = productParams.parse(request.params);
+      const body = productPatch.parse(request.body);
+      const product = await AyurvedaService.updateProduct(productId, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.price !== undefined ? { price: body.price } : {}),
+        ...(body.suitedDoshas !== undefined ? { suitedDoshas: body.suitedDoshas } : {}),
+        ...(body.formFactor !== undefined ? { formFactor: body.formFactor } : {}),
+        ...(body.active !== undefined ? { active: body.active } : {}),
+      });
+      return reply.send(product);
+    },
+  );
 }
