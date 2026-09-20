@@ -575,7 +575,13 @@ function HomeFooter() {
     <footer className="mt-20 bg-navy-950 text-cream-100">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-[1.2fr_1fr_1fr_1.1fr]">
         <div>
-          <p className="font-display text-2xl font-semibold text-gold-300">Nakshya</p>
+          <Image
+            src="/brand/vedsutra-logo.png"
+            alt="Vedsutra"
+            width={180}
+            height={46}
+            className="h-9 w-auto"
+          />
           <p className="mt-2 max-w-xs text-sm text-cream-100/65">
             Your life, in harmony — astrology, ritual, and Ayurveda under one trusted roof.
           </p>

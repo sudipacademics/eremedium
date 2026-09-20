@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -64,27 +65,16 @@ function WalletPill() {
   );
 }
 
-function NakshyaMark() {
+function BrandLogo({ className = 'h-8 w-auto' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 40 40" className="h-9 w-9" aria-hidden>
-      <circle cx="20" cy="20" r="18" fill="none" stroke="#d4a84b" strokeWidth="1.5" />
-      <circle cx="20" cy="20" r="8" fill="#d4a84b" opacity="0.9" />
-      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
-        const rad = (deg * Math.PI) / 180;
-        return (
-          <line
-            key={deg}
-            x1={20 + Math.cos(rad) * 10}
-            y1={20 + Math.sin(rad) * 10}
-            x2={20 + Math.cos(rad) * 16}
-            y2={20 + Math.sin(rad) * 16}
-            stroke="#d4a84b"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        );
-      })}
-    </svg>
+    <Image
+      src="/brand/vedsutra-logo.png"
+      alt="Vedsutra"
+      width={220}
+      height={56}
+      className={className}
+      priority
+    />
   );
 }
 
@@ -143,14 +133,9 @@ function NavBar({
     <header className="sticky top-0 z-30 border-b border-white/10 bg-navy-900/95 text-cream-50 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <Link href="/" className="mr-1 flex shrink-0 items-center gap-2.5">
-          <NakshyaMark />
-          <span className="leading-tight">
-            <span className="block font-display text-xl font-semibold tracking-wide text-gold-300">
-              Nakshya
-            </span>
-            <span className="hidden text-[10px] uppercase tracking-[0.14em] text-cream-200/70 sm:block">
-              Your Life. In Harmony.
-            </span>
+          <BrandLogo className="h-8 w-auto sm:h-9" />
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-cream-200/70 sm:block">
+            Your Life. In Harmony.
           </span>
         </Link>
 
