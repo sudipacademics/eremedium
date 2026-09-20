@@ -163,4 +163,58 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.code(201).send({ ...offering, price: money(offering.price).toFixed(2) });
   });
+
+  app.get('/admin/catalog', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+    const temples = await PujaService.listCatalogAdmin();
+    return reply.send({ temples });
+  });
+
+  app.patch(
+    '/admin/temples/:templeId',
+    { preHandler: requireRole(AppRole.ADMIN) },
+    async (request, reply) => {
+      const { templeId } = z.object({ templeId: z.string().uuid() }).parse(request.params);
+      const body = templeBody
+        .partial()
+        .extend({
+          active: z.boolean().optional(),
+          liveStreamUrl: z.string().url().max(500).nullable().optional(),
+        })
+        .parse(request.body);
+      const temple = await PujaService.updateTemple(templeId, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.location !== undefined ? { location: body.location } : {}),
+        ...(body.primaryDeity !== undefined ? { primaryDeity: body.primaryDeity } : {}),
+        ...(body.liveStreamUrl !== undefined ? { liveStreamUrl: body.liveStreamUrl } : {}),
+        ...(body.active !== undefined ? { active: body.active } : {}),
+      });
+      return reply.send(temple);
+    },
+  );
+
+  app.patch(
+    '/admin/offerings/:offeringId',
+    { preHandler: requireRole(AppRole.ADMIN) },
+    async (request, reply) => {
+      const { offeringId } = z.object({ offeringId: z.string().uuid() }).parse(request.params);
+      const body = offeringBody
+        .omit({ templeId: true })
+        .partial()
+        .extend({
+          description: z.string().max(1000).nullable().optional(),
+          durationLabel: z.string().max(60).nullable().optional(),
+          prasadIncluded: z.string().max(300).nullable().optional(),
+        })
+        .parse(request.body);
+      const offering = await PujaService.updateOffering(offeringId, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.price !== undefined ? { price: body.price } : {}),
+        ...(body.durationLabel !== undefined ? { durationLabel: body.durationLabel } : {}),
+        ...(body.prasadIncluded !== undefined ? { prasadIncluded: body.prasadIncluded } : {}),
+        ...(body.active !== undefined ? { active: body.active } : {}),
+      });
+      return reply.send(offering);
+    },
+  );
 }

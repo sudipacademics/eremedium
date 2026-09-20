@@ -6,9 +6,11 @@ import { z } from 'zod';
 import { AppRole } from '../auth/jwt.js';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireAstrologer, requireRole, requireUser } from '../plugins/authenticate.js';
+import { AiPredictionService } from '../services/ai-prediction.service.js';
 import { AstroServiceClient } from '../services/astro.client.js';
 import { KundaliService } from '../services/kundali.service.js';
 import { PlaceService, toBirthInstant } from '../services/place.service.js';
+import { OpenAiError } from '../services/openai.client.js';
 
 const natalChartBody = z.object({
   dobUtc: z.string().datetime({ offset: true }),
@@ -96,6 +98,20 @@ const gocharBody = z.object({
   longitude: z.number().min(-180).max(180),
   /** When true (default), overlay houses from the signed-in user's natal Lagna if a profile exists. */
   useNatalOverlay: z.boolean().default(true),
+});
+
+const aiPredictBody = z.object({
+  question: z.string().min(3).max(1_500),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().min(1).max(4_000),
+      }),
+    )
+    .max(6)
+    .default([]),
+  includeGochar: z.boolean().default(true),
 });
 
 /**
@@ -341,6 +357,36 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
       birthTimeAssumed,
     };
   });
+
+  /**
+   * Whether Jyotish AI is ready (cloud key or local trial engine).
+   */
+  app.get('/ai-predict/status', async () => AiPredictionService.status());
+
+  /**
+   * Astro-GPT style reading grounded in the caller's cached Lahiri kundali (+ optional gochar).
+   *
+   * Rate-limited tightly: each call hits OpenAI and rebuilds a chart brief.
+   */
+  app.post(
+    '/ai-predict',
+    { config: { rateLimit: { max: 8, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const claims = requireUser(request);
+      const body = aiPredictBody.parse(request.body);
+      try {
+        return await AiPredictionService.predict(claims.sub, body);
+      } catch (error) {
+        if (error instanceof OpenAiError) {
+          return reply.code(error.statusCode).send({
+            error: error.code,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    },
+  );
 }
 
 async function castForMatch(person: z.infer<typeof matchPersonBody>): Promise<{

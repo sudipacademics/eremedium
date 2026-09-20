@@ -6,7 +6,7 @@ import { AppRole } from '../auth/jwt.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
-import { authenticate, requireUser } from '../plugins/authenticate.js';
+import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
 import { QueueService } from '../services/queue.service.js';
 
 export class AstrologerError extends Error {
@@ -221,8 +221,109 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
       id: updated.id,
       perMinuteRate: money(updated.perMinuteRate).toFixed(2),
       commissionSplit: updated.commissionSplit.toFixed(4),
-      // Existing earnings keep their own snapshot, so this only affects future minutes.
       note: 'Applies to future billed minutes only',
     };
   });
+
+  /** Admin roster: every profile with contact phone for support. */
+  app.get('/admin/roster', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+    const rows = await prisma.astrologer.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: {
+        id: true,
+        displayName: true,
+        perMinuteRate: true,
+        commissionSplit: true,
+        status: true,
+        languages: true,
+        createdAt: true,
+        user: { select: { id: true, phone: true, name: true } },
+      },
+    });
+    return reply.send({
+      astrologers: rows.map((row) => ({
+        id: row.id,
+        displayName: row.displayName,
+        perMinuteRate: money(row.perMinuteRate).toFixed(2),
+        commissionSplit: row.commissionSplit.toFixed(4),
+        status: row.status,
+        languages: row.languages,
+        createdAt: row.createdAt.toISOString(),
+        userId: row.user.id,
+        phone: row.user.phone,
+        userName: row.user.name,
+      })),
+    });
+  });
+
+  const adminProfileSchema = z.object({
+    displayName: z.string().min(2).max(160).optional(),
+    languages: z.array(z.string().min(2).max(40)).min(1).max(10).optional(),
+    perMinuteRate: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/).optional(),
+    commissionSplit: z.string().regex(/^0(\.\d{1,4})?$|^1(\.0{1,4})?$/).optional(),
+    /** Only OFFLINE ↔ online (IDLE). Never forces BUSY/IN_CALL. */
+    online: z.boolean().optional(),
+  });
+
+  app.patch(
+    '/admin/:astrologerId',
+    { preHandler: requireRole(AppRole.ADMIN) },
+    async (request, reply) => {
+      const { astrologerId } = z.object({ astrologerId: z.string().uuid() }).parse(request.params);
+      const body = adminProfileSchema.parse(request.body);
+
+      const existing = await prisma.astrologer.findUnique({
+        where: { id: astrologerId },
+        select: { id: true, status: true },
+      });
+      if (!existing) {
+        throw new AstrologerError('Astrologer not found', 404);
+      }
+
+      if (body.online !== undefined) {
+        if (
+          existing.status === AstrologerStatus.IN_CALL ||
+          existing.status === AstrologerStatus.BUSY
+        ) {
+          throw new AstrologerError(`Cannot change availability while ${existing.status}`);
+        }
+        await QueueService.setAstrologerPresence(
+          astrologerId,
+          body.online ? 'ONLINE' : 'OFFLINE',
+        );
+      }
+
+      const updated = await prisma.astrologer.update({
+        where: { id: astrologerId },
+        data: {
+          ...(body.displayName !== undefined ? { displayName: body.displayName.trim() } : {}),
+          ...(body.languages !== undefined ? { languages: body.languages } : {}),
+          ...(body.perMinuteRate !== undefined
+            ? { perMinuteRate: money(body.perMinuteRate) }
+            : {}),
+          ...(body.commissionSplit !== undefined
+            ? { commissionSplit: body.commissionSplit }
+            : {}),
+        },
+        select: {
+          id: true,
+          displayName: true,
+          perMinuteRate: true,
+          commissionSplit: true,
+          status: true,
+          languages: true,
+        },
+      });
+
+      return reply.send({
+        id: updated.id,
+        displayName: updated.displayName,
+        perMinuteRate: money(updated.perMinuteRate).toFixed(2),
+        commissionSplit: updated.commissionSplit.toFixed(4),
+        status: updated.status,
+        languages: updated.languages,
+      });
+    },
+  );
 }

@@ -312,6 +312,53 @@ export interface Kundali {
   fromCache: boolean;
 }
 
+export interface AiPredictStatus {
+  configured: boolean;
+  model: string;
+  ready: boolean;
+  provider?: string;
+}
+
+export interface AiPredictTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AiPredictResult {
+  answer: string;
+  model: string;
+  birthTimeAssumed: boolean;
+  chartBrief: string;
+  disclaimer: string;
+  usage: {
+    promptTokens: number | null;
+    completionTokens: number | null;
+  };
+}
+
+export interface SiteContent {
+  heroEyebrow: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroImageUrl: string | null;
+  promoQuote: string | null;
+  updatedAt: string;
+}
+
+export interface CmsArticle {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  body?: string;
+  coverUrl: string | null;
+  ctaHref: string | null;
+  published: boolean;
+  featured: boolean;
+  publishedAt: string | null;
+  updatedAt?: string;
+}
+
 export interface PujaOffering {
   id: string;
   name: string;

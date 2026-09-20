@@ -24,6 +24,7 @@ export interface ProductView {
   readonly price: string;
   readonly suitedDoshas: readonly Dosha[];
   readonly formFactor: string;
+  readonly active?: boolean;
 }
 
 export interface OrderView {
@@ -126,6 +127,109 @@ export const AyurvedaService = {
       suitedDoshas: product.suitedDoshas,
       formFactor: product.formFactor,
     }));
+  },
+
+  /** Admin catalog: includes inactive SKUs. */
+  async listProductsAdmin(): Promise<Array<ProductView & { active: boolean }>> {
+    const products = await prisma.ayurvedaProduct.findMany({
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+    });
+    return products.map((product) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      description: product.description,
+      price: money(product.price).toFixed(2),
+      suitedDoshas: product.suitedDoshas,
+      formFactor: product.formFactor,
+      active: product.active,
+    }));
+  },
+
+  async createProduct(input: {
+    readonly sku: string;
+    readonly name: string;
+    readonly description?: string | null;
+    readonly price: string;
+    readonly suitedDoshas: readonly Dosha[];
+    readonly formFactor: string;
+    readonly active?: boolean;
+  }): Promise<ProductView & { active: boolean }> {
+    const price = money(input.price);
+    if (price.lessThanOrEqualTo(0)) {
+      throw new AyurvedaError('price must be greater than zero', 400);
+    }
+    try {
+      const product = await prisma.ayurvedaProduct.create({
+        data: {
+          sku: input.sku.trim().toLowerCase(),
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          price,
+          suitedDoshas: [...input.suitedDoshas],
+          formFactor: input.formFactor.trim() || 'kit',
+          active: input.active !== false,
+        },
+      });
+      return {
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        description: product.description,
+        price: money(product.price).toFixed(2),
+        suitedDoshas: product.suitedDoshas,
+        formFactor: product.formFactor,
+        active: product.active,
+      };
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+        throw new AyurvedaError('SKU already exists', 409);
+      }
+      throw error;
+    }
+  },
+
+  async updateProduct(
+    productId: string,
+    input: {
+      readonly name?: string;
+      readonly description?: string | null;
+      readonly price?: string;
+      readonly suitedDoshas?: readonly Dosha[];
+      readonly formFactor?: string;
+      readonly active?: boolean;
+    },
+  ): Promise<ProductView & { active: boolean }> {
+    const existing = await prisma.ayurvedaProduct.findUnique({ where: { id: productId } });
+    if (!existing) {
+      throw new AyurvedaError('Product not found', 404);
+    }
+    if (input.price !== undefined && money(input.price).lessThanOrEqualTo(0)) {
+      throw new AyurvedaError('price must be greater than zero', 400);
+    }
+    const product = await prisma.ayurvedaProduct.update({
+      where: { id: productId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.description !== undefined
+          ? { description: input.description?.trim() || null }
+          : {}),
+        ...(input.price !== undefined ? { price: money(input.price) } : {}),
+        ...(input.suitedDoshas !== undefined ? { suitedDoshas: [...input.suitedDoshas] } : {}),
+        ...(input.formFactor !== undefined ? { formFactor: input.formFactor.trim() } : {}),
+        ...(input.active !== undefined ? { active: input.active } : {}),
+      },
+    });
+    return {
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      description: product.description,
+      price: money(product.price).toFixed(2),
+      suitedDoshas: product.suitedDoshas,
+      formFactor: product.formFactor,
+      active: product.active,
+    };
   },
 
   async requireActiveProduct(productId: string) {

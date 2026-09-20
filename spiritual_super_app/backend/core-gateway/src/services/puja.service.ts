@@ -56,6 +56,13 @@ export interface BookingView {
   readonly createdAt: string;
 }
 
+/** Admin fulfilment queue: booking plus devotee contact for ops callbacks. */
+export interface AdminBookingView extends BookingView {
+  readonly userId: string;
+  readonly userPhone: string;
+  readonly userName: string | null;
+}
+
 export interface BookingResult {
   readonly booking: BookingView;
   readonly amountDebited: string;
@@ -161,6 +168,135 @@ export const PujaService = {
         prasadIncluded: offering.prasadIncluded,
       })),
     }));
+  },
+
+  /** Full catalog for admin UI (includes inactive temples/offerings). */
+  async listCatalogAdmin(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      location: string;
+      primaryDeity: string;
+      liveStreamUrl: string | null;
+      active: boolean;
+      offerings: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        price: string;
+        durationLabel: string | null;
+        prasadIncluded: string | null;
+        active: boolean;
+      }>;
+    }>
+  > {
+    const temples = await prisma.temple.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        offerings: { orderBy: { name: 'asc' } },
+      },
+    });
+    return temples.map((temple) => ({
+      id: temple.id,
+      name: temple.name,
+      location: temple.location,
+      primaryDeity: temple.primaryDeity,
+      liveStreamUrl: temple.liveStreamUrl,
+      active: temple.active,
+      offerings: temple.offerings.map((offering) => ({
+        id: offering.id,
+        name: offering.name,
+        description: offering.description,
+        price: money(offering.price).toFixed(2),
+        durationLabel: offering.durationLabel,
+        prasadIncluded: offering.prasadIncluded,
+        active: offering.active,
+      })),
+    }));
+  },
+
+  async updateTemple(
+    templeId: string,
+    input: {
+      readonly name?: string;
+      readonly location?: string;
+      readonly primaryDeity?: string;
+      readonly liveStreamUrl?: string | null;
+      readonly active?: boolean;
+    },
+  ) {
+    try {
+      return await prisma.temple.update({
+        where: { id: templeId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+          ...(input.location !== undefined ? { location: input.location.trim() } : {}),
+          ...(input.primaryDeity !== undefined ? { primaryDeity: input.primaryDeity.trim() } : {}),
+          ...(input.liveStreamUrl !== undefined
+            ? { liveStreamUrl: input.liveStreamUrl?.trim() || null }
+            : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          primaryDeity: true,
+          liveStreamUrl: true,
+          active: true,
+        },
+      });
+    } catch {
+      throw new PujaError(`Temple ${templeId} not found`, 404);
+    }
+  },
+
+  async updateOffering(
+    offeringId: string,
+    input: {
+      readonly name?: string;
+      readonly description?: string | null;
+      readonly price?: string;
+      readonly durationLabel?: string | null;
+      readonly prasadIncluded?: string | null;
+      readonly active?: boolean;
+    },
+  ) {
+    if (input.price !== undefined && money(input.price).lessThanOrEqualTo(0)) {
+      throw new PujaError('price must be greater than zero', 400);
+    }
+    try {
+      const offering = await prisma.pujaOffering.update({
+        where: { id: offeringId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+          ...(input.description !== undefined
+            ? { description: input.description?.trim() || null }
+            : {}),
+          ...(input.price !== undefined ? { price: money(input.price) } : {}),
+          ...(input.durationLabel !== undefined
+            ? { durationLabel: input.durationLabel?.trim() || null }
+            : {}),
+          ...(input.prasadIncluded !== undefined
+            ? { prasadIncluded: input.prasadIncluded?.trim() || null }
+            : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+        select: {
+          id: true,
+          templeId: true,
+          name: true,
+          description: true,
+          price: true,
+          durationLabel: true,
+          prasadIncluded: true,
+          active: true,
+        },
+      });
+      return { ...offering, price: money(offering.price).toFixed(2) };
+    } catch {
+      throw new PujaError(`Offering ${offeringId} not found`, 404);
+    }
   },
 
   /**
@@ -302,14 +438,22 @@ export const PujaService = {
   },
 
   /** The fulfilment work queue: everything not yet dispatched, oldest first. */
-  async listPendingFulfilment(): Promise<BookingView[]> {
+  async listPendingFulfilment(): Promise<AdminBookingView[]> {
     const rows = await prisma.pujaBooking.findMany({
       where: { status: { not: PujaBookingStatus.PRASAD_DISPATCHED } },
       orderBy: { createdAt: 'asc' },
       take: 200,
-      include: bookingInclude,
+      include: {
+        ...bookingInclude,
+        user: { select: { id: true, phone: true, name: true } },
+      },
     });
-    return rows.map(toBookingView);
+    return rows.map((row) => ({
+      ...toBookingView(row),
+      userId: row.user.id,
+      userPhone: row.user.phone,
+      userName: row.user.name,
+    }));
   },
 
   /** Records the date the temple will perform the puja. Does not change status. */
@@ -355,10 +499,11 @@ export const PujaService = {
     if (existing.status === to) {
       throw new PujaError(`Booking is already ${to}`);
     }
-    if (!ALLOWED_TRANSITIONS[existing.status].includes(to)) {
+    const allowed = ALLOWED_TRANSITIONS[existing.status] ?? [];
+    if (!allowed.includes(to)) {
       throw new PujaError(
         `Cannot move a booking from ${existing.status} to ${to}; ` +
-          `the next stage is ${ALLOWED_TRANSITIONS[existing.status][0] ?? 'none, it is complete'}`,
+          `the next stage is ${allowed[0] ?? 'none, it is complete'}`,
       );
     }
 

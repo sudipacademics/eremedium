@@ -102,16 +102,23 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         }));
 
       const role = resolveRole(user.phone, user.astrologer !== null);
+      const astrologerId = user.astrologer?.id ?? null;
 
       return reply.code(existing ? 200 : 201).send({
-        user: { id: user.id, name: user.name, phone: user.phone },
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          role,
+          astrologerId,
+        },
         role,
         isNewAccount: !existing,
         accessToken: signAccessToken({
           sub: user.id,
           phone: user.phone,
           role,
-          ...(user.astrologer ? { astrologerId: user.astrologer.id } : {}),
+          ...(astrologerId ? { astrologerId } : {}),
         }),
       });
     },

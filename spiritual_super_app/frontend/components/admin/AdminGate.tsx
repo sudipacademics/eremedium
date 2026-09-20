@@ -1,0 +1,70 @@
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
+
+import { session } from '@/lib/api';
+
+export function AdminGate({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    const profile = session.profile;
+    if (!session.token || !profile) {
+      router.replace('/login');
+      return;
+    }
+    if (profile.role !== 'ADMIN') {
+      router.replace('/');
+      return;
+    }
+    setOk(true);
+  }, [router]);
+
+  if (!ok) {
+    return <p className="p-6 text-sm text-slate-400">Checking admin access…</p>;
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 text-slate-100">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-gold-400">Nakshya Admin</p>
+          <h1 className="font-display text-2xl font-semibold">Content & operations</h1>
+        </div>
+        <nav className="flex flex-wrap gap-2 text-sm">
+          <Link href="/admin" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Dashboard
+          </Link>
+          <Link href="/admin/support" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Support
+          </Link>
+          <Link
+            href="/admin/puja-bookings"
+            className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15"
+          >
+            Puja ops
+          </Link>
+          <Link
+            href="/admin/ayurveda-orders"
+            className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15"
+          >
+            Shop ops
+          </Link>
+          <Link href="/admin/home" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Homepage
+          </Link>
+          <Link href="/admin/articles" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Articles
+          </Link>
+          <Link href="/" className="rounded-lg px-3 py-1.5 text-slate-400 hover:text-white">
+            ← Site
+          </Link>
+        </nav>
+      </div>
+      {children}
+    </div>
+  );
+}

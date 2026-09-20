@@ -162,4 +162,34 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
       endTime: session.endTime?.toISOString() ?? null,
     });
   });
+
+  // --- Support (admin) -----------------------------------------------------------------------
+
+  app.get('/admin/support', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+    const query = z
+      .object({ limit: z.coerce.number().int().min(1).max(100).default(50) })
+      .parse(request.query);
+    const overview = await CallService.getSupportOverview(query.limit);
+    return reply.send(overview);
+  });
+
+  app.post(
+    '/admin/sessions/:callSessionId/end',
+    { preHandler: requireRole(AppRole.ADMIN) },
+    async (request, reply) => {
+      const { callSessionId } = sessionIdParams.parse(request.params);
+      const body = z
+        .object({ reason: z.string().min(3).max(200).default('ADMIN_FORCE_END') })
+        .parse(request.body ?? {});
+      const existing = await prisma.callSession.findUnique({
+        where: { id: callSessionId },
+        select: { id: true, status: true },
+      });
+      if (!existing) {
+        return reply.code(404).send({ error: 'NOT_FOUND', message: 'Call session not found' });
+      }
+      await CallService.terminate(callSessionId, CallSessionStatus.COMPLETED, body.reason);
+      return reply.send({ callSessionId, status: CallSessionStatus.COMPLETED, reason: body.reason });
+    },
+  );
 }
