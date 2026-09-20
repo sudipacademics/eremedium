@@ -336,6 +336,29 @@ export interface AiPredictResult {
   };
 }
 
+export interface SiteContent {
+  heroEyebrow: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroImageUrl: string | null;
+  promoQuote: string | null;
+  updatedAt: string;
+}
+
+export interface CmsArticle {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  body?: string;
+  coverUrl: string | null;
+  ctaHref: string | null;
+  published: boolean;
+  featured: boolean;
+  publishedAt: string | null;
+  updatedAt?: string;
+}
+
 export interface PujaOffering {
   id: string;
   name: string;

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
 
-import { api, type Astrologer, type AyurvedaProduct } from '@/lib/api';
+import { api, type Astrologer, type AyurvedaProduct, type CmsArticle, type SiteContent } from '@/lib/api';
 
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrologers', tone: 'bg-orange-100 text-orange-700', icon: '☉' },
@@ -54,27 +54,13 @@ const WHY = [
   },
 ] as const;
 
-const ARTICLES = [
+const ARTICLES_FALLBACK = [
   {
     title: 'Moon Transit Effects on Your Life',
     excerpt: 'How gochar through nakshatras colours mood, decisions, and timing this month.',
     href: '/gochar',
     image:
       'https://images.unsplash.com/photo-1419242902214-272b3f66ee70?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    title: 'Reading Your Current Dasha',
-    excerpt: 'A practical guide to mahadasha and antardasha without fatalism or fear.',
-    href: '/kundali',
-    image:
-      'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    title: 'Ayurveda Habits for Vata Season',
-    excerpt: 'Warm routines, grounding food, and sleep tips when air and space dominate.',
-    href: '/ayurveda',
-    image:
-      'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=600&q=80',
   },
 ] as const;
 
@@ -102,12 +88,22 @@ function routeForQuery(q: string): string {
 export function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
+  const [site, setSite] = useState<SiteContent | null>(null);
+  const [articles, setArticles] = useState<CmsArticle[]>([]);
   const [astrologers, setAstrologers] = useState<Astrologer[]>([]);
   const [products, setProducts] = useState<AyurvedaProduct[]>([]);
   const astroRail = useRef<HTMLDivElement>(null);
   const productRail = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    void api
+      .get<SiteContent>('content/home')
+      .then(setSite)
+      .catch(() => undefined);
+    void api
+      .get<{ articles: CmsArticle[] }>('content/articles?featured=true')
+      .then((res) => setArticles(res.articles.slice(0, 6)))
+      .catch(() => undefined);
     void api
       .get<{ astrologers: Astrologer[] }>('astrologers?onlineOnly=false&limit=12')
       .then((res) => setAstrologers(res.astrologers))
@@ -139,7 +135,10 @@ export function HomePage() {
       <section className="relative isolate overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=2000&q=80"
+            src={
+              site?.heroImageUrl ??
+              'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=2000&q=80'
+            }
             alt=""
             fill
             priority
@@ -153,16 +152,14 @@ export function HomePage() {
         <div className="relative mx-auto grid max-w-7xl gap-10 px-4 pb-16 pt-14 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:pb-24 lg:pt-20">
           <div className="animate-fade-up max-w-xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-600">
-              Ancient wisdom for a brighter tomorrow
+              {site?.heroEyebrow ?? 'Ancient wisdom for a brighter tomorrow'}
             </p>
             <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.1] text-navy-950 sm:text-5xl lg:text-[3.35rem]">
-              Find Clarity in Every Phase of Life
+              {site?.heroTitle ?? 'Find Clarity in Every Phase of Life'}
             </h1>
             <p className="mt-4 text-base text-navy-800/80 sm:text-lg">
-              Astrology · Puja · Panchang · Ayurveda · Guidance.
-              <span className="mt-1 block font-medium text-navy-900">
-                All in one trusted platform — Nakshya.
-              </span>
+              {site?.heroSubtitle ??
+                'Astrology · Puja · Panchang · Ayurveda · Guidance. All in one trusted platform — Nakshya.'}
             </p>
 
             <form
@@ -196,9 +193,13 @@ export function HomePage() {
             <div className="absolute inset-0 animate-float rounded-[2rem] bg-gradient-to-br from-navy-900/20 via-gold-400/10 to-transparent" />
             <div className="absolute right-4 top-6 h-64 w-64 rounded-full border border-gold-400/40 bg-gold-400/10 blur-sm" />
             <div className="absolute bottom-8 right-10 max-w-[14rem] text-right font-display text-xl italic text-cream-50 drop-shadow-lg">
-              Aligned with the Stars,
-              <br />
-              Rooted in Nature
+              {site?.promoQuote ?? (
+                <>
+                  Aligned with the Stars,
+                  <br />
+                  Rooted in Nature
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -380,7 +381,17 @@ export function HomePage() {
       <section className="mx-auto mt-16 max-w-7xl px-4">
         <SectionHead title="Latest from Nakshya" href="/gochar" linkLabel="View All" />
         <div className="grid gap-4 md:grid-cols-3">
-          {ARTICLES.map((article) => (
+          {(articles.length > 0
+            ? articles.map((article) => ({
+                title: article.title,
+                excerpt: article.excerpt,
+                href: article.ctaHref || `/articles/${article.slug}`,
+                image:
+                  article.coverUrl ||
+                  'https://images.unsplash.com/photo-1419242902214-272b3f66ee70?auto=format&fit=crop&w=600&q=80',
+              }))
+            : ARTICLES_FALLBACK
+          ).map((article) => (
             <Link
               key={article.title}
               href={article.href}

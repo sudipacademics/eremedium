@@ -445,3 +445,41 @@ model AyurvedaOrder {
   @@index([status, createdAt])
   @@map("ayurveda_orders")
 }
+
+/**
+ * Singleton marketing homepage copy. Id is always "default".
+ * Admins edit via /api/v1/content/home; the public site reads the same row.
+ */
+model SiteContent {
+  id            String   @id @db.VarChar(32)
+  heroEyebrow   String   @map("hero_eyebrow") @db.VarChar(120)
+  heroTitle     String   @map("hero_title") @db.VarChar(200)
+  heroSubtitle  String   @map("hero_subtitle") @db.VarChar(500)
+  heroImageUrl  String?  @map("hero_image_url") @db.VarChar(500)
+  promoQuote    String?  @map("promo_quote") @db.VarChar(200)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy     String?  @map("updated_by") @db.Uuid
+
+  @@map("site_content")
+}
+
+model Article {
+  id           String    @id @default(uuid()) @db.Uuid
+  slug         String    @unique @db.VarChar(120)
+  title        String    @db.VarChar(200)
+  excerpt      String    @db.VarChar(500)
+  /** Plain markdown — never raw HTML. Rendered with a sanitizing client. */
+  body         String    @db.Text
+  coverUrl     String?   @map("cover_url") @db.VarChar(500)
+  /** Optional internal path (e.g. /gochar). Must be same-origin relative. */
+  ctaHref      String?   @map("cta_href") @db.VarChar(200)
+  published    Boolean   @default(false)
+  featured     Boolean   @default(false)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy    String?   @map("updated_by") @db.Uuid
+
+  @@index([published, featured, publishedAt])
+  @@map("articles")
+}

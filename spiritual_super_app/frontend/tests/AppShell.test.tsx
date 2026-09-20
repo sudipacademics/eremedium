@@ -52,23 +52,18 @@ beforeEach(() => {
 
 describe('a logged-out visitor', () => {
   /**
-   * THE regression test for the crash that met every first-time visitor.
-   *
-   * AppShell used to render `children` whenever no stored profile was found. Because SocketProvider
-   * is only mounted in the authenticated branch, the page threw
-   * "useSocket must be used inside SocketProvider" during render and React replaced the entire app
-   * with its client-side exception screen -- so the bare domain was a crash, not a login page.
+   * Marketing home is public. It must not mount SocketProvider for guests, and must not crash.
    */
-  it('is redirected to the login page instead of crashing on the home page', async () => {
+  it('can view the public homepage without a session', async () => {
     pathname = '/';
 
-    expect(() => render(<AppShell><ProtectedPage /></AppShell>)).not.toThrow();
+    expect(() => render(<AppShell><div>marketing home</div></AppShell>)).not.toThrow();
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
-    expect(screen.queryByText('page content')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('marketing home')).toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalled();
   });
 
-  it('is redirected away from any other protected route too', async () => {
+  it('is redirected away from any protected route', async () => {
     pathname = '/wallet';
 
     expect(() => render(<AppShell><ProtectedPage /></AppShell>)).not.toThrow();
@@ -95,7 +90,7 @@ describe('a half-broken session', () => {
   it('is sent to login when the token survives but the profile is unreadable', async () => {
     window.localStorage.setItem('ssa.token', 'a-token');
     window.localStorage.setItem('ssa.profile', '{not json');
-    pathname = '/';
+    pathname = '/wallet';
 
     expect(() => render(<AppShell><ProtectedPage /></AppShell>)).not.toThrow();
 
@@ -104,7 +99,7 @@ describe('a half-broken session', () => {
 
   it('is sent to login when a profile is stored without a token', async () => {
     window.localStorage.setItem('ssa.profile', JSON.stringify({ id: 'u1', name: 'Test' }));
-    pathname = '/';
+    pathname = '/wallet';
 
     render(<AppShell><ProtectedPage /></AppShell>);
 
