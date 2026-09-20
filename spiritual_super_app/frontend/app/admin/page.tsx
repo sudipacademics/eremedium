@@ -6,6 +6,11 @@ import { AdminGate } from '@/components/admin/AdminGate';
 
 const CARDS = [
   {
+    href: '/admin/support',
+    title: 'Support board',
+    body: 'Open/stuck calls, fund-drops, and recent wallet debits.',
+  },
+  {
     href: '/admin/puja-bookings',
     title: 'E-Puja fulfilment',
     body: 'Schedule and advance live bookings; attach video + prasad AWB.',

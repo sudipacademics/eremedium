@@ -221,6 +221,53 @@ export const WalletService = {
     return balance.greaterThanOrEqualTo(money(required));
   },
 
+  /** Admin support feed: latest wallet debits across all users. */
+  async listRecentDebitsAdmin(limit = 40): Promise<
+    readonly {
+      readonly id: string;
+      readonly amount: string;
+      readonly referenceType: string;
+      readonly referenceId: string;
+      readonly balanceAfter: string;
+      readonly createdAt: string;
+      readonly userId: string;
+      readonly userPhone: string;
+      readonly userName: string | null;
+    }[]
+  > {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const rows = await prisma.walletTransaction.findMany({
+      where: { type: TransactionType.DEBIT },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        amount: true,
+        referenceType: true,
+        referenceId: true,
+        balanceAfter: true,
+        createdAt: true,
+        wallet: {
+          select: {
+            userId: true,
+            user: { select: { phone: true, name: true } },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      amount: money(row.amount).toFixed(2),
+      referenceType: row.referenceType,
+      referenceId: row.referenceId,
+      balanceAfter: money(row.balanceAfter).toFixed(2),
+      createdAt: row.createdAt.toISOString(),
+      userId: row.wallet.userId,
+      userPhone: row.wallet.user.phone,
+      userName: row.wallet.user.name,
+    }));
+  },
+
   // `recharge()` was removed deliberately. It credited a wallet from a caller-supplied reference
   // with nothing verifying that money had actually arrived. Top-ups now go through
   // PaymentService.handleCapturedPayment, which only runs behind a verified webhook signature.

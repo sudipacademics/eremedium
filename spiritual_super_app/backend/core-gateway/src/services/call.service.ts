@@ -5,7 +5,7 @@ import { AstrologerStatus, CallSessionStatus } from '@prisma/client';
 import { AppRole } from '../auth/jwt.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
-import { money, prisma } from '../lib/prisma.js';
+import { money, prisma, Prisma } from '../lib/prisma.js';
 import { redis, redisKeys } from '../lib/redis.js';
 import { withLock } from '../lib/redlock.js';
 import { billingJobId, billingQueue, matchingQueue } from '../queues/index.js';
@@ -38,6 +38,58 @@ export const TERMINAL_STATUSES: readonly CallSessionStatus[] = [
   CallSessionStatus.COMPLETED,
   CallSessionStatus.DROPPED_INSUFFICIENT_FUNDS,
 ];
+
+export type SupportStuckReason = 'STALE_INITIATED' | 'STALE_ACTIVE' | null;
+
+export interface SupportCallRow {
+  readonly id: string;
+  readonly status: CallSessionStatus;
+  readonly channelId: string;
+  readonly ratePerMinute: string;
+  readonly totalMinutes: number;
+  readonly totalDeducted: string;
+  readonly startTime: string | null;
+  readonly endTime: string | null;
+  readonly createdAt: string;
+  readonly ageSeconds: number;
+  readonly stuckReason: SupportStuckReason;
+  readonly user: {
+    readonly id: string;
+    readonly name: string | null;
+    readonly phone: string;
+    readonly walletBalance: string | null;
+  };
+  readonly astrologer: {
+    readonly id: string;
+    readonly displayName: string;
+    readonly status: AstrologerStatus;
+    readonly phone: string;
+  };
+}
+
+export interface SupportDebitRow {
+  readonly id: string;
+  readonly amount: string;
+  readonly referenceType: string;
+  readonly referenceId: string;
+  readonly balanceAfter: string;
+  readonly createdAt: string;
+  readonly userId: string;
+  readonly userPhone: string;
+  readonly userName: string | null;
+}
+
+export interface SupportOverview {
+  readonly summary: { readonly open: number; readonly stuck: number; readonly dropped24h: number };
+  readonly openCalls: readonly SupportCallRow[];
+  readonly stuckCalls: readonly SupportCallRow[];
+  readonly recentDrops: readonly SupportCallRow[];
+  readonly recentDebits: readonly SupportDebitRow[];
+  readonly cutoffs: {
+    readonly staleInitiatedSeconds: number;
+    readonly staleActiveSeconds: number;
+  };
+}
 
 export const CallService = {
   /**
@@ -324,5 +376,149 @@ export const CallService = {
       logger.warn(result, 'Stale call sessions reaped');
     }
     return result;
+  },
+
+  /**
+   * Admin support board: open sessions, ones past the reaper cutoffs, recent fund-drops, and
+   * recent wallet debits so an operator can help a devotee without digging through logs.
+   */
+  async getSupportOverview(limit = 50): Promise<SupportOverview> {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const now = Date.now();
+    const initiatedCutoffMs = env.STALE_INITIATED_SESSION_SECONDS * 1_000;
+    const activeCutoffMs = env.STALE_ACTIVE_SESSION_SECONDS * 1_000;
+    const dayAgo = new Date(now - 24 * 60 * 60 * 1_000);
+
+    const sessionSelect = {
+      id: true,
+      status: true,
+      channelId: true,
+      ratePerMinute: true,
+      totalMinutes: true,
+      totalDeducted: true,
+      startTime: true,
+      endTime: true,
+      createdAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          wallet: { select: { balance: true } },
+        },
+      },
+      astrologer: {
+        select: {
+          id: true,
+          displayName: true,
+          status: true,
+          user: { select: { phone: true } },
+        },
+      },
+    } as const;
+
+    const toRow = (row: {
+      id: string;
+      status: CallSessionStatus;
+      channelId: string;
+      ratePerMinute: Prisma.Decimal;
+      totalMinutes: number;
+      totalDeducted: Prisma.Decimal;
+      startTime: Date | null;
+      endTime: Date | null;
+      createdAt: Date;
+      user: {
+        id: string;
+        name: string;
+        phone: string;
+        wallet: { balance: Prisma.Decimal } | null;
+      };
+      astrologer: {
+        id: string;
+        displayName: string;
+        status: AstrologerStatus;
+        user: { phone: string };
+      };
+    }): SupportCallRow => {
+      const ageSeconds = Math.max(0, Math.floor((now - row.createdAt.getTime()) / 1000));
+      let stuckReason: SupportStuckReason = null;
+      if (row.status === CallSessionStatus.INITIATED && now - row.createdAt.getTime() >= initiatedCutoffMs) {
+        stuckReason = 'STALE_INITIATED';
+      } else if (
+        row.status === CallSessionStatus.ACTIVE &&
+        row.startTime &&
+        now - row.startTime.getTime() >= activeCutoffMs
+      ) {
+        stuckReason = 'STALE_ACTIVE';
+      }
+      return {
+        id: row.id,
+        status: row.status,
+        channelId: row.channelId,
+        ratePerMinute: money(row.ratePerMinute).toFixed(2),
+        totalMinutes: row.totalMinutes,
+        totalDeducted: money(row.totalDeducted).toFixed(2),
+        startTime: row.startTime?.toISOString() ?? null,
+        endTime: row.endTime?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+        ageSeconds,
+        stuckReason,
+        user: {
+          id: row.user.id,
+          name: row.user.name,
+          phone: row.user.phone,
+          walletBalance: row.user.wallet ? money(row.user.wallet.balance).toFixed(2) : null,
+        },
+        astrologer: {
+          id: row.astrologer.id,
+          displayName: row.astrologer.displayName,
+          status: row.astrologer.status,
+          phone: row.astrologer.user.phone,
+        },
+      };
+    };
+
+    const [openRows, recentDropRows, dropped24h, recentDebits] = await Promise.all([
+      prisma.callSession.findMany({
+        where: {
+          status: { in: [CallSessionStatus.INITIATED, CallSessionStatus.ACTIVE] },
+        },
+        orderBy: { createdAt: 'asc' },
+        take,
+        select: sessionSelect,
+      }),
+      prisma.callSession.findMany({
+        where: { status: CallSessionStatus.DROPPED_INSUFFICIENT_FUNDS },
+        orderBy: { endTime: 'desc' },
+        take: Math.min(take, 25),
+        select: sessionSelect,
+      }),
+      prisma.callSession.count({
+        where: {
+          status: CallSessionStatus.DROPPED_INSUFFICIENT_FUNDS,
+          endTime: { gte: dayAgo },
+        },
+      }),
+      WalletService.listRecentDebitsAdmin(Math.min(take, 40)),
+    ]);
+
+    const openCalls = openRows.map(toRow);
+    const stuckCalls = openCalls.filter((row) => row.stuckReason !== null);
+
+    return {
+      summary: {
+        open: openCalls.length,
+        stuck: stuckCalls.length,
+        dropped24h,
+      },
+      openCalls,
+      stuckCalls,
+      recentDrops: recentDropRows.map(toRow),
+      recentDebits,
+      cutoffs: {
+        staleInitiatedSeconds: env.STALE_INITIATED_SESSION_SECONDS,
+        staleActiveSeconds: env.STALE_ACTIVE_SESSION_SECONDS,
+      },
+    };
   },
 } as const;
