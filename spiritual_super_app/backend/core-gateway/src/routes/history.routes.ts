@@ -8,9 +8,13 @@ import { HistoryError, HistoryService } from '../services/history.service.js';
 const querySchema = z.object({
   phone: z
     .string()
+    .trim()
     .min(8)
-    .max(20)
-    .regex(/^\+?[0-9]{8,15}$/, 'phone must be digits, optionally with a leading +'),
+    .max(24)
+    .transform((value) => value.replace(/[\s()-]/g, ''))
+    .refine((value) => /^\+?[0-9]{8,15}$/.test(value), {
+      message: 'phone must be digits, optionally with a leading +',
+    }),
   limit: z.coerce.number().int().min(1).max(100).default(40),
 });
 
