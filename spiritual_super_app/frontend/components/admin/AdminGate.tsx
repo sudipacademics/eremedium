@@ -38,6 +38,18 @@ export function AdminGate({ children }: { children: ReactNode }) {
           <Link href="/admin" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
             Dashboard
           </Link>
+          <Link
+            href="/admin/puja-bookings"
+            className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15"
+          >
+            Puja ops
+          </Link>
+          <Link
+            href="/admin/ayurveda-orders"
+            className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15"
+          >
+            Shop ops
+          </Link>
           <Link href="/admin/home" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
             Homepage
           </Link>

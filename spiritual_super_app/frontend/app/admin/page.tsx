@@ -6,6 +6,16 @@ import { AdminGate } from '@/components/admin/AdminGate';
 
 const CARDS = [
   {
+    href: '/admin/puja-bookings',
+    title: 'E-Puja fulfilment',
+    body: 'Schedule and advance live bookings; attach video + prasad AWB.',
+  },
+  {
+    href: '/admin/ayurveda-orders',
+    title: 'Ayurveda fulfilment',
+    body: 'Pack and dispatch open shop orders with tracking.',
+  },
+  {
     href: '/admin/home',
     title: 'Homepage CMS',
     body: 'Hero title, subtitle, image, and promo quote.',

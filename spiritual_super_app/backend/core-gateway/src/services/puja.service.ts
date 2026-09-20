@@ -56,6 +56,13 @@ export interface BookingView {
   readonly createdAt: string;
 }
 
+/** Admin fulfilment queue: booking plus devotee contact for ops callbacks. */
+export interface AdminBookingView extends BookingView {
+  readonly userId: string;
+  readonly userPhone: string;
+  readonly userName: string | null;
+}
+
 export interface BookingResult {
   readonly booking: BookingView;
   readonly amountDebited: string;
@@ -431,14 +438,22 @@ export const PujaService = {
   },
 
   /** The fulfilment work queue: everything not yet dispatched, oldest first. */
-  async listPendingFulfilment(): Promise<BookingView[]> {
+  async listPendingFulfilment(): Promise<AdminBookingView[]> {
     const rows = await prisma.pujaBooking.findMany({
       where: { status: { not: PujaBookingStatus.PRASAD_DISPATCHED } },
       orderBy: { createdAt: 'asc' },
       take: 200,
-      include: bookingInclude,
+      include: {
+        ...bookingInclude,
+        user: { select: { id: true, phone: true, name: true } },
+      },
     });
-    return rows.map(toBookingView);
+    return rows.map((row) => ({
+      ...toBookingView(row),
+      userId: row.user.id,
+      userPhone: row.user.phone,
+      userName: row.user.name,
+    }));
   },
 
   /** Records the date the temple will perform the puja. Does not change status. */
@@ -484,10 +499,11 @@ export const PujaService = {
     if (existing.status === to) {
       throw new PujaError(`Booking is already ${to}`);
     }
-    if (!ALLOWED_TRANSITIONS[existing.status].includes(to)) {
+    const allowed = ALLOWED_TRANSITIONS[existing.status] ?? [];
+    if (!allowed.includes(to)) {
       throw new PujaError(
         `Cannot move a booking from ${existing.status} to ${to}; ` +
-          `the next stage is ${ALLOWED_TRANSITIONS[existing.status][0] ?? 'none, it is complete'}`,
+          `the next stage is ${allowed[0] ?? 'none, it is complete'}`,
       );
     }
 
