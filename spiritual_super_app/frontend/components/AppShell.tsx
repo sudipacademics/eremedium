@@ -176,6 +176,31 @@ function NavBar({
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <Link
+            href="/astrologers"
+            className="hidden h-9 w-9 items-center justify-center rounded-full border border-ved-green-900/10 text-ved-green-800 hover:bg-ved-cream-100 sm:inline-flex"
+            aria-label="Search"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+          </Link>
+          <Link
+            href="/ayurveda"
+            className="relative hidden h-9 w-9 items-center justify-center rounded-full border border-ved-green-900/10 text-ved-green-800 hover:bg-ved-cream-100 sm:inline-flex"
+            aria-label="Cart"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6h15l-1.5 9h-12z" />
+              <path d="M6 6L5 3H2" />
+              <circle cx="9" cy="20" r="1" />
+              <circle cx="18" cy="20" r="1" />
+            </svg>
+            <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-ved-green-700 text-[9px] font-bold text-white">
+              0
+            </span>
+          </Link>
           {!guest && profile && (
             <>
               <ConnectionDot />
