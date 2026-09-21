@@ -1,0 +1,16 @@
+# Manual DNS steps (webhostbox) — required before TLS works
+#
+# 1. At the domain registrar for vedsutra.in, set nameservers to:
+#      ns1.bh-in-3.webhostbox.net
+#      ns2.bh-in-3.webhostbox.net
+# 2. In the webhostbox DNS zone editor for vedsutra.in, create:
+#      A    @     167.233.108.90
+#      A    www   167.233.108.90
+# 3. Verify from your laptop:
+#      dig +short vedsutra.in A
+#      dig +short www.vedsutra.in A
+#    Both must return 167.233.108.90
+# 4. On the Hetzner host, run:
+#      bash /opt/eremedium/spiritual_super_app/scripts/cutover-vedsutra-domain.sh
+#
+# App stack stays on Hetzner. webhostbox is DNS only.
