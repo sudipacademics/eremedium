@@ -95,15 +95,16 @@ const GUEST_NAV = [
   { href: '/astrologers', label: 'Consult Experts' },
 ] as const;
 
-/** Logged-in: same IA plus wallet; role links added separately. */
+/** Logged-in: same mock IA plus wallet; role links added separately. */
 const AUTH_NAV = [
   { href: '/', label: 'Home' },
   { href: '/astrologers', label: 'Astrology' },
   { href: '/panchang', label: 'Panchang' },
   { href: '/pujas', label: 'E-Puja' },
-  { href: '/kundali', label: 'Kundali' },
+  { href: '/ayurveda', label: 'Ayurveda' },
   { href: '/ayurveda', label: 'Shop' },
   { href: '/gochar', label: 'Learn' },
+  { href: '/astrologers', label: 'Consult Experts' },
   { href: '/wallet', label: 'Wallet' },
 ] as const;
 

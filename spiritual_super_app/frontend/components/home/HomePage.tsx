@@ -85,10 +85,24 @@ export function HomePage() {
     else router.push('/astrologers');
   }
 
-  const heroTitle = site?.heroTitle ?? 'Your Life, Guided by Vedic Wisdom';
-  const heroSubtitle =
-    site?.heroSubtitle ??
-    'Ancient wisdom for a brighter tomorrow — Astrology, Puja, Panchang & Ayurveda.';
+  // Prefer CMS, but never show the pre-rebrand Nakshya seed copy on the public home.
+  const staleCms =
+    !site ||
+    /nakshya/i.test(`${site.heroTitle} ${site.heroSubtitle} ${site.heroEyebrow}`) ||
+    site.heroTitle === 'Find Clarity in Every Phase of Life';
+  const heroEyebrow = staleCms
+    ? 'Ancient wisdom for a brighter tomorrow'
+    : (site.heroEyebrow ?? 'Ancient wisdom for a brighter tomorrow');
+  const heroTitle = staleCms
+    ? 'Your Life, Guided by Vedic Wisdom'
+    : (site.heroTitle ?? 'Your Life, Guided by Vedic Wisdom');
+  const heroSubtitle = staleCms
+    ? 'Astrology, Puja, Panchang & Ayurveda — guided by Vedsutra.'
+    : (site.heroSubtitle ??
+      'Astrology, Puja, Panchang & Ayurveda — guided by Vedsutra.');
+  const promoQuote = staleCms
+    ? 'Aligned with the Stars, Rooted in Nature'
+    : (site?.promoQuote ?? 'Aligned with the Stars, Rooted in Nature');
 
   return (
     <div className="bg-ved-cream-100 text-ved-green-900">
@@ -99,7 +113,7 @@ export function HomePage() {
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 lg:grid-cols-2 lg:py-20">
           <div className="animate-fade-up">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ved-gold-600">
-              {site?.heroEyebrow ?? 'Ancient wisdom for a brighter tomorrow'}
+              {heroEyebrow}
             </p>
             <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.12] text-ved-green-800 sm:text-5xl lg:text-[3.25rem]">
               {heroTitle.includes('Vedic') ? (
@@ -152,9 +166,9 @@ export function HomePage() {
                 </div>
               </div>
             )}
-            {site?.promoQuote ? (
+            {promoQuote ? (
               <p className="absolute bottom-6 right-6 max-w-[12rem] text-right font-display text-lg italic text-white drop-shadow">
-                {site.promoQuote}
+                {promoQuote}
               </p>
             ) : null}
           </div>
