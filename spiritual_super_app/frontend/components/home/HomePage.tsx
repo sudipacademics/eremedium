@@ -135,7 +135,10 @@ export function HomePage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ved-gold-600">
               {heroEyebrow}
             </p>
-            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.15] text-ved-green-900 sm:text-5xl lg:text-[3.4rem]">
+            <h1
+              data-build="15996c2"
+              className="mt-3 font-display text-4xl font-semibold leading-[1.15] text-ved-green-900 sm:text-5xl lg:text-[3.4rem]"
+            >
               Your Life, Guided by <span className="text-ved-gold-500">Vedic Wisdom</span>
             </h1>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ved-green-800/70">
