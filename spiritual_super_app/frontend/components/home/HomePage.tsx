@@ -13,9 +13,6 @@ import {
   type SiteContent,
 } from '@/lib/api';
 
-const HERO_MANDALA =
-  'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=1400&q=80';
-
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
   { href: '/kundali', label: 'Kundali', tag: 'Know Your Self', icon: '◎' },
@@ -119,17 +116,14 @@ export function HomePage() {
     else router.push('/astrologers');
   }
 
-  const staleCms =
-    !site ||
-    /nakshya/i.test(`${site.heroTitle} ${site.heroSubtitle} ${site.heroEyebrow}`) ||
-    site.heroTitle === 'Find Clarity in Every Phase of Life';
-
+  // Brand hero copy is fixed to the Vedsutra mock; CMS only supplies media/quote.
+  const promoQuote = site?.promoQuote?.trim() || 'Aligned with the Stars, Rooted in Nature';
+  const heroImage =
+    site?.heroImageUrl?.trim() ||
+    'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=1400&q=80';
   const heroEyebrow = 'Ancient wisdom for a brighter tomorrow';
-  const heroSubtitle = 'Astrology | Puja | Panchang | Ayurveda — all in one trusted platform – Vedsutra';
-  const promoQuote = staleCms
-    ? 'Aligned with the Stars, Rooted in Nature'
-    : (site.promoQuote ?? 'Aligned with the Stars, Rooted in Nature');
-  const heroImage = site?.heroImageUrl || HERO_MANDALA;
+  const heroSubtitle =
+    'Astrology | Puja | Panchang | Ayurveda — all in one trusted platform – Vedsutra';
 
   return (
     <div className="bg-[#F7F4EE] text-ved-green-900">
