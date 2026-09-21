@@ -15,10 +15,10 @@ interface QueuePosition {
 }
 
 const STATUS_STYLES: Record<Astrologer['status'], string> = {
-  IDLE: 'bg-emerald-500/15 text-emerald-300',
-  BUSY: 'bg-amber-500/15 text-amber-300',
-  IN_CALL: 'bg-amber-500/15 text-amber-300',
-  OFFLINE: 'bg-slate-500/15 text-slate-400',
+  IDLE: 'bg-emerald-500/15 text-emerald-700',
+  BUSY: 'bg-amber-500/15 text-amber-700',
+  IN_CALL: 'bg-amber-500/15 text-amber-700',
+  OFFLINE: 'bg-slate-500/15 text-ved-green-800/60',
 };
 
 const STATUS_LABELS: Record<Astrologer['status'], string> = {
@@ -90,7 +90,7 @@ export default function AstrologersPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Talk to an astrologer</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-ved-green-800/60">
             You are charged per minute, only while connected.
           </p>
         </div>
@@ -134,7 +134,7 @@ export default function AstrologersPage() {
       ) : astrologers.length === 0 ? (
         <div className="card text-center">
           <p className="font-medium">No astrologers have joined yet</p>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-ved-green-800/60">
             Sign in with another number and apply from the console to list yourself.
           </p>
         </div>
@@ -152,7 +152,7 @@ export default function AstrologersPage() {
                     </div>
                     <div>
                       <p className="font-medium leading-tight">{astrologer.displayName}</p>
-                      <p className="text-xs text-slate-400">{astrologer.languages.join(' · ')}</p>
+                      <p className="text-xs text-ved-green-800/60">{astrologer.languages.join(' · ')}</p>
                     </div>
                   </div>
                   <span className={`pill ${STATUS_STYLES[astrologer.status]}`}>
@@ -163,7 +163,7 @@ export default function AstrologersPage() {
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <p className="tabular text-lg font-semibold">₹{astrologer.perMinuteRate}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-ved-green-800/60">
                       per minute · min ₹{astrologer.minimumBalanceRequired} to start
                     </p>
                   </div>

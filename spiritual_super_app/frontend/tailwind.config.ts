@@ -5,6 +5,39 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Vedsutra brand system
+        'ved-green': {
+          50: '#eef7f4',
+          100: '#d5ebe3',
+          200: '#aed7c8',
+          300: '#7cbcab',
+          400: '#4f9e8b',
+          500: '#0d5c4d',
+          600: '#0b4f45',
+          700: '#093f37',
+          800: '#07332c',
+          900: '#052821',
+          950: '#031814',
+        },
+        'ved-gold': {
+          50: '#fbf6ea',
+          100: '#f5ebcf',
+          200: '#ead7a0',
+          300: '#dcc06c',
+          400: '#c9a64a',
+          500: '#b08a32',
+          600: '#8f6e28',
+          700: '#6f5520',
+          800: '#57431c',
+          900: '#46381a',
+        },
+        'ved-cream': {
+          50: '#fffcf7',
+          100: '#f7f4ee',
+          200: '#efe9de',
+          300: '#e2d8c6',
+        },
+        // Legacy aliases kept so older class names don't break while pages migrate
         saffron: {
           50: '#fff8ed',
           100: '#ffefd4',
@@ -23,7 +56,6 @@ export default {
           900: '#130e26',
           950: '#0b0818',
         },
-        // Nakshya marketing palette (homepage + shell)
         navy: {
           700: '#1a2a4a',
           800: '#12203a',
@@ -37,9 +69,9 @@ export default {
           600: '#a67a22',
         },
         cream: {
-          50: '#fdfbf7',
-          100: '#f7f3ea',
-          200: '#efe8d8',
+          50: '#fffcf7',
+          100: '#f7f4ee',
+          200: '#efe9de',
         },
         sage: {
           100: '#e8f0e4',

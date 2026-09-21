@@ -102,9 +102,9 @@ export default function GocharPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Gochar</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Transit sky in Chitra Paksha (Lahiri) with true node — houses counted from your natal Lagna
           when a birth profile is saved.
         </p>
@@ -125,7 +125,7 @@ export default function GocharPage() {
 
       {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
 
-      {loading && !gochar && <p className="text-sm text-slate-400">Casting…</p>}
+      {loading && !gochar && <p className="text-sm text-ved-green-800/60">Casting…</p>}
 
       {gochar && <GocharResult gochar={gochar} placeLabel={place.label} />}
     </div>
@@ -210,12 +210,12 @@ function PlaceDateTime({
             placeholder="Varanasi"
           />
           {matches.length > 0 && (
-            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-night-950">
+            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-ved-green-900/10 bg-white">
               {matches.map((match) => (
                 <li key={`${match.name}:${match.latitude}:${match.longitude}`}>
                   <button
                     type="button"
-                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ved-cream-200/80"
                     onClick={() => {
                       onPlace(match);
                       setQuery(match.label);
@@ -223,7 +223,7 @@ function PlaceDateTime({
                     }}
                   >
                     <span>{match.label}</span>
-                    <span className="text-xs text-slate-500">{match.timezone}</span>
+                    <span className="text-xs text-ved-green-800/50">{match.timezone}</span>
                   </button>
                 </li>
               ))}
@@ -231,7 +231,7 @@ function PlaceDateTime({
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ved-green-800/50">
         <span className="tabular">
           {place.latitude.toFixed(4)}°, {place.longitude.toFixed(4)}°
         </span>{' '}
@@ -245,18 +245,18 @@ function GocharResult({ gochar, placeLabel }: { gochar: Gochar; placeLabel: stri
   return (
     <div className="card space-y-4">
       <div>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-ved-green-800/60">
           {placeLabel} · {gochar.local.date} {gochar.local.time} ({gochar.local.timezone}{' '}
           {gochar.local.offset})
         </p>
         <p className="mt-1 text-sm">
           Transit Lagna {gochar.transit_ascendant.zodiac_sign_name}{' '}
-          <span className="tabular text-slate-400">
+          <span className="tabular text-ved-green-800/60">
             {gochar.transit_ascendant.degrees_in_sign.toFixed(1)}°
           </span>
         </p>
         {gochar.natalOverlayApplied ? (
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ved-green-800/50">
             Houses from your natal Lagna
             {gochar.birthTimeAssumed ? ' (birth time assumed noon — Lagna approximate)' : ''}
             {gochar.natal_moon_sign
@@ -274,7 +274,7 @@ function GocharResult({ gochar, placeLabel }: { gochar: Gochar; placeLabel: stri
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-ved-green-800/50">
             <tr>
               <th className="py-2 pr-3">Graha</th>
               <th className="py-2 pr-3">Sign</th>
@@ -289,16 +289,16 @@ function GocharResult({ gochar, placeLabel }: { gochar: Gochar; placeLabel: stri
                 <td className="py-2 pr-3 font-medium">{planet.body}</td>
                 <td className="py-2 pr-3">
                   {planet.zodiac_sign_name}{' '}
-                  <span className="tabular text-slate-500">{planet.degrees_in_sign.toFixed(1)}°</span>
+                  <span className="tabular text-ved-green-800/50">{planet.degrees_in_sign.toFixed(1)}°</span>
                 </td>
                 <td className="py-2 pr-3">
                   {planet.nakshatra_name}{' '}
-                  <span className="text-slate-500">p{planet.nakshatra_pada}</span>
+                  <span className="text-ved-green-800/50">p{planet.nakshatra_pada}</span>
                 </td>
                 <td className="py-2 pr-3 tabular">
                   {planet.house_from_natal_lagna ?? '—'}
                 </td>
-                <td className="py-2 text-slate-400">
+                <td className="py-2 text-ved-green-800/60">
                   {planet.is_retrograde ? 'R' : 'D'}
                 </td>
               </tr>
@@ -307,7 +307,7 @@ function GocharResult({ gochar, placeLabel }: { gochar: Gochar; placeLabel: stri
         </table>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ved-green-800/50">
         {gochar.ayanamsha_system.replaceAll('_', ' ').toLowerCase()} ayanamsha{' '}
         {gochar.ayanamsha.toFixed(4)}° · {gochar.node_type.replaceAll('_', ' ').toLowerCase()}
       </p>

@@ -3,442 +3,384 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
-import { api, type Astrologer, type AyurvedaProduct, type CmsArticle, type SiteContent } from '@/lib/api';
+import {
+  api,
+  type Astrologer,
+  type AyurvedaProduct,
+  type CmsArticle,
+  type SiteContent,
+} from '@/lib/api';
 
 const CATEGORIES = [
-  { href: '/astrologers', label: 'Astrologers', tone: 'bg-orange-100 text-orange-700', icon: '☉' },
-  { href: '/kundali', label: 'Kundali', tone: 'bg-violet-100 text-violet-700', icon: '✦' },
-  { href: '/match', label: 'Match', tone: 'bg-pink-100 text-pink-700', icon: '♥' },
-  { href: '/gochar', label: 'Gochar', tone: 'bg-sky-100 text-sky-700', icon: '♄' },
-  { href: '/ai', label: 'Jyotish AI', tone: 'bg-cyan-100 text-cyan-700', icon: '◉' },
-  { href: '/panchang', label: 'Panchang', tone: 'bg-amber-100 text-amber-700', icon: '▦' },
-  { href: '/pujas', label: 'E-Puja', tone: 'bg-yellow-100 text-yellow-800', icon: '🪔' },
-  { href: '/ayurveda', label: 'Ayurveda', tone: 'bg-emerald-100 text-emerald-700', icon: '🌿' },
-  { href: '/ayurveda', label: 'Ayurvedic Shop', tone: 'bg-lime-100 text-lime-800', icon: '🛒' },
-  { href: '/wallet', label: 'Wallet', tone: 'bg-purple-100 text-purple-700', icon: '₹' },
+  { href: '/astrologers', label: 'Astrology', icon: '✦' },
+  { href: '/kundali', label: 'Kundali', icon: '◎' },
+  { href: '/match', label: 'Match Making', icon: '⚭' },
+  { href: '/gochar', label: 'Gochar', icon: '☾' },
+  { href: '/panchang', label: 'Panchang', icon: '☀' },
+  { href: '/pujas', label: 'E-Puja', icon: '🕯' },
+  { href: '/ayurveda', label: 'Ayurveda', icon: '🌿' },
+  { href: '/ai', label: 'Jyotish AI', icon: '✧' },
+] as const;
+
+const POPULAR = [
+  { href: '/kundali', title: 'Birth Chart Analysis', blurb: 'Lagna, grahas, and houses.' },
+  { href: '/match', title: 'Marriage Compatibility', blurb: 'Ashtakoot matching.' },
+  { href: '/gochar', title: 'Transit Guidance', blurb: 'Gochar over your natal chart.' },
+  { href: '/panchang', title: 'Daily Panchang', blurb: 'Tithi, yoga, and muhurta.' },
+  { href: '/pujas', title: 'Temple E-Puja', blurb: 'Book with sankalp & prasad.' },
+  { href: '/astrologers', title: 'Live Consultation', blurb: 'Talk to verified experts.' },
 ] as const;
 
 const TRUST = [
-  { label: 'Trusted Experts', icon: '✓' },
-  { label: '100% Secure', icon: '🛡' },
-  { label: 'Accurate Guidance', icon: '◎' },
-  { label: '24×7 Support', icon: '☾' },
-] as const;
-
-const WHY = [
-  {
-    title: 'Verified Experts',
-    body: 'Talk to screened Vedic astrologers with live availability and transparent per-minute rates.',
-  },
-  {
-    title: 'Authentic Puja Services',
-    body: 'Book temple rituals online and follow every step from confirmation to prasad.',
-  },
-  {
-    title: 'Lahiri Kundali Engine',
-    body: 'Swiss Ephemeris charts with Chitra Paksha ayanamsha — the same conventions as your consult.',
-  },
-  {
-    title: 'Ayurveda Commerce',
-    body: 'Dosha-tagged kits and churnas, paid securely from your Nakshya wallet.',
-  },
-  {
-    title: 'Jyotish AI',
-    body: 'Ask chart-grounded questions anytime — trial engine or cloud models when configured.',
-  },
-  {
-    title: 'Secure & Private',
-    body: 'OTP login, wallet ledger integrity, and staging gates on every public surface.',
-  },
-] as const;
-
-const ARTICLES_FALLBACK = [
-  {
-    title: 'Moon Transit Effects on Your Life',
-    excerpt: 'How gochar through nakshatras colours mood, decisions, and timing this month.',
-    href: '/gochar',
-    image:
-      'https://images.unsplash.com/photo-1419242902214-272b3f66ee70?auto=format&fit=crop&w=600&q=80',
-  },
+  { label: 'Verified Experts' },
+  { label: '100% Secure' },
+  { label: 'Trusted by Thousands' },
+  { label: '24×7 Support' },
 ] as const;
 
 const STATS = [
   { value: '50K+', label: 'Happy Users' },
-  { value: '500+', label: 'Verified Astrologers' },
-  { value: '10K+', label: 'Pujas Performed' },
-  { value: '1K+', label: 'Ayurvedic Products' },
-  { value: '4.8/5', label: 'User Rating' },
+  { value: '500+', label: 'Verified Experts' },
+  { value: '1L+', label: 'Pujas Completed' },
+  { value: '4.8★', label: 'Average Rating' },
 ] as const;
-
-function routeForQuery(q: string): string {
-  const t = q.toLowerCase();
-  if (/ai|jyotish|predict/.test(t)) return '/ai';
-  if (/kundali|chart|birth/.test(t)) return '/kundali';
-  if (/match|guna|ashtakoot|marriage/.test(t)) return '/match';
-  if (/gochar|transit/.test(t)) return '/gochar';
-  if (/panchang|tithi/.test(t)) return '/panchang';
-  if (/puja|ritual|temple/.test(t)) return '/pujas';
-  if (/ayur|herb|product|shop/.test(t)) return '/ayurveda';
-  if (/wallet|top.?up|recharge/.test(t)) return '/wallet';
-  return '/astrologers';
-}
 
 export function HomePage() {
   const router = useRouter();
-  const [query, setQuery] = useState('');
   const [site, setSite] = useState<SiteContent | null>(null);
   const [articles, setArticles] = useState<CmsArticle[]>([]);
   const [astrologers, setAstrologers] = useState<Astrologer[]>([]);
   const [products, setProducts] = useState<AyurvedaProduct[]>([]);
-  const astroRail = useRef<HTMLDivElement>(null);
-  const productRail = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
+    void api.get<SiteContent>('content/home').then(setSite).catch(() => setSite(null));
     void api
-      .get<SiteContent>('content/home')
-      .then(setSite)
-      .catch(() => undefined);
+      .get<{ articles: CmsArticle[] }>('content/articles?featured=true&limit=3')
+      .then((res) => setArticles(res.articles))
+      .catch(() => setArticles([]));
     void api
-      .get<{ articles: CmsArticle[] }>('content/articles?featured=true')
-      .then((res) => setArticles(res.articles.slice(0, 6)))
-      .catch(() => undefined);
-    void api
-      .get<{ astrologers: Astrologer[] }>('astrologers?onlineOnly=false&limit=12')
-      .then((res) => setAstrologers(res.astrologers))
-      .catch(() => undefined);
+      .get<{ astrologers: Astrologer[] }>('astrologers')
+      .then((res) => setAstrologers(res.astrologers.slice(0, 6)))
+      .catch(() => setAstrologers([]));
     void api
       .get<{ products: AyurvedaProduct[] }>('ayurveda/shop/products')
       .then((res) => setProducts(res.products.slice(0, 8)))
-      .catch(() => undefined);
+      .catch(() => setProducts([]));
   }, []);
-
-  const featuredAstrologers = useMemo(() => {
-    const online = astrologers.filter((a) => a.status === 'IDLE');
-    const rest = astrologers.filter((a) => a.status !== 'IDLE');
-    return [...online, ...rest].slice(0, 8);
-  }, [astrologers]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
-    router.push(routeForQuery(query.trim()));
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      router.push('/astrologers');
+      return;
+    }
+    if (q.includes('puja')) router.push('/pujas');
+    else if (q.includes('ayur') || q.includes('shop')) router.push('/ayurveda');
+    else if (q.includes('panch')) router.push('/panchang');
+    else if (q.includes('kundali') || q.includes('chart')) router.push('/kundali');
+    else router.push('/astrologers');
   }
 
-  function scrollRail(ref: RefObject<HTMLDivElement | null>, dir: -1 | 1) {
-    ref.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
-  }
+  const heroTitle = site?.heroTitle ?? 'Your Life, Guided by Vedic Wisdom';
+  const heroSubtitle =
+    site?.heroSubtitle ??
+    'Ancient wisdom for a brighter tomorrow — Astrology, Puja, Panchang & Ayurveda.';
 
   return (
-    <div className="bg-cream-100 text-navy-900">
+    <div className="bg-ved-cream-100 text-ved-green-900">
       {/* Hero */}
-      <section className="relative isolate overflow-hidden">
-        <div className="absolute inset-0">
-          <Image
-            src={
-              site?.heroImageUrl ??
-              'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=2000&q=80'
-            }
-            alt=""
-            fill
-            priority
-            className="object-cover"
-            sizes="100vw"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-cream-100 via-cream-100/92 to-cream-100/35" />
-          <div className="absolute inset-0 bg-gradient-to-t from-cream-100 via-transparent to-cream-100/40" />
-        </div>
-
-        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 pb-16 pt-14 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:pb-24 lg:pt-20">
-          <div className="animate-fade-up max-w-xl">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold-600">
+      <section className="relative overflow-hidden border-b border-ved-green-900/5">
+        <div className="pointer-events-none absolute -right-16 -top-10 h-72 w-72 rounded-full bg-ved-green-200/40 blur-3xl" />
+        <div className="pointer-events-none absolute -left-10 top-24 h-56 w-56 rounded-full bg-ved-gold-200/40 blur-3xl" />
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 lg:grid-cols-2 lg:py-20">
+          <div className="animate-fade-up">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ved-gold-600">
               {site?.heroEyebrow ?? 'Ancient wisdom for a brighter tomorrow'}
             </p>
-            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.1] text-navy-950 sm:text-5xl lg:text-[3.35rem]">
-              {site?.heroTitle ?? 'Find Clarity in Every Phase of Life'}
+            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.12] text-ved-green-800 sm:text-5xl lg:text-[3.25rem]">
+              {heroTitle.includes('Vedic') ? (
+                <>
+                  Your Life, Guided by <span className="text-ved-gold-500">Vedic Wisdom</span>
+                </>
+              ) : (
+                heroTitle
+              )}
             </h1>
-            <p className="mt-4 text-base text-navy-800/80 sm:text-lg">
-              {site?.heroSubtitle ??
-                'Astrology · Puja · Panchang · Ayurveda · Guidance. All in one trusted platform — Nakshya.'}
-            </p>
-
+            <p className="mt-4 max-w-xl text-base text-ved-green-800/70">{heroSubtitle}</p>
             <form
               onSubmit={onSearch}
-              className="mt-8 flex overflow-hidden rounded-xl border border-navy-900/10 bg-white shadow-lg shadow-navy-900/5"
+              className="mt-8 flex overflow-hidden rounded-full border border-ved-green-900/10 bg-white shadow-sm"
             >
               <input
+                className="min-w-0 flex-1 bg-transparent px-5 py-3.5 text-sm outline-none placeholder:text-ved-green-900/40"
+                placeholder="Search astrologers, puja, products, articles…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search astrologers, puja, products, articles…"
-                className="min-w-0 flex-1 border-0 bg-transparent px-4 py-3.5 text-sm text-navy-900 placeholder:text-navy-800/40 focus:outline-none focus:ring-0"
               />
-              <button type="submit" className="btn-gold rounded-none px-6">
+              <button type="submit" className="btn-primary m-1.5 rounded-full px-6">
                 Search
               </button>
             </form>
-
-            <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2">
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ved-green-800/65">
               {TRUST.map((item) => (
-                <li key={item.label} className="flex items-center gap-2 text-xs text-navy-800/75">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-gold-400/20 text-[11px] text-gold-600">
-                    {item.icon}
-                  </span>
+                <span key={item.label} className="inline-flex items-center gap-1.5">
+                  <span className="text-ved-gold-500">✓</span>
                   {item.label}
-                </li>
+                </span>
               ))}
-            </ul>
-          </div>
-
-          <div className="relative hidden min-h-[22rem] lg:block">
-            <div className="absolute inset-0 animate-float rounded-[2rem] bg-gradient-to-br from-navy-900/20 via-gold-400/10 to-transparent" />
-            <div className="absolute right-4 top-6 h-64 w-64 rounded-full border border-gold-400/40 bg-gold-400/10 blur-sm" />
-            <div className="absolute bottom-8 right-10 max-w-[14rem] text-right font-display text-xl italic text-cream-50 drop-shadow-lg">
-              {site?.promoQuote ?? (
-                <>
-                  Aligned with the Stars,
-                  <br />
-                  Rooted in Nature
-                </>
-              )}
             </div>
+          </div>
+          <div className="relative mx-auto aspect-square w-full max-w-md animate-float lg:max-w-none">
+            {site?.heroImageUrl ? (
+              <Image
+                src={site.heroImageUrl}
+                alt=""
+                fill
+                className="rounded-[2rem] object-cover shadow-lg"
+                sizes="(max-width: 1024px) 90vw, 40vw"
+                priority
+              />
+            ) : (
+              <div className="grid h-full place-items-center rounded-[2rem] bg-gradient-to-br from-ved-green-700 via-ved-green-600 to-ved-gold-500 text-cream-50 shadow-lg">
+                <div className="text-center">
+                  <p className="font-display text-6xl">ॐ</p>
+                  <p className="mt-2 text-sm tracking-wide text-cream-100/80">Vedsutra</p>
+                </div>
+              </div>
+            )}
+            {site?.promoQuote ? (
+              <p className="absolute bottom-6 right-6 max-w-[12rem] text-right font-display text-lg italic text-white drop-shadow">
+                {site.promoQuote}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
 
-      {/* Category strip */}
-      <section className="relative z-10 mx-auto -mt-6 max-w-7xl px-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 lg:grid-cols-10">
+      {/* Categories */}
+      <section className="mx-auto max-w-7xl px-4 py-12">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {CATEGORIES.map((cat) => (
             <Link
               key={cat.label}
               href={cat.href}
-              className="group flex flex-col items-center gap-2 rounded-2xl border border-navy-900/5 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="flex flex-col items-center gap-2 rounded-2xl border border-ved-gold-400/35 bg-ved-cream-50 px-2 py-4 text-center transition hover:border-ved-green-500/40 hover:shadow-sm"
             >
-              <span
-                className={`grid h-11 w-11 place-items-center rounded-xl text-lg ${cat.tone} transition group-hover:scale-105`}
-              >
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-white text-lg text-ved-gold-600 shadow-sm">
                 {cat.icon}
               </span>
-              <span className="text-[11px] font-medium leading-tight text-navy-800">{cat.label}</span>
+              <span className="text-xs font-medium text-ved-green-800">{cat.label}</span>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Service banners */}
-      <section className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 md:grid-cols-3">
-        <PromoCard
+      {/* CTA banners */}
+      <section className="mx-auto grid max-w-7xl gap-4 px-4 pb-14 md:grid-cols-3">
+        <PromoBanner
+          title="Kundali Analysis"
+          body="Deep birth-chart reading with dasha insight."
           href="/kundali"
-          title="Generate Your Kundali Instantly"
-          body="Lahiri sidereal chart with Vimshottari dasha — ready for you and your astrologer."
-          cta="Create Kundali"
-          image="https://images.unsplash.com/photo-1532693322450-2cb5c511067d?auto=format&fit=crop&w=900&q=80"
-          overlay="from-navy-950/90 via-navy-900/70 to-navy-900/30"
+          cta="Consult Now"
+          tone="from-ved-green-900 to-ved-green-700"
         />
-        <PromoCard
+        <PromoBanner
+          title="E-Puja"
+          body="Book temple rituals with sankalp and prasad."
           href="/pujas"
-          title="Perform E-Puja from Anywhere"
-          body="Book authentic temple rituals and track every status through to prasad."
           cta="Book a Puja"
-          image="https://images.unsplash.com/photo-1604608672516-f1b9c1d2d0c5?auto=format&fit=crop&w=900&q=80"
-          overlay="from-[#3a2412]/90 via-[#5a3818]/65 to-transparent"
+          tone="from-[#5c3a2a] to-[#8b5a3c]"
         />
-        <PromoCard
+        <PromoBanner
+          title="Explore Ayurveda"
+          body="Dosha-tagged kits and churnas from the shop."
           href="/ayurveda"
-          title="Healing Through Ayurveda"
-          body="Dosha-aware kits and churnas, ordered from your wallet in a few taps."
-          cta="Explore Ayurveda"
-          image="https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=900&q=80"
-          overlay="from-emerald-950/90 via-emerald-900/60 to-transparent"
+          cta="Shop Now"
+          tone="from-ved-green-700 to-ved-green-500"
         />
       </section>
 
-      {/* Astrologers */}
-      <section className="mx-auto mt-16 max-w-7xl px-4">
-        <SectionHead
-          title="Our Expert Astrologers"
-          subtitle="Live consults, billed by the minute — only while you are connected."
-          href="/astrologers"
-          linkLabel="View All"
-        />
-        <div className="relative">
-          <RailButtons onPrev={() => scrollRail(astroRail, -1)} onNext={() => scrollRail(astroRail, 1)} />
-          <div
-            ref={astroRail}
-            className="flex gap-4 overflow-x-auto pb-2 scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {featuredAstrologers.length === 0
-              ? [0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-64 w-56 shrink-0 animate-pulse rounded-2xl bg-white/70"
-                  />
-                ))
-              : featuredAstrologers.map((a) => (
-                  <article
-                    key={a.id}
-                    className="w-56 shrink-0 rounded-2xl border border-navy-900/5 bg-white p-4 shadow-sm"
-                  >
-                    <div className="relative mx-auto grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-gold-300 to-gold-600 font-display text-2xl font-semibold text-navy-950">
-                      {a.displayName.charAt(0).toUpperCase()}
-                      <span
-                        className={`absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          a.status === 'IDLE'
-                            ? 'bg-emerald-500 text-white'
-                            : 'bg-slate-400 text-white'
-                        }`}
-                      >
-                        {a.status === 'IDLE' ? 'Online' : 'Busy'}
-                      </span>
-                    </div>
-                    <h3 className="mt-4 text-center text-sm font-semibold text-navy-950">
-                      {a.displayName}
-                    </h3>
-                    <p className="mt-0.5 text-center text-xs text-navy-800/60">
-                      {a.languages.slice(0, 2).join(' · ') || 'Vedic Astrology'}
-                    </p>
-                    <p className="mt-2 text-center text-xs text-amber-600">★ 4.9</p>
-                    <p className="mt-1 text-center text-sm font-semibold text-navy-900">
-                      ₹ {a.perMinuteRate}
-                      <span className="font-normal text-navy-800/50">/min</span>
-                    </p>
-                    <Link
-                      href="/astrologers"
-                      className="mt-3 flex w-full items-center justify-center rounded-xl border border-gold-500/50 px-3 py-2 text-xs font-semibold text-gold-600 transition hover:bg-gold-400/15"
-                    >
-                      Consult Now
-                    </Link>
-                  </article>
-                ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Products */}
-      <section className="mx-auto mt-16 max-w-7xl px-4">
-        <SectionHead
-          title="Featured Ayurvedic Products"
-          subtitle="Dosha-tagged wellness from the Nakshya shop."
-          href="/ayurveda"
-          linkLabel="View All Products"
-        />
-        <div className="relative">
-          <RailButtons
-            onPrev={() => scrollRail(productRail, -1)}
-            onNext={() => scrollRail(productRail, 1)}
-          />
-          <div
-            ref={productRail}
-            className="flex gap-4 overflow-x-auto pb-2 scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {products.length === 0
-              ? FALLBACK_PRODUCTS.map((p) => <ProductCard key={p.name} {...p} />)
-              : products.map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    name={p.name}
-                    benefit={p.description ?? p.suitedDoshas.join(' · ') ?? 'Ayurvedic care'}
-                    price={p.price}
-                    href="/ayurveda"
-                  />
-                ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Why + stats */}
-      <section className="mx-auto mt-16 max-w-7xl px-4">
-        <h2 className="font-display text-3xl font-semibold text-navy-950">Why Choose Nakshya</h2>
-        <p className="mt-1 max-w-2xl text-sm text-navy-800/70">
-          One platform for chart, consult, ritual, and remedy — built for clarity, not clutter.
-        </p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {WHY.map((item) => (
-            <div
-              key={item.title}
-              className="rounded-2xl border border-navy-900/5 bg-white p-5 shadow-sm"
+      {/* Popular services */}
+      <section className="mx-auto max-w-7xl px-4 pb-14">
+        <SectionHead title="Popular Services" href="/astrologers" linkLabel="View all" />
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {POPULAR.map((item) => (
+            <Link
+              key={item.href + item.title}
+              href={item.href}
+              className="card flex items-start gap-3 transition hover:border-ved-green-500/25"
             >
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-navy-900 text-gold-300">
-                ✦
-              </div>
-              <h3 className="mt-3 text-sm font-semibold text-navy-950">{item.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-navy-800/70">{item.body}</p>
-            </div>
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ved-gold-100 text-ved-gold-600">
+                ◆
+              </span>
+              <span>
+                <span className="block font-semibold text-ved-green-800">{item.title}</span>
+                <span className="mt-0.5 block text-sm text-ved-green-800/60">{item.blurb}</span>
+              </span>
+            </Link>
           ))}
         </div>
+      </section>
 
-        <div className="mt-10 grid grid-cols-2 gap-3 rounded-2xl bg-sage-100 px-4 py-6 sm:grid-cols-5">
+      {/* Astrologers rail */}
+      {astrologers.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-14">
+          <SectionHead title="Consult Experts" href="/astrologers" linkLabel="See all" />
+          <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
+            {astrologers.map((a) => (
+              <Link
+                key={a.id}
+                href="/astrologers"
+                className="card w-52 shrink-0 space-y-2 transition hover:border-ved-green-500/25"
+              >
+                <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-ved-gold-300 to-ved-gold-500 font-display text-xl text-ved-green-950">
+                  {a.displayName.slice(0, 1)}
+                </div>
+                <p className="font-semibold text-ved-green-800">{a.displayName}</p>
+                <p className="text-xs text-ved-green-800/55">
+                  ₹{a.perMinuteRate}/min · {a.status}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Products */}
+      {products.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-14">
+          <SectionHead title="Featured Ayurvedic Products" href="/ayurveda" linkLabel="Shop all" />
+          <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
+            {products.map((p) => (
+              <article key={p.id} className="card w-52 shrink-0 space-y-2">
+                <div className="grid h-28 place-items-center rounded-xl bg-ved-cream-200 text-3xl">🌿</div>
+                <p className="line-clamp-2 text-sm font-semibold text-ved-green-800">{p.name}</p>
+                <p className="text-xs text-ved-green-800/55">{p.suitedDoshas.join(' · ')}</p>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-ved-green-800">₹{p.price}</span>
+                  <Link href="/ayurveda" className="text-ved-gold-600 hover:underline">
+                    View
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Stats */}
+      <section className="border-y border-ved-green-900/5 bg-ved-cream-200/60">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-10 md:grid-cols-4">
           {STATS.map((stat) => (
             <div key={stat.label} className="text-center">
-              <p className="font-display text-2xl font-semibold text-navy-950">{stat.value}</p>
-              <p className="mt-0.5 text-[11px] text-navy-800/65">{stat.label}</p>
+              <p className="font-display text-3xl font-semibold text-ved-gold-600">{stat.value}</p>
+              <p className="mt-1 text-sm text-ved-green-800/65">{stat.label}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* Articles */}
-      <section className="mx-auto mt-16 max-w-7xl px-4">
-        <SectionHead title="Latest from Nakshya" href="/gochar" linkLabel="View All" />
-        <div className="grid gap-4 md:grid-cols-3">
+      <section className="mx-auto max-w-7xl px-4 py-14">
+        <SectionHead title="Wisdom for Everyday Life" href="/gochar" linkLabel="View all" />
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
           {(articles.length > 0
-            ? articles.map((article) => ({
-                title: article.title,
-                excerpt: article.excerpt,
-                href: article.ctaHref || `/articles/${article.slug}`,
-                image:
-                  article.coverUrl ||
-                  'https://images.unsplash.com/photo-1419242902214-272b3f66ee70?auto=format&fit=crop&w=600&q=80',
-              }))
-            : ARTICLES_FALLBACK
+            ? articles
+            : ([
+                {
+                  id: '1',
+                  slug: 'gochar',
+                  title: "Moon's transit and weekly focus",
+                  excerpt: 'How gochar shapes the week ahead.',
+                  coverUrl: null,
+                  ctaHref: '/gochar',
+                  featured: true,
+                  published: true,
+                  publishedAt: null,
+                },
+                {
+                  id: '2',
+                  slug: 'pujas',
+                  title: 'Lighting the diya with sankalp',
+                  excerpt: 'Intention behind every E-Puja booking.',
+                  coverUrl: null,
+                  ctaHref: '/pujas',
+                  featured: true,
+                  published: true,
+                  publishedAt: null,
+                },
+                {
+                  id: '3',
+                  slug: 'ayurveda',
+                  title: 'Seasonal herbs for balance',
+                  excerpt: 'Simple dosha-aware routines.',
+                  coverUrl: null,
+                  ctaHref: '/ayurveda',
+                  featured: true,
+                  published: true,
+                  publishedAt: null,
+                },
+              ] satisfies CmsArticle[])
           ).map((article) => (
             <Link
-              key={article.title}
-              href={article.href}
-              className="group flex overflow-hidden rounded-2xl border border-navy-900/5 bg-white shadow-sm transition hover:shadow-md"
+              key={article.id}
+              href={
+                article.id.length > 8
+                  ? `/articles/${article.slug}`
+                  : (article.ctaHref ?? `/${article.slug}`)
+              }
+              className="card overflow-hidden p-0 transition hover:border-ved-green-500/25"
             >
-              <div className="relative w-28 shrink-0 sm:w-32">
-                <Image
-                  src={article.image}
-                  alt=""
-                  fill
-                  className="object-cover transition duration-500 group-hover:scale-105"
-                  sizes="128px"
-                />
+              <div className="relative h-36 bg-ved-green-100">
+                {article.coverUrl ? (
+                  <Image src={article.coverUrl} alt="" fill className="object-cover" sizes="33vw" />
+                ) : (
+                  <div className="grid h-full place-items-center text-3xl text-ved-green-600">☽</div>
+                )}
               </div>
-              <div className="flex flex-1 flex-col p-4">
-                <h3 className="font-display text-lg font-semibold leading-snug text-navy-950">
+              <div className="space-y-2 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ved-gold-600">
+                  Wisdom
+                </p>
+                <h3 className="font-display text-lg font-semibold leading-snug text-ved-green-800">
                   {article.title}
                 </h3>
-                <p className="mt-1 line-clamp-2 text-xs text-navy-800/65">{article.excerpt}</p>
-                <span className="mt-auto pt-3 text-xs font-semibold text-gold-600">
-                  Read More →
-                </span>
+                <p className="line-clamp-2 text-sm text-ved-green-800/60">{article.excerpt}</p>
+                <span className="text-xs font-semibold text-ved-green-600">Read More →</span>
               </div>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Ayurveda banner */}
-      <section className="mx-auto mt-16 max-w-7xl px-4">
-        <div className="relative overflow-hidden rounded-3xl bg-sage-100 px-6 py-10 sm:px-10">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-emerald-300/30 blur-2xl" />
-          <div className="pointer-events-none absolute bottom-0 right-10 hidden h-28 w-40 rounded-t-full bg-emerald-600/10 sm:block" />
-          <div className="relative max-w-lg">
-            <h2 className="font-display text-3xl font-semibold text-navy-950">
-              Embrace a Balanced Life with Ayurveda
+      {/* Newsletter */}
+      <section className="border-t border-ved-green-900/5 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 py-12 md:flex-row md:items-center">
+          <div>
+            <h2 className="font-display text-2xl font-semibold text-ved-green-800">
+              Stay Connected with Vedsutra
             </h2>
-            <p className="mt-2 text-sm text-navy-800/75">
-              Discover dosha-aligned formulas and daily rituals — wellness rooted in nature.
+            <p className="mt-1 text-sm text-ved-green-800/65">
+              Muhurta tips, gochar notes, and shop drops — gently, in your inbox.
             </p>
-            <Link href="/ayurveda" className="btn-gold mt-6 inline-flex">
-              Shop Ayurvedic Products →
-            </Link>
           </div>
-          <p className="absolute bottom-6 right-8 hidden font-display text-sm italic text-emerald-800/70 sm:block">
-            Wellness Rooted in Nature
-          </p>
+          <form
+            className="flex w-full max-w-md overflow-hidden rounded-full border border-ved-green-900/10 bg-ved-cream-50"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <input
+              type="email"
+              placeholder="Email address"
+              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm outline-none"
+            />
+            <button type="submit" className="btn-primary m-1 rounded-full px-5">
+              Subscribe
+            </button>
+          </form>
         </div>
       </section>
 
@@ -447,210 +389,117 @@ export function HomePage() {
   );
 }
 
+function PromoBanner({
+  title,
+  body,
+  href,
+  cta,
+  tone,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  cta: string;
+  tone: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${tone} p-6 text-cream-50 shadow-md transition hover:brightness-110`}
+    >
+      <h3 className="font-display text-2xl font-semibold">{title}</h3>
+      <p className="mt-2 max-w-[16rem] text-sm text-cream-100/80">{body}</p>
+      <span className="mt-5 inline-flex rounded-full bg-ved-gold-400 px-4 py-1.5 text-xs font-semibold text-ved-green-950">
+        {cta}
+      </span>
+    </Link>
+  );
+}
+
 function SectionHead({
   title,
-  subtitle,
   href,
   linkLabel,
 }: {
   title: string;
-  subtitle?: string;
   href: string;
   linkLabel: string;
 }) {
   return (
-    <div className="mb-6 flex items-end justify-between gap-4">
-      <div>
-        <h2 className="font-display text-3xl font-semibold text-navy-950">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-navy-800/65">{subtitle}</p>}
-      </div>
-      <Link href={href} className="shrink-0 text-sm font-semibold text-gold-600 hover:text-gold-500">
-        {linkLabel} →
+    <div className="flex items-end justify-between gap-3">
+      <h2 className="font-display text-3xl font-semibold text-ved-green-800">{title}</h2>
+      <Link href={href} className="text-sm font-medium text-ved-gold-600 hover:underline">
+        {linkLabel}
       </Link>
     </div>
   );
 }
 
-function RailButtons({ onPrev, onNext }: { onPrev: () => void; onNext: () => void }) {
-  return (
-    <>
-      <button
-        type="button"
-        aria-label="Previous"
-        onClick={onPrev}
-        className="absolute -left-2 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-navy-900/10 bg-white text-navy-900 shadow md:grid"
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        aria-label="Next"
-        onClick={onNext}
-        className="absolute -right-2 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-navy-900/10 bg-white text-navy-900 shadow md:grid"
-      >
-        ›
-      </button>
-    </>
-  );
-}
-
-function PromoCard({
-  href,
-  title,
-  body,
-  cta,
-  image,
-  overlay,
-}: {
-  href: string;
-  title: string;
-  body: string;
-  cta: string;
-  image: string;
-  overlay: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group relative min-h-[14rem] overflow-hidden rounded-2xl text-cream-50 shadow-md"
-    >
-      <Image
-        src={image}
-        alt=""
-        fill
-        className="object-cover transition duration-700 group-hover:scale-105"
-        sizes="(max-width:768px) 100vw, 33vw"
-      />
-      <div className={`absolute inset-0 bg-gradient-to-t ${overlay}`} />
-      <div className="relative flex h-full flex-col justify-end p-5">
-        <h3 className="font-display text-2xl font-semibold leading-tight">{title}</h3>
-        <p className="mt-2 text-sm text-cream-100/85">{body}</p>
-        <span className="mt-4 inline-flex w-fit items-center rounded-lg bg-gold-400 px-3 py-1.5 text-xs font-semibold text-navy-950">
-          {cta} →
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-const FALLBACK_PRODUCTS = [
-  { name: 'Ashwagandha Capsules', benefit: 'Immunity & Stress Relief', price: '499.00', href: '/ayurveda' },
-  { name: 'Triphala Churna', benefit: 'Digestive Balance', price: '299.00', href: '/ayurveda' },
-  { name: 'Brahmi Syrup', benefit: 'Focus & Calm', price: '349.00', href: '/ayurveda' },
-  { name: 'Chyawanprash', benefit: 'Daily Vitality', price: '449.00', href: '/ayurveda' },
-] as const;
-
-function ProductCard({
-  name,
-  benefit,
-  price,
-  href,
-}: {
-  name: string;
-  benefit: string;
-  price: string;
-  href: string;
-}) {
-  return (
-    <article className="w-48 shrink-0 rounded-2xl border border-navy-900/5 bg-white p-3 shadow-sm">
-      <div className="grid h-28 place-items-center rounded-xl bg-sage-100 text-3xl">🌿</div>
-      <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-navy-950">{name}</h3>
-      <p className="mt-0.5 line-clamp-1 text-[11px] text-navy-800/55">{benefit}</p>
-      <div className="mt-2 flex items-center justify-between text-xs">
-        <span className="font-semibold text-navy-900">₹ {price}</span>
-        <span className="text-amber-600">★ 4.8</span>
-      </div>
-      <Link
-        href={href}
-        className="mt-3 flex w-full items-center justify-center rounded-xl border border-gold-500/50 px-3 py-2 text-xs font-semibold text-gold-600 hover:bg-gold-400/15"
-      >
-        Add to Cart
-      </Link>
-    </article>
-  );
-}
-
 function HomeFooter() {
   return (
-    <footer className="mt-20 bg-navy-950 text-cream-100">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-[1.2fr_1fr_1fr_1.1fr]">
+    <footer className="bg-ved-green-950 text-cream-100">
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr]">
         <div>
           <Image
             src="/brand/vedsutra-logo.png"
             alt="Vedsutra"
             width={180}
             height={46}
-            className="h-9 w-auto"
+            className="h-9 w-auto brightness-110"
           />
-          <p className="mt-2 max-w-xs text-sm text-cream-100/65">
+          <p className="mt-3 max-w-xs text-sm text-cream-100/65">
             Your life, in harmony — astrology, ritual, and Ayurveda under one trusted roof.
           </p>
-          <div className="mt-4 flex gap-3 text-xs text-cream-100/50">
-            <span>FB</span>
-            <span>IG</span>
-            <span>YT</span>
-            <span>X</span>
-            <span>in</span>
-          </div>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gold-300">Quick Links</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Explore</p>
           <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
             <li>
-              <Link href="/astrologers">Astrologers</Link>
+              <Link href="/astrologers">Astrology</Link>
             </li>
             <li>
-              <Link href="/kundali">Kundali</Link>
+              <Link href="/pujas">E-Puja</Link>
+            </li>
+            <li>
+              <Link href="/ayurveda">Shop</Link>
+            </li>
+            <li>
+              <Link href="/panchang">Panchang</Link>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Company</p>
+          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
+            <li>
+              <Link href="/gochar">Learn</Link>
             </li>
             <li>
               <Link href="/ai">Jyotish AI</Link>
             </li>
             <li>
-              <Link href="/wallet">Wallet</Link>
+              <Link href="/login">Login</Link>
             </li>
           </ul>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gold-300">Our Services</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Support</p>
           <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
             <li>
-              <Link href="/pujas">E-Puja</Link>
+              <Link href="/wallet">Wallet</Link>
             </li>
             <li>
-              <Link href="/ayurveda">Ayurveda Shop</Link>
+              <Link href="/profile">Profile</Link>
             </li>
             <li>
-              <Link href="/match">Matchmaking</Link>
-            </li>
-            <li>
-              <Link href="/gochar">Gochar</Link>
+              <Link href="/admin">Admin</Link>
             </li>
           </ul>
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gold-300">
-            Join Our Newsletter
-          </p>
-          <form
-            className="mt-3 flex overflow-hidden rounded-xl border border-white/10 bg-white/5"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            <input
-              type="email"
-              placeholder="Email address"
-              className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-cream-50 placeholder:text-cream-100/40 focus:outline-none"
-            />
-            <button type="submit" className="bg-gold-400 px-3 text-xs font-semibold text-navy-950">
-              Subscribe
-            </button>
-          </form>
-          <p className="mt-4 font-display text-sm italic text-cream-100/55">
-            May the light of the stars guide you always.
-          </p>
-        </div>
       </div>
-      <div className="border-t border-white/10 px-4 py-4 text-center text-[11px] text-cream-100/45">
-        © {new Date().getFullYear()} Nakshya · Sitemap · Cookie Policy · Disclaimer
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-4 text-[11px] text-cream-100/45">
+        <span>© {new Date().getFullYear()} Vedsutra. All rights reserved.</span>
+        <span>Made with care for a better tomorrow.</span>
       </div>
     </footer>
   );

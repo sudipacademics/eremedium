@@ -75,9 +75,9 @@ export default function PanchangPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Today&apos;s panchang</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Tithi, nakshatra, yoga and karana from Lahiri sidereal Sun and Moon, anchored at local
           sunrise — the start of a Vedic day.
         </p>
@@ -95,7 +95,7 @@ export default function PanchangPage() {
 
       {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
 
-      {loading && !panchang && <p className="text-sm text-slate-400">Casting…</p>}
+      {loading && !panchang && <p className="text-sm text-ved-green-800/60">Casting…</p>}
 
       {panchang && <PanchangResult panchang={panchang} placeLabel={place.label} />}
     </div>
@@ -160,12 +160,12 @@ function PlaceAndDate({
             placeholder="Varanasi"
           />
           {matches.length > 0 && (
-            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-night-950">
+            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-ved-green-900/10 bg-white">
               {matches.map((match) => (
                 <li key={`${match.name}:${match.latitude}:${match.longitude}`}>
                   <button
                     type="button"
-                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ved-cream-200/80"
                     onClick={() => {
                       onPlace(match);
                       setQuery(match.label);
@@ -173,7 +173,7 @@ function PlaceAndDate({
                     }}
                   >
                     <span>{match.label}</span>
-                    <span className="text-xs text-slate-500">{match.timezone}</span>
+                    <span className="text-xs text-ved-green-800/50">{match.timezone}</span>
                   </button>
                 </li>
               ))}
@@ -181,7 +181,7 @@ function PlaceAndDate({
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ved-green-800/50">
         <span className="tabular">
           {place.latitude.toFixed(4)}°, {place.longitude.toFixed(4)}°
         </span>{' '}

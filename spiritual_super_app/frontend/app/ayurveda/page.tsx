@@ -67,20 +67,20 @@ export default function AyurvedaPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Ayurveda shop</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Dosha-tagged kits and churnas, paid from your wallet. Prices come from the catalog — never
           typed in by the client.
         </p>
       </div>
 
-      <div className="flex gap-1 rounded-xl bg-white/5 p-1">
+      <div className="flex gap-1 rounded-xl bg-ved-cream-200/80 p-1">
         <button
           type="button"
           onClick={() => setTab('shop')}
           className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
-            tab === 'shop' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-100'
+            tab === 'shop' ? 'bg-ved-green-100 text-white' : 'text-ved-green-800/60 hover:text-ved-green-900'
           }`}
         >
           Shop
@@ -89,7 +89,7 @@ export default function AyurvedaPage() {
           type="button"
           onClick={() => setTab('mine')}
           className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
-            tab === 'mine' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-100'
+            tab === 'mine' ? 'bg-ved-green-100 text-white' : 'text-ved-green-800/60 hover:text-ved-green-900'
           }`}
         >
           My orders{pending > 0 ? ` (${pending})` : ''}
@@ -102,7 +102,7 @@ export default function AyurvedaPage() {
         <>
           <DoshaChips value={dosha} onChange={setDosha} />
           {loading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <p className="text-sm text-ved-green-800/60">Loading…</p>
           ) : (
             <ProductGrid products={products} onSelect={setSelection} />
           )}
@@ -136,7 +136,7 @@ function DoshaChips({ value, onChange }: { value: DoshaFilter; onChange: (v: Dos
           type="button"
           onClick={() => onChange(option)}
           className={`rounded-lg px-3 py-1.5 text-xs transition ${
-            value === option ? 'bg-saffron-500/20 text-saffron-200' : 'bg-white/5 text-slate-400 hover:bg-white/10'
+            value === option ? 'bg-saffron-500/20 text-saffron-200' : 'bg-ved-cream-200/80 text-ved-green-800/60 hover:bg-ved-green-100'
           }`}
         >
           {option === 'ALL' ? 'All' : option.charAt(0) + option.slice(1).toLowerCase()}
@@ -154,7 +154,7 @@ function ProductGrid({
   onSelect: (product: AyurvedaProduct) => void;
 }) {
   if (products.length === 0) {
-    return <p className="text-sm text-slate-400">No products match this filter.</p>;
+    return <p className="text-sm text-ved-green-800/60">No products match this filter.</p>;
   }
 
   return (
@@ -164,12 +164,12 @@ function ProductGrid({
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="font-semibold">{product.name}</p>
-              <p className="text-xs uppercase tracking-wide text-slate-500">{product.formFactor}</p>
+              <p className="text-xs uppercase tracking-wide text-ved-green-800/50">{product.formFactor}</p>
             </div>
             <p className="tabular shrink-0 font-semibold">₹{product.price}</p>
           </div>
-          {product.description && <p className="text-sm text-slate-400">{product.description}</p>}
-          <p className="text-xs text-slate-500">
+          {product.description && <p className="text-sm text-ved-green-800/60">{product.description}</p>}
+          <p className="text-xs text-ved-green-800/50">
             Suited:{' '}
             {product.suitedDoshas.map((d: AyurvedaDosha) => d.charAt(0) + d.slice(1).toLowerCase()).join(', ')}
           </p>
@@ -184,7 +184,7 @@ function ProductGrid({
 
 function OrderList({ orders }: { orders: AyurvedaOrder[] }) {
   if (orders.length === 0) {
-    return <p className="text-sm text-slate-400">No orders yet.</p>;
+    return <p className="text-sm text-ved-green-800/60">No orders yet.</p>;
   }
 
   return (
@@ -194,17 +194,17 @@ function OrderList({ orders }: { orders: AyurvedaOrder[] }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold">{order.productName}</p>
-              <p className="text-xs text-slate-500">{order.productSku}</p>
+              <p className="text-xs text-ved-green-800/50">{order.productSku}</p>
             </div>
             <p className="tabular shrink-0 text-sm font-semibold">₹{order.unitPrice}</p>
           </div>
           <StatusTrail status={order.status} />
           {order.awb && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ved-green-800/60">
               {order.courier ?? 'Courier'} · AWB {order.awb}
             </p>
           )}
-          <p className="text-[11px] text-slate-600">
+          <p className="text-[11px] text-ved-green-800/40">
             Ordered {new Date(order.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
           </p>
         </div>
@@ -221,7 +221,7 @@ function StatusTrail({ status }: { status: AyurvedaOrder['status'] }) {
         <li
           key={step}
           className={`flex-1 rounded px-2 py-1 text-center ${
-            i <= index ? 'bg-saffron-500/20 text-saffron-200' : 'bg-white/5 text-slate-500'
+            i <= index ? 'bg-saffron-500/20 text-saffron-200' : 'bg-ved-cream-200/80 text-ved-green-800/50'
           }`}
         >
           {step.charAt(0) + step.slice(1).toLowerCase()}
@@ -282,7 +282,7 @@ function CheckoutDialog({
         {result ? (
           <>
             <h2 className="text-lg font-semibold">Order confirmed</h2>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-ved-green-800/60">
               ₹{result.amountDebited} debited · wallet now ₹{result.walletBalanceAfter}
             </p>
             <button type="button" className="btn-primary w-full" onClick={onOrdered}>
@@ -294,9 +294,9 @@ function CheckoutDialog({
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h2 className="text-lg font-semibold">{product.name}</h2>
-                <p className="tabular text-sm text-slate-400">₹{product.price}</p>
+                <p className="tabular text-sm text-ved-green-800/60">₹{product.price}</p>
               </div>
-              <button type="button" className="text-sm text-slate-400" onClick={onClose}>
+              <button type="button" className="text-sm text-ved-green-800/60" onClick={onClose}>
                 Close
               </button>
             </div>

@@ -26,6 +26,20 @@ export interface Profile {
   phone: string;
 }
 
+export interface UserProfileDetails {
+  userId: string;
+  name: string;
+  phone: string;
+  role: 'USER' | 'ASTROLOGER' | 'ADMIN';
+  astrologerId: string | null;
+  dob: string | null;
+  birthPlace: string | null;
+  gotra: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  createdAt: string;
+}
+
 export const session = {
   get token(): string | null {
     if (typeof window === 'undefined') return null;
@@ -44,6 +58,12 @@ export const session = {
   save(token: string, profile: Profile): void {
     window.localStorage.setItem(TOKEN_KEY, token);
     window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  },
+  updateProfile(partial: Partial<Profile>): void {
+    const current = this.profile;
+    const token = this.token;
+    if (!current || !token) return;
+    this.save(token, { ...current, ...partial });
   },
   clear(): void {
     window.localStorage.removeItem(TOKEN_KEY);

@@ -110,14 +110,14 @@ export default function JyotishAiPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Jyotish AI</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Ask about your chart the way you would ask an astrologer — answers are grounded in your
           Lahiri kundali{includeGochar ? ' and today\'s gochar' : ''}, not generic horoscopes.
         </p>
         {status && (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-ved-green-800/50">
             Model: {status.model}
             {status.provider ? ` · ${status.provider}` : ''}
             {status.ready ? ' · ready' : ' · not configured'}
@@ -155,13 +155,13 @@ export default function JyotishAiPage() {
       <div className="card flex min-h-[22rem] flex-col gap-3">
         {messages.length === 0 && !loading && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-400">Try a starting question:</p>
+            <p className="text-sm text-ved-green-800/60">Try a starting question:</p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((hint) => (
                 <button
                   key={hint}
                   type="button"
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40"
+                  className="rounded-xl border border-ved-green-900/10 bg-ved-cream-200/80 px-3 py-2 text-left text-xs text-ved-green-800 hover:bg-ved-green-100 disabled:opacity-40"
                   disabled={!aiReady || needsBirth || loading}
                   onClick={() => void ask(hint)}
                 >
@@ -179,24 +179,24 @@ export default function JyotishAiPage() {
               className={
                 msg.role === 'user'
                   ? 'ml-8 rounded-2xl bg-saffron-500/20 px-4 py-3 text-sm text-saffron-50'
-                  : 'mr-4 rounded-2xl border border-white/10 bg-night-900/60 px-4 py-3 text-sm text-slate-100 whitespace-pre-wrap'
+                  : 'mr-4 rounded-2xl border border-ved-green-900/10 bg-night-900/60 px-4 py-3 text-sm text-ved-green-900 whitespace-pre-wrap'
               }
             >
               {msg.content}
               {msg.meta && (
-                <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">{msg.meta}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-wide text-ved-green-800/50">{msg.meta}</p>
               )}
             </div>
           ))}
           {loading && (
-            <p className="text-sm text-slate-400 animate-pulse">Reading your chart…</p>
+            <p className="text-sm text-ved-green-800/60 animate-pulse">Reading your chart…</p>
           )}
           <div ref={bottomRef} />
         </div>
       </div>
 
       <form onSubmit={onSubmit} className="card space-y-3">
-        <label className="flex items-center gap-2 text-xs text-slate-400">
+        <label className="flex items-center gap-2 text-xs text-ved-green-800/60">
           <input
             type="checkbox"
             checked={includeGochar}
@@ -234,7 +234,7 @@ export default function JyotishAiPage() {
             {loading ? 'Asking…' : 'Ask Jyotish AI'}
           </button>
         </div>
-        {disclaimer && <p className="text-[11px] leading-relaxed text-slate-500">{disclaimer}</p>}
+        {disclaimer && <p className="text-[11px] leading-relaxed text-ved-green-800/50">{disclaimer}</p>}
       </form>
     </div>
   );

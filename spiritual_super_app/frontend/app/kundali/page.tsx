@@ -34,14 +34,14 @@ export default function KundaliPage() {
   }, [load]);
 
   if (loading) {
-    return <p className="text-sm text-slate-400">Loading…</p>;
+    return <p className="text-sm text-ved-green-800/60">Loading…</p>;
   }
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Your kundali</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Cast from Swiss Ephemeris with Chitra Paksha (Lahiri) ayanamsha and true node positions —
           the same conventions your astrologer works with.
         </p>
@@ -62,13 +62,13 @@ export default function KundaliPage() {
       ) : (
         <>
           <div className="flex items-center justify-between gap-2 text-sm">
-            <p className="text-slate-400">
+            <p className="text-ved-green-800/60">
               {profile.placeLabel} · {profile.birthDate}
               {profile.birthTime ? ` at ${profile.birthTime}` : ' (time unknown)'}
             </p>
             <button
               type="button"
-              className="rounded-lg px-2 py-1 text-xs text-saffron-300 hover:bg-white/5"
+              className="rounded-lg px-2 py-1 text-xs text-saffron-300 hover:bg-ved-cream-200/80"
               onClick={() => setEditing(true)}
             >
               Edit details
@@ -167,7 +167,7 @@ function BirthDataForm({
     <div className="card space-y-4">
       <div>
         <h2 className="font-semibold">Birth details</h2>
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-ved-green-800/60">
           Kept private. Your astrologer can see this only while you are in a consultation with them.
         </p>
       </div>
@@ -198,7 +198,7 @@ function BirthDataForm({
           disabled={!timeKnown}
           onChange={(event) => setBirthTime(event.target.value)}
         />
-        <label className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+        <label className="mt-2 flex items-center gap-2 text-xs text-ved-green-800/60">
           <input
             type="checkbox"
             checked={!timeKnown}
@@ -228,12 +228,12 @@ function BirthDataForm({
         />
 
         {matches.length > 0 && !chosen && (
-          <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-night-950">
+          <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-ved-green-900/10 bg-white">
             {matches.map((match) => (
               <li key={`${match.name}:${match.latitude}:${match.longitude}`}>
                 <button
                   type="button"
-                  className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+                  className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ved-cream-200/80"
                   onClick={() => {
                     setChosen(match);
                     setQuery(match.label);
@@ -241,7 +241,7 @@ function BirthDataForm({
                   }}
                 >
                   <span>{match.label}</span>
-                  <span className="text-xs text-slate-500">{match.timezone}</span>
+                  <span className="text-xs text-ved-green-800/50">{match.timezone}</span>
                 </button>
               </li>
             ))}
@@ -254,7 +254,7 @@ function BirthDataForm({
           settlement of the same name; the user is the only one who can catch that.
         */}
         {chosen && (
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-ved-green-800/60">
             <span className="tabular">
               {chosen.latitude.toFixed(4)}°, {chosen.longitude.toFixed(4)}°
             </span>{' '}
@@ -286,7 +286,7 @@ function BirthDataForm({
         {onCancel && (
           <button
             type="button"
-            className="btn flex-1 border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+            className="btn flex-1 border border-ved-green-900/15 bg-ved-cream-200/80 text-ved-green-800 hover:bg-ved-green-100"
             onClick={onCancel}
             disabled={busy}
           >
@@ -347,7 +347,7 @@ function ManualCoordinates({ onResolved }: { onResolved: (match: PlaceMatch) => 
   };
 
   return (
-    <div className="space-y-2 rounded-lg border border-white/10 p-3">
+    <div className="space-y-2 rounded-lg border border-ved-green-900/10 p-3">
       <input
         className="input"
         placeholder="Place name"

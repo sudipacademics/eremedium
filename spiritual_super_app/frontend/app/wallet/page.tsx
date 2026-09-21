@@ -22,8 +22,8 @@ declare global {
 const PRESETS = ['100', '250', '500', '1000'];
 
 const TYPE_STYLES: Record<string, string> = {
-  CREDIT: 'text-emerald-300',
-  DEBIT: 'text-rose-300',
+  CREDIT: 'text-emerald-700',
+  DEBIT: 'text-rose-600',
 };
 
 function loadRazorpayScript(): Promise<boolean> {
@@ -118,12 +118,12 @@ export default function WalletPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
-        <p className="text-xs uppercase tracking-wide text-slate-400">Wallet balance</p>
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
+        <p className="text-xs uppercase tracking-wide text-ved-green-800/60">Wallet balance</p>
         <p className="tabular mt-1 text-4xl font-semibold">
           ₹{wallet?.balance ?? '—'}
         </p>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Consultations are debited a minute at a time while you are connected.
         </p>
       </div>
@@ -146,8 +146,8 @@ export default function WalletPage() {
               onClick={() => setAmount(preset)}
               className={`btn ${
                 amount === preset
-                  ? 'bg-saffron-500 text-night-950'
-                  : 'border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
+                  ? 'bg-ved-green-600 text-white'
+                  : 'border border-ved-green-900/15 bg-ved-cream-200/80 text-ved-green-800 hover:bg-ved-green-100'
               }`}
             >
               ₹{preset}
@@ -186,7 +186,7 @@ export default function WalletPage() {
       <div className="card">
         <h2 className="mb-3 font-semibold">Recent activity</h2>
         {transactions.length === 0 ? (
-          <p className="text-sm text-slate-400">Nothing yet.</p>
+          <p className="text-sm text-ved-green-800/60">Nothing yet.</p>
         ) : (
           <ul className="divide-y divide-white/5">
             {transactions.map((transaction) => (
@@ -199,7 +199,7 @@ export default function WalletPage() {
                         ? 'Wallet top-up'
                         : transaction.type}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-ved-green-800/50">
                     {new Date(transaction.createdAt).toLocaleString()}
                   </p>
                 </div>
@@ -207,7 +207,7 @@ export default function WalletPage() {
                   <p className={`tabular text-sm font-semibold ${TYPE_STYLES[transaction.type] ?? ''}`}>
                     {transaction.type === 'DEBIT' ? '−' : '+'}₹{transaction.amount}
                   </p>
-                  <p className="tabular text-xs text-slate-500">₹{transaction.balanceAfter}</p>
+                  <p className="tabular text-xs text-ved-green-800/50">₹{transaction.balanceAfter}</p>
                 </div>
               </li>
             ))}

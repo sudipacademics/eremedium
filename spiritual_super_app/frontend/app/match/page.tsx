@@ -102,16 +102,16 @@ export default function MatchPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">Guna Milan</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Ashtakoot matching from Lahiri Moon nakshatras — eight kootas out of 36, plus Manglik when
           birth times are known.
         </p>
       </div>
 
       {!profileLoaded ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-ved-green-800/60">Loading…</p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <PersonCard title="Boy / Person A" draft={boy} onChange={setBoy} />
@@ -159,7 +159,7 @@ function PersonCard({
 
   return (
     <div className="card space-y-3">
-      <h2 className="text-sm font-medium text-slate-300">{title}</h2>
+      <h2 className="text-sm font-medium text-ved-green-700">{title}</h2>
       <div>
         <label className="label">Name (optional)</label>
         <input
@@ -189,7 +189,7 @@ function PersonCard({
           />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm text-slate-400">
+      <label className="flex items-center gap-2 text-sm text-ved-green-800/60">
         <input
           type="checkbox"
           checked={!draft.timeKnown}
@@ -207,26 +207,26 @@ function PersonCard({
           placeholder="Varanasi"
         />
         {matches.length > 0 && (
-          <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-night-950">
+          <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-ved-green-900/10 bg-white">
             {matches.map((match) => (
               <li key={`${match.name}:${match.latitude}:${match.longitude}`}>
                 <button
                   type="button"
-                  className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+                  className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ved-cream-200/80"
                   onClick={() => {
                     onChange({ ...draft, place: match, query: match.label });
                     setMatches([]);
                   }}
                 >
                   <span>{match.label}</span>
-                  <span className="text-xs text-slate-500">{match.timezone}</span>
+                  <span className="text-xs text-ved-green-800/50">{match.timezone}</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
         {draft.place && (
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ved-green-800/50">
             <span className="tabular">
               {draft.place.latitude.toFixed(4)}°, {draft.place.longitude.toFixed(4)}°
             </span>{' '}
@@ -244,13 +244,13 @@ function MatchScore({ result }: { result: MatchResult }) {
     <div className="card space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-400">Total guna</p>
+          <p className="text-sm text-ved-green-800/60">Total guna</p>
           <p className="text-3xl font-semibold tabular">
             {result.total_guna}
-            <span className="text-lg text-slate-500"> / {result.max_guna}</span>
+            <span className="text-lg text-ved-green-800/50"> / {result.max_guna}</span>
           </p>
         </div>
-        <p className="text-sm text-slate-400">{pct}%</p>
+        <p className="text-sm text-ved-green-800/60">{pct}%</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 text-sm">
@@ -263,9 +263,9 @@ function MatchScore({ result }: { result: MatchResult }) {
           <li key={koota.name} className="flex items-center justify-between gap-3 py-2 text-sm">
             <div>
               <p className="font-medium">{koota.name}</p>
-              <p className="text-xs text-slate-500">{koota.detail}</p>
+              <p className="text-xs text-ved-green-800/50">{koota.detail}</p>
             </div>
-            <p className="tabular text-slate-300">
+            <p className="tabular text-ved-green-700">
               {koota.score}/{koota.max_points}
             </p>
           </li>
@@ -273,18 +273,18 @@ function MatchScore({ result }: { result: MatchResult }) {
       </ul>
 
       {result.manglik && (
-        <div className="rounded-lg border border-white/10 p-3 text-sm space-y-1">
+        <div className="rounded-lg border border-ved-green-900/10 p-3 text-sm space-y-1">
           <p className="font-medium">Manglik</p>
-          <p className="text-slate-400">{result.manglik.boy.notes}</p>
-          <p className="text-slate-400">{result.manglik.girl.notes}</p>
+          <p className="text-ved-green-800/60">{result.manglik.boy.notes}</p>
+          <p className="text-ved-green-800/60">{result.manglik.girl.notes}</p>
           {result.manglik.compatible === true && (
-            <p className="text-emerald-300">Manglik status matches (both or neither).</p>
+            <p className="text-emerald-700">Manglik status matches (both or neither).</p>
           )}
           {result.manglik.compatible === false && (
             <p className="text-amber-200">Manglik mismatch — traditionally needs remedies or review.</p>
           )}
           {result.manglik.compatible === null && (
-            <p className="text-slate-500">Needs birth times on both sides to compare.</p>
+            <p className="text-ved-green-800/50">Needs birth times on both sides to compare.</p>
           )}
         </div>
       )}
@@ -298,9 +298,9 @@ function MoonSummary({
   side: MatchResult['boy'];
 }) {
   return (
-    <div className="rounded-lg bg-white/5 px-3 py-2">
+    <div className="rounded-lg bg-ved-cream-200/80 px-3 py-2">
       <p className="font-medium">{side.label}</p>
-      <p className="text-slate-400">
+      <p className="text-ved-green-800/60">
         Moon in {side.moonSign} · {side.moonNakshatra} pada {side.moonPada}
       </p>
     </div>

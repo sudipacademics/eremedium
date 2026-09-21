@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -64,12 +66,17 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-saffron-500 text-2xl text-night-950">
-          ॥
-        </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Jyotish Consultations</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Talk to a Vedic astrologer, billed by the minute.
+        <Image
+          src="/brand/vedsutra-logo.png"
+          alt="Vedsutra"
+          width={200}
+          height={52}
+          className="mx-auto h-12 w-auto"
+          priority
+        />
+        <h1 className="mt-4 font-display text-3xl font-semibold text-ved-green-800">Welcome back</h1>
+        <p className="mt-1 text-sm text-ved-green-800/65">
+          Sign in with your phone to consult, book pujas, and shop Ayurveda.
         </p>
       </div>
 
@@ -78,97 +85,69 @@ export default function LoginPage() {
           <>
             <div>
               <label className="label" htmlFor="phone">
-                Mobile number
+                Phone (E.164)
               </label>
               <input
                 id="phone"
                 className="input"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+919876543210"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value.replace(/[^\d+]/g, ''))}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
               />
-              <p className="mt-1.5 text-xs text-slate-500">
-                Include the country code. We send a one-time code by SMS.
-              </p>
             </div>
-
             <div>
               <label className="label" htmlFor="name">
-                Your name <span className="normal-case text-slate-500">(optional)</span>
+                Name (first login)
               </label>
               <input
                 id="name"
                 className="input"
-                autoComplete="name"
-                placeholder="Asha"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Optional"
               />
             </div>
-
-            <button
-              type="button"
-              className="btn-primary w-full"
-              disabled={busy || phone.replace(/\D/g, '').length < 10}
-              onClick={() => void requestCode()}
-            >
-              {busy ? 'Sending…' : 'Send code'}
+            <button type="button" className="btn-primary w-full" disabled={busy} onClick={() => void requestCode()}>
+              {busy ? 'Sending…' : 'Send OTP'}
             </button>
           </>
         ) : (
           <>
+            <p className="text-sm text-ved-green-800/70">
+              Code sent to <strong>{phone}</strong>
+              {challenge?.debugCode ? (
+                <span className="mt-1 block text-xs text-ved-gold-700">Debug code: {challenge.debugCode}</span>
+              ) : null}
+            </p>
             <div>
               <label className="label" htmlFor="code">
-                Enter the code sent to {phone}
+                OTP
               </label>
               <input
                 id="code"
-                className="input text-center text-2xl tracking-[0.5em] tabular"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                placeholder="······"
+                className="input tracking-[0.3em]"
                 value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setCode(e.target.value)}
+                inputMode="numeric"
               />
             </div>
-
-            {challenge?.debugCode && (
-              <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                Staging: your code is <strong className="tabular">{challenge.debugCode}</strong>
-              </p>
-            )}
-
+            <button type="button" className="btn-primary w-full" disabled={busy} onClick={() => void verify()}>
+              {busy ? 'Verifying…' : 'Verify & continue'}
+            </button>
             <button
               type="button"
-              className="btn-primary w-full"
-              disabled={busy || code.length < 4}
-              onClick={() => void verify()}
+              className="btn-ghost w-full"
+              disabled={busy || cooldown > 0}
+              onClick={() => void requestCode()}
             >
-              {busy ? 'Verifying…' : 'Verify and continue'}
+              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
             </button>
-
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <button type="button" className="hover:text-slate-100" onClick={() => setStep('phone')}>
-                ← Change number
-              </button>
-              <button
-                type="button"
-                className="hover:text-slate-100 disabled:opacity-50"
-                disabled={cooldown > 0 || busy}
-                onClick={() => void requestCode()}
-              >
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-              </button>
-            </div>
+            <button type="button" className="text-xs text-ved-green-800/50" onClick={() => setStep('phone')}>
+              Change phone
+            </button>
           </>
         )}
-
-        {error && (
-          <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>
-        )}
+        {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
     </div>
   );

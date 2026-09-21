@@ -64,20 +64,20 @@ export default function PujasPage() {
 
   return (
     <div className="space-y-5">
-      <div className="card bg-gradient-to-br from-saffron-500/15 to-transparent">
+      <div className="card bg-ved-green-50 border-ved-green-900/10">
         <h1 className="text-xl font-semibold">E-Puja</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ved-green-800/60">
           Have a puja performed in your name at a temple you cannot travel to. You receive a recording
           of the rite and the prasad by post.
         </p>
       </div>
 
-      <div className="flex gap-1 rounded-xl bg-white/5 p-1">
+      <div className="flex gap-1 rounded-xl bg-ved-cream-200/80 p-1">
         <button
           type="button"
           onClick={() => setTab('book')}
           className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
-            tab === 'book' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-100'
+            tab === 'book' ? 'bg-ved-green-100 text-white' : 'text-ved-green-800/60 hover:text-ved-green-900'
           }`}
         >
           Book a puja
@@ -86,12 +86,12 @@ export default function PujasPage() {
           type="button"
           onClick={() => setTab('mine')}
           className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
-            tab === 'mine' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-100'
+            tab === 'mine' ? 'bg-ved-green-100 text-white' : 'text-ved-green-800/60 hover:text-ved-green-900'
           }`}
         >
           My pujas
           {pending > 0 && (
-            <span className="ml-2 rounded-full bg-saffron-500/20 px-1.5 text-xs text-saffron-200">
+            <span className="ml-2 rounded-full bg-ved-gold-100 px-1.5 text-xs text-ved-gold-700">
               {pending}
             </span>
           )}
@@ -102,10 +102,10 @@ export default function PujasPage() {
 
       {tab === 'book' ? (
         loading ? (
-          <p className="text-sm text-slate-400">Loading temples…</p>
+          <p className="text-sm text-ved-green-800/60">Loading temples…</p>
         ) : temples.length === 0 ? (
           <div className="card">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-ved-green-800/60">
               No temples are listed yet. They are added by the platform, not by users.
             </p>
           </div>
@@ -150,13 +150,13 @@ function TempleCard({
     <div className="card space-y-3">
       <div>
         <h2 className="font-semibold">{temple.name}</h2>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-ved-green-800/60">
           {temple.location} · {temple.primaryDeity}
         </p>
       </div>
 
       {temple.offerings.length === 0 ? (
-        <p className="text-sm text-slate-500">No pujas are open for booking here right now.</p>
+        <p className="text-sm text-ved-green-800/50">No pujas are open for booking here right now.</p>
       ) : (
         <ul className="divide-y divide-white/5">
           {temple.offerings.map((offering) => (
@@ -164,9 +164,9 @@ function TempleCard({
               <div className="min-w-0">
                 <p className="text-sm font-medium">{offering.name}</p>
                 {offering.description && (
-                  <p className="mt-0.5 text-xs text-slate-400">{offering.description}</p>
+                  <p className="mt-0.5 text-xs text-ved-green-800/60">{offering.description}</p>
                 )}
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ved-green-800/50">
                   {[offering.durationLabel, offering.prasadIncluded].filter(Boolean).join(' · ')}
                 </p>
               </div>
@@ -192,7 +192,7 @@ function MyPujas({ bookings, onBookNow }: { bookings: PujaBooking[]; onBookNow: 
   if (bookings.length === 0) {
     return (
       <div className="card space-y-3">
-        <p className="text-sm text-slate-400">You have not booked a puja yet.</p>
+        <p className="text-sm text-ved-green-800/60">You have not booked a puja yet.</p>
         <button type="button" className="btn-primary" onClick={onBookNow}>
           Browse temples
         </button>
@@ -207,15 +207,15 @@ function MyPujas({ bookings, onBookNow }: { bookings: PujaBooking[]; onBookNow: 
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-semibold">{booking.pujaName}</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ved-green-800/60">
                 {booking.templeName} · {booking.templeLocation}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-ved-green-800/50">
                 Sankalp for {booking.sankalpName}
                 {booking.sankalpGotra ? `, ${booking.sankalpGotra} gotra` : ''}
               </p>
               {booking.sankalpWish && (
-                <p className="mt-1 text-xs italic text-slate-400">“{booking.sankalpWish}”</p>
+                <p className="mt-1 text-xs italic text-ved-green-800/60">“{booking.sankalpWish}”</p>
               )}
             </div>
             <p className="tabular shrink-0 text-sm font-semibold">₹{booking.packagePrice}</p>
@@ -223,7 +223,7 @@ function MyPujas({ bookings, onBookNow }: { bookings: PujaBooking[]; onBookNow: 
 
           <PujaStatusTrail booking={booking} />
 
-          <p className="text-[11px] text-slate-600">
+          <p className="text-[11px] text-ved-green-800/40">
             Booked {new Date(booking.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
           </p>
         </div>
@@ -280,13 +280,13 @@ function SankalpDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-night-950/80 p-4 backdrop-blur sm:items-center">
+    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ved-green-950/70 p-4 backdrop-blur sm:items-center">
       <div className="card w-full max-w-md space-y-4">
         {result ? (
           <>
             <div>
               <h2 className="font-semibold">Sankalp accepted</h2>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-ved-green-800/60">
                 {result.booking.pujaName} at {result.booking.templeName}. ₹{result.amountDebited} was
                 debited; your balance is now ₹{result.walletBalanceAfter}.
               </p>
@@ -300,7 +300,7 @@ function SankalpDialog({
           <>
             <div>
               <h2 className="font-semibold">{selection.offering.name}</h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ved-green-800/60">
                 {selection.temple.name} · {selection.temple.location}
               </p>
             </div>
@@ -316,7 +316,7 @@ function SankalpDialog({
                 onChange={(event) => setSankalpName(event.target.value)}
                 placeholder="Whose name should be offered"
               />
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-ved-green-800/50">
                 Often a parent or child rather than your own name.
               </p>
             </div>
@@ -352,7 +352,7 @@ function SankalpDialog({
             <div className="flex gap-2">
               <button
                 type="button"
-                className="btn flex-1 border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+                className="btn flex-1 border border-ved-green-900/15 bg-ved-cream-200/80 text-ved-green-800 hover:bg-ved-green-100"
                 onClick={onClose}
                 disabled={busy}
               >

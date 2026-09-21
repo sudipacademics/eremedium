@@ -24,15 +24,15 @@ export function AdminGate({ children }: { children: ReactNode }) {
   }, [router]);
 
   if (!ok) {
-    return <p className="p-6 text-sm text-slate-400">Checking admin access…</p>;
+    return <p className="p-6 text-sm text-ved-green-800/60">Checking admin access…</p>;
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 text-slate-100">
+    <div className="admin-dark mx-auto max-w-5xl space-y-6 rounded-3xl bg-ved-green-950 px-4 py-6 shadow-xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wider text-gold-400">Nakshya Admin</p>
-          <h1 className="font-display text-2xl font-semibold">Content & operations</h1>
+          <p className="text-xs uppercase tracking-wider text-ved-gold-400">Vedsutra Admin</p>
+          <h1 className="font-display text-2xl font-semibold text-white">Content & operations</h1>
         </div>
         <nav className="flex flex-wrap gap-2 text-sm">
           <Link href="/admin" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">

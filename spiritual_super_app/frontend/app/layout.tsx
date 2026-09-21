@@ -19,9 +19,9 @@ const display = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: 'Nakshya — Your Life. In Harmony.',
+  title: 'Vedsutra — Your Life, Guided by Vedic Wisdom',
   description:
-    'Astrology, Puja, Panchang, Ayurveda and live guidance — all in one trusted platform.',
+    'Astrology, E-Puja, Panchang, Ayurveda and live guidance — all in one trusted platform.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

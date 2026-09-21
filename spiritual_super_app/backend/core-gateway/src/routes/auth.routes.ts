@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppRole, signAccessToken } from '../auth/jwt.js';
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
+import { authenticate, requireUser } from '../plugins/authenticate.js';
 import { OtpService } from '../services/otp.service.js';
 
 const phoneSchema = z
@@ -123,4 +124,95 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     },
   );
+
+  app.get('/profile', { preHandler: authenticate }, async (request, reply) => {
+    const claims = requireUser(request);
+    const user = await prisma.user.findUnique({
+      where: { id: claims.sub },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        dob: true,
+        birthPlace: true,
+        gotra: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+        astrologer: { select: { id: true } },
+      },
+    });
+    if (!user) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'User not found' });
+    }
+    const role = resolveRole(user.phone, user.astrologer !== null);
+    return reply.send({
+      userId: user.id,
+      name: user.name,
+      phone: user.phone,
+      role,
+      astrologerId: user.astrologer?.id ?? null,
+      dob: user.dob?.toISOString() ?? null,
+      birthPlace: user.birthPlace,
+      gotra: user.gotra,
+      latitude: user.latitude?.toString() ?? null,
+      longitude: user.longitude?.toString() ?? null,
+      createdAt: user.createdAt.toISOString(),
+    });
+  });
+
+  const profilePatchSchema = z.object({
+    name: z.string().min(2).max(160).optional(),
+    dob: z.string().datetime({ offset: true }).nullable().optional(),
+    birthPlace: z.string().min(2).max(180).nullable().optional(),
+    gotra: z.string().min(2).max(120).nullable().optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
+  });
+
+  app.patch('/profile', { preHandler: authenticate }, async (request, reply) => {
+    const claims = requireUser(request);
+    const body = profilePatchSchema.parse(request.body);
+
+    const updated = await prisma.user.update({
+      where: { id: claims.sub },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.dob !== undefined ? { dob: body.dob ? new Date(body.dob) : null } : {}),
+        ...(body.birthPlace !== undefined
+          ? { birthPlace: body.birthPlace?.trim() || null }
+          : {}),
+        ...(body.gotra !== undefined ? { gotra: body.gotra?.trim() || null } : {}),
+        ...(body.latitude !== undefined ? { latitude: body.latitude } : {}),
+        ...(body.longitude !== undefined ? { longitude: body.longitude } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        dob: true,
+        birthPlace: true,
+        gotra: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+        astrologer: { select: { id: true } },
+      },
+    });
+
+    const role = resolveRole(updated.phone, updated.astrologer !== null);
+    return reply.send({
+      userId: updated.id,
+      name: updated.name,
+      phone: updated.phone,
+      role,
+      astrologerId: updated.astrologer?.id ?? null,
+      dob: updated.dob?.toISOString() ?? null,
+      birthPlace: updated.birthPlace,
+      gotra: updated.gotra,
+      latitude: updated.latitude?.toString() ?? null,
+      longitude: updated.longitude?.toString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  });
 }
