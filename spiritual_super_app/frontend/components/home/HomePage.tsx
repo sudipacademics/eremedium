@@ -116,11 +116,9 @@ export function HomePage() {
     else router.push('/astrologers');
   }
 
-  // Brand hero copy is fixed to the Vedsutra mock; CMS only supplies media/quote.
+  // Brand hero copy + art are fixed to the Vedsutra mock; CMS only supplies the quote.
   const promoQuote = site?.promoQuote?.trim() || 'Aligned with the Stars, Rooted in Nature';
-  const heroImage =
-    site?.heroImageUrl?.trim() ||
-    'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=1400&q=80';
+  const heroImage = '/brand/vedsutra-hero-mandala.png';
   const heroEyebrow = 'Ancient wisdom for a brighter tomorrow';
   const heroSubtitle =
     'Astrology | Puja | Panchang | Ayurveda — all in one trusted platform – Vedsutra';
@@ -135,10 +133,7 @@ export function HomePage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ved-gold-600">
               {heroEyebrow}
             </p>
-            <h1
-              data-build="15996c2"
-              className="mt-3 font-display text-4xl font-semibold leading-[1.15] text-ved-green-900 sm:text-5xl lg:text-[3.4rem]"
-            >
+            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.15] text-ved-green-900 sm:text-5xl lg:text-[3.4rem]">
               Your Life, Guided by <span className="text-ved-gold-500">Vedic Wisdom</span>
             </h1>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ved-green-800/70">
@@ -177,23 +172,18 @@ export function HomePage() {
           </div>
 
           <div className="relative mx-auto aspect-[4/5] w-full max-w-md animate-float lg:max-w-lg">
-            <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-ved-gold-200/40 to-ved-green-200/30 blur-2xl" />
-            <div className="relative h-full overflow-hidden rounded-[2rem] border border-ved-gold-400/30 bg-ved-green-950 shadow-xl">
+            <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-ved-gold-300/50 to-ved-green-200/40 blur-2xl" />
+            <div className="relative h-full overflow-hidden rounded-[2rem] border border-ved-gold-400/40 bg-[#F7F4EE] shadow-xl">
               <Image
                 src={heroImage}
-                alt=""
+                alt="Vedic mandala and diya"
                 fill
-                className="object-cover opacity-90"
+                className="object-cover object-center"
                 sizes="(max-width: 1024px) 90vw, 40vw"
                 priority
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-ved-green-950/80 via-transparent to-ved-green-950/20" />
-              <div className="absolute inset-0 grid place-items-center">
-                <div className="grid h-40 w-40 place-items-center rounded-full border-2 border-ved-gold-400/60 bg-ved-green-950/40 shadow-[0_0_60px_rgba(212,175,55,0.35)] backdrop-blur-sm sm:h-48 sm:w-48">
-                  <span className="font-display text-5xl text-ved-gold-300 sm:text-6xl">ॐ</span>
-                </div>
-              </div>
-              <p className="absolute bottom-6 right-6 max-w-[11rem] text-right font-display text-base italic leading-snug text-white/95 drop-shadow">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-ved-green-950/55 to-transparent" />
+              <p className="absolute bottom-5 right-5 max-w-[11rem] text-right font-display text-base italic leading-snug text-white drop-shadow">
                 {promoQuote}
               </p>
             </div>
