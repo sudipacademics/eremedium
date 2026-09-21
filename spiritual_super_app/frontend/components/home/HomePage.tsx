@@ -178,11 +178,12 @@ export function HomePage() {
                 src={heroImage}
                 alt="Vedic mandala and diya"
                 fill
+                unoptimized
                 className="object-cover object-center"
                 sizes="(max-width: 1024px) 90vw, 40vw"
                 priority
               />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-ved-green-950/55 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
               <p className="absolute bottom-5 right-5 max-w-[11rem] text-right font-display text-base italic leading-snug text-white drop-shadow">
                 {promoQuote}
               </p>
