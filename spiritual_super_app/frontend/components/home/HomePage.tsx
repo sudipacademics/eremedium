@@ -20,8 +20,8 @@ const CATEGORIES = [
   { href: '/gochar', label: 'Gochar', tag: 'Plan Ahead', icon: '☾' },
   { href: '/panchang', label: 'Panchang', tag: 'Auspicious Timings', icon: '☀' },
   { href: '/pujas', label: 'E-Puja', tag: 'Sacred Rituals', icon: '🕯' },
+  { href: '/temple', label: 'Virtual Temple', tag: '16 Upacharas', icon: '🛕' },
   { href: '/ayurveda', label: 'Ayurveda', tag: 'Natural Wellness', icon: '🌿' },
-  { href: '/ayurveda', label: 'Ayurvedic Shop', tag: 'Pure & Authentic', icon: '🧺' },
 ] as const;
 
 const POPULAR = [
@@ -68,13 +68,22 @@ const BANNERS = [
     overlay: 'from-[#5c3a2a]/95 to-[#5c3a2a]/50',
   },
   {
+    title: 'Virtual Temple',
+    body: 'Offer sixteen upacharas — flowers, jal, ghanta, deepam.',
+    href: '/temple',
+    cta: 'Enter shrine →',
+    image:
+      'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=900&q=80',
+    overlay: 'from-ved-green-900/95 to-ved-green-700/50',
+  },
+  {
     title: 'Explore Ayurveda',
     body: 'Dosha-tagged kits and churnas from the shop.',
     href: '/ayurveda',
     cta: 'Shop Now →',
     image:
       'https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&w=900&q=80',
-    overlay: 'from-ved-green-900/95 to-ved-green-700/50',
+    overlay: 'from-ved-green-800/95 to-[#5c3a2a]/50',
   },
 ] as const;
 
@@ -110,6 +119,8 @@ export function HomePage() {
       return;
     }
     if (q.includes('puja')) router.push('/pujas');
+    else if (q.includes('temple') || q.includes('upachar') || q.includes('darshan'))
+      router.push('/temple');
     else if (q.includes('ayur') || q.includes('shop')) router.push('/ayurveda');
     else if (q.includes('panch')) router.push('/panchang');
     else if (q.includes('kundali') || q.includes('chart')) router.push('/kundali');
