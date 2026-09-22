@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <rect width="640" height="400" fill="#eef6f0"/>
+  <path d="M80 280c40-90 90-140 160-140s120 50 160 140" fill="none" stroke="#1a6b7a" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="160" cy="280" r="18" fill="#c45c26"/>
+  <circle cx="320" cy="280" r="18" fill="#c45c26"/>
+  <rect x="380" y="120" width="220" height="36" rx="6" fill="#0c2d3a" opacity="0.8"/>
+  <rect x="380" y="180" width="180" height="22" rx="4" fill="#0c2d3a" opacity="0.35"/>
+  <text x="100" y="120" fill="#0c2d3a" font-family="Segoe UI, sans-serif" font-size="28" font-weight="700">Zone C</text>
+</svg>

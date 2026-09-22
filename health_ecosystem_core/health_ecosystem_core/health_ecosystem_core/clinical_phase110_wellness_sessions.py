@@ -25,8 +25,8 @@ SESSION_WINGS = ("physiotherapy", "aesthetics", "yoga")
 PHYSIO_PACKS = [
 	{
 		"plan_code": "PHYSIO_CARD_6",
-		"title": "Physiotherapy Card — 6 Sessions",
-		"description": "Six physiotherapy sessions. Punch one session per visit.",
+		"title": "Remedium Care Card — 6 Sessions",
+		"description": "Six Remedium Care sessions. Punch one session per visit.",
 		"monthly_price": 4999,
 		"billing_interval": "Year",
 		"plan_category": "Health",
@@ -37,8 +37,8 @@ PHYSIO_PACKS = [
 	},
 	{
 		"plan_code": "PHYSIO_CARD_12",
-		"title": "Physiotherapy Card — 12 Sessions",
-		"description": "Twelve physiotherapy sessions with priority scheduling.",
+		"title": "Remedium Care Card — 12 Sessions",
+		"description": "Twelve Remedium Care sessions with priority scheduling.",
 		"monthly_price": 8999,
 		"billing_interval": "Year",
 		"plan_category": "Health",
@@ -183,7 +183,14 @@ def seed_wellness_session_packs():
 	ensure_wellness_session_fields()
 	created = []
 	meta = frappe.get_meta("Health Subscription Plan")
-	for spec in PHYSIO_PACKS + AESTHETIC_PACKS:
+	pack_specs = list(PHYSIO_PACKS + AESTHETIC_PACKS)
+	try:
+		from health_ecosystem_core.health_ecosystem_core.clinical_phase113_remedium_care import CARE_PACKS
+
+		pack_specs.extend(CARE_PACKS)
+	except Exception:
+		pass
+	for spec in pack_specs:
 		code = spec["plan_code"]
 		payload = {k: v for k, v in spec.items() if meta.has_field(k)}
 		payload["enabled"] = 1

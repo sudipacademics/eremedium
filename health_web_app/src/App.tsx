@@ -20,10 +20,16 @@ import { B2bLayout } from './components/B2bLayout';
 import { B2bPortalPage } from './pages/b2b/B2bPortalPage';
 import { B2bCatalogPage } from './pages/b2b/B2bCatalogPage';
 import { B2bOrderPage } from './pages/b2b/B2bOrderPage';
+import { HubLabBillPage } from './pages/b2b/HubLabBillPage';
 import { B2bStatementsPage } from './pages/b2b/B2bStatementsPage';
+import { B2bCentresPage } from './pages/b2b/B2bCentresPage';
+import { B2bFofoCommissionPage } from './pages/b2b/B2bFofoCommissionPage';
 import { B2bWalletPage } from './pages/b2b/B2bWalletPage';
+import { B2bBillStatusPage } from './pages/b2b/B2bBillStatusPage';
+import { B2bDownloadReportPage } from './pages/b2b/B2bDownloadReportPage';
 
 import { SalesLayout } from './components/SalesLayout';
+import { AgentsLayout } from './components/AgentsLayout';
 import { SalesPortalPage } from './pages/sales/SalesPortalPage';
 import { SalesLeadsPage } from './pages/sales/SalesLeadsPage';
 import { SalesVisitPage } from './pages/sales/SalesVisitPage';
@@ -36,6 +42,13 @@ import { SalesReportsPage } from './pages/sales/SalesReportsPage';
 import { SalesTeamMapPage } from './pages/sales/SalesTeamMapPage';
 import { SalesB2bCentresPage } from './pages/sales/SalesB2bCentresPage';
 import { SalesB2bSalesPage } from './pages/sales/SalesB2bSalesPage';
+import { AgentsDashboardPage } from './pages/agents/AgentsDashboardPage';
+import { AgentsProfilePage } from './pages/agents/AgentsProfilePage';
+import { AgentsTeamPage } from './pages/agents/AgentsTeamPage';
+import { AgentsCommissionsPage } from './pages/agents/AgentsCommissionsPage';
+import { AgentsLevelsPage } from './pages/agents/AgentsLevelsPage';
+import { AgentsFranchiseesPage } from './pages/agents/AgentsFranchiseesPage';
+import { AgentsPublicOnboardPage } from './pages/agents/AgentsPublicOnboardPage';
 
 import { PeopleLayout } from './components/PeopleLayout';
 import { PeopleHomePage } from './pages/people/PeopleHomePage';
@@ -69,6 +82,7 @@ import { JobApplyPage } from './pages/careers/JobApplyPage';
 import { HrApplicationsPage } from './pages/careers/HrApplicationsPage';
 import { HrApplicationDetailPage } from './pages/careers/HrApplicationDetailPage';
 import { HiringMarketingDashboardPage } from './pages/careers/HiringMarketingDashboardPage';
+import { HrLoginPage } from './pages/HrLoginPage';
 import { ApplicantDashboardPage } from './pages/careers/ApplicantDashboardPage';
 import { ApplicantApplicationsPage } from './pages/careers/ApplicantApplicationsPage';
 import { ApplicantApplicationDetailPage } from './pages/careers/ApplicantApplicationDetailPage';
@@ -110,6 +124,16 @@ import { LabReportEditorPage } from './pages/dashboard/LabReportEditorPage';
 
 import { ReportLifecyclePage } from './pages/dashboard/ReportLifecyclePage';
 
+import { LabAccessionPage } from './pages/dashboard/LabAccessionPage';
+
+import { LabBillEntryPage } from './pages/dashboard/LabBillEntryPage';
+
+import { QcDashboardPage } from './pages/dashboard/QcDashboardPage';
+
+import { QmsDashboardPage } from './pages/dashboard/QmsDashboardPage';
+
+import { CriticalAlertsQueuePage } from './pages/dashboard/CriticalAlertsQueuePage';
+
 import { HrSelfServicePage } from './pages/dashboard/HrSelfServicePage';
 import { StaffPerformancePage } from './pages/dashboard/StaffPerformancePage';
 import { ReagentDashboardPage } from './pages/dashboard/ReagentDashboardPage';
@@ -117,6 +141,17 @@ import { ReagentDashboardPage } from './pages/dashboard/ReagentDashboardPage';
 import { PublicDashboard } from './pages/dashboard/PublicDashboard';
 
 import { StaffDashboard } from './pages/dashboard/StaffDashboard';
+import { ProviderPortalPage } from './pages/dashboard/ProviderPortalPage';
+import { DoctorPrescriptionPage } from './pages/dashboard/DoctorPrescriptionPage';
+import { DoctorConsultPage } from './pages/dashboard/DoctorConsultPage';
+import { SmartSyncPage } from './pages/dashboard/SmartSyncPage';
+import { ProviderKnowledgePage } from './pages/dashboard/ProviderKnowledgePage';
+import { ProviderApplicationsPage } from './pages/dashboard/ProviderApplicationsPage';
+import { TeleconsultQueuePage } from './pages/dashboard/TeleconsultQueuePage';
+import { CareHubPage, CareEnrollmentPage } from './pages/care/CarePages';
+import { ResearchHubPage } from './pages/ResearchHubPage';
+
+import { PrescriptionsPage } from './pages/PrescriptionsPage';
 
 import { HomePage } from './pages/HomePage';
 
@@ -132,7 +167,12 @@ import { WellnessHubPage } from './pages/wellness/WellnessHubPage';
 import { WellnessWingPage } from './pages/wellness/WellnessWingPage';
 import { WellnessBookPage } from './pages/wellness/WellnessBookPage';
 import { WellnessClinicLandingPage } from './pages/wellness/WellnessClinicLandingPage';
+import { RemediumCareLanding } from './pages/wellness/RemediumCareLanding';
 import { SessionCardsPage } from './pages/wellness/SessionCardsPage';
+import { CareIntakePage } from './pages/wellness/CareIntakePage';
+import { CareMyPlanPage } from './pages/wellness/CareMyPlanPage';
+import { CareOpsPage } from './pages/dashboard/CareOpsPage';
+import { CareProgressPage } from './pages/wellness/CareProgressPage';
 import { TeleconsultJoinPage } from './pages/teleconsult/TeleconsultJoinPage';
 import { SessionOpsPage } from './pages/dashboard/SessionOpsPage';
 import { YogaSubscriptionsPage } from './pages/YogaSubscriptionsPage';
@@ -151,6 +191,13 @@ import { PharmacyPage } from './pages/PharmacyPage';
 
 import { ServicesPage } from './pages/ServicesPage';
 import { LegalDocumentPage } from './pages/legal/LegalDocumentPage';
+import { BlogListPage } from './pages/blog/BlogListPage';
+import { BlogPostPage } from './pages/blog/BlogPostPage';
+import { SiteCmsPageView } from './pages/cms/SiteCmsPageView';
+import { PoliciesHubPage } from './pages/cms/PoliciesHubPage';
+import { PressPage } from './pages/cms/PressPage';
+import { KnowledgeCentrePage } from './pages/cms/KnowledgeCentrePage';
+import { FaqPage } from './pages/cms/FaqPage';
 
 
 
@@ -188,11 +235,22 @@ const HR_ACCESS = [
 
 const SALES_ACCESS = [ROLES.SALES_REP, ROLES.SALES_MANAGER];
 
+const AGENCY_ACCESS = [ROLES.AGENCY_AGENT, ROLES.AGENCY_MANAGER, ROLES.ADMIN, ROLES.SYSTEM_MANAGER];
+
 const PLANNING_ACCESS = [
   ROLES.ADMIN,
   ROLES.SYSTEM_MANAGER,
   'HR Manager',
   'HR User',
+];
+
+const PROVIDER_ACCESS = [
+  'Physician',
+  'Healthcare Provider',
+  'Doctor',
+  ROLES.PATHOLOGIST,
+  ROLES.ADMIN,
+  ROLES.SYSTEM_MANAGER,
 ];
 
 
@@ -217,6 +275,8 @@ export default function App() {
               <Route path="jobs/:jobId/apply" element={<JobApplyPage />} />
             </Route>
 
+            <Route path="hr/login" element={<HrLoginPage />} />
+
             <Route
               path="hr"
               element={
@@ -225,6 +285,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
+              <Route index element={<Navigate to="/hr/applications" replace />} />
               <Route path="applications" element={<HrApplicationsPage />} />
               <Route path="applications/:applicationId" element={<HrApplicationDetailPage />} />
               <Route path="marketing" element={<HiringMarketingDashboardPage />} />
@@ -273,11 +334,59 @@ export default function App() {
 
                 <Route path="wellness/aesthetics" element={<WellnessClinicLandingPage wingId="aesthetics" />} />
 
-                <Route path="wellness/sessions" element={<SessionCardsPage />} />
+                <Route path="wellness/care" element={<RemediumCareLanding />} />
+                <Route path="wellness/physiotherapy" element={<Navigate to="/wellness/care" replace />} />
 
-                <Route path="yoga-memberships" element={<YogaSubscriptionsPage />} />
+                <Route
+                  path="wellness/care/book/:serviceCode"
+                  element={
+                    <ProtectedRoute>
+                      <WellnessBookPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-                <Route path="teleconsult/join/:appointmentId" element={<TeleconsultJoinPage />} />
+                <Route
+                  path="wellness/care/intake/:appointmentId?"
+                  element={
+                    <ProtectedRoute>
+                      <CareIntakePage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="wellness/care/plan"
+                  element={
+                    <ProtectedRoute>
+                      <CareMyPlanPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="wellness/care/progress/:blueprintId?"
+                  element={
+                    <ProtectedRoute>
+                      <CareProgressPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="wellness/sessions"
+                  element={<SessionCardsPage />}
+                />
+
+                <Route
+                  path="yoga-memberships"
+                  element={<YogaSubscriptionsPage />}
+                />
+
+                <Route
+                  path="teleconsult/join/:appointmentId"
+                  element={<TeleconsultJoinPage />}
+                />
 
                 <Route path="wellness/:wingId" element={<WellnessWingPage />} />
 
@@ -411,9 +520,73 @@ export default function App() {
 
                 />
 
-                <Route
+              <Route
 
-                  path="account"
+                path="prescriptions"
+
+                element={
+
+                  <ProtectedRoute>
+
+                    <PrescriptionsPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="care"
+
+                element={
+
+                  <ProtectedRoute>
+
+                    <CareHubPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="care/:enrollmentId"
+
+                element={
+
+                  <ProtectedRoute>
+
+                    <CareEnrollmentPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="research"
+
+                element={
+
+                  <ProtectedRoute roles={[...PROVIDER_ACCESS, ...STAFF_ACCESS]}>
+
+                    <ResearchHubPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="account"
 
                   element={
 
@@ -471,6 +644,13 @@ export default function App() {
               <Route path="oauth/callback" element={<OAuthCallbackPage />} />
 
               <Route path="legal/:docId" element={<LegalDocumentPage />} />
+              <Route path="accreditations" element={<SiteCmsPageView pageKey="accreditations" />} />
+              <Route path="policies" element={<PoliciesHubPage />} />
+              <Route path="press" element={<PressPage />} />
+              <Route path="knowledge" element={<KnowledgeCentrePage />} />
+              <Route path="faq" element={<FaqPage />} />
+              <Route path="blog" element={<BlogListPage />} />
+              <Route path="blog/:slug" element={<BlogPostPage />} />
               <Route path="privacy-policy" element={<Navigate to="/legal/privacy-policy" replace />} />
               <Route path="disclaimer" element={<Navigate to="/legal/disclaimer" replace />} />
               <Route path="terms" element={<Navigate to="/legal/terms-and-conditions" replace />} />
@@ -484,7 +664,12 @@ export default function App() {
                 <Route index element={<B2bPortalPage />} />
                 <Route path="catalog" element={<B2bCatalogPage />} />
                 <Route path="order" element={<B2bOrderPage />} />
+                <Route path="lab-bill" element={<HubLabBillPage />} />
+                <Route path="bill-status" element={<B2bBillStatusPage />} />
+                <Route path="download-report" element={<B2bDownloadReportPage />} />
                 <Route path="wallet" element={<B2bWalletPage />} />
+                <Route path="centres" element={<B2bCentresPage />} />
+                <Route path="fofo-commission" element={<B2bFofoCommissionPage />} />
                 <Route path="statements" element={<B2bStatementsPage />} />
               </Route>
 
@@ -508,6 +693,61 @@ export default function App() {
                 <Route path="b2b-centres" element={<SalesB2bCentresPage />} />
                 <Route path="b2b-sales" element={<SalesB2bSalesPage />} />
                 <Route path="map" element={<SalesTeamMapPage />} />
+              </Route>
+
+              <Route
+                path="agents"
+                element={<AgentsLayout />}
+              >
+                <Route index element={<AgentsPublicOnboardPage />} />
+                <Route
+                  path="app"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="me"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="franchisees"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsFranchiseesPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="team"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsTeamPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="commissions"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsCommissionsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="levels"
+                  element={
+                    <ProtectedRoute roles={AGENCY_ACCESS}>
+                      <AgentsLevelsPage />
+                    </ProtectedRoute>
+                  }
+                />
               </Route>
 
               <Route
@@ -710,6 +950,86 @@ export default function App() {
 
               <Route
 
+                path="accession"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <LabAccessionPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="lab-bill-entry"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <LabBillEntryPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="qc"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <QcDashboardPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="qms"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <QmsDashboardPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="critical-alerts"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <CriticalAlertsQueuePage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
                 path="hr"
 
                 element={
@@ -758,13 +1078,141 @@ export default function App() {
 
               <Route
 
+                path="provider"
+
+                element={
+
+                  <ProtectedRoute roles={PROVIDER_ACCESS}>
+
+                    <ProviderPortalPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="provider/prescription/:appointmentId"
+
+                element={
+
+                  <ProtectedRoute roles={PROVIDER_ACCESS}>
+
+                    <DoctorPrescriptionPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="provider/consult/:appointmentId"
+
+                element={
+
+                  <ProtectedRoute roles={PROVIDER_ACCESS}>
+
+                    <DoctorConsultPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="provider/smartsync"
+
+                element={
+
+                  <ProtectedRoute roles={PROVIDER_ACCESS}>
+
+                    <SmartSyncPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="provider/knowledge"
+
+                element={
+
+                  <ProtectedRoute roles={PROVIDER_ACCESS}>
+
+                    <ProviderKnowledgePage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="provider-applications"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.ADMIN, ROLES.SYSTEM_MANAGER]}>
+
+                    <ProviderApplicationsPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="teleconsults"
+
+                element={
+
+                  <ProtectedRoute roles={[...PROVIDER_ACCESS, ...STAFF_ACCESS]}>
+
+                    <TeleconsultQueuePage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
                 path="session-ops"
 
                 element={
 
-                  <ProtectedRoute roles={STAFF_ACCESS}>
+                  <ProtectedRoute roles={[...PROVIDER_ACCESS, ...STAFF_ACCESS]}>
 
                     <SessionOpsPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="care-ops"
+
+                element={
+
+                  <ProtectedRoute roles={[...PROVIDER_ACCESS, ...STAFF_ACCESS]}>
+
+                    <CareOpsPage />
 
                   </ProtectedRoute>
 

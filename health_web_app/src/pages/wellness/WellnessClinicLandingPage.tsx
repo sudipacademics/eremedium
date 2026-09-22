@@ -96,7 +96,9 @@ export function WellnessClinicLandingPage({ wingId: wingIdProp }: Props) {
   }
 
   function bookPath(serviceCode: string) {
-    return `/wellness/${clinic.wingId}/book/${encodeURIComponent(serviceCode)}`;
+    const base =
+      clinic.wingId === 'physiotherapy' ? '/wellness/care' : `/wellness/${clinic.wingId}`;
+    return `${base}/book/${encodeURIComponent(serviceCode)}`;
   }
 
   return (

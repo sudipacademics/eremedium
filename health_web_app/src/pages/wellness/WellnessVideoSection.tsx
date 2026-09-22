@@ -1,7 +1,9 @@
-/** Placeholder YouTube embeds per wellness wing — replace IDs with Remedium procedural videos later. */
+import { useEffect, useState } from 'react';
+import { api } from '../../api';
 
 export type WellnessVideo = { title: string; topic: string; youtubeId: string };
 
+/** Offline / empty-CMS fallback (same as previous placeholders). */
 const DEFAULT_VIDEOS: WellnessVideo[] = [
   { title: 'Session overview', topic: 'Intro', youtubeId: 'LXb3EKWsInQ' },
   { title: 'What to expect', topic: 'Guide', youtubeId: 'M7lc1UVf-VE' },
@@ -61,7 +63,8 @@ export const WELLNESS_WING_VIDEOS: Record<string, WellnessVideo[]> = {
 };
 
 export function videosForWing(wingId: string): WellnessVideo[] {
-  return WELLNESS_WING_VIDEOS[wingId] || DEFAULT_VIDEOS;
+  const key = wingId === 'care' ? 'physiotherapy' : wingId;
+  return WELLNESS_WING_VIDEOS[key] || DEFAULT_VIDEOS;
 }
 
 type WellnessVideoSectionProps = {
@@ -70,8 +73,37 @@ type WellnessVideoSectionProps = {
 };
 
 export function WellnessVideoSection({ wingId, wingTitle }: WellnessVideoSectionProps) {
-  const videos = videosForWing(wingId);
+  const [videos, setVideos] = useState<WellnessVideo[]>(() => videosForWing(wingId));
+  const [fromCms, setFromCms] = useState(false);
   const label = wingTitle || 'wellness';
+
+  useEffect(() => {
+    let cancelled = false;
+    setVideos(videosForWing(wingId));
+    setFromCms(false);
+    void api
+      .listWellnessVideos(wingId)
+      .then((res) => {
+        if (cancelled) return;
+        const rows = (res.data.videos || [])
+          .filter((v) => v.youtube_id)
+          .map((v) => ({
+            title: v.title,
+            topic: v.topic || '',
+            youtubeId: v.youtube_id,
+          }));
+        if (rows.length) {
+          setVideos(rows);
+          setFromCms(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [wingId]);
+
+  if (!videos.length) return null;
 
   return (
     <section id="treatment-videos" className="aesthetics-videos wellness-videos">
@@ -79,8 +111,10 @@ export function WellnessVideoSection({ wingId, wingTitle }: WellnessVideoSection
         <div>
           <h2 className="section-title">Treatment videos</h2>
           <p className="section-sub">
-            Watch short explainers for {label}. Placeholder clips for now — we will replace these with
-            Remedium procedural videos.
+            Watch short explainers for {label}.
+            {fromCms
+              ? ' Managed from ERPNext (HEC Wellness Video).'
+              : ' Showing fallback clips — publish rows in ERPNext → HEC Wellness Video to replace them.'}
           </p>
         </div>
       </div>

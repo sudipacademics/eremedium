@@ -25,7 +25,7 @@ type Card = {
 };
 
 const WING_LABEL: Record<string, string> = {
-  physiotherapy: 'Physiotherapy',
+  physiotherapy: 'Remedium Care',
   aesthetics: 'Aesthetic',
   yoga: 'Yoga',
 };
@@ -78,14 +78,14 @@ export function SessionCardsPage() {
     <div className="session-cards-page">
       <header className="page-intro">
         <p className="muted">Wellness · Session cards</p>
-        <h1>Physio & Aesthetic Cards</h1>
+        <h1>Care & Aesthetic Cards</h1>
         <p>Buy a punch card, then each visit deducts one session automatically when you book.</p>
         <div className="session-wing-filters">
           <Link to="/wellness/sessions" className={!wingFilter ? 'active' : undefined}>
             All
           </Link>
           <Link to="/wellness/sessions?wing=physiotherapy" className={wingFilter === 'physiotherapy' ? 'active' : undefined}>
-            Physiotherapy
+            Remedium Care
           </Link>
           <Link to="/wellness/sessions?wing=aesthetics" className={wingFilter === 'aesthetics' ? 'active' : undefined}>
             Aesthetic
@@ -127,7 +127,11 @@ export function SessionCardsPage() {
                   ) : null}
                   <Link
                     className="btn"
-                    to={`/wellness/${c.wellness_wing || 'physiotherapy'}`}
+                    to={
+                      c.wellness_wing === 'physiotherapy'
+                        ? '/wellness/care'
+                        : `/wellness/${c.wellness_wing || 'care'}`
+                    }
                   >
                     Book a session
                   </Link>

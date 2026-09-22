@@ -54,13 +54,16 @@ export function SessionOpsPage() {
     <div className="session-ops-page">
       <header className="page-intro">
         <h1>Wellness session desk</h1>
-        <p>Track physiotherapy & aesthetic punches; open online video rooms.</p>
+        <p>Track Remedium Care &amp; aesthetic punches; open online video rooms.</p>
+        <Link className="btn secondary" to="/dashboard/care-ops">
+          Care ops queue
+        </Link>
       </header>
 
       <div className="session-ops-filters">
         <select value={wing} onChange={(e) => setWing(e.target.value)}>
           <option value="">All wings</option>
-          <option value="physiotherapy">Physiotherapy</option>
+          <option value="physiotherapy">Remedium Care</option>
           <option value="aesthetics">Aesthetic</option>
           <option value="yoga">Yoga</option>
         </select>

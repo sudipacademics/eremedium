@@ -13,6 +13,7 @@ after_install = "health_ecosystem_core.health_ecosystem_core.init.after_install"
 before_request = [
     "health_ecosystem_core.health_ecosystem_core.desk_route_redirect.redirect_broken_desk_routes",
     "health_ecosystem_core.health_ecosystem_core.cors.sanitize_broken_session",
+    "health_ecosystem_core.health_ecosystem_core.clinical_hrms_repair.bind_hrms_module_app",
 ]
 
 override_whitelisted_methods = {
@@ -30,6 +31,7 @@ doctype_js = {
     "Customer TRF": "public/js/customer_trf.js",
     "Lab Report": "public/js/lab_report.js",
     "Health Ecosystem Settings": "public/js/health_ecosystem_settings.js",
+    "Diagnostic Test Master": "public/js/diagnostic_test_master.js",
 }
 
 scheduler_events = {
@@ -38,7 +40,15 @@ scheduler_events = {
     ],
     "daily": [
         "health_ecosystem_core.health_ecosystem_core.clinical_phase73f_ad_sync.run_daily_hiring_ads_sync",
+        "health_ecosystem_core.health_ecosystem_core.clinical_phase93_franchise_go_live.run_daily_franchise_campaign_launches",
+        "health_ecosystem_core.health_ecosystem_core.clinical_phase98_cpt.run_daily_cpt_refresh",
     ],
+}
+
+doc_events = {
+    "HEC Wellness Video": {
+        "validate": "health_ecosystem_core.health_ecosystem_core.clinical_phase114_wellness_videos.on_validate",
+    },
 }
 
 fixtures = [

@@ -180,6 +180,16 @@ export type B2bCatalogItem = {
   retail_rate: number;
   wholesale_rate: number;
   margin: number;
+  mrp?: number;
+  foco_rate?: number;
+  platform_fee?: number;
+  commission_value?: number;
+  show_mrp_slash?: boolean;
+  price_basis?: string;
+  patient_rate_label?: string;
+  sample_type?: string;
+  sample_requirement_label?: string;
+  collection_tubes?: CollectionTubeRow[];
   franchisee_type?: string;
   franchisee_rate_label?: string;
   mrp_price_list?: string;
@@ -199,9 +209,14 @@ export type B2bWalletTransaction = {
 
 export type B2bWalletPayload = {
   wallet_balance: number;
+  credit_limit?: number;
+  available_to_bill?: number;
+  franchisee_type?: string;
   min_recharge: number;
   transactions: B2bWalletTransaction[];
   razorpay_recharge_enabled?: boolean;
+  pending_fofo_earnings?: number;
+  profit_from_centre?: number;
 };
 
 export type AiPhysicianWorkupItem = {
@@ -295,7 +310,39 @@ export type B2bPortalPayload = {
     margin_today: number;
     pending_platform_charges: number;
     wallet_balance?: number;
+    profit_from_centre?: number;
+    pending_fofo_earnings?: number;
   };
+};
+
+export type B2bFocoCentreRow = {
+  fofo: string;
+  fofo_name: string;
+  franchise_code?: string;
+  address?: string;
+  territory?: string;
+  onboarding_status?: string;
+  total_fofo_sales: number;
+  net_business: number;
+  foco_earning: number;
+  pending_earning: number;
+  credited_earning: number;
+  settlement_status: string;
+};
+
+export type B2bFofoCommissionLine = {
+  id: string;
+  fofo: string;
+  fofo_name: string;
+  trf_id: string;
+  bill_date: string;
+  mrp: number;
+  fofo_margin: number;
+  net_amount: number;
+  commission_percent: number;
+  foco_earning: number;
+  settlement_date?: string;
+  status: string;
 };
 
 export type B2bStatementLine = {
@@ -454,6 +501,7 @@ export type SalesVisit = {
   assigned_from?: string;
   lead_name?: string;
   lead_phone?: string;
+  lead_status?: string;
   reach_user?: string;
   creation?: string;
 };
@@ -537,6 +585,168 @@ export type SalesCommissionPayload = {
     entry_count?: number;
   };
   entries: SalesCommissionEntry[];
+};
+
+export type AgencyLevel = {
+  name: string;
+  code: string;
+  title: string;
+  rank: number;
+  conversion_pct: number;
+  monthly_revenue_pct: number;
+  override_pct: number;
+  active?: number;
+};
+
+export type AgencyAgent = {
+  name: string;
+  full_name: string;
+  mobile?: string;
+  email?: string;
+  user?: string;
+  level: string;
+  level_title?: string;
+  level_rank?: number;
+  sponsor?: string;
+  sponsor_name?: string;
+  status: string;
+  is_agency_manager?: number;
+  joined_on?: string;
+};
+
+export type AgencyDashboard = {
+  stats: {
+    recruitment: number;
+    activation: number;
+    productivity: number;
+    leadership: number;
+    economics: number;
+    team_size: number;
+  };
+  levels: AgencyLevel[];
+  my_agent_id?: string | null;
+  is_manager?: boolean;
+  conversion_base_inr?: number;
+  recent_attributions?: { name: string; agent: string; franchisee: string }[];
+};
+
+export type AgencyTeamNode = {
+  id: string;
+  full_name: string;
+  level: string;
+  level_title?: string;
+  status: string;
+  is_agency_manager?: number;
+  children?: AgencyTeamNode[];
+};
+
+export type AgencyCommissionEntry = {
+  name: string;
+  agent: string;
+  agent_name?: string;
+  entry_type: string;
+  franchisee?: string;
+  franchise_name?: string;
+  source_agent?: string;
+  period?: string;
+  gross_amount?: number;
+  commission_rate?: number;
+  commission_amount: number;
+  status: string;
+  posting_date?: string;
+  notes?: string;
+};
+
+export type AgencyCommissionPayload = {
+  entries: AgencyCommissionEntry[];
+  summary: {
+    accrued_total: number;
+    paid_total: number;
+    month_accrued: number;
+    entry_count: number;
+  };
+};
+
+export type AgencyOnboardRequest = {
+  name: string;
+  agent: string;
+  agent_name?: string;
+  prospect_name: string;
+  mobile: string;
+  email?: string;
+  territory?: string;
+  franchise_model?: string;
+  deal_value?: number;
+  status: string;
+  ffms_request_id?: string;
+  ffms_lead_id?: string;
+  decided_by?: string;
+  decided_on?: string;
+  decision_notes?: string;
+  franchisee?: string;
+  franchise_name?: string;
+  attribution?: string;
+  created_at?: string;
+  notes?: string;
+  commission_earned?: number;
+  commission_payout_status?: string;
+};
+
+export type AgencyOnboardFormField = {
+  field_key: string;
+  label: string;
+  fieldtype: string;
+  options?: string[];
+  required?: number | boolean;
+  enabled?: number | boolean;
+  placeholder?: string;
+  help_text?: string;
+  sort_order?: number;
+  span_full?: number | boolean;
+};
+
+export type AgencyOnboardFormSchema = {
+  form_key: string;
+  title: string;
+  subtitle?: string;
+  success_message?: string;
+  submit_label?: string;
+  enabled?: number | boolean;
+  allow_guest?: number | boolean;
+  require_login?: number | boolean;
+  fields: AgencyOnboardFormField[];
+  desk_path?: string;
+};
+
+export type AgencyFranchiseeRow = {
+  attribution_id: string;
+  franchisee: string;
+  franchise_name?: string;
+  agent?: string;
+  agent_name?: string;
+  deal_value?: number;
+  attributed_on?: string;
+  level_at_conversion?: string;
+  commission_earned?: number;
+  commission_paid?: number;
+  commission_payout_status?: string;
+  ledger_entries?: number;
+};
+
+export type AgencyProfilePayload = {
+  agent: AgencyAgent;
+  downline: { name: string; full_name: string; level: string; status: string }[];
+  downline_count: number;
+  franchisees: {
+    name: string;
+    franchisee: string;
+    franchise_name?: string;
+    deal_value?: number;
+    attributed_on?: string;
+    level_at_conversion?: string;
+  }[];
+  onboard_requests?: AgencyOnboardRequest[];
+  commissions: AgencyCommissionPayload;
 };
 
 export type SalesClosingExpenseLine = {
@@ -718,8 +928,40 @@ export type LabReagentBatch = {
   tests_remaining: number;
   opened_on?: string | null;
   expiry_date?: string | null;
+  safety_stock?: number;
   low_stock: boolean;
   usage_percent: number;
+};
+
+export type LabConsumableBatch = {
+  batch_id: string;
+  consumable_item: string;
+  consumable_name: string;
+  lot_number: string;
+  franchisee_id?: string | null;
+  status: string;
+  units_per_pack: number;
+  units_remaining: number;
+  opened_on?: string | null;
+  expiry_date?: string | null;
+  safety_stock?: number;
+  low_stock: boolean;
+  usage_percent: number;
+};
+
+export type LabReorderAlert = {
+  item_code: string;
+  item_name: string;
+  remaining: number;
+  safety_stock: number;
+  message: string;
+};
+
+export type LabMappableTest = {
+  item_code: string;
+  item_name: string;
+  diagnostic_test?: string;
+  parameters: Array<{ parameter_code: string; parameter_name: string }>;
 };
 
 export type LabReagentDashboard = {
@@ -727,8 +969,61 @@ export type LabReagentDashboard = {
   reason?: string;
   batches?: LabReagentBatch[];
   low_stock_alerts?: LabReagentBatch[];
+  reorder_alerts?: LabReorderAlert[];
   rules_count?: number;
-  reagent_items?: Array<{ item_code: string; item_name: string }>;
+  reagent_items?: Array<{ item_code: string; item_name: string; safety_stock?: number }>;
+  lab_tests?: LabMappableTest[];
+  consumable_batches?: LabConsumableBatch[];
+  consumable_reorder_alerts?: LabReorderAlert[];
+  consumable_items?: Array<{ item_code: string; item_name: string; safety_stock?: number }>;
+  consumable_rules?: Array<{
+    name: string;
+    rule_name: string;
+    consumable_item: string;
+    consumable_name?: string;
+    qty_per_trf: number;
+  }>;
+};
+
+export type LabCptTestRow = {
+  ok?: boolean;
+  diagnostic_test?: string;
+  test_name?: string;
+  item?: string;
+  department?: string;
+  selling_price?: number;
+  cpt_reagent?: number;
+  cpt_fixed?: number;
+  cpt_logistics?: number;
+  cpt_total?: number;
+  margin?: number | null;
+  overhead_coefficient?: number;
+};
+
+export type LabCptDashboard = {
+  period: {
+    start_date?: string;
+    end_date?: string;
+    lookback_days?: number;
+    fixed_expenses?: number;
+    logistics_expenses?: number;
+    total_test_sales_revenue?: number;
+    overhead_coefficient?: number;
+    avg_tests_per_trf?: number;
+    revenue_is_synthetic?: boolean;
+  };
+  settings: {
+    overhead_coefficient?: number;
+    lookback_days?: number;
+    avg_tests_per_trf?: number;
+  };
+  totals: {
+    fixed_expenses?: number;
+    logistics_expenses?: number;
+    total_test_sales_revenue?: number;
+    tests_with_cpt?: number;
+  };
+  tests: LabCptTestRow[];
 };
 
 export type QcEquipment = {
@@ -740,13 +1035,19 @@ export type QcEquipment = {
   status?: string;
   safety_label?: string;
   next_calibration_due?: string;
+  next_maintenance_due?: string;
   location?: string;
+  item?: string;
+  erp_asset?: string;
+  machine_name_alias?: string;
+  model?: string;
   reason?: string;
 };
 
 export type QcDashboard = {
   equipment: QcEquipment[];
   overdue: QcEquipment[];
+  pm_overdue?: QcEquipment[];
   iqc_today: Array<{
     name: string;
     analyte_code: string;
@@ -765,7 +1066,7 @@ export type QcDashboard = {
     participation_date?: string;
     score?: string;
   }>;
-  counts: { equipment: number; iqc: number; eqa: number; calibrations: number };
+  counts: { equipment: number; iqc: number; eqa: number; calibrations: number; maintenance?: number };
 };
 
 export type QmsDashboard = {
@@ -985,17 +1286,97 @@ export type SiteFooterLink = {
   group?: string;
 };
 
+export type PublicSeoSettings = {
+  seo_tagline?: string;
+  seo_keywords?: string;
+  public_website_title?: string;
+  public_meta_title?: string;
+  public_meta_description?: string;
+  public_canonical_url?: string;
+  public_robots_index?: number;
+  public_robots_follow?: number;
+  public_og_title?: string;
+  public_og_description?: string;
+  public_org_name?: string;
+  public_org_display_name?: string;
+  public_contact_phone?: string;
+  public_contact_email?: string;
+  public_street_address?: string;
+  public_city?: string;
+  public_state?: string;
+  public_pin_code?: string;
+  public_country?: string;
+  public_latitude?: string;
+  public_longitude?: string;
+  public_google_maps_url?: string;
+  public_sitemap_url?: string;
+  public_gsc_verification?: string;
+  public_twitter_card?: string;
+  google_analytics_id?: string;
+  google_tag_manager_id?: string;
+  enable_google_indexing_default?: number;
+};
+
 export type SiteFooterPayload = {
   brand?: string;
   tagline?: string;
+  seo_tagline?: string;
+  seo_keywords?: string;
   subdomains?: SiteFooterLink[];
   company?: SiteFooterLink[];
+  resources?: SiteFooterLink[];
   social?: SiteFooterLink[];
   legal?: Array<{ title: string; url: string }>;
   home_collection_helpline?: string;
   home_collection_hours?: string;
   home_collection_tel?: string;
   home_collection_cta_label?: string;
+};
+
+export type SiteCmsPage = {
+  page_key: string;
+  title: string;
+  subtitle?: string;
+  body?: string;
+  meta_title?: string;
+  meta_description?: string;
+  meta_keywords?: string;
+  is_published?: number | boolean;
+};
+
+export type SiteFaqSection = {
+  id: string;
+  title: string;
+  items: Array<{ question: string; answer: string }>;
+};
+
+export type BlogPostSummary = {
+  name: string;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  featured_image?: string;
+  featured_video_url?: string;
+  author_name?: string;
+  category?: string;
+  published_on?: string;
+  meta_title?: string;
+  meta_description?: string;
+  allow_google_index?: number | boolean;
+};
+
+export type BlogPostDetail = BlogPostSummary & {
+  content?: string;
+  meta_keywords?: string;
+  og_image?: string;
+  canonical_url?: string;
+  status?: string;
+};
+
+export type PortalSeoSettings = {
+  google_analytics_id?: string;
+  google_tag_manager_id?: string;
+  enable_google_indexing_default?: number | boolean;
 };
 
 export type Franchisee = {
@@ -1072,12 +1453,189 @@ export type HrSelfService = {
   expense_claims: ExpenseClaimRow[];
 };
 
+export type PeopleHrmsDashboard = {
+  available: boolean;
+  hr_available: boolean;
+  is_manager: boolean;
+  period: { start: string; end: string; as_of: string; label: string };
+  employee: {
+    id?: string | null;
+    name: string;
+    department?: string | null;
+    designation?: string | null;
+    branch?: string | null;
+    company?: string | null;
+    status?: string;
+    date_of_joining?: string;
+    phone?: string | null;
+    email?: string | null;
+    gender?: string | null;
+    reports_to?: string | null;
+    reports_to_name?: string | null;
+  };
+  compensation: {
+    monthly_ctc: number;
+    ctc_from_erp: boolean;
+    latest_net_pay: number;
+  };
+  kpis: {
+    present_days: number;
+    present_pct: number;
+    leave_balance: number;
+    expenses_claimed_mtd: number;
+    expenses_pending: number;
+    checkins_mtd: number;
+    payslips_count: number;
+  };
+  attendance: {
+    checkins_mtd: number;
+    present_days: number;
+    last_checkin: { name: string; time: string; log_type?: string } | null;
+    today_status: string;
+    checkin_available: boolean;
+    series: Array<{ day: number; label: string; count: number }>;
+  };
+  leave_balances: Array<{
+    leave_type: string;
+    allocated: number;
+    taken: number;
+    balance: number;
+  }>;
+  payslips: Array<{
+    name: string;
+    posting_date?: string;
+    start_date?: string;
+    end_date?: string;
+    gross_pay: number;
+    net_pay: number;
+    status: string;
+  }>;
+  expenses: { count: number; claimed: number; pending: number };
+  leave_applications: LeaveApplicationRow[];
+  expense_claims: ExpenseClaimRow[];
+  leave_types: Array<{ name: string; leave_type_name?: string; max_leaves_allowed?: number }>;
+  expense_types: Array<{ name: string; expense_type?: string }>;
+  org: {
+    headcount_active: number;
+    joined_mtd: number;
+    left_mtd: number;
+    leave_open: number;
+    expense_pending: number;
+    attendance_today: number;
+    open_positions?: number;
+    payroll: {
+      salary_slips_mtd: number;
+      payroll_ready: boolean;
+      total_net?: number;
+      total_gross?: number;
+      total_deduction?: number;
+    };
+    payroll_summary?: {
+      salary_slips_mtd: number;
+      payroll_ready: boolean;
+      total_gross: number;
+      total_net: number;
+      total_deduction: number;
+    };
+    attendance_breakdown?: {
+      present: number;
+      absent: number;
+      leave: number;
+      half_day: number;
+      total: number;
+    };
+    attendance_series?: Array<{ day: number; label: string; count: number }>;
+    by_department: Array<{ department: string; headcount: number }>;
+    recent_job_openings?: Array<{
+      name: string;
+      job_title: string;
+      department: string;
+      designation: string;
+      status: string;
+      applicants: number;
+      posted: string;
+    }>;
+    recent_activities?: Array<{ type: string; text: string; when: string }>;
+    period_label: string;
+  } | null;
+};
+
+export type PeopleEmployeeRow = {
+  id: string;
+  name: string;
+  department?: string | null;
+  designation?: string | null;
+  branch?: string | null;
+  status?: string;
+  date_of_joining?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+export type PeopleChecklistTodo = {
+  name: string;
+  kind: 'onboarding' | 'offboarding' | string;
+  description: string;
+  status: string;
+  due?: string | null;
+  allocated_to?: string | null;
+  employee?: string | null;
+  modified?: string | null;
+};
+
+export type StaffPlanResearch = {
+  method?: string;
+  disclaimer?: string;
+  market_median_ctc: number;
+  suggested_desired_ctc?: number;
+  sources: Array<{ portal: string; weight: number; estimated_median_ctc: number; note?: string }>;
+  matched_benchmark?: {
+    staff_role?: string;
+    designation?: string;
+    department?: string;
+    default_kpis?: string[];
+    default_kras?: string[];
+  };
+};
+
+export type StaffPlanDetail = {
+  name: string;
+  title: string;
+  department?: string;
+  designation?: string;
+  staff_role?: string;
+  location?: string;
+  employment_type?: string;
+  status?: string;
+  headcount?: number;
+  desired_ctc?: number;
+  market_median_ctc?: number;
+  job_opening?: string;
+  kpis?: string[];
+  kras?: string[];
+  jd_text?: string;
+  market_research?: StaffPlanResearch | null;
+  notes?: string;
+  published_on?: string;
+  careers_url?: string;
+  careers_apply_path?: string;
+};
+
 export type FranchiseeProfile = {
   name: string;
   branch_code?: string;
   franchise_name?: string;
   territory_region?: string;
   commission_percentage_rate?: number;
+  franchisee_type?: string;
+  franchisee_rate_label?: string;
+  wallet_balance?: number;
+  credit_limit?: number;
+  available_to_bill?: number;
+  parent_foco?: string;
+  override_upsell_commission?: number;
+  profit_from_centre?: number;
+  pending_fofo_earnings?: number;
   address?: string;
   contact_phone?: string;
   contact_email?: string;
@@ -1169,6 +1727,7 @@ export type JobApplicationSummary = {
   pipeline_stage?: string;
   source?: string;
   applied_on?: string | null;
+  hec_employee?: string | null;
 };
 
 export type JobApplicationDetail = JobApplicationSummary & {
@@ -1209,6 +1768,20 @@ export type HiringLeadRow = {
   campaign?: string;
 };
 
+
+export type VolumeHiringKpis = {
+  days: number;
+  target_per_day: number;
+  applicants_today: number;
+  applicants_period: number;
+  avg_per_day: number;
+  on_track: boolean;
+  knockout: Record<string, number>;
+  knockout_pass_rate_pct: number;
+  in_interview_or_later: number;
+  by_day: Array<{ date: string; count: number }>;
+  by_source: Array<{ source: string; count: number }>;
+};
 export type HiringMarketingDashboard = {
   from_date: string;
   to_date: string;
@@ -1258,6 +1831,14 @@ export type ApplicationPipelineBundle = {
     status?: string;
     salary_offered?: number;
     notes?: string;
+    grade?: string;
+    salary_structure?: string;
+    letter_type?: string;
+    email_status?: string;
+    recipient_email?: string;
+    email_subject?: string;
+    email_queued_on?: string | null;
+    email_sent_on?: string | null;
   }>;
   onboarding_todos: Array<{
     name: string;
@@ -1327,6 +1908,91 @@ export type ClinicalPrescription = {
   diagnostics?: PrescriptionDiagnosticLine[];
 };
 
+export type ClinicalEncounter = {
+  name: string;
+  patient?: string;
+  patient_name?: string;
+  doctor?: string;
+  doctor_appointment?: string;
+  department?: string;
+  status?: string;
+  specialty_template?: string;
+  clinical_prescription?: string;
+  chief_complaint?: string;
+  history_of_present_illness?: string;
+  examination?: string;
+  assessment?: string;
+  plan?: string;
+  diagnosis?: string;
+  vitals?: Record<string, unknown> | null;
+  scribe_transcript?: string;
+  cdss_suggestions?: {
+    differentials?: Array<{ name: string; rationale?: string; urgency?: string }>;
+    cautions?: string[];
+  } | null;
+  encounter_datetime?: string;
+};
+
+export type CareProgram = {
+  program_code: string;
+  name: string;
+  title: string;
+  condition?: string;
+  description?: string;
+  duration_days?: number;
+  enabled?: number;
+  task_library?: Array<{ code: string; title: string; cadence?: string }>;
+  goal_metrics?: Record<string, number>;
+};
+
+export type CareEnrollment = {
+  name: string;
+  patient?: string;
+  program?: CareProgram | null;
+  assigned_doctor?: string;
+  status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  health_score?: number;
+  adherence_percent?: number;
+  study_protocol?: string;
+  study_consent?: number;
+};
+
+export type CareVital = {
+  name?: string;
+  vital_type: string;
+  value: number;
+  unit?: string;
+  recorded_at?: string | null;
+  out_of_range?: number | boolean;
+};
+
+export type CareTask = {
+  name: string;
+  task_code: string;
+  task_title?: string;
+  completed?: number | boolean;
+  task_date?: string | null;
+};
+
+export type CareVitalAlert = {
+  vital_type: string;
+  value: number;
+  recorded_at?: string | null;
+  enrollment?: string;
+};
+
+export type AbhaProfile = {
+  patient?: string;
+  patient_name?: string;
+  abha_number?: string;
+  abha_address?: string;
+  abha_verification_status?: string;
+  abha_consent_at?: string | null;
+  abha_consent_note?: string;
+};
+
 export type RazorpayOrder = {
   order_id: string;
   amount: number;
@@ -1334,6 +2000,19 @@ export type RazorpayOrder = {
   currency: string;
   razorpay_key_id?: string;
   test_mode?: boolean;
+};
+
+export type CollectionTubeRow = {
+  tube_code?: string;
+  cap_color?: string;
+  accession_id?: string;
+  volume_ml?: number;
+  specimen?: string;
+  status?: string;
+  draw_order?: number;
+  linked_tests?: string;
+  destination?: string;
+  spin_lane?: string;
 };
 
 export type Booking = {
@@ -1355,6 +2034,7 @@ export type Booking = {
   creation?: string;
   modified?: string;
   franchisee_id?: string;
+  collection_tubes?: CollectionTubeRow[];
 };
 
 export type PharmacyOrder = {
@@ -1368,6 +2048,7 @@ export type PharmacyOrder = {
   delivery_user?: string;
   razorpay_payment_status?: string;
   payment_method?: string;
+  sales_invoice?: string;
   duration_months?: number;
   desired_discount_slab?: string;
   order_kind?: string;
@@ -1415,6 +2096,7 @@ export type AlliedHealthWing = {
   icon: string;
   color: string;
   image: string;
+  public_path?: string;
   service_count?: number;
   starting_rate?: number;
 };
@@ -1428,6 +2110,7 @@ export type AlliedHealthService = {
   mode?: string;
   duration?: string;
   rate: number;
+  includes?: string;
   short_description?: string;
   long_description?: string;
   department_name?: string;
@@ -1511,11 +2194,20 @@ function parseEnvelope<T>(body: unknown): ApiEnvelope<T> {
   }
   const nested = raw.message;
   if (nested && typeof nested === 'object') {
-    const envelope = nested as ApiEnvelope<T>;
-    if (envelope.status === 'error') {
-      throw new Error(envelope.message || 'Request failed');
+    const obj = nested as Record<string, unknown>;
+    if (obj.status === 'error') {
+      throw new Error(String(obj.message || 'Request failed'));
     }
-    return envelope;
+    // Standard HEC envelope: { status, message, data }
+    if (obj.status === 'success' && 'data' in obj) {
+      return obj as ApiEnvelope<T>;
+    }
+    // Raw whitelist payloads: { ok, tests } / { tubes } / etc.
+    return {
+      status: 'success',
+      message: typeof obj.message === 'string' ? obj.message : 'OK',
+      data: ('data' in obj ? obj.data : nested) as T,
+    };
   }
   if (typeof nested === 'string') {
     return { status: 'success', message: nested, data: {} as T };
@@ -1527,13 +2219,14 @@ async function downloadBinary(
   method: string,
   body: Record<string, string>,
   filename: string,
+  module: ApiModule = 'main',
 ): Promise<void> {
   const sid = getSid();
   const params = new URLSearchParams({
     ...body,
     ...(sid ? { sid } : {}),
   });
-  const res = await fetch(apiUrl(method), {
+  const res = await fetch(apiUrl(method, module), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -1752,6 +2445,49 @@ export const api = {
 
   getSiteFooter: () => request<SiteFooterPayload>('get_site_footer', { auth: false }),
 
+  getSiteCmsPage: (pageKey: string) =>
+    request<SiteCmsPage>('get_site_cms_page', {
+      auth: false,
+      module: 'siteFooter',
+      body: { page_key: pageKey },
+    }),
+
+  getPublicSeoSettings: () =>
+    request<PublicSeoSettings>('get_public_seo_settings', {
+      auth: false,
+      module: 'siteFooter',
+    }),
+
+  getSiteFaqs: () =>
+    request<{ sections: SiteFaqSection[] }>('get_site_faqs', {
+      auth: false,
+      module: 'siteFooter',
+    }),
+
+  listBlogPosts: (opts?: { limit?: number; offset?: number; category?: string }) =>
+    request<{ posts: BlogPostSummary[]; total: number; limit: number; offset: number }>(
+      'list_blog_posts',
+      {
+        auth: false,
+        module: 'blog',
+        body: {
+          limit: opts?.limit ?? 20,
+          offset: opts?.offset ?? 0,
+          ...(opts?.category ? { category: opts.category } : {}),
+        },
+      },
+    ),
+
+  getBlogPost: (slug: string) =>
+    request<BlogPostDetail>('get_blog_post', {
+      auth: false,
+      module: 'blog',
+      body: { slug },
+    }),
+
+  getPortalSeoSettings: () =>
+    request<PortalSeoSettings>('get_portal_seo_settings', { auth: false, module: 'blog' }),
+
   startAiPhysicianJourney: (body: {
     symptoms: string;
     latitude?: number;
@@ -1882,10 +2618,14 @@ export const api = {
       module: 'otp',
     }),
 
-  verifyOtpLogin: async (mobile: string, otp: string) => {
+  verifyOtpLogin: async (mobile: string, otp: string, referralCode?: string) => {
     const envelope = await request<SessionUser>('verify_otp_and_login', {
       method: 'POST',
-      body: { mobile, otp },
+      body: {
+        mobile,
+        otp,
+        ...(referralCode ? { referral_code: referralCode } : {}),
+      },
       auth: false,
       cookies: true,
       module: 'otp',
@@ -2245,6 +2985,7 @@ export const api = {
       consultation_mode?: string;
       session_card?: string;
       sessions_remaining?: number;
+      wellness_wing?: string;
     }>('book_allied_health_appointment', {
       method: 'POST',
       body,
@@ -2316,6 +3057,475 @@ export const api = {
       module: 'ePrescribe',
     }),
 
+  getOrCreateEncounter: (appointmentId: string) =>
+    request<{
+      encounter: ClinicalEncounter;
+      appointment: {
+        appointment_id: string;
+        patient_name?: string;
+        appointment_date?: string;
+        appointment_time?: string;
+        consultation_mode?: string;
+        status?: string;
+      };
+      created: boolean;
+    }>('get_or_create_encounter', {
+      method: 'POST',
+      body: { appointment_id: appointmentId },
+      auth: true,
+      module: 'clinicalEncounter',
+    }),
+
+  saveEncounter: (body: {
+    encounter_id: string;
+    chief_complaint?: string;
+    history_of_present_illness?: string;
+    examination?: string;
+    assessment?: string;
+    plan?: string;
+    diagnosis?: string;
+    vitals_json?: string | Record<string, unknown>;
+    specialty_template?: string;
+  }) =>
+    request<{ encounter: ClinicalEncounter }>('save_encounter', {
+      method: 'POST',
+      body: {
+        encounter_id: body.encounter_id,
+        ...(body.chief_complaint != null ? { chief_complaint: body.chief_complaint } : {}),
+        ...(body.history_of_present_illness != null
+          ? { history_of_present_illness: body.history_of_present_illness }
+          : {}),
+        ...(body.examination != null ? { examination: body.examination } : {}),
+        ...(body.assessment != null ? { assessment: body.assessment } : {}),
+        ...(body.plan != null ? { plan: body.plan } : {}),
+        ...(body.diagnosis != null ? { diagnosis: body.diagnosis } : {}),
+        ...(body.vitals_json != null
+          ? {
+              vitals_json:
+                typeof body.vitals_json === 'string'
+                  ? body.vitals_json
+                  : JSON.stringify(body.vitals_json),
+            }
+          : {}),
+        ...(body.specialty_template != null ? { specialty_template: body.specialty_template } : {}),
+      },
+      auth: true,
+      module: 'clinicalEncounter',
+    }),
+
+  finalizeEncounterAndRx: (body: {
+    encounter_id: string;
+    medicines?: PrescriptionMedicineLine[];
+    diagnostics?: PrescriptionDiagnosticLine[];
+    submit?: boolean;
+  }) =>
+    request<{ encounter: ClinicalEncounter; prescription?: ClinicalPrescription }>(
+      'finalize_encounter_and_rx',
+      {
+        method: 'POST',
+        body: {
+          encounter_id: body.encounter_id,
+          medicines: JSON.stringify(body.medicines || []),
+          diagnostics: JSON.stringify(body.diagnostics || []),
+          submit: body.submit === false ? 0 : 1,
+        },
+        auth: true,
+        module: 'clinicalEncounter',
+      },
+    ),
+
+  scribeConsultationAudio: (body: {
+    audio_base64: string;
+    filename?: string;
+    encounter_id?: string;
+  }) =>
+    request<{
+      transcript: string;
+      structured: Record<string, string>;
+      encounter_id?: string;
+    }>('scribe_consultation_audio', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'aiPractice',
+    }),
+
+  suggestDifferentials: (clinicalText: string, encounterId?: string) =>
+    request<{
+      suggestions: {
+        differentials: Array<{ name: string; rationale?: string; urgency?: string }>;
+        cautions?: string[];
+        source?: string;
+      };
+    }>('suggest_differentials', {
+      method: 'POST',
+      body: {
+        clinical_text: clinicalText,
+        ...(encounterId ? { encounter_id: encounterId } : {}),
+      },
+      auth: true,
+      module: 'aiPractice',
+    }),
+
+  smartsyncParsePrescription: (body: {
+    image_base64?: string;
+    mime_type?: string;
+    raw_text?: string;
+  }) =>
+    request<{
+      ocr_text: string;
+      medicines: Array<{
+        raw_name?: string;
+        dosage?: string;
+        frequency?: string;
+        duration?: string;
+        matches?: Array<{ name: string; item_name?: string }>;
+        best?: { name: string; item_name?: string } | null;
+      }>;
+      diagnostics: Array<{
+        raw_name?: string;
+        matches?: Array<{ name: string; test_name?: string }>;
+        best?: { name: string; test_name?: string } | null;
+      }>;
+      notes?: string;
+    }>('smartsync_parse_prescription', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'aiPractice',
+    }),
+
+  listCarePrograms: () =>
+    request<{ programs: CareProgram[] }>('list_care_programs', {
+      method: 'POST',
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  enrollCareProgram: (programCode: string, assessmentAnswers?: Record<string, unknown>) =>
+    request<{ enrollment: CareEnrollment; already?: boolean }>('enroll_care_program', {
+      method: 'POST',
+      body: {
+        program_code: programCode,
+        ...(assessmentAnswers ? { assessment_answers: JSON.stringify(assessmentAnswers) } : {}),
+      },
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  getMyCareEnrollments: () =>
+    request<{ enrollments: CareEnrollment[] }>('get_my_care_enrollments', {
+      method: 'POST',
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  getCareDashboard: (enrollmentId: string) =>
+    request<{
+      enrollment: CareEnrollment;
+      vitals: CareVital[];
+      tasks: CareTask[];
+    }>('get_care_dashboard', {
+      method: 'POST',
+      body: { enrollment_id: enrollmentId },
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  logPatientVital: (body: {
+    enrollment_id: string;
+    vital_type: string;
+    value: number;
+    unit?: string;
+    notes?: string;
+  }) =>
+    request<{
+      vital: { name: string; vital_type: string; value: number; out_of_range: boolean };
+      health_score: number;
+      adherence_percent: number;
+    }>('log_patient_vital', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  completeCareTask: (taskId: string) =>
+    request<{ task_id: string; health_score: number; adherence_percent: number }>(
+      'complete_care_task',
+      {
+        method: 'POST',
+        body: { task_id: taskId },
+        auth: true,
+        module: 'carePrograms',
+      },
+    ),
+
+  getPatientCareStrip: (patientId: string) =>
+    request<{ enrollments: CareEnrollment[]; alerts: CareVitalAlert[] }>('get_patient_care_strip', {
+      method: 'POST',
+      body: { patient_id: patientId },
+      auth: true,
+      module: 'carePrograms',
+    }),
+
+  getMyAbha: () =>
+    request<{ abha: AbhaProfile | null }>('get_my_abha', {
+      method: 'POST',
+      auth: true,
+      module: 'abha',
+    }),
+
+  linkAbhaId: (body: {
+    abha_number?: string;
+    abha_address?: string;
+    consent?: boolean;
+    consent_note?: string;
+    patient_id?: string;
+  }) =>
+    request<{ abha: AbhaProfile }>('link_abha_id', {
+      method: 'POST',
+      body: {
+        ...(body.abha_number ? { abha_number: body.abha_number } : {}),
+        ...(body.abha_address ? { abha_address: body.abha_address } : {}),
+        consent: body.consent === false ? 0 : 1,
+        ...(body.consent_note ? { consent_note: body.consent_note } : {}),
+        ...(body.patient_id ? { patient_id: body.patient_id } : {}),
+      },
+      auth: true,
+      module: 'abha',
+    }),
+
+  getPatientAbha: (patientId: string) =>
+    request<{ abha: AbhaProfile }>('get_patient_abha', {
+      method: 'POST',
+      body: { patient_id: patientId },
+      auth: true,
+      module: 'abha',
+    }),
+
+  getMyPracticeAnalytics: (days = 30) =>
+    request<{
+      doctor?: string;
+      days: number;
+      kpis: Record<string, number>;
+    }>('get_my_practice_analytics', {
+      method: 'POST',
+      body: { days },
+      auth: true,
+      module: 'practiceAnalytics',
+    }),
+
+  listOpdVisitPacks: () =>
+    request<{
+      plans: Array<{
+        name: string;
+        plan_code?: string;
+        title: string;
+        description?: string;
+        monthly_price?: number;
+        included_opd_visits?: number;
+        lab_discount_percent?: number;
+        pharmacy_discount_percent?: number;
+      }>;
+    }>('list_opd_visit_packs', {
+      method: 'POST',
+      auth: true,
+      module: 'practiceAnalytics',
+    }),
+
+  consumeOpdVisitEntitlement: (appointmentId: string) =>
+    request<{
+      appointment_id: string;
+      subscription: string;
+      opd_visits_remaining: number;
+      amount: number;
+    }>('consume_opd_visit_entitlement', {
+      method: 'POST',
+      body: { appointment_id: appointmentId },
+      auth: true,
+      module: 'practiceAnalytics',
+    }),
+
+  listSpecialtyTemplates: () =>
+    request<{
+      templates: Array<{
+        code: string;
+        title: string;
+        chief_complaint_hint?: string;
+        examination_hint?: string;
+        plan_hint?: string;
+      }>;
+    }>('list_specialty_templates', {
+      method: 'POST',
+      auth: true,
+      module: 'researchLite',
+    }),
+
+  listStudyProtocols: () =>
+    request<{
+      protocols: Array<{
+        name: string;
+        protocol_code?: string;
+        title: string;
+        condition?: string;
+        description?: string;
+      }>;
+    }>('list_study_protocols', {
+      method: 'POST',
+      auth: true,
+      module: 'researchLite',
+    }),
+
+  attachStudyConsent: (enrollmentId: string, protocolCode: string) =>
+    request<{ enrollment_id: string; study_protocol: string }>('attach_study_consent', {
+      method: 'POST',
+      body: { enrollment_id: enrollmentId, protocol_code: protocolCode, consent: 1 },
+      auth: true,
+      module: 'researchLite',
+    }),
+
+  getAbdmStatus: () =>
+    request<{
+      enabled: boolean | number;
+      environment: string;
+      credentials_ready: boolean;
+      otp_stub_mode: boolean | number;
+      certification_status: string;
+      marketing_claim_allowed: boolean | number;
+      facility_id?: string;
+      hip_id?: string;
+    }>('get_abdm_status', {
+      method: 'POST',
+      body: {},
+      auth: true,
+      module: 'abdm',
+    }),
+
+  requestAbhaOtp: (payload?: { mobile?: string; abha_number?: string }) =>
+    request<{ stub?: boolean; txn?: string; hint?: string; expires_in_sec?: number }>('request_abha_otp', {
+      method: 'POST',
+      body: payload || {},
+      auth: true,
+      module: 'abdm',
+    }),
+
+  verifyAbhaOtp: (payload: { otp: string; abha_number?: string; abha_address?: string }) =>
+    request<{ abha?: { abha_number?: string; abha_address?: string; abha_verification_status?: string } }>(
+      'verify_abha_otp',
+      {
+        method: 'POST',
+        body: payload,
+        auth: true,
+        module: 'abdm',
+      },
+    ),
+
+  buildDhisClaimPack: (month?: number, year?: number) =>
+    request<{
+      pack: {
+        period: string;
+        submitted_prescriptions: number;
+        abha_verified_prescriptions: number;
+        final_encounters: number;
+        disclaimer: string;
+      };
+    }>('build_dhis_claim_pack', {
+      method: 'POST',
+      body: {
+        ...(month != null ? { month } : {}),
+        ...(year != null ? { year } : {}),
+      },
+      auth: true,
+      module: 'abdm',
+    }),
+
+  listKnowledgeArticles: (specialty?: string) =>
+    request<{
+      articles: Array<{
+        name: string;
+        article_code: string;
+        title: string;
+        specialty: string;
+        summary: string;
+        source_name?: string;
+        external_url?: string;
+        pmid?: string;
+      }>;
+    }>('list_knowledge_articles', {
+      method: 'POST',
+      body: { specialty: specialty || '' },
+      auth: true,
+      module: 'knowledge',
+    }),
+
+  searchPubMed: (q: string) =>
+    request<{
+      results: Array<{
+        pmid?: string | null;
+        title: string;
+        source?: string;
+        pubdate?: string;
+        authors?: string;
+        external_url?: string;
+        curated?: boolean;
+      }>;
+      cached?: boolean;
+      fallback?: boolean;
+    }>('search_pubmed', {
+      method: 'POST',
+      body: { q },
+      auth: true,
+      module: 'knowledge',
+    }),
+
+  listStudyOpsProtocols: () =>
+    request<{
+      protocols: Array<{
+        name: string;
+        protocol_code?: string;
+        title?: string;
+        condition?: string;
+        description?: string;
+        care_program?: string;
+      }>;
+    }>('list_study_ops_protocols', {
+      method: 'POST',
+      body: {},
+      auth: true,
+      module: 'studyOps',
+    }),
+
+  getStudyFunnel: (protocolCode: string) =>
+    request<{
+      protocol: string;
+      funnel: Record<string, number>;
+      subject_count: number;
+      sites: Array<{ name: string; site_code: string; site_name: string; target_n?: number; status?: string }>;
+      disclaimer?: string;
+    }>('get_study_funnel', {
+      method: 'POST',
+      body: { protocol_code: protocolCode },
+      auth: true,
+      module: 'studyOps',
+    }),
+
+  exportStudyDataset: (protocolCode: string) =>
+    request<{
+      package: {
+        protocol: string;
+        exported_at: string;
+        subjects: Array<Record<string, unknown>>;
+        data_dictionary: Record<string, string>;
+        disclaimer?: string;
+      };
+    }>('export_study_dataset', {
+      method: 'POST',
+      body: { protocol_code: protocolCode },
+      auth: true,
+      module: 'studyOps',
+    }),
+
   getClinicalPrescription: (prescriptionId: string) =>
     request<{ prescription: ClinicalPrescription }>('get_clinical_prescription', {
       method: 'POST',
@@ -2323,6 +3533,13 @@ export const api = {
       auth: true,
       module: 'prescriptions',
     }),
+
+  getPrescriptionPrintHtml: (prescriptionId: string, letterheadPlain = false) =>
+    fetchRawMessage(
+      'get_prescription_print_html',
+      { prescription_id: prescriptionId, letterhead_plain: letterheadPlain ? '1' : '0' },
+      'ePrescribeFormat',
+    ),
 
   orderPharmacyFromPrescription: (body: {
     prescription_id: string;
@@ -2422,6 +3639,41 @@ export const api = {
       module: 'erxFulfillment',
     }),
 
+
+  getPharmacyOrderInvoice: (orderId: string) =>
+    request<{
+      order_id: string;
+      sales_invoice?: string;
+      invoice_pdf_url?: string;
+      items: unknown[];
+      order_total: number;
+      payment_id?: string;
+      payment_mode?: string;
+    }>('get_pharmacy_order_invoice', {
+      method: 'POST',
+      body: { order_id: orderId },
+      auth: true,
+    }),
+
+  getFollowupSystem: () =>
+    request<{ available: boolean; apis: Record<string, string> }>('get_followup_system', {
+      method: 'POST',
+      auth: false,
+    }),
+
+  listFollowups: (limit = 50) =>
+    request<{ sessions?: unknown[] }>('list_followups', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+    }),
+
+  scheduleFollowup: (body: Record<string, string | number | boolean>) =>
+    request<Record<string, unknown>>('schedule_followup', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
   createPharmacyOrder: (body: Record<string, string | number>) =>
     request<Record<string, unknown>>('create_pharmacy_order', {
       method: 'POST',
@@ -2528,6 +3780,193 @@ export const api = {
       },
       auth: true,
       module: 'wellnessSessions',
+    }),
+
+  ensureRemediumCareSetup: () =>
+    request<{
+      doctypes: string[];
+      packs: string[];
+      items: string[];
+      zones: Record<string, unknown>;
+    }>('ensure_remedium_care_setup', { method: 'POST', auth: true, module: 'remediumCare' }),
+
+  getCareZones: () =>
+    request<{ zones: Record<string, unknown>; packages: string[] }>('get_care_zones', {
+      method: 'POST',
+      auth: false,
+      module: 'remediumCare',
+    }),
+
+  submitCareIntake: (payload: {
+    appointment_id?: string;
+    chief_complaint: string;
+    history_json?: string;
+    consent: string;
+    sensory_notes?: string;
+  }) =>
+    request<{ intake: Record<string, unknown> }>('submit_care_intake', {
+      method: 'POST',
+      body: payload,
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  getCareIntake: (appointmentId?: string) =>
+    request<{
+      intake: {
+        name: string;
+        chief_complaint?: string;
+        history?: Record<string, unknown>;
+        status?: string;
+      } | null;
+    }>('get_care_intake', {
+      method: 'POST',
+      body: appointmentId ? { appointment_id: appointmentId } : {},
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  markCareCheckin: (appointmentId: string, arrived = true) =>
+    request<{ appointment_id: string; care_arrived: number }>('mark_care_checkin', {
+      method: 'POST',
+      body: { appointment_id: appointmentId, arrived: arrived ? '1' : '0' },
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  createCareBlueprint: (payload: {
+    patient: string;
+    package?: string;
+    chief_complaint?: string;
+    timeline_weeks?: number | string;
+    appointment_id?: string;
+    baseline_pain?: number | string;
+    baseline_mobility?: number | string;
+    attach_pack?: string;
+    clinical_notes?: string;
+  }) =>
+    request<{ blueprint: Record<string, unknown>; session_card?: string }>('create_care_blueprint', {
+      method: 'POST',
+      body: payload,
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  getMyCareBlueprints: () =>
+    request<{ blueprints: Array<Record<string, unknown>> }>('get_my_care_blueprints', {
+      method: 'POST',
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  getCareBlueprint: (blueprintId: string) =>
+    request<{ blueprint: Record<string, unknown> }>('get_care_blueprint', {
+      method: 'POST',
+      body: { blueprint_id: blueprintId },
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  updateCareBlueprint: (blueprintId: string, fields: Record<string, string | number>) =>
+    request<{ blueprint: Record<string, unknown> }>('update_care_blueprint', {
+      method: 'POST',
+      body: { blueprint_id: blueprintId, ...fields },
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  logCareZoneSession: (payload: {
+    blueprint_id: string;
+    zone: string;
+    modality: string;
+    therapist?: string;
+    duration_minutes?: number | string;
+    notes?: string;
+    appointment_id?: string;
+    punch_card?: string;
+  }) =>
+    request<{ log: Record<string, unknown>; blueprint: Record<string, unknown> }>('log_care_zone_session', {
+      method: 'POST',
+      body: payload,
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  listCareOpsQueue: (limit = 50) =>
+    request<{
+      blueprints: Array<Record<string, unknown>>;
+      checkins: Array<Record<string, unknown>>;
+      zone_board: Record<string, { label: string; ashoknagar_label?: string; today: number }>;
+      zones: Record<string, unknown>;
+    }>('list_care_ops_queue', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  generateCareProgressReport: (blueprintId: string) =>
+    request<{ report: Record<string, unknown> }>('generate_care_progress_report', {
+      method: 'POST',
+      body: { blueprint_id: blueprintId },
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  getMyCareProgressReports: (blueprintId?: string) =>
+    request<{ reports: Array<Record<string, unknown>> }>('get_my_care_progress_reports', {
+      method: 'POST',
+      body: blueprintId ? { blueprint_id: blueprintId } : {},
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  uploadCareGaitSnapshot: (payload: {
+    blueprint_id: string;
+    snapshot_url?: string;
+    metadata_json?: string;
+    red_zone_tags?: string;
+  }) =>
+    request<{ blueprint: Record<string, unknown> }>('upload_care_gait_snapshot', {
+      method: 'POST',
+      body: payload,
+      auth: true,
+      module: 'remediumCare',
+    }),
+
+  listWellnessVideos: (wingId?: string) =>
+    request<{
+      videos: Array<{
+        name?: string;
+        video_code?: string;
+        wing_id?: string;
+        title: string;
+        topic?: string;
+        youtube_id: string;
+        youtube_url?: string;
+        sort_order?: number;
+      }>;
+      wing_id?: string | null;
+      count: number;
+      wings?: string[];
+    }>('list_wellness_videos', {
+      method: 'POST',
+      body: wingId ? { wing_id: wingId } : {},
+      auth: false,
+      module: 'wellnessVideos',
+    }),
+
+  setupWellnessVideoCms: (forceUpdate?: boolean) =>
+    request<{
+      doctype: string;
+      created_doctype: boolean;
+      seed: { created: string[]; updated: string[] };
+      desk_path: string;
+    }>('setup_wellness_video_cms', {
+      method: 'POST',
+      body: forceUpdate ? { force_update: '1' } : {},
+      auth: true,
+      module: 'wellnessVideos',
     }),
 
   getMyHealthSubscription: () =>
@@ -2922,6 +4361,34 @@ export const api = {
       module: 'careers',
     }),
 
+
+  getVolumeHiringKpis: (days = 7) =>
+    request<VolumeHiringKpis>('get_volume_hiring_kpis', {
+      method: 'POST',
+      body: { days },
+      auth: true,
+      module: 'wbHiring',
+    }),
+
+  seedWbEvergreenRoles: () =>
+    request<{ seeded: Array<Record<string, unknown>> }>('seed_wb_evergreen_roles', {
+      method: 'POST',
+      auth: true,
+      module: 'wbHiring',
+    }),
+
+  setupWbHiring: () =>
+    request<Record<string, unknown>>('setup_wb_hiring', {
+      method: 'POST',
+      auth: true,
+      module: 'wbHiring',
+    }),
+
+  ingestHiringBiodata: (body: Record<string, string | number | boolean>) =>
+    request<{ application_id: string; parsed?: Record<string, unknown>; source?: string }>(
+      'ingest_hiring_biodata',
+      { method: 'POST', body, auth: false, module: 'wbHiring' },
+    ),
   getHiringMarketingDashboard: (body?: { from_date?: string; to_date?: string }) =>
     request<HiringMarketingDashboard>('get_hiring_marketing_dashboard', {
       method: 'POST',
@@ -3042,7 +4509,20 @@ export const api = {
     notes?: string;
     send?: number;
   }) =>
-    request<{ offer_id: string; status: string; pipeline_stage: string }>('create_job_offer', {
+    request<{
+      offer_id: string;
+      status: string;
+      pipeline_stage: string;
+      email_status?: string;
+      email_pack?: {
+        ok?: boolean;
+        letter_type?: string;
+        grade?: string;
+        structure?: string;
+        subject?: string;
+        recipient_email?: string;
+      };
+    }>('create_job_offer', {
       method: 'POST',
       body: {
         application: body.application,
@@ -3051,8 +4531,45 @@ export const api = {
         ...(body.joining_date ? { joining_date: body.joining_date } : {}),
         ...(body.salary_offered != null ? { salary_offered: body.salary_offered } : {}),
         ...(body.notes ? { notes: body.notes } : {}),
-        send: body.send ?? 1,
+        send: body.send ?? 0,
       },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  getJobOfferEmail: (offer: string) =>
+    request<{
+      offer_id: string;
+      status?: string;
+      email_status?: string;
+      recipient_email?: string;
+      email_subject?: string;
+      grade?: string;
+      salary_structure?: string;
+      letter_type?: string;
+      salary_offered?: number;
+      designation?: string;
+      joining_date?: string | null;
+      html?: string;
+    }>('get_job_offer_email', {
+      method: 'POST',
+      body: { offer },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  sendJobOfferEmail: (offer: string) =>
+    request<{
+      ok: boolean;
+      offer_id: string;
+      status: string;
+      email_status: string;
+      recipient_email: string;
+      subject?: string;
+      via?: string;
+    }>('send_job_offer_email', {
+      method: 'POST',
+      body: { offer },
       auth: true,
       module: 'hiringPipeline',
     }),
@@ -3066,6 +4583,151 @@ export const api = {
       },
       auth: true,
       module: 'hiringPipeline',
+    }),
+
+  hireApplicantToPeople: (body: {
+    application: string;
+    designation?: string;
+    department?: string;
+    joining_date?: string;
+    salary_offered?: number;
+    roles?: string[];
+  }) =>
+    request<{
+      application: string;
+      user: string;
+      user_created: boolean;
+      temporary_password?: string;
+      employee: string;
+      roles: string[];
+      monthly_ctc: number;
+      people_path: string;
+      people_sync?: { employee_id?: string; monthly_ctc?: number; hr_available?: boolean };
+      pipeline_stage: string;
+    }>('hire_applicant_to_people', {
+      method: 'POST',
+      body: {
+        application: body.application,
+        ...(body.designation ? { designation: body.designation } : {}),
+        ...(body.department ? { department: body.department } : {}),
+        ...(body.joining_date ? { joining_date: body.joining_date } : {}),
+        ...(body.salary_offered != null ? { salary_offered: body.salary_offered } : {}),
+        ...(body.roles?.length ? { roles: JSON.stringify(body.roles) } : {}),
+        create_offer_if_missing: 1,
+      },
+      auth: true,
+      module: 'hiringPipeline',
+    }),
+
+  getStaffPlanningCatalog: () =>
+    request<{
+      role_benchmarks: Array<{
+        staff_role: string;
+        designation: string;
+        department: string;
+        kpis: string[];
+        kras: string[];
+        median_ctc: number;
+      }>;
+      kra_library: Array<{ name: string; title?: string; description?: string }>;
+      employment_types: string[];
+      staff_roles: string[];
+      disclaimer: string;
+    }>('get_staff_planning_catalog', { method: 'POST', auth: true, module: 'staffPlanning' }),
+
+  listStaffPlans: (status?: string) =>
+    request<{
+      plans: Array<{
+        name: string;
+        title: string;
+        designation?: string;
+        department?: string;
+        status?: string;
+        desired_ctc?: number;
+        market_median_ctc?: number;
+        job_opening?: string;
+        headcount?: number;
+      }>;
+    }>('list_staff_plans', {
+      method: 'POST',
+      body: status ? { status } : {},
+      auth: true,
+      module: 'staffPlanning',
+    }),
+
+  getStaffPlan: (plan: string) =>
+    request<StaffPlanDetail>('get_staff_plan', {
+      method: 'POST',
+      body: { plan },
+      auth: true,
+      module: 'staffPlanning',
+    }),
+
+  createStaffPlan: (body: {
+    title?: string;
+    designation: string;
+    department?: string;
+    staff_role?: string;
+    location?: string;
+    employment_type?: string;
+    headcount?: number;
+    kra_json?: string[];
+    kpi_json?: string[];
+    jd_text?: string;
+    notes?: string;
+  }) => {
+    const payload: Record<string, string | number | boolean> = {
+      designation: body.designation,
+      headcount: body.headcount || 1,
+    };
+    if (body.title) payload.title = body.title;
+    if (body.department) payload.department = body.department;
+    if (body.staff_role) payload.staff_role = body.staff_role;
+    if (body.location) payload.location = body.location;
+    if (body.employment_type) payload.employment_type = body.employment_type;
+    if (body.jd_text) payload.jd_text = body.jd_text;
+    if (body.notes) payload.notes = body.notes;
+    if (body.kra_json) payload.kra_json = JSON.stringify(body.kra_json);
+    if (body.kpi_json) payload.kpi_json = JSON.stringify(body.kpi_json);
+    return request<{ plan: StaffPlanDetail }>('create_staff_plan', {
+      method: 'POST',
+      body: payload,
+      auth: true,
+      module: 'staffPlanning',
+    });
+  },
+  researchMarketCtc: (plan: string) =>
+    request<{ plan?: StaffPlanDetail; research: StaffPlanResearch }>('research_market_ctc', {
+      method: 'POST',
+      body: { plan },
+      auth: true,
+      module: 'staffPlanning',
+    }),
+
+  setDesiredCtc: (plan: string, desiredCtc?: number, useMarketMedian?: boolean) =>
+    request<{ plan: StaffPlanDetail }>('set_desired_ctc', {
+      method: 'POST',
+      body: {
+        plan,
+        ...(desiredCtc != null ? { desired_ctc: desiredCtc } : {}),
+        ...(useMarketMedian ? { use_market_median: 1 } : {}),
+      },
+      auth: true,
+      module: 'staffPlanning',
+    }),
+
+  publishStaffPlanToCareers: (plan: string) =>
+    request<{
+      plan: StaffPlanDetail;
+      job_opening: string;
+      careers_jobs_url: string;
+      careers_apply_url: string;
+      already_published?: boolean;
+    }>('publish_staff_plan_to_careers', {
+      method: 'POST',
+      body: { plan },
+      auth: true,
+      module: 'staffPlanning',
     }),
 
   getCircleLanding: () =>
@@ -3102,6 +4764,22 @@ export const api = {
       'get_b2b_statements',
       { method: 'POST', auth: true },
     ),
+
+  getB2bFocoCentres: () =>
+    request<{
+      foco: string;
+      override_upsell_commission: number;
+      profit_from_centre: number;
+      pending_fofo_earnings: number;
+      centres: B2bFocoCentreRow[];
+    }>('get_b2b_foco_centres', { method: 'POST', auth: true }),
+
+  getB2bFofoCommission: () =>
+    request<{
+      override_upsell_commission: number;
+      lines: B2bFofoCommissionLine[];
+      summary: Record<string, number>;
+    }>('get_b2b_fofo_commission', { method: 'POST', auth: true }),
 
   getB2bWallet: () =>
     request<B2bWalletPayload>('get_b2b_wallet', { method: 'POST', auth: true }),
@@ -3155,6 +4833,60 @@ export const api = {
   getLabReagentDashboard: () =>
     request<LabReagentDashboard>('get_lab_reagent_dashboard', { method: 'POST', auth: true }),
 
+  getLabCptDashboard: (limit = 50) =>
+    request<LabCptDashboard>('get_lab_cpt_dashboard', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'cpt',
+    }),
+
+  getTestCpt: (body: { diagnostic_test?: string; item?: string }) =>
+    request<{ cpt: LabCptTestRow }>('get_test_cpt', {
+      method: 'POST',
+      body: {
+        ...(body.diagnostic_test ? { diagnostic_test: body.diagnostic_test } : {}),
+        ...(body.item ? { item: body.item } : {}),
+      },
+      auth: true,
+      module: 'cpt',
+    }),
+
+  createMappedReagent: (body: {
+    reagent_name: string;
+    lab_test_item: string;
+    parameter_code: string;
+    tests_per_consumption?: string | number;
+    safety_stock?: string | number;
+    reagent_item?: string;
+  }) =>
+    request<{
+      reagent_item: string;
+      reagent_name: string;
+      lab_test_item: string;
+      parameter_code: string;
+      tests_per_consumption: number;
+      safety_stock: number;
+      rule_name: string;
+    }>('create_mapped_reagent', { method: 'POST', body, auth: true }),
+
+  registerLabConsumableBatch: (body: {
+    consumable_item: string;
+    lot_number: string;
+    units_per_pack: string;
+    expiry_date?: string;
+    franchisee_id?: string;
+    remarks?: string;
+  }) =>
+    request<LabConsumableBatch>('register_lab_consumable_batch', { method: 'POST', body, auth: true }),
+
+  openLabConsumableBatch: (batchId: string) =>
+    request<LabConsumableBatch>('open_lab_consumable_batch', {
+      method: 'POST',
+      body: { batch_id: batchId },
+      auth: true,
+    }),
+
   getSalesPortal: () =>
     request<SalesPortalPayload>('get_sales_portal', { method: 'POST', auth: true }),
 
@@ -3165,11 +4897,221 @@ export const api = {
       auth: true,
     }),
 
+  getPeopleHrmsDashboard: () =>
+    request<PeopleHrmsDashboard>('get_people_hrms_dashboard', { method: 'POST', auth: true }),
+
+  listPeopleEmployees: (opts?: { limit?: number; department?: string }) =>
+    request<{ employees: PeopleEmployeeRow[]; total: number }>('list_people_employees', {
+      method: 'POST',
+      body: { limit: opts?.limit ?? 100, department: opts?.department || '' },
+      auth: true,
+    }),
+
+  createPeopleEmployee: (body: {
+    application?: string;
+    full_name?: string;
+    email?: string;
+    mobile?: string;
+    dob?: string;
+    gender?: string;
+    department?: string;
+    designation?: string;
+    joining_date?: string;
+    salary_offered?: number;
+    franchisee?: string;
+  }) =>
+    request<{
+      employee: string;
+      user: string;
+      user_created: boolean;
+      temporary_password?: string;
+      monthly_ctc?: number;
+      people_path?: string;
+      already_exists?: boolean;
+      already_hired?: boolean;
+      roles?: string[];
+    }>('create_people_employee', {
+      method: 'POST',
+      body: {
+        ...(body.application ? { application: body.application } : {}),
+        ...(body.full_name ? { full_name: body.full_name } : {}),
+        ...(body.email ? { email: body.email } : {}),
+        ...(body.mobile ? { mobile: body.mobile } : {}),
+        ...(body.dob ? { dob: body.dob } : {}),
+        ...(body.gender ? { gender: body.gender } : {}),
+        ...(body.department ? { department: body.department } : {}),
+        ...(body.designation ? { designation: body.designation } : {}),
+        ...(body.joining_date ? { joining_date: body.joining_date } : {}),
+        ...(body.salary_offered != null ? { salary_offered: body.salary_offered } : {}),
+        ...(body.franchisee ? { franchisee: body.franchisee } : {}),
+      },
+      auth: true,
+    }),
+
+  listEmployeeChecklists: (opts?: { employee?: string; kind?: string; limit?: number }) =>
+    request<{ todos: PeopleChecklistTodo[]; count: number }>('list_employee_checklists', {
+      method: 'POST',
+      body: {
+        employee: opts?.employee || '',
+        kind: opts?.kind || '',
+        limit: opts?.limit ?? 100,
+      },
+      auth: true,
+    }),
+
+  startEmployeeChecklist: (opts: { employee: string; kind?: 'onboarding' | 'offboarding' }) =>
+    request<{ ok: boolean; employee: string; kind: string; todos: string[] }>('start_employee_checklist', {
+      method: 'POST',
+      body: { employee: opts.employee, kind: opts.kind || 'onboarding' },
+      auth: true,
+    }),
+
+  startEmployeeSeparation: (opts: {
+    employee: string;
+    relieving_date?: string;
+    mark_left?: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      employee: string;
+      relieving_date?: string;
+      todos: string[];
+      user_disabled?: boolean;
+    }>('start_employee_separation', {
+      method: 'POST',
+      body: {
+        employee: opts.employee,
+        relieving_date: opts.relieving_date || '',
+        mark_left: opts.mark_left ? 1 : 0,
+      },
+      auth: true,
+    }),
+
+  completeChecklistTodo: (todo_name: string) =>
+    request<{ ok: boolean; todo: string; status: string }>('complete_checklist_todo', {
+      method: 'POST',
+      body: { todo_name },
+      auth: true,
+    }),
+
+  listPeopleDepartments: () =>
+    request<{ departments: Array<{ department: string; headcount: number }>; total: number }>(
+      'list_people_departments',
+      { method: 'POST', auth: true },
+    ),
+
+  listPeopleDesignations: () =>
+    request<{ designations: Array<{ designation: string; headcount: number }>; total: number }>(
+      'list_people_designations',
+      { method: 'POST', auth: true },
+    ),
+
+  listHrPolicySnippets: () =>
+    request<{ policies: Array<{ name: string; slug: string; body: string }> }>('list_hr_policy_snippets', {
+      method: 'POST',
+      auth: true,
+    }),
+
+  listHrGradesMaster: () =>
+    request<{
+      grades: Array<{
+        name: string;
+        description: string;
+        structure: string;
+        base: number;
+        designation: string;
+        da_track?: string;
+        da_slabs?: {
+          label?: string;
+          hq_day?: number;
+          ex_hq_day?: number;
+          os_day?: number;
+          track?: string;
+        };
+      }>;
+      food_allowance_fixed?: number;
+      architecture?: Record<string, unknown>;
+    }>('list_hr_grades_master', { method: 'POST', auth: true }),
+
+  listHrDesignationsMaster: () =>
+    request<{
+      designations: Array<{
+        designation: string;
+        grade?: string;
+        structure?: string;
+        indicative_base?: number;
+      }>;
+    }>('list_hr_designations_master', { method: 'POST', auth: true }),
+
+  getFranchiseTeamAttendance: () =>
+    request<{
+      franchisee: string | null;
+      as_of?: string;
+      employees: Array<{
+        employee: string;
+        employee_name?: string;
+        designation?: string;
+        checkins_today?: number;
+        today_status?: string;
+        last_log_type?: string | null;
+        last_time?: string | null;
+      }>;
+      count: number;
+    }>('get_franchise_team_attendance', { method: 'POST', auth: true }),
+
+  getFranchiseTeamLeave: () =>
+    request<{
+      franchisee: string | null;
+      leaves: Array<{
+        name: string;
+        employee: string;
+        employee_name?: string;
+        leave_type?: string;
+        from_date?: string;
+        to_date?: string;
+        status?: string;
+        days?: number;
+      }>;
+      count: number;
+    }>('get_franchise_team_leave', { method: 'POST', auth: true }),
+
+  getAppointmentLetterHtml: (employee: string, letterType = 'field') =>
+    request<{ employee: string; letter_type: string; print_format: string; html: string }>(
+      'get_appointment_letter_html',
+      { method: 'POST', body: { employee, letter_type: letterType }, auth: true },
+    ),
+
+  submitEmployeeCheckin: (logType: 'IN' | 'OUT' = 'IN') =>
+    request<{ checkin: { name: string; employee: string; log_type: string; time: string } }>(
+      'submit_employee_checkin',
+      { method: 'POST', body: { log_type: logType }, auth: true },
+    ),
+
   getSalesLeads: (limit = 50) =>
     request<{ leads: SalesLead[] }>('get_sales_leads', { method: 'POST', body: { limit }, auth: true }),
 
   createSalesLead: (body: Record<string, string | number>) =>
     request<{ lead_id: string }>('create_sales_lead', { method: 'POST', body, auth: true }),
+
+  updateSalesLead: (body: Record<string, string | number>) =>
+    request<{ lead_id: string; status?: string; changed?: string[] }>('update_sales_lead', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  getSalesOnboarding: (limit = 50) =>
+    request<{
+      onboardings: Array<Record<string, unknown>>;
+      applications: Array<Record<string, unknown>>;
+      count: number;
+    }>('get_sales_onboarding', { method: 'POST', body: { limit }, auth: true }),
+
+  getSalesFranchiseeList: (period: 'month' | 'all' = 'month') =>
+    request<SalesFranchiseeStats & { franchisee_list?: unknown[]; onboardings?: unknown[] }>(
+      'get_sales_franchisee_list',
+      { method: 'POST', body: { period }, auth: true },
+    ),
 
   getWbGeoHierarchy: () =>
     request<WbGeoHierarchy>('get_wb_geo_hierarchy', { method: 'GET', auth: false }),
@@ -3308,6 +5250,168 @@ export const api = {
   getSalesTeamMap: () =>
     request<SalesTeamMapData>('get_sales_team_map', { method: 'POST', auth: true }),
 
+  getAgencyDashboard: () =>
+    request<AgencyDashboard>('get_agency_dashboard', {
+      method: 'POST',
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyProfile: (agent_id?: string) =>
+    request<AgencyProfilePayload>('get_agency_profile', {
+      method: 'POST',
+      body: agent_id ? { agent_id } : {},
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyTeam: () =>
+    request<{ root: AgencyAgent | null; tree: AgencyTeamNode[] }>('get_agency_team', {
+      method: 'POST',
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyCommissions: (limit = 50) =>
+    request<AgencyCommissionPayload>('get_agency_commissions', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyLevels: () =>
+    request<{ levels: AgencyLevel[]; conversion_base_inr: number }>('get_agency_levels', {
+      method: 'POST',
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  saveAgencyLevel: (body: {
+    level_code: string;
+    conversion_pct?: number;
+    monthly_revenue_pct?: number;
+    override_pct?: number;
+    active?: number;
+  }) =>
+    request<{ level: AgencyLevel }>('save_agency_level', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  agencyAttributeFranchisee: (body: {
+    agent_id?: string;
+    franchisee_id: string;
+    deal_value?: number;
+    notes?: string;
+  }) =>
+    request<{ attribution_id: string; ledger_ids?: string[]; already?: boolean }>(
+      'agency_attribute_franchisee',
+      { method: 'POST', body, auth: true, module: 'agencyAgents' },
+    ),
+
+  agencyAccrueMonthly: (body: { period?: string; franchisee_id?: string; revenue_amount?: number }) =>
+    request<{ period: string; ledger_ids: string[]; count: number }>('agency_accrue_monthly', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  submitAgencyFranchiseeOnboard: (body: {
+    prospect_name: string;
+    mobile: string;
+    email?: string;
+    territory?: string;
+    franchise_model?: string;
+    deal_value?: number;
+    notes?: string;
+    agent_id?: string;
+  }) =>
+    request<{
+      request_id: string;
+      status: string;
+      ffms_request_id?: string;
+      ffms_lead_id?: string;
+      ffms_push?: { ok?: boolean; error?: string };
+    }>('submit_agency_franchisee_onboard', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  completeAgencyFranchiseeOnboard: (request_id: string) =>
+    request<{
+      request_id: string;
+      franchisee: string;
+      franchise_name?: string;
+      attribution?: unknown;
+      already?: boolean;
+    }>('complete_agency_franchisee_onboard', {
+      method: 'POST',
+      body: { request_id },
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyOnboardRequests: (limit = 50) =>
+    request<{ requests: AgencyOnboardRequest[] }>('get_agency_onboard_requests', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
+  getAgencyOnboardForm: (formKey = 'agents_portal') =>
+    request<{ form: AgencyOnboardFormSchema }>('get_agency_onboard_form', {
+      method: 'POST',
+      body: { form_key: formKey },
+      auth: false,
+      module: 'agencyOnboardForm',
+    }),
+
+  submitAgencyOnboardForm: (formKey: string, answers: Record<string, string | number | boolean>) =>
+    request<{
+      submission_id: string;
+      form_key: string;
+      status: string;
+      linked_request?: string | null;
+      message?: string;
+    }>('submit_agency_onboard_form', {
+      method: 'POST',
+      body: {
+        form_key: formKey,
+        answers_json: JSON.stringify(answers),
+      },
+      // Include sid when present (franchisee); guests still allowed by backend allow_guest
+      auth: true,
+      module: 'agencyOnboardForm',
+    }),
+
+  setupAgencyOnboardForms: () =>
+    request<{
+      doctypes: string[];
+      seeded: { forms: string[] };
+      desk_list: string;
+      desk_submissions: string;
+      public_url: string;
+    }>('setup_agency_onboard_forms', {
+      method: 'POST',
+      auth: true,
+      module: 'agencyOnboardForm',
+    }),
+
+  getAgencyFranchisees: (limit = 50) =>
+    request<{ franchisees: AgencyFranchiseeRow[] }>('get_agency_franchisees', {
+      method: 'POST',
+      body: { limit },
+      auth: true,
+      module: 'agencyAgents',
+    }),
+
   registerLabReagentBatch: (body: {
     reagent_item: string;
     lot_number: string;
@@ -3349,6 +5453,424 @@ export const api = {
       body,
       auth: true,
       module: 'nabl112b',
+    }),
+
+  getTrfDrawPlan: (trfId: string) =>
+    request<{ trf_id: string; tubes: CollectionTubeRow[] }>('get_trf_draw_plan', {
+      method: 'POST',
+      body: { trf_id: trfId },
+      auth: true,
+      module: 'vialAccession',
+    }),
+
+  receiveTrfTube: (trfId: string, accessionId: string) =>
+    request<{ ok: boolean; accession_id: string; status: string }>('receive_trf_tube', {
+      method: 'POST',
+      body: { trf_id: trfId, accession_id: accessionId },
+      auth: true,
+      module: 'vialAccession',
+    }),
+
+  rejectTrfTube: (trfId: string, accessionId: string, reason: string) =>
+    request<{ ok: boolean; accession_id: string; status?: string }>('reject_trf_tube', {
+      method: 'POST',
+      body: { trf_id: trfId, accession_id: accessionId, reason },
+      auth: true,
+      module: 'vialAccession',
+    }),
+
+  rebuildTrfDrawPlan: (trfId: string) =>
+    request<{ ok?: boolean; tubes?: CollectionTubeRow[] } | CollectionTubeRow[]>('rebuild_trf_draw_plan', {
+      method: 'POST',
+      body: { trf_id: trfId, preserve_received: 1 },
+      auth: true,
+      module: 'vialAccession',
+    }),
+
+  getMotherLabBillDefaults: () =>
+    request<{
+      mother_lab_franchisee?: string;
+      mother_lab_label?: string;
+      franchisee_type?: string;
+      pricing_rule?: string;
+      channels?: string[];
+      roles_ok?: boolean;
+      default_phlebotomist?: string;
+      default_phlebotomist_name?: string;
+      collection_centres?: Array<{
+        name: string;
+        label: string;
+        franchise_name?: string;
+        franchisee_type?: string;
+        is_mother_lab?: number;
+      }>;
+    }>('api_get_mother_lab_bill_defaults', {
+      method: 'POST',
+      body: {},
+      auth: true,
+      module: 'motherLabBill',
+    }),
+
+  listMotherLabBills: (limit = 40, txt = '') =>
+    request<{
+      bills: Array<{
+        name: string;
+        unique_barcode?: string;
+        patient_name?: string;
+        age?: number;
+        gender?: string;
+        patient_phone?: string;
+        order_status?: string;
+        creation?: string;
+        hec_bill_datetime?: string;
+        sample_intake_channel?: string;
+        hec_net_amount?: number;
+        hec_amount_paid?: number;
+        hec_due_amount?: number;
+        hec_receipt_mode?: string;
+      }>;
+      count?: number;
+      mother_lab_franchisee?: string;
+    }>('api_list_mother_lab_bills', {
+      method: 'POST',
+      body: { limit, ...(txt ? { txt } : {}) },
+      auth: true,
+      module: 'motherLabBill',
+    }),
+
+  getMotherLabBill: (name: string) =>
+    request<{
+      bill: Record<string, unknown> & {
+        name: string;
+        unique_barcode?: string;
+        patient_name?: string;
+        tests?: Array<Record<string, unknown>>;
+        mother_lab_label?: string;
+      };
+    }>('api_get_mother_lab_bill', {
+      method: 'POST',
+      body: { name },
+      auth: true,
+      module: 'motherLabBill',
+    }),
+
+  searchMotherLabTests: async (
+    txt: string,
+    limit = 30,
+    opts?: { franchisee_id?: string; intake_channel?: string },
+  ) => {
+    const q = txt.trim();
+    const pricingBody = {
+      txt: q,
+      limit,
+      ...(opts?.franchisee_id ? { franchisee_id: opts.franchisee_id } : {}),
+      ...(opts?.intake_channel
+        ? { intake_channel: opts.intake_channel, sample_intake_channel: opts.intake_channel }
+        : {}),
+    };
+    type TestHit = {
+      item_code: string;
+      item_name: string;
+      rate: number;
+      mrp?: number;
+      foco_rate?: number;
+      show_mrp_slash?: boolean;
+      price_basis?: string;
+      kind?: string;
+      item_group?: string;
+    };
+    // 1) Phase 94 (role-gated)
+    try {
+      return await request<{
+        ok?: boolean;
+        tests: TestHit[];
+        count?: number;
+      }>('api_search_mother_lab_tests', {
+        method: 'POST',
+        body: pricingBody,
+        auth: true,
+        module: 'motherLabBill',
+      });
+    } catch {
+      // 2) Phase 70 desk search (same catalog Bill Entry uses)
+      try {
+        return await request<{
+          ok?: boolean;
+          tests: TestHit[];
+        }>('api_search_hec_lab_tests', {
+          method: 'POST',
+          body: pricingBody,
+          auth: true,
+          module: 'labBillEntry',
+        });
+      } catch {
+        // 3) Public lab catalog filter (always available when ERP is up)
+        const catalog = await request<{ items: CatalogItem[] }>('get_lab_test_catalog', {
+          auth: false,
+          body: { q, limit },
+        });
+        const items = catalog.data?.items || [];
+        const needle = q.toLowerCase();
+        const tests = items
+          .filter(
+            (it) =>
+              (it.item_name || '').toLowerCase().includes(needle) ||
+              (it.name || '').toLowerCase().includes(needle),
+          )
+          .slice(0, limit)
+          .map((it) => ({
+            item_code: it.name,
+            item_name: it.item_name || it.name,
+            rate: Number(it.standard_rate || 0),
+            mrp: itemMrp(it),
+            show_mrp_slash: itemMrp(it) > itemRate(it),
+            kind: 'test',
+            item_group: it.item_group,
+          }));
+        return { status: 'success' as const, message: 'OK', data: { ok: true, tests } };
+      }
+    }
+  },
+
+  repriceMotherLabBillLines: (
+    tests: Array<Record<string, unknown>>,
+    sample_intake_channel: string,
+    franchiseeId?: string,
+  ) =>
+    request<{ ok?: boolean; tests: Array<Record<string, unknown>> }>(
+      'api_reprice_mother_lab_bill_lines',
+      {
+        method: 'POST',
+        body: {
+          data: JSON.stringify({
+            tests,
+            sample_intake_channel,
+            ...(franchiseeId ? { franchisee_id: franchiseeId, coll_centre: franchiseeId } : {}),
+          }),
+        },
+        auth: true,
+        module: 'motherLabBill',
+      },
+    ),
+
+  searchMotherLabDoctors: (txt: string, limit = 30) =>
+    request<{
+      ok?: boolean;
+      doctors: Array<{
+        name: string;
+        doctor_name?: string;
+        label?: string;
+        mobile?: string;
+        whatsapp?: string;
+        commission_percent?: number;
+      }>;
+    }>('api_search_mother_lab_doctors', {
+      method: 'POST',
+      body: { txt, limit },
+      auth: true,
+      module: 'motherLabBill',
+    }),
+
+  searchReferringDoctors: (txt: string, limit = 30) =>
+    request<{
+      doctors: Array<{
+        name: string;
+        doctor_name?: string;
+        label?: string;
+        mobile?: string;
+        whatsapp?: string;
+        commission_percent?: number;
+      }>;
+    }>('api_search_referring_doctors', {
+      method: 'POST',
+      body: { txt, limit },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  upsertReferringDoctor: (data: Record<string, unknown>) =>
+    request<{
+      name: string;
+      doctor_name: string;
+      commission_percent?: number;
+      whatsapp?: string;
+      mobile?: string;
+    }>('api_upsert_referring_doctor', {
+      method: 'POST',
+      body: { data: JSON.stringify(data) },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  getHubLabBillDefaults: () =>
+    request<{
+      hub_franchisee?: string;
+      hub_label?: string;
+      franchisee_type?: string;
+      intake_channel?: string;
+      wallet_balance?: number;
+      credit_limit?: number;
+      available_to_bill?: number;
+      pricing_rule?: string;
+    }>('api_get_hub_lab_bill_defaults', {
+      method: 'POST',
+      body: {},
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  listHubLabBills: (limit = 40, txt = '', payment_status = '') =>
+    request<{
+      bills: Array<Record<string, unknown>>;
+      count?: number;
+      hub_franchisee?: string;
+    }>('api_list_hub_lab_bills', {
+      method: 'POST',
+      body: {
+        limit,
+        ...(txt ? { txt } : {}),
+        ...(payment_status ? { payment_status } : {}),
+      },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  getHubLabBill: (name: string) =>
+    request<{ bill: Record<string, unknown> }>('api_get_hub_lab_bill', {
+      method: 'POST',
+      body: { name },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  updateHubPatientPayment: (body: {
+    trf_name: string;
+    amount_received: number;
+    payment_mode: string;
+    notes?: string;
+  }) =>
+    request<{
+      trf: string;
+      hec_net_amount: number;
+      hec_amount_paid: number;
+      hec_due_amount: number;
+      hec_patient_payment_status: string;
+      previous_paid?: number;
+      new_payment?: number;
+      payment_entry?: Record<string, unknown>;
+      payment_history: Array<Record<string, unknown>>;
+      bill: Record<string, unknown>;
+      receipt?: {
+        bill_total?: number;
+        previous_payment?: number;
+        new_payment?: number;
+        total_received?: number;
+        remaining_due?: number;
+        payment_mode?: string;
+        payment_date?: string;
+        status?: string;
+      };
+      receipt_ready?: boolean;
+    }>('api_update_hub_patient_payment', {
+      method: 'POST',
+      body: { data: JSON.stringify(body) },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  listHubDownloadReports: (limit = 50, txt = '') =>
+    request<{
+      reports: Array<{
+        journey_id: string;
+        trf_id: string;
+        patient_name?: string;
+        barcode?: string;
+        phone?: string;
+        status: string;
+        report_pdf?: string;
+        updated_at?: string;
+        order_status?: string;
+      }>;
+      count?: number;
+    }>('api_list_hub_download_reports', {
+      method: 'POST',
+      body: { limit, ...(txt ? { txt } : {}) },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  downloadHubReport: (journeyId: string, fileName?: string) =>
+    downloadBinary(
+      'api_download_hub_report',
+      { journey_id: journeyId },
+      fileName || `Lab_Report_${journeyId}.pdf`,
+      'hubLabBill',
+    ),
+
+  searchHubLabTests: (
+    txt: string,
+    limit = 30,
+    opts?: { franchisee_id?: string; intake_channel?: string },
+  ) => {
+    const body = {
+      txt: txt.trim(),
+      limit,
+      ...(opts?.franchisee_id ? { franchisee_id: opts.franchisee_id } : {}),
+      ...(opts?.intake_channel ? { intake_channel: opts.intake_channel } : {}),
+    };
+    return request<{
+      tests: Array<{
+        item_code: string;
+        item_name: string;
+        rate: number;
+        mrp?: number;
+        show_mrp_slash?: boolean;
+      }>;
+    }>('api_search_hub_lab_tests', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'hubLabBill',
+    });
+  },
+
+  repriceHubLabBillLines: (tests: Array<Record<string, unknown>>) =>
+    request<{ tests: Array<Record<string, unknown>> }>('api_reprice_hub_lab_bill_lines', {
+      method: 'POST',
+      body: { data: JSON.stringify({ tests }) },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  saveHubLabBill: (data: Record<string, unknown>) =>
+    request<{
+      name: string;
+      unique_barcode: string;
+      wallet_balance?: number;
+      wholesale_amount?: number;
+      settlement_error?: string;
+    }>('api_save_hub_lab_bill', {
+      method: 'POST',
+      body: { data: JSON.stringify(data) },
+      auth: true,
+      module: 'hubLabBill',
+    }),
+
+  saveMotherLabBill: (data: Record<string, unknown>) =>
+    request<{
+      ok?: boolean;
+      name: string;
+      unique_barcode: string;
+      totals?: Record<string, number>;
+      sample_intake_channel?: string;
+      mother_lab_franchisee?: string;
+      phlebotomist?: string;
+      phlebotomist_name?: string;
+    }>('api_save_mother_lab_bill', {
+      method: 'POST',
+      body: { data: JSON.stringify(data) },
+      auth: true,
+      module: 'motherLabBill',
     }),
 
   recordSampleTransport: (body: {
@@ -3459,8 +5981,11 @@ export const api = {
     full_name: string;
     mobile?: string;
     referral_code?: string;
+    dob?: string;
+    gender?: string;
+    city?: string;
   }) =>
-    request<{ email: string; verification_sent: boolean }>('register_patient', {
+    request<{ email: string; verification_sent: boolean; patient_id?: string }>('register_patient', {
       method: 'POST',
       body,
       auth: false,
@@ -3479,6 +6004,25 @@ export const api = {
       body: limit ? { limit } : {},
       auth: true,
     }),
+
+  createPatientWalletRazorpayOrder: (body: { amount: number | string }) =>
+    request<RazorpayOrder & { patient_id?: string }>('create_patient_wallet_razorpay_order', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  verifyPatientWalletRazorpayPayment: (body: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) =>
+    request<{
+      transaction_id: string;
+      amount: number;
+      wallet_balance: number;
+      already_credited?: boolean;
+    }>('verify_patient_wallet_razorpay_payment', { method: 'POST', body, auth: true }),
 
   getMyReferral: () =>
     request<{
@@ -3501,6 +6045,7 @@ export const api = {
     email?: string;
     dob?: string;
     gender?: string;
+    city?: string;
     profile_image?: string;
     profile_image_filename?: string;
     new_password?: string;
@@ -3641,19 +6186,34 @@ export const api = {
       module: 'labReport',
     }),
 
-  finalizeLabReport: (labReport: string) =>
+  verifyLabUserPassword: (password: string) =>
+    request<{ ok: boolean; user: string }>('verify_lab_user_password', {
+      method: 'POST',
+      body: { password, confirm_password: password },
+      auth: true,
+      module: 'labReport',
+    }),
+
+  finalizeLabReport: (labReport: string, confirmPassword = '') =>
     request<{ lab_report: string; trf_id: string; journey_id?: string; complete: boolean }>(
       'finalize_lab_report',
       {
         method: 'POST',
-        body: { lab_report: labReport },
+        body: {
+          lab_report: labReport,
+          ...(confirmPassword ? { confirm_password: confirmPassword } : {}),
+        },
         auth: true,
         module: 'labReport',
       },
     ),
 
-  getLabReportPreviewHtml: (labReport: string) =>
-    fetchRawMessage('get_lab_report_preview_html', { lab_report: labReport }, 'labReport'),
+  getLabReportPreviewHtml: (labReport: string, letterheadPlain = false) =>
+    fetchRawMessage(
+      'get_lab_report_preview_html',
+      { lab_report: labReport, letterhead_plain: letterheadPlain ? '1' : '0' },
+      'labReport',
+    ),
 
   authorizeLabReport: (body: { journey_id: string; pathologist_notes?: string }) =>
     request<{ journey: CareJourney }>('authorize_lab_report', {

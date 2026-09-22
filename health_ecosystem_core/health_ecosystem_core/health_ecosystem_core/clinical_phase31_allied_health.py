@@ -44,14 +44,15 @@ ALLIED_WINGS = [
     },
     {
         "id": "physiotherapy",
-        "title": "Physiotherapy",
-        "subtitle": "Rehabilitation & pain relief",
+        "title": "Remedium Care",
+        "subtitle": "Recovery Blueprint · rehab zones · tracked progress",
         "item_group": "Physiotherapy & Rehabilitation",
         "department_name": "Physiotherapy & Rehabilitation",
         "consultation_type": "Allied Physiotherapy Session",
         "icon": "🦴",
         "color": "#0EA5E9",
         "image": "/wellness/physiotherapy.svg",
+        "public_path": "/wellness/care",
     },
     {
         "id": "chiropractic",
@@ -262,6 +263,17 @@ def book_allied_health_appointment(
     dept_name = frappe.db.get_value(
         "Clinical Department", {"department_name": wing["department_name"]}, "name"
     )
+    if not dept_name:
+        setup_allied_health_masters()
+        dept_name = frappe.db.get_value(
+            "Clinical Department", {"department_name": wing["department_name"]}, "name"
+        )
+    if not dept_name:
+        return _error(
+            _("Could not find Department: {0}. Run allied health setup on the server.").format(
+                wing["department_name"]
+            )
+        )
     ctype = wing["consultation_type"]
     if not frappe.db.exists("Consultation Type", ctype):
         return _error(_("Consultation type not configured on server"))

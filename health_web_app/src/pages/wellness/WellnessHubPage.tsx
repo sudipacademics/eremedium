@@ -145,7 +145,7 @@ export function WellnessHubPage() {
                 <Link
                   key={wing.id}
                   className={`wellness-aesthetics-feature${cfg?.theme === 'indic' ? ' is-indic' : ''}`}
-                  to={`/wellness/${wing.id}`}
+                  to={wing.public_path || `/wellness/${wing.id}`}
                 >
                   <div className="wellness-aesthetics-feature-copy">
                     <span className="home-chronic-badge">
@@ -177,7 +177,7 @@ export function WellnessHubPage() {
 
         <div className="wellness-wing-grid">
           {otherWings.map((wing) => (
-            <Link key={wing.id} className="wellness-wing-card" to={`/wellness/${wing.id}`}>
+            <Link key={wing.id} className="wellness-wing-card" to={wing.public_path || `/wellness/${wing.id}`}>
               <WellnessWingVisual wing={wing} />
               <div className="wellness-wing-body">
                 <span className="wellness-wing-icon" aria-hidden>

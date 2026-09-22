@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, AlliedHealthService, DoctorSlot } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
 import { PaymentMethod, PaymentMethodPicker, isOnlinePayment } from '../../components/PaymentMethodPicker';
@@ -20,10 +20,16 @@ function money(n: number) {
 }
 
 export function WellnessBookPage() {
-  const { wingId = '', serviceCode = '' } = useParams();
+  const { wingId: wingIdParam = '', serviceCode = '' } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const wingId =
+    wingIdParam.toLowerCase() === 'care' || location.pathname.includes('/wellness/care/')
+      ? 'physiotherapy'
+      : wingIdParam.toLowerCase();
   const clinic = getWellnessClinicConfig(wingId);
+  const backPath = wingId === 'physiotherapy' ? '/wellness/care' : `/wellness/${wingId}`;
   const [step, setStep] = useState<StepId>('session');
   const [service, setService] = useState<AlliedHealthService | null>(null);
   const [practitioners, setPractitioners] = useState<
@@ -168,6 +174,8 @@ export function WellnessBookPage() {
       }
       if (consultationMode === 'Online' && appointmentId) {
         navigate(`/teleconsult/join/${appointmentId}`, { replace: true });
+      } else if (wingId === 'physiotherapy' && appointmentId) {
+        navigate(`/wellness/care/intake/${appointmentId}`, { replace: true });
       } else {
         navigate('/bookings', { replace: true });
       }
@@ -189,7 +197,7 @@ export function WellnessBookPage() {
         <Link
           className="btn"
           to="/login"
-          state={{ from: `/wellness/${wingId}/book/${encodeURIComponent(serviceCode)}` }}
+          state={{ from: `${backPath}/book/${encodeURIComponent(serviceCode)}` }}
         >
           Sign in to continue
         </Link>
@@ -205,7 +213,7 @@ export function WellnessBookPage() {
   return (
     <div className={`wellness-journey${clinic?.theme === 'indic' ? ' is-indic' : ''}`}>
       <header className="wellness-journey-top">
-        <Link to={`/wellness/${wingId}`} className="wellness-journey-back">
+        <Link to={backPath} className="wellness-journey-back">
           ← {clinic?.headline || 'Back to clinic'}
         </Link>
         <p className="brand-kicker">{clinic?.kicker || service?.wing_title || 'Wellness'}</p>
