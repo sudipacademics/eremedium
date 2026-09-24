@@ -471,9 +471,9 @@ function HomeFooter() {
           <Image
             src="/brand/vedsutra-logo.png"
             alt="Vedsutra"
-            width={180}
-            height={46}
-            className="h-9 w-auto brightness-110"
+            width={979}
+            height={206}
+            className="h-7 w-auto brightness-0 invert"
           />
           <p className="mt-3 max-w-xs text-sm text-cream-100/65">
             Your life, in harmony — astrology, ritual, and Ayurveda under one trusted roof.

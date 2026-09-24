@@ -69,9 +69,9 @@ export default function LoginPage() {
         <Image
           src="/brand/vedsutra-logo.png"
           alt="Vedsutra"
-          width={200}
-          height={52}
-          className="mx-auto h-12 w-auto"
+          width={979}
+          height={206}
+          className="mx-auto h-9 w-auto"
           priority
         />
         <h1 className="mt-4 font-display text-3xl font-semibold text-ved-green-800">Welcome back</h1>
