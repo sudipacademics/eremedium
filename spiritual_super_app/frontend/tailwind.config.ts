@@ -96,8 +96,26 @@ export default {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-6px)' },
         },
+        flicker: {
+          '0%, 100%': { opacity: '0.9', transform: 'scale(1)' },
+          '25%': { opacity: '0.8', transform: 'scale(0.95)' },
+          '50%': { opacity: '1', transform: 'scale(1.1)' },
+          '75%': { opacity: '1', transform: 'scale(1.05)' },
+        },
+        swing: {
+          '0%': { transform: 'rotate(6deg)' },
+          '100%': { transform: 'rotate(-6deg)' },
+        },
+        fall: {
+          '0%': { transform: 'translateY(-10vh) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateY(110vh) rotate(360deg)', opacity: '0' },
+        },
       },
       animation: {
+        'spin-slow': 'spin 40s linear infinite',
+        flicker: 'flicker 1.5s ease-in-out infinite alternate',
+        swing: 'swing 3s ease-in-out infinite alternate',
+        fall: 'fall linear forwards',
         'pulse-ring': 'pulse-ring 1.8s cubic-bezier(0.24, 0, 0.38, 1) infinite',
         'fade-up': 'fade-up 0.7s ease-out both',
         float: 'float 5s ease-in-out infinite',

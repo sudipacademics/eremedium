@@ -22,9 +22,15 @@ export interface Deity {
   readonly id: string;
   readonly name: string;
   readonly epithet: string;
+  /** Transliterated mantra, shown under the Devanagari. */
   readonly mantra: string;
-  readonly glyph: string;
-  readonly accent: string;
+  readonly mantraDevanagari: string;
+  readonly symbol: string;
+  readonly image: string;
+  /** Sanctum glow behind the murti. */
+  readonly glow: string;
+  /** Mandala and halo tint. */
+  readonly halo: string;
 }
 
 export interface Upachara {
@@ -37,54 +43,118 @@ export interface Upachara {
   readonly sound: RitualSound;
 }
 
+const img = (id: string) => `/temple/deities/${id}.webp`;
+
 export const DEITIES: readonly Deity[] = [
   {
-    id: 'shiva',
-    name: 'Shiva',
-    epithet: 'Mahadev',
-    mantra: 'Om Namah Shivaya',
-    glyph: 'ॐ',
-    accent: 'from-ved-green-900 to-ved-green-600',
-  },
-  {
-    id: 'krishna',
-    name: 'Krishna',
-    epithet: 'Govinda',
-    mantra: 'Om Namo Bhagavate Vasudevaya',
-    glyph: 'flute',
-    accent: 'from-[#1a3a6b] to-[#3d6bb3]',
+    id: 'ganesha',
+    name: 'Ganesha',
+    epithet: 'Vighnaharta · Remover of obstacles',
+    mantra: 'Om Gam Ganapataye Namaha',
+    mantraDevanagari: 'ॐ गं गणपतये नमः',
+    symbol: '🐘',
+    image: img('ganesha'),
+    glow: '#7a3b0c',
+    halo: '#e0a84a',
   },
   {
     id: 'durga',
     name: 'Durga',
     epithet: 'Mahishasuramardini',
     mantra: 'Om Dum Durgayei Namaha',
-    glyph: '⚔',
-    accent: 'from-[#6b1a3a] to-[#b33d6b]',
+    mantraDevanagari: 'ॐ दुं दुर्गायै नमः',
+    symbol: '🦁',
+    image: img('durga'),
+    glow: '#7f1d1d',
+    halo: '#f0a060',
+  },
+  {
+    id: 'surya',
+    name: 'Surya',
+    epithet: 'Aditya · The Sun',
+    mantra: 'Om Suryaya Namaha',
+    mantraDevanagari: 'ॐ सूर्याय नमः',
+    symbol: '☀️',
+    image: img('surya'),
+    glow: '#9a4a12',
+    halo: '#ffc85a',
+  },
+  {
+    id: 'shiva',
+    name: 'Shiva',
+    epithet: 'Mahadeva · The auspicious one',
+    mantra: 'Om Namah Shivaya',
+    mantraDevanagari: 'ॐ नमः शिवाय',
+    symbol: '🔱',
+    image: img('shiva'),
+    glow: '#0d3b4f',
+    halo: '#9fd3e6',
+  },
+  {
+    id: 'kartikeya',
+    name: 'Kartikeya',
+    epithet: 'Skanda · Murugan',
+    mantra: 'Om Saravanabhavaya Namaha',
+    mantraDevanagari: 'ॐ शरवणभवाय नमः',
+    symbol: '🦚',
+    image: img('kartikeya'),
+    glow: '#6b1740',
+    halo: '#f2a3c4',
+  },
+  {
+    id: 'vishnu',
+    name: 'Vishnu',
+    epithet: 'Narayana · The preserver',
+    mantra: 'Om Namo Bhagavate Vasudevaya',
+    mantraDevanagari: 'ॐ नमो भगवते वासुदेवाय',
+    symbol: '🐚',
+    image: img('vishnu'),
+    glow: '#232a6b',
+    halo: '#b7c0ff',
+  },
+  {
+    id: 'krishna',
+    name: 'Krishna',
+    epithet: 'Govinda · Giridhari',
+    mantra: 'Om Kleem Krishnaya Namaha',
+    mantraDevanagari: 'ॐ क्लीं कृष्णाय नमः',
+    symbol: '🪈',
+    image: img('krishna'),
+    glow: '#123f63',
+    halo: '#8ecbf0',
+  },
+  {
+    id: 'dakshinamurti',
+    name: 'Dakshinamurti',
+    epithet: 'Adi Guru · Cosmic teacher',
+    mantra: 'Om Dakshinamurtaye Namaha',
+    mantraDevanagari: 'ॐ दक्षिणामूर्तये नमः',
+    symbol: '🧘',
+    image: img('dakshinamurti'),
+    glow: '#6b4a0e',
+    halo: '#f3d27a',
   },
   {
     id: 'lakshmi',
     name: 'Lakshmi',
-    epithet: 'Mahalakshmi',
+    epithet: 'Sri · Goddess of abundance',
     mantra: 'Om Shreem Mahalakshmiyei Namaha',
-    glyph: '🪷',
-    accent: 'from-[#6b4a1a] to-[#c9a227]',
-  },
-  {
-    id: 'ganesha',
-    name: 'Ganesha',
-    epithet: 'Vighnaharta',
-    mantra: 'Om Gam Ganapataye Namaha',
-    glyph: '🐘',
-    accent: 'from-[#5c3a1a] to-[#a67c3d]',
+    mantraDevanagari: 'ॐ श्रीं महालक्ष्म्यै नमः',
+    symbol: '🪷',
+    image: img('lakshmi'),
+    glow: '#6d1a5e',
+    halo: '#f7b6e3',
   },
   {
     id: 'hanuman',
     name: 'Hanuman',
     epithet: 'Bajrangbali',
     mantra: 'Om Hanumate Namaha',
-    glyph: '🚩',
-    accent: 'from-[#6b2a1a] to-[#c45a2d]',
+    mantraDevanagari: 'ॐ हनुमते नमः',
+    symbol: '🚩',
+    image: img('hanuman'),
+    glow: '#8a3510',
+    halo: '#ffb070',
   },
 ] as const;
 
