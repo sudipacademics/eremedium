@@ -1,4 +1,4 @@
-import { AyurvedaOrderStatus, Dosha } from '@prisma/client';
+import { AyurvedaOrderStatus, Dosha, ProductCategory } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -8,6 +8,7 @@ import { AyurvedaService } from '../services/ayurveda.service.js';
 
 const productQuery = z.object({
   dosha: z.nativeEnum(Dosha).optional(),
+  category: z.nativeEnum(ProductCategory).optional(),
 });
 
 const orderBody = z.object({
@@ -34,8 +35,11 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/products', async (request, reply) => {
     requireUser(request);
-    const { dosha } = productQuery.parse(request.query);
-    const products = await AyurvedaService.listProducts(dosha);
+    const { dosha, category } = productQuery.parse(request.query);
+    const products = await AyurvedaService.listProducts({
+      ...(dosha === undefined ? {} : { dosha }),
+      ...(category === undefined ? {} : { category }),
+    });
     return reply.send({ products });
   });
 
@@ -85,21 +89,32 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  const productBody = z.object({
+  const productFields = z.object({
     sku: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/, 'sku must be lowercase kebab-case'),
     name: z.string().min(2).max(160),
     description: z.string().max(1000).nullable().optional(),
     price: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
-    suitedDoshas: z.array(z.nativeEnum(Dosha)).min(1).max(3),
+    suitedDoshas: z.array(z.nativeEnum(Dosha)).max(3).default([]),
     formFactor: z.string().min(2).max(40).default('kit'),
+    category: z.nativeEnum(ProductCategory).default(ProductCategory.AYURVEDA),
+    imageUrl: z.string().max(500).nullable().optional(),
     active: z.boolean().default(true),
   });
 
-  const productPatch = productBody
+  const productBody = productFields.refine(
+    (body) => body.category !== ProductCategory.AYURVEDA || body.suitedDoshas.length > 0,
+    { message: 'Ayurveda products need at least one dosha', path: ['suitedDoshas'] },
+  );
+
+  const productPatch = productFields
     .omit({ sku: true })
     .partial()
     .extend({
       description: z.string().max(1000).nullable().optional(),
+      suitedDoshas: z.array(z.nativeEnum(Dosha)).max(3).optional(),
+      category: z.nativeEnum(ProductCategory).optional(),
+      formFactor: z.string().min(2).max(40).optional(),
+      active: z.boolean().optional(),
     });
 
   const productParams = z.object({ productId: z.string().uuid() });
@@ -117,8 +132,10 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
       price: body.price,
       suitedDoshas: body.suitedDoshas,
       formFactor: body.formFactor,
+      category: body.category,
       active: body.active,
       ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
     });
     return reply.code(201).send(product);
   });
@@ -135,6 +152,8 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
         ...(body.price !== undefined ? { price: body.price } : {}),
         ...(body.suitedDoshas !== undefined ? { suitedDoshas: body.suitedDoshas } : {}),
         ...(body.formFactor !== undefined ? { formFactor: body.formFactor } : {}),
+        ...(body.category !== undefined ? { category: body.category } : {}),
+        ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
       });
       return reply.send(product);

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
@@ -10,6 +11,7 @@ import {
   type AyurvedaOrder,
   type AyurvedaOrderResult,
   type AyurvedaProduct,
+  type ProductCategory,
 } from '@/lib/api';
 import { useSocketEvent } from '@/lib/socket';
 
@@ -20,6 +22,9 @@ const STATUS_STEPS: AyurvedaOrder['status'][] = ['CONFIRMED', 'PACKED', 'DISPATC
 
 export default function AyurvedaPage() {
   const [tab, setTab] = useState<Tab>('shop');
+  const [category, setCategory] = useState<ProductCategory>('AYURVEDA');
+  const [ready, setReady] = useState(false);
+  const wantedProduct = useRef<string | null>(null);
   const [dosha, setDosha] = useState<DoshaFilter>('ALL');
   const [products, setProducts] = useState<AyurvedaProduct[]>([]);
   const [orders, setOrders] = useState<AyurvedaOrder[]>([]);
@@ -34,12 +39,20 @@ export default function AyurvedaPage() {
       .catch(() => undefined);
   }, []);
 
-  const loadProducts = useCallback((filter: DoshaFilter) => {
+  const loadProducts = useCallback((kind: ProductCategory, filter: DoshaFilter) => {
     setLoading(true);
-    const query = filter === 'ALL' ? '' : `?dosha=${filter}`;
+    const params = new URLSearchParams({ category: kind });
+    if (kind === 'AYURVEDA' && filter !== 'ALL') params.set('dosha', filter);
     void api
-      .get<{ products: AyurvedaProduct[] }>(`ayurveda/shop/products${query}`)
-      .then((result) => setProducts(result.products))
+      .get<{ products: AyurvedaProduct[] }>(`ayurveda/shop/products?${params.toString()}`)
+      .then((result) => {
+        setProducts(result.products);
+        if (wantedProduct.current) {
+          const wanted = result.products.find((product) => product.id === wantedProduct.current);
+          wantedProduct.current = null;
+          if (wanted) setSelection(wanted);
+        }
+      })
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Could not load the catalog'),
       )
@@ -47,9 +60,20 @@ export default function AyurvedaPage() {
   }, []);
 
   useEffect(() => {
-    loadProducts(dosha);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('category')?.toUpperCase() === 'CRYSTAL') setCategory('CRYSTAL');
+    wantedProduct.current = params.get('product');
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    loadProducts(category, dosha);
+  }, [ready, category, dosha, loadProducts]);
+
+  useEffect(() => {
     loadOrders();
-  }, [dosha, loadProducts, loadOrders]);
+  }, [loadOrders]);
 
   useSocketEvent<AyurvedaOrder>('AYURVEDA_ORDER_UPDATED', (updated) => {
     setOrders((current) => {
@@ -68,10 +92,9 @@ export default function AyurvedaPage() {
   return (
     <div className="space-y-5">
       <div className="card bg-ved-green-50 border-ved-green-900/10">
-        <h1 className="text-xl font-semibold">Ayurveda shop</h1>
+        <h1 className="text-xl font-semibold">Vedsutra shop</h1>
         <p className="mt-1 text-sm text-ved-green-800/60">
-          Dosha-tagged kits and churnas, paid from your wallet. Prices come from the catalog — never
-          typed in by the client.
+          Dosha-tagged Ayurveda kits and churnas, and crystals — paid from your wallet.
         </p>
       </div>
 
@@ -100,7 +123,27 @@ export default function AyurvedaPage() {
 
       {tab === 'shop' ? (
         <>
-          <DoshaChips value={dosha} onChange={setDosha} />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1 rounded-xl bg-ved-cream-200/80 p-1" role="radiogroup" aria-label="Product category">
+              {(['AYURVEDA', 'CRYSTAL'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={category === option}
+                  onClick={() => setCategory(option)}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                    category === option
+                      ? 'bg-ved-green-800 text-white'
+                      : 'text-ved-green-800/60 hover:text-ved-green-900'
+                  }`}
+                >
+                  {option === 'AYURVEDA' ? 'Ayurveda' : 'Crystals'}
+                </button>
+              ))}
+            </div>
+            {category === 'AYURVEDA' && <DoshaChips value={dosha} onChange={setDosha} />}
+          </div>
           {loading ? (
             <p className="text-sm text-ved-green-800/60">Loading…</p>
           ) : (
@@ -161,6 +204,17 @@ function ProductGrid({
     <div className="grid gap-3 sm:grid-cols-2">
       {products.map((product) => (
         <div key={product.id} className="card space-y-3">
+          {product.imageUrl && (
+            <div className="relative aspect-[16/10] overflow-hidden rounded-xl bg-ved-cream-200">
+              <Image
+                src={product.imageUrl}
+                alt={product.name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 640px) 90vw, 45vw"
+              />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="font-semibold">{product.name}</p>
@@ -169,10 +223,12 @@ function ProductGrid({
             <p className="tabular shrink-0 font-semibold">₹{product.price}</p>
           </div>
           {product.description && <p className="text-sm text-ved-green-800/60">{product.description}</p>}
-          <p className="text-xs text-ved-green-800/50">
-            Suited:{' '}
-            {product.suitedDoshas.map((d: AyurvedaDosha) => d.charAt(0) + d.slice(1).toLowerCase()).join(', ')}
-          </p>
+          {product.suitedDoshas.length > 0 && (
+            <p className="text-xs text-ved-green-800/50">
+              Suited:{' '}
+              {product.suitedDoshas.map((d: AyurvedaDosha) => d.charAt(0) + d.slice(1).toLowerCase()).join(', ')}
+            </p>
+          )}
           <button type="button" className="btn-primary w-full" onClick={() => onSelect(product)}>
             Order
           </button>
@@ -267,7 +323,7 @@ function CheckoutDialog({
       setResult(ordered);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 402) {
-        setError('Your wallet does not cover this kit. Add money and try again.');
+        setError('Your wallet does not cover this item. Add money and try again.');
       } else {
         setError(caught instanceof Error ? caught.message : 'Could not place the order');
       }

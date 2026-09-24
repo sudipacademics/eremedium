@@ -257,6 +257,25 @@ async function main(): Promise<void> {
     },
   ];
 
+  const crystalCatalog: ReadonlyArray<{ sku: string; name: string; description: string; price: string; formFactor: string }> = [
+    { sku: 'crystal-amethyst', name: 'Amethyst Cluster', description: 'Violet quartz traditionally associated with Shani and a calm, focused mind.', price: '1299.00', formFactor: 'raw' },
+    { sku: 'crystal-rose-quartz', name: 'Rose Quartz Tumble', description: 'Soft pink quartz associated with Shukra, kept for harmony in relationships.', price: '499.00', formFactor: 'tumbled' },
+    { sku: 'crystal-citrine', name: 'Citrine Stone', description: 'Golden quartz linked with Guru and traditionally kept for prosperity.', price: '899.00', formFactor: 'tumbled' },
+    { sku: 'crystal-sphatik', name: 'Sphatik (Clear Quartz) Cluster', description: 'Clear quartz revered as sphatik, used on altars and for meditation.', price: '1099.00', formFactor: 'raw' },
+    { sku: 'crystal-tigers-eye', name: "Tiger's Eye Tumble", description: 'Banded golden-brown stone traditionally kept for courage and grounding.', price: '449.00', formFactor: 'tumbled' },
+    { sku: 'crystal-black-tourmaline', name: 'Black Tourmaline', description: 'Deep black stone traditionally placed at entrances as a protective ward.', price: '699.00', formFactor: 'raw' },
+    { sku: 'crystal-pyrite', name: 'Pyrite Cluster', description: 'Metallic "fool\'s gold" traditionally kept on work desks for abundance.', price: '799.00', formFactor: 'raw' },
+    { sku: 'crystal-lapis-lazuli', name: 'Lapis Lazuli Stone', description: 'Royal-blue stone associated with clear expression and wisdom.', price: '999.00', formFactor: 'tumbled' },
+  ];
+
+  for (const entry of crystalCatalog) {
+    await prisma.ayurvedaProduct.upsert({
+      where: { sku: entry.sku },
+      update: {},
+      create: { ...entry, category: 'CRYSTAL', imageUrl: `/shop/products/${entry.sku}.webp` },
+    });
+  }
+
   for (const entry of ayurvedaCatalog) {
     await prisma.ayurvedaProduct.upsert({
       where: { sku: entry.sku },
@@ -275,6 +294,7 @@ async function main(): Promise<void> {
         price: entry.price,
         suitedDoshas: entry.suitedDoshas,
         formFactor: entry.formFactor,
+        imageUrl: `/shop/products/${entry.sku}.webp`,
       },
     });
   }

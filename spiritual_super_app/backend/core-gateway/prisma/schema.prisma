@@ -411,16 +411,25 @@ model AyurvedaProduct {
   description  String?  @db.VarChar(1000)
   price        Decimal  @db.Decimal(12, 2)
   suitedDoshas Dosha[]  @map("suited_doshas")
-  /** kit | churna | oil | syrup — display only. */
-  formFactor   String   @default("kit") @map("form_factor") @db.VarChar(40)
-  active       Boolean  @default(true)
+  /** kit | churna | oil | syrup | tumbled | raw — display only. */
+  formFactor   String          @default("kit") @map("form_factor") @db.VarChar(40)
+  category     ProductCategory @default(AYURVEDA)
+  /** Site-relative path (/shop/...) or an https image on an allowed host. */
+  imageUrl     String?         @map("image_url") @db.VarChar(500)
+  active       Boolean         @default(true)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   orders AyurvedaOrder[]
 
   @@index([active, price])
+  @@index([category, active])
   @@map("ayurveda_products")
+}
+
+enum ProductCategory {
+  AYURVEDA
+  CRYSTAL
 }
 
 model AyurvedaOrder {

@@ -86,3 +86,11 @@ body.admin-ops {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

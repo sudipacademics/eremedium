@@ -13,6 +13,7 @@ import {
   type SiteContent,
 } from '@/lib/api';
 import { SiteFooter } from '@/components/SiteFooter';
+import { ProductCarousel } from '@/components/home/ProductCarousel';
 
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
@@ -24,6 +25,55 @@ const CATEGORIES = [
   { href: '/temple', label: 'Virtual Temple', tag: '16 Upacharas', icon: '🛕' },
   { href: '/ayurveda', label: 'Ayurveda', tag: 'Natural Wellness', icon: '🌿' },
 ] as const;
+
+const QUICK_ACTIONS = [
+  { href: '/ai', label: 'Chat with Astrologer', tag: 'Ask about your chart', icon: 'chat' },
+  { href: '/astrologers', label: 'Call Astrologer', tag: 'Talk to a verified expert', icon: 'call' },
+  { href: '/gochar', label: 'Daily Horoscope', tag: "Today's transits for you", icon: 'sun' },
+  { href: '/kundali', label: 'Get Free Kundali', tag: 'Your birth chart in seconds', icon: 'chart' },
+] as const;
+
+function QuickActionIcon({ name }: { name: (typeof QUICK_ACTIONS)[number]['icon'] }) {
+  const common = {
+    viewBox: '0 0 24 24',
+    className: 'h-6 w-6',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.7,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
+  } as const;
+  switch (name) {
+    case 'chat':
+      return (
+        <svg {...common}>
+          <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4A8 8 0 1 1 20 12z" />
+          <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" strokeWidth={2.4} />
+        </svg>
+      );
+    case 'call':
+      return (
+        <svg {...common}>
+          <path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />
+        </svg>
+      );
+    case 'sun':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      );
+    case 'chart':
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="18" height="18" rx="1.5" />
+          <path d="M3 3l18 18M21 3L3 21M12 3l9 9-9 9-9-9z" />
+        </svg>
+      );
+  }
+}
 
 const POPULAR = [
   { href: '/kundali', title: 'Birth Chart Analysis', blurb: 'Lagna, grahas, and houses.', icon: '📜' },
@@ -93,7 +143,8 @@ export function HomePage() {
   const [site, setSite] = useState<SiteContent | null>(null);
   const [articles, setArticles] = useState<CmsArticle[]>([]);
   const [astrologers, setAstrologers] = useState<Astrologer[]>([]);
-  const [products, setProducts] = useState<AyurvedaProduct[]>([]);
+  const [ayurveda, setAyurveda] = useState<AyurvedaProduct[] | null>(null);
+  const [crystals, setCrystals] = useState<AyurvedaProduct[] | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -107,9 +158,13 @@ export function HomePage() {
       .then((res) => setAstrologers(res.astrologers.slice(0, 6)))
       .catch(() => setAstrologers([]));
     void api
-      .get<{ products: AyurvedaProduct[] }>('ayurveda/shop/products')
-      .then((res) => setProducts(res.products.slice(0, 8)))
-      .catch(() => setProducts([]));
+      .get<{ products: AyurvedaProduct[] }>('content/products?category=AYURVEDA')
+      .then((res) => setAyurveda(res.products))
+      .catch(() => setAyurveda([]));
+    void api
+      .get<{ products: AyurvedaProduct[] }>('content/products?category=CRYSTAL')
+      .then((res) => setCrystals(res.products))
+      .catch(() => setCrystals([]));
   }, []);
 
   function onSearch(event: FormEvent) {
@@ -250,6 +305,36 @@ export function HomePage() {
         ))}
       </section>
 
+      {/* Quick actions */}
+      <nav aria-label="Quick actions" className="mx-auto max-w-7xl px-4 pb-12">
+        <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {QUICK_ACTIONS.map((action) => (
+            <li key={action.href}>
+              <Link
+                href={action.href}
+                className="group flex h-full items-center gap-3 rounded-2xl border border-ved-gold-400/30 bg-gradient-to-br from-white to-[#FBF8F2] p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-ved-green-500/40 hover:shadow-md sm:gap-4 sm:p-4"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-ved-green-800 text-ved-gold-300 shadow-inner transition group-hover:scale-105 sm:h-12 sm:w-12">
+                  <QuickActionIcon name={action.icon} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold leading-tight text-ved-green-900 sm:text-[15px]">
+                    {action.label}
+                  </span>
+                  <span className="mt-0.5 hidden text-xs text-ved-green-800/55 sm:block">{action.tag}</span>
+                </span>
+                <span
+                  aria-hidden
+                  className="ml-auto hidden text-ved-gold-500 transition group-hover:translate-x-0.5 md:block"
+                >
+                  →
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
       {/* Popular services */}
       <section className="mx-auto max-w-7xl px-4 pb-12">
         <SectionHead title="Popular Services" href="/astrologers" linkLabel="View All" />
@@ -272,6 +357,19 @@ export function HomePage() {
         </div>
       </section>
 
+      <ProductCarousel
+        title="Featured Ayurvedic Products"
+        category="AYURVEDA"
+        products={ayurveda ?? []}
+        loading={ayurveda === null}
+      />
+      <ProductCarousel
+        title="Featured Crystals"
+        category="CRYSTAL"
+        products={crystals ?? []}
+        loading={crystals === null}
+      />
+
       {/* Astrologers */}
       {astrologers.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pb-12">
@@ -291,34 +389,6 @@ export function HomePage() {
                   ₹{a.perMinuteRate}/min · {a.status}
                 </p>
               </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Products */}
-      {products.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pb-12">
-          <SectionHead title="Featured Ayurvedic Products" href="/ayurveda" linkLabel="Shop all" />
-          <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
-            {products.map((p) => (
-              <article
-                key={p.id}
-                className="w-52 shrink-0 space-y-2 rounded-2xl border border-ved-green-900/8 bg-white p-3 shadow-sm"
-              >
-                <div className="grid h-28 place-items-center rounded-xl bg-ved-cream-200 text-3xl">🌿</div>
-                <p className="line-clamp-2 text-sm font-semibold text-ved-green-900">{p.name}</p>
-                <p className="text-xs text-ved-green-800/55">{p.suitedDoshas.join(' · ') || 'Ayurveda'}</p>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-ved-green-900">₹{p.price}</span>
-                  <Link
-                    href="/ayurveda"
-                    className="rounded-full bg-ved-green-800 px-3 py-1 text-[11px] font-semibold text-white"
-                  >
-                    View
-                  </Link>
-                </div>
-              </article>
             ))}
           </div>
         </section>

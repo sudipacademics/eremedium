@@ -47,8 +47,8 @@ const CARDS = [
   },
   {
     href: '/admin/ayurveda',
-    title: 'Ayurveda products',
-    body: 'SKUs, prices, dosha tags — create and edit the shop.',
+    title: 'Ayurveda & crystal products',
+    body: 'SKUs, prices, images, dosha tags — feeds the shop and homepage carousels.',
   },
   {
     href: '/admin/astrologers',

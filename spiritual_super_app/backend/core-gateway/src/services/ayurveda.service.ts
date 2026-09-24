@@ -1,9 +1,10 @@
-import { AyurvedaOrderStatus, Dosha, ReferenceType } from '@prisma/client';
+import { AyurvedaOrderStatus, Dosha, ProductCategory, ReferenceType } from '@prisma/client';
 
 import { logger } from '../lib/logger.js';
 import { Prisma, money, prisma } from '../lib/prisma.js';
 import { hub } from '../ws/hub.js';
 import { ServerEvent } from '../ws/protocol.js';
+import { assertSafeProductImage } from './content-security.js';
 import { WalletService } from './wallet.service.js';
 
 export class AyurvedaError extends Error {
@@ -24,7 +25,56 @@ export interface ProductView {
   readonly price: string;
   readonly suitedDoshas: readonly Dosha[];
   readonly formFactor: string;
+  readonly category: ProductCategory;
+  readonly imageUrl: string | null;
   readonly active?: boolean;
+}
+
+interface ProductRow {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: Prisma.Decimal;
+  suitedDoshas: Dosha[];
+  formFactor: string;
+  category: ProductCategory;
+  imageUrl: string | null;
+  active: boolean;
+}
+
+function toProductView(product: ProductRow): ProductView & { active: boolean } {
+  return {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    description: product.description,
+    price: money(product.price).toFixed(2),
+    suitedDoshas: product.suitedDoshas,
+    formFactor: product.formFactor,
+    category: product.category,
+    imageUrl: product.imageUrl,
+    active: product.active,
+  };
+}
+
+export interface ProductInput {
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly price?: string;
+  readonly suitedDoshas?: readonly Dosha[];
+  readonly formFactor?: string;
+  readonly category?: ProductCategory;
+  readonly imageUrl?: string | null;
+  readonly active?: boolean;
+}
+
+function safeImage(url: string | null | undefined): string | null {
+  try {
+    return assertSafeProductImage(url);
+  } catch (error) {
+    throw new AyurvedaError(error instanceof Error ? error.message : 'Invalid image', 400);
+  }
 }
 
 export interface OrderView {
@@ -100,65 +150,37 @@ export interface PlaceOrderInput {
 }
 
 export const AyurvedaService = {
-  async listProducts(dosha?: Dosha): Promise<ProductView[]> {
+  async listProducts(filter: { dosha?: Dosha; category?: ProductCategory } = {}): Promise<ProductView[]> {
     const products = await prisma.ayurvedaProduct.findMany({
       where: {
         active: true,
-        ...(dosha === undefined ? {} : { suitedDoshas: { has: dosha } }),
+        ...(filter.dosha === undefined ? {} : { suitedDoshas: { has: filter.dosha } }),
+        ...(filter.category === undefined ? {} : { category: filter.category }),
       },
       orderBy: { price: 'asc' },
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        description: true,
-        price: true,
-        suitedDoshas: true,
-        formFactor: true,
-      },
     });
-
-    return products.map((product) => ({
-      id: product.id,
-      sku: product.sku,
-      name: product.name,
-      description: product.description,
-      price: money(product.price).toFixed(2),
-      suitedDoshas: product.suitedDoshas,
-      formFactor: product.formFactor,
-    }));
+    return products.map((product) => {
+      const { active: _active, ...view } = toProductView(product);
+      return view;
+    });
   },
 
   /** Admin catalog: includes inactive SKUs. */
   async listProductsAdmin(): Promise<Array<ProductView & { active: boolean }>> {
     const products = await prisma.ayurvedaProduct.findMany({
-      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      orderBy: [{ active: 'desc' }, { category: 'asc' }, { name: 'asc' }],
     });
-    return products.map((product) => ({
-      id: product.id,
-      sku: product.sku,
-      name: product.name,
-      description: product.description,
-      price: money(product.price).toFixed(2),
-      suitedDoshas: product.suitedDoshas,
-      formFactor: product.formFactor,
-      active: product.active,
-    }));
+    return products.map(toProductView);
   },
 
-  async createProduct(input: {
-    readonly sku: string;
-    readonly name: string;
-    readonly description?: string | null;
-    readonly price: string;
-    readonly suitedDoshas: readonly Dosha[];
-    readonly formFactor: string;
-    readonly active?: boolean;
-  }): Promise<ProductView & { active: boolean }> {
+  async createProduct(
+    input: ProductInput & { readonly sku: string; readonly name: string; readonly price: string },
+  ): Promise<ProductView & { active: boolean }> {
     const price = money(input.price);
     if (price.lessThanOrEqualTo(0)) {
       throw new AyurvedaError('price must be greater than zero', 400);
     }
+    const imageUrl = safeImage(input.imageUrl);
     try {
       const product = await prisma.ayurvedaProduct.create({
         data: {
@@ -166,21 +188,14 @@ export const AyurvedaService = {
           name: input.name.trim(),
           description: input.description?.trim() || null,
           price,
-          suitedDoshas: [...input.suitedDoshas],
-          formFactor: input.formFactor.trim() || 'kit',
+          suitedDoshas: [...(input.suitedDoshas ?? [])],
+          formFactor: input.formFactor?.trim() || 'kit',
+          category: input.category ?? ProductCategory.AYURVEDA,
+          imageUrl,
           active: input.active !== false,
         },
       });
-      return {
-        id: product.id,
-        sku: product.sku,
-        name: product.name,
-        description: product.description,
-        price: money(product.price).toFixed(2),
-        suitedDoshas: product.suitedDoshas,
-        formFactor: product.formFactor,
-        active: product.active,
-      };
+      return toProductView(product);
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
         throw new AyurvedaError('SKU already exists', 409);
@@ -189,17 +204,7 @@ export const AyurvedaService = {
     }
   },
 
-  async updateProduct(
-    productId: string,
-    input: {
-      readonly name?: string;
-      readonly description?: string | null;
-      readonly price?: string;
-      readonly suitedDoshas?: readonly Dosha[];
-      readonly formFactor?: string;
-      readonly active?: boolean;
-    },
-  ): Promise<ProductView & { active: boolean }> {
+  async updateProduct(productId: string, input: ProductInput): Promise<ProductView & { active: boolean }> {
     const existing = await prisma.ayurvedaProduct.findUnique({ where: { id: productId } });
     if (!existing) {
       throw new AyurvedaError('Product not found', 404);
@@ -217,19 +222,12 @@ export const AyurvedaService = {
         ...(input.price !== undefined ? { price: money(input.price) } : {}),
         ...(input.suitedDoshas !== undefined ? { suitedDoshas: [...input.suitedDoshas] } : {}),
         ...(input.formFactor !== undefined ? { formFactor: input.formFactor.trim() } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.imageUrl !== undefined ? { imageUrl: safeImage(input.imageUrl) } : {}),
         ...(input.active !== undefined ? { active: input.active } : {}),
       },
     });
-    return {
-      id: product.id,
-      sku: product.sku,
-      name: product.name,
-      description: product.description,
-      price: money(product.price).toFixed(2),
-      suitedDoshas: product.suitedDoshas,
-      formFactor: product.formFactor,
-      active: product.active,
-    };
+    return toProductView(product);
   },
 
   async requireActiveProduct(productId: string) {

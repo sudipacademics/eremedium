@@ -42,6 +42,22 @@ export function assertSafeImageUrl(url: string | null | undefined): string | nul
 }
 
 /**
+ * A product photo: either an image bundled with the site (`/shop/...`) or an https image on an
+ * allowed host.
+ */
+export function assertSafeProductImage(url: string | null | undefined): string | null {
+  if (url === null || url === undefined || url.trim() === '') return null;
+  const value = url.trim();
+  if (value.startsWith('/')) {
+    if (!/^\/[a-z0-9][a-z0-9/_.-]*\.(webp|png|jpe?g|avif)$/i.test(value) || value.includes('..')) {
+      throw new ContentError('Image path must look like /shop/products/name.webp');
+    }
+    return value.slice(0, 500);
+  }
+  return assertSafeImageUrl(value);
+}
+
+/**
  * An https link to one of the given sites (or a subdomain of one), such as a social profile or an
  * app-store listing. Anything else is refused so a typo or a pasted phishing link cannot reach the
  * public footer.

@@ -498,6 +498,8 @@ export interface PujaBookingResult {
 
 export type AyurvedaDosha = 'VATA' | 'PITTA' | 'KAPHA' | 'TRIDOSHIC';
 
+export type ProductCategory = 'AYURVEDA' | 'CRYSTAL';
+
 export interface AyurvedaProduct {
   id: string;
   sku: string;
@@ -506,6 +508,8 @@ export interface AyurvedaProduct {
   price: string;
   suitedDoshas: AyurvedaDosha[];
   formFactor: string;
+  category: ProductCategory;
+  imageUrl: string | null;
 }
 
 export type AyurvedaOrderStatus = 'CONFIRMED' | 'PACKED' | 'DISPATCHED';

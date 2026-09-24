@@ -1,8 +1,10 @@
+import { ProductCategory } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
 import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { AyurvedaService } from '../services/ayurveda.service.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
 
@@ -56,6 +58,8 @@ const listQuery = z.object({
     .transform((v) => v === 'true'),
 });
 
+const productsQuery = z.object({ category: z.nativeEnum(ProductCategory).optional() });
+
 const slugParams = z.object({ slug: z.string().min(2).max(120) });
 const idParams = z.object({ id: z.string().uuid() });
 
@@ -107,6 +111,13 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
   app.get('/footer', async (_request, reply) => {
     reply.header('Cache-Control', 'public, max-age=60');
     return FooterService.get();
+  });
+
+  app.get('/products', async (request, reply) => {
+    const { category } = productsQuery.parse(request.query);
+    reply.header('Cache-Control', 'public, max-age=60');
+    const products = await AyurvedaService.listProducts(category === undefined ? {} : { category });
+    return { products };
   });
 
   app.get('/articles', async (request) => {
