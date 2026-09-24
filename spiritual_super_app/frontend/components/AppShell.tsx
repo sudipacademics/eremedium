@@ -9,7 +9,17 @@ import { api, session, type Profile, type WalletBalance } from '@/lib/api';
 import { SocketProvider, useSocket, useSocketEvent } from '@/lib/socket';
 
 /** Marketing pages that render their own full-width layout and the site footer. */
-const INFO_PAGES = new Set(['/knowledge', '/disclaimer', '/terms', '/refund-policy', '/data-protection']);
+const INFO_PAGES = new Set([
+  '/knowledge',
+  '/disclaimer',
+  '/terms',
+  '/refund-policy',
+  '/data-protection',
+  '/help',
+  '/how-it-works',
+  '/faq',
+  '/privacy-policy',
+]);
 
 const PUBLIC_EXACT = new Set(['/login', '/', ...INFO_PAGES]);
 

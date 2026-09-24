@@ -468,6 +468,26 @@ model SiteContent {
   @@map("site_content")
 }
 
+/**
+ * Singleton footer settings. Id is always "default".
+ * Admins edit via /api/v1/content/admin/footer; the public footer reads /api/v1/content/footer.
+ */
+model FooterSettings {
+  id           String   @id @db.VarChar(32)
+  facebookUrl  String?  @map("facebook_url") @db.VarChar(500)
+  instagramUrl String?  @map("instagram_url") @db.VarChar(500)
+  youtubeUrl   String?  @map("youtube_url") @db.VarChar(500)
+  xUrl         String?  @map("x_url") @db.VarChar(500)
+  linkedinUrl  String?  @map("linkedin_url") @db.VarChar(500)
+  whatsappUrl  String?  @map("whatsapp_url") @db.VarChar(500)
+  appStoreUrl  String?  @map("app_store_url") @db.VarChar(500)
+  playStoreUrl String?  @map("play_store_url") @db.VarChar(500)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy    String?  @map("updated_by") @db.Uuid
+
+  @@map("footer_settings")
+}
+
 model Article {
   id           String    @id @default(uuid()) @db.Uuid
   slug         String    @unique @db.VarChar(120)

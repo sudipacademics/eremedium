@@ -41,6 +41,40 @@ export function assertSafeImageUrl(url: string | null | undefined): string | nul
   return value.slice(0, 500);
 }
 
+/**
+ * An https link to one of the given sites (or a subdomain of one), such as a social profile or an
+ * app-store listing. Anything else is refused so a typo or a pasted phishing link cannot reach the
+ * public footer.
+ */
+export function assertSafeExternalUrl(
+  url: string | null | undefined,
+  allowedHosts: readonly string[],
+  label: string,
+): string | null {
+  if (url === null || url === undefined || url.trim() === '') return null;
+  const value = url.trim();
+  if (value.length > 500) {
+    throw new ContentError(`${label} link is too long`);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ContentError(`${label} link is not a valid URL`);
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new ContentError(`${label} link must use https`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new ContentError(`${label} link must not contain credentials`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (!allowedHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) {
+    throw new ContentError(`${label} link must point to ${allowedHosts.join(' or ')}`);
+  }
+  return parsed.toString();
+}
+
 export function slugify(input: string): string {
   return input
     .toLowerCase()

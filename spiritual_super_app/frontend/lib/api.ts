@@ -421,6 +421,18 @@ export interface SiteContent {
   updatedAt: string;
 }
 
+export interface FooterSettings {
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  youtubeUrl: string | null;
+  xUrl: string | null;
+  linkedinUrl: string | null;
+  whatsappUrl: string | null;
+  appStoreUrl: string | null;
+  playStoreUrl: string | null;
+  updatedAt: string | null;
+}
+
 export interface CmsArticle {
   id: string;
   slug: string;

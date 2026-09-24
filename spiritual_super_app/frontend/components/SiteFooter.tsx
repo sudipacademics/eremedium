@@ -1,11 +1,23 @@
-import Link from 'next/link';
+'use client';
 
-import { SOCIAL_LINKS, type SocialPlatform } from '@/lib/social';
+import Link from 'next/link';
+import { useEffect, useState, type ReactNode } from 'react';
+
+import type { FooterSettings } from '@/lib/api';
+import { loadFooterSettings } from '@/lib/footer';
+import { SOCIAL_PLATFORMS, type SocialPlatform } from '@/lib/social';
 
 const EXPLORE = [
   { href: '/articles', label: 'Blog' },
   { href: '/knowledge', label: 'Knowledge' },
   { href: '/gochar', label: 'Learn' },
+] as const;
+
+const SUPPORT = [
+  { href: '/help', label: 'Help Centre' },
+  { href: '/how-it-works', label: 'How It Works' },
+  { href: '/faq', label: 'FAQ' },
+  { href: '/privacy-policy', label: 'Privacy Policy' },
 ] as const;
 
 const LEGAL = [
@@ -59,12 +71,109 @@ function SocialIcon({ platform }: { platform: SocialPlatform }) {
   }
 }
 
+function AppleLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="currentColor" aria-hidden>
+      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+    </svg>
+  );
+}
+
+function PlayLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0" aria-hidden>
+      <path d="M3.6 1.8 13.4 12 3.6 22.2A1.3 1.3 0 0 1 3 21.1V2.9a1.3 1.3 0 0 1 .6-1.1z" fill="#4285F4" />
+      <path d="M3.6 1.8 16.8 8.9 13.4 12z" fill="#34A853" />
+      <path d="M3.6 22.2 13.4 12l3.4 3.1z" fill="#EA4335" />
+      <path d="M16.8 8.9 20.4 10.9a1.3 1.3 0 0 1 0 2.2l-3.6 2L13.4 12z" fill="#FBBC04" />
+    </svg>
+  );
+}
+
+function StoreBadge({
+  href,
+  logo,
+  caption,
+  store,
+}: {
+  href: string | null | undefined;
+  logo: ReactNode;
+  caption: string;
+  store: string;
+}) {
+  const body = (
+    <>
+      {logo}
+      <span className="leading-tight">
+        <span className="block text-[9px] uppercase tracking-wide text-cream-100/70">{caption}</span>
+        <span className="block text-[15px] font-semibold text-cream-50">{store}</span>
+      </span>
+    </>
+  );
+  const base =
+    'flex h-12 w-[10.5rem] items-center gap-2.5 rounded-xl border px-3 text-cream-50 transition';
+
+  if (!href) {
+    return (
+      <span
+        className={`${base} cursor-default border-white/10 bg-black/30 opacity-60`}
+        title={`${store} — coming soon`}
+        aria-label={`${store} app coming soon`}
+      >
+        {body}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`${caption} ${store}`}
+      className={`${base} border-white/20 bg-black hover:border-ved-gold-400/60`}
+    >
+      {body}
+    </a>
+  );
+}
+
+function LinkColumn({ title, links }: { title: string; links: ReadonlyArray<{ href: string; label: string }> }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">{title}</p>
+      <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
+        {links.map((link) => (
+          <li key={link.href}>
+            <Link href={link.href} className="hover:text-cream-50">
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function SiteFooter() {
-  const socials = SOCIAL_LINKS.filter((link) => link.href.trim().length > 0);
+  const [settings, setSettings] = useState<FooterSettings | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void loadFooterSettings().then((loaded) => {
+      if (live) setSettings(loaded);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const socials = SOCIAL_PLATFORMS.map((info) => ({ ...info, href: settings?.[info.field] ?? null })).filter(
+    (link) => link.core || link.href,
+  );
 
   return (
     <footer className="bg-ved-green-950 text-cream-100">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.2fr]">
         <div>
           <Link href="/" className="inline-block text-[1.75rem] font-bold leading-none tracking-tight text-cream-50">
             Vedsutra
@@ -72,48 +181,42 @@ export function SiteFooter() {
           <p className="mt-3 max-w-xs text-sm text-cream-100/65">
             Your life, in harmony — astrology, ritual, and Ayurveda under one trusted roof.
           </p>
-          {socials.length > 0 && (
-            <ul className="mt-5 flex flex-wrap items-center gap-2.5" aria-label="Vedsutra on social media">
-              {socials.map((link) => (
-                <li key={link.platform}>
+          <ul className="mt-5 flex flex-wrap items-center gap-2.5" aria-label="Vedsutra on social media">
+            {socials.map((link) => (
+              <li key={link.platform}>
+                {link.href ? (
                   <a
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`Vedsutra on ${link.label}`}
-                    title={link.handle ? `${link.label} · ${link.handle}` : link.label}
+                    title={link.label}
                     className="grid h-9 w-9 place-items-center rounded-full border border-white/15 text-cream-100/75 transition hover:border-ved-gold-400/60 hover:bg-white/5 hover:text-ved-gold-300"
                   >
                     <SocialIcon platform={link.platform} />
                   </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Explore</p>
-          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
-            {EXPLORE.map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className="hover:text-cream-50">
-                  {link.label}
-                </Link>
+                ) : (
+                  <span
+                    aria-label={`Vedsutra on ${link.label} — coming soon`}
+                    title={`${link.label} — coming soon`}
+                    className="grid h-9 w-9 cursor-default place-items-center rounded-full border border-white/10 text-cream-100/35"
+                  >
+                    <SocialIcon platform={link.platform} />
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         </div>
+        <LinkColumn title="Explore" links={EXPLORE} />
+        <LinkColumn title="Support" links={SUPPORT} />
+        <LinkColumn title="Legal" links={LEGAL} />
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Legal</p>
-          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
-            {LEGAL.map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className="hover:text-cream-50">
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Download Our App</p>
+          <div className="mt-3 flex flex-col gap-2.5">
+            <StoreBadge href={settings?.appStoreUrl} logo={<AppleLogo />} caption="Download on the" store="App Store" />
+            <StoreBadge href={settings?.playStoreUrl} logo={<PlayLogo />} caption="Get it on" store="Google Play" />
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-4 text-[11px] text-cream-100/45">

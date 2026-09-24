@@ -36,6 +36,11 @@ const CARDS = [
     body: 'Create, feature, publish, or retire journal posts.',
   },
   {
+    href: '/admin/footer',
+    title: 'Footer links',
+    body: 'Social media profiles and App Store / Google Play links.',
+  },
+  {
     href: '/admin/pujas',
     title: 'E-Puja catalog',
     body: 'Temples and priced offerings — create, edit, activate.',

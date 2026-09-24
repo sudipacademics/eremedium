@@ -4,6 +4,25 @@ import { z } from 'zod';
 import { AppRole } from '../auth/jwt.js';
 import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
+import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
+
+const footerLink = z.string().max(500).nullable().optional();
+const footerBody = z
+  .object({
+    facebookUrl: footerLink,
+    instagramUrl: footerLink,
+    youtubeUrl: footerLink,
+    xUrl: footerLink,
+    linkedinUrl: footerLink,
+    whatsappUrl: footerLink,
+    appStoreUrl: footerLink,
+    playStoreUrl: footerLink,
+  })
+  .strict();
+
+function toFooterInput(body: z.infer<typeof footerBody>): FooterSettingsInput {
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as FooterSettingsInput;
+}
 
 const siteBody = z.object({
   heroEyebrow: z.string().min(2).max(120),
@@ -85,6 +104,11 @@ function toArticlePatch(body: z.infer<typeof articlePatch>): Partial<ArticleInpu
 export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
   app.get('/home', async () => ContentService.getHome());
 
+  app.get('/footer', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=60');
+    return FooterService.get();
+  });
+
   app.get('/articles', async (request) => {
     const query = listQuery.parse(request.query);
     return {
@@ -109,6 +133,12 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
     const claims = requireUser(request);
     const body = siteBody.parse(request.body);
     return ContentService.updateHome(toSiteInput(body), claims.sub);
+  });
+
+  app.put('/footer', async (request) => {
+    const claims = requireUser(request);
+    const body = footerBody.parse(request.body);
+    return FooterService.update(toFooterInput(body), claims.sub);
   });
 
   app.get('/articles', async () => ({

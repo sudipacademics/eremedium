@@ -1,23 +1,28 @@
-export type SocialPlatform = 'instagram' | 'facebook' | 'youtube' | 'x' | 'linkedin' | 'whatsapp';
+import type { FooterSettings } from '@/lib/api';
 
-export interface SocialLink {
+export type SocialPlatform = 'facebook' | 'instagram' | 'youtube' | 'x' | 'linkedin' | 'whatsapp';
+
+export interface SocialPlatformInfo {
   platform: SocialPlatform;
   label: string;
-  /** Full profile URL. Links with an empty href are not rendered. */
-  href: string;
-  /** Shown beside the icon on wider screens, e.g. "@vedsutra". */
-  handle: string;
+  /** The footer settings field holding this profile's URL, managed from Admin → Footer. */
+  field: keyof Pick<
+    FooterSettings,
+    'facebookUrl' | 'instagramUrl' | 'youtubeUrl' | 'xUrl' | 'linkedinUrl' | 'whatsappUrl'
+  >;
+  /** Always shown in the footer; the others appear only once a URL is set. */
+  core: boolean;
+  placeholder: string;
 }
 
-/** Vedsutra's official profiles. Fill in `href` and `handle` to publish an icon in the footer. */
-export const SOCIAL_LINKS: readonly SocialLink[] = [
-  { platform: 'instagram', label: 'Instagram', href: '', handle: '' },
-  { platform: 'facebook', label: 'Facebook', href: '', handle: '' },
-  { platform: 'youtube', label: 'YouTube', href: '', handle: '' },
-  { platform: 'x', label: 'X', href: '', handle: '' },
-  { platform: 'linkedin', label: 'LinkedIn', href: '', handle: '' },
-  { platform: 'whatsapp', label: 'WhatsApp', href: '', handle: '' },
+export const SOCIAL_PLATFORMS: readonly SocialPlatformInfo[] = [
+  { platform: 'facebook', label: 'Facebook', field: 'facebookUrl', core: true, placeholder: 'https://www.facebook.com/vedsutra' },
+  { platform: 'instagram', label: 'Instagram', field: 'instagramUrl', core: true, placeholder: 'https://www.instagram.com/vedsutra' },
+  { platform: 'youtube', label: 'YouTube', field: 'youtubeUrl', core: true, placeholder: 'https://www.youtube.com/@vedsutra' },
+  { platform: 'x', label: 'X', field: 'xUrl', core: false, placeholder: 'https://x.com/vedsutra' },
+  { platform: 'linkedin', label: 'LinkedIn', field: 'linkedinUrl', core: false, placeholder: 'https://www.linkedin.com/company/vedsutra' },
+  { platform: 'whatsapp', label: 'WhatsApp', field: 'whatsappUrl', core: false, placeholder: 'https://wa.me/919000000000' },
 ];
 
-/** Contact address quoted on the legal pages. */
+/** Contact address quoted on the legal and support pages. */
 export const LEGAL_CONTACT_EMAIL = 'support@vedsutra.in';

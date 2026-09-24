@@ -62,6 +62,9 @@ export function AdminGate({ children }: { children: ReactNode }) {
           <Link href="/admin/articles" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
             Articles
           </Link>
+          <Link href="/admin/footer" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Footer
+          </Link>
           <Link href="/" className="rounded-lg px-3 py-1.5 text-slate-400 hover:text-white">
             ← Site
           </Link>
