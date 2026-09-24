@@ -52,6 +52,16 @@ export default function AstrologersPage() {
 
   useEffect(load, [load]);
 
+  // Arriving from a homepage card: bring that astrologer into view.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    setFocusId(new URLSearchParams(window.location.search).get('astrologer'));
+  }, []);
+  useEffect(() => {
+    if (!focusId || loading) return;
+    document.getElementById(`astrologer-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, loading]);
+
   useSocketEvent<QueuePosition>('QUEUE_POSITION', (payload) => setQueued(payload));
   useSocketEvent<{ reason?: string }>('QUEUE_LEFT', (payload) => {
     setQueued(null);
@@ -144,7 +154,11 @@ export default function AstrologersPage() {
             const affordable = Number(balance) >= Number(astrologer.minimumBalanceRequired);
             const available = astrologer.status === 'IDLE';
             return (
-              <div key={astrologer.id} className="card flex flex-col gap-3">
+              <div
+                key={astrologer.id}
+                id={`astrologer-${astrologer.id}`}
+                className={`card flex flex-col gap-3 ${focusId === astrologer.id ? 'ring-2 ring-ved-gold-400' : ''}`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-saffron-400 to-saffron-600 text-lg font-semibold text-night-950">

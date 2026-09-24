@@ -11,41 +11,9 @@ import {
   type OtpRequestResult,
   type UserProfileDetails,
 } from '@/lib/api';
+import { resizeSquarePhoto } from '@/lib/photo';
 
 const PHOTO_SIZE = 256;
-
-/** Center-crops to a square and re-encodes as a small JPEG so uploads stay well under the API limit. */
-async function resizePhoto(file: File): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Could not read that image'));
-      img.src = url;
-    });
-    const side = Math.min(image.naturalWidth, image.naturalHeight);
-    const canvas = document.createElement('canvas');
-    canvas.width = PHOTO_SIZE;
-    canvas.height = PHOTO_SIZE;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not process that image');
-    context.drawImage(
-      image,
-      (image.naturalWidth - side) / 2,
-      (image.naturalHeight - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      PHOTO_SIZE,
-      PHOTO_SIZE,
-    );
-    return canvas.toDataURL('image/jpeg', 0.85);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -92,7 +60,7 @@ export default function ProfilePage() {
       return;
     }
     try {
-      setPhoto(await resizePhoto(file));
+      setPhoto(await resizeSquarePhoto(file, PHOTO_SIZE));
       setSaved(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not use that image');

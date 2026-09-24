@@ -4,7 +4,9 @@ import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
 import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { AstrologerDirectoryService } from '../services/astrologer-directory.service.js';
 import { AyurvedaService } from '../services/ayurveda.service.js';
+import { ContentError } from '../services/content-security.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
 
@@ -118,6 +120,23 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
     reply.header('Cache-Control', 'public, max-age=60');
     const products = await AyurvedaService.listProducts(category === undefined ? {} : { category });
     return { products };
+  });
+
+  app.get('/astrologers', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=10');
+    return { astrologers: await AstrologerDirectoryService.list() };
+  });
+
+  app.get('/astrologers/:id/photo', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const photo = await AstrologerDirectoryService.photo(id);
+    if (!photo) {
+      throw new ContentError('No photo', 404);
+    }
+    return reply
+      .header('Content-Type', photo.contentType)
+      .header('Cache-Control', 'public, max-age=86400')
+      .send(photo.bytes);
   });
 
   app.get('/articles', async (request) => {

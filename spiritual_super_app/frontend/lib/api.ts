@@ -194,6 +194,24 @@ export interface Astrologer {
   minimumBalanceRequired: string;
 }
 
+/** Public astrologer card data from `content/astrologers` (no login needed). */
+export interface DirectoryAstrologer {
+  id: string;
+  displayName: string;
+  status: Astrologer['status'];
+  languages: string[];
+  expertise: string[];
+  experienceYears: number | null;
+  perMinuteRate: string;
+  photoVersion: number | null;
+}
+
+export function astrologerPhotoUrl(astrologer: { id: string; photoVersion: number | null }): string | null {
+  return astrologer.photoVersion === null
+    ? null
+    : `/api/gw/content/astrologers/${astrologer.id}/photo?v=${astrologer.photoVersion}`;
+}
+
 export interface WalletBalance {
   walletId: string;
   balance: string;

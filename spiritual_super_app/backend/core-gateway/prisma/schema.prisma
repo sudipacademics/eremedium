@@ -220,6 +220,13 @@ model Astrologer {
   commissionSplit Decimal          @default("0.50") @map("commission_split") @db.Decimal(5, 4)
   status          AstrologerStatus @default(OFFLINE)
   languages       String[]         @default([])
+  /** Public card photo (small data URL), uploaded by an admin. Separate from User.photoDataUrl. */
+  photoDataUrl    String?          @map("photo_data_url") @db.Text
+  /** Set with photoDataUrl; used as the photo's cache-busting version. */
+  photoUpdatedAt  DateTime?        @map("photo_updated_at") @db.Timestamptz(3)
+  /** e.g. ["Vedic", "Numerology", "Tarot"] */
+  expertise       String[]         @default([])
+  experienceYears Int?             @map("experience_years") @db.SmallInt
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 

@@ -58,9 +58,12 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
 
     // Bytes, not text: invoice PDFs are binary and would be corrupted by a UTF-8 round trip.
     const payload = await upstream.arrayBuffer();
+    // Only anonymous GETs may be cached, and only when the gateway marks the response public.
+    const upstreamCache = upstream.headers.get('cache-control') ?? '';
+    const cacheable = method === 'GET' && !authorization && upstream.ok && /^public\b/.test(upstreamCache);
     const responseHeaders: Record<string, string> = {
       'content-type': upstream.headers.get('content-type') ?? 'application/json',
-      'cache-control': 'no-store',
+      'cache-control': cacheable ? upstreamCache : 'no-store',
     };
     const disposition = upstream.headers.get('content-disposition');
     if (disposition) {

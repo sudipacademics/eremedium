@@ -2,9 +2,9 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-
 import type { AyurvedaProduct, ProductCategory } from '@/lib/api';
+
+import { CAROUSEL_ARROW, useCarousel } from './useCarousel';
 
 const SHOP_QUERY: Record<ProductCategory, string> = { AYURVEDA: 'ayurveda', CRYSTAL: 'crystal' };
 const PLACEHOLDER: Record<ProductCategory, string> = { AYURVEDA: '🌿', CRYSTAL: '💎' };
@@ -36,31 +36,11 @@ export function ProductCarousel({
   loading: boolean;
   linkLabel?: string;
 }) {
-  const track = useRef<HTMLUListElement>(null);
-  const [edges, setEdges] = useState({ start: true, end: true });
-
-  const measure = useCallback(() => {
-    const el = track.current;
-    if (!el) return;
-    setEdges({ start: el.scrollLeft <= 4, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4 });
-  }, []);
-
-  useEffect(() => {
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [measure, products.length]);
-
-  function scroll(direction: 1 | -1) {
-    const el = track.current;
-    if (!el) return;
-    el.scrollBy({ left: direction * Math.max(el.clientWidth * 0.8, 240), behavior: 'smooth' });
-  }
+  const { track, edges, measure, scroll } = useCarousel(products.length);
 
   if (!loading && products.length === 0) return null;
 
-  const arrow =
-    'hidden h-9 w-9 place-items-center rounded-full border border-ved-green-900/10 bg-white text-ved-green-800 shadow-sm transition hover:border-ved-green-500/30 disabled:opacity-35 sm:grid';
+  const arrow = CAROUSEL_ARROW;
 
   return (
     <section className="mx-auto max-w-7xl px-4 pb-12" aria-roledescription="carousel" aria-label={title}>

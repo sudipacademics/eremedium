@@ -7,7 +7,11 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { ASTROLOGER_PHOTO_PATTERN, cleanTags } from '../services/astrologer-directory.js';
 import { QueueService } from '../services/queue.service.js';
+
+/** A 320px square JPEG is roughly 25–40 KB; this rejects full-size photos. */
+const ASTROLOGER_PHOTO_MAX_CHARS = 200_000;
 
 export class AstrologerError extends Error {
   readonly statusCode: number;
@@ -237,6 +241,9 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
         commissionSplit: true,
         status: true,
         languages: true,
+        expertise: true,
+        experienceYears: true,
+        photoUpdatedAt: true,
         createdAt: true,
         user: { select: { id: true, phone: true, name: true } },
       },
@@ -249,6 +256,9 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
         commissionSplit: row.commissionSplit.toFixed(4),
         status: row.status,
         languages: row.languages,
+        expertise: row.expertise,
+        experienceYears: row.experienceYears,
+        photoVersion: row.photoUpdatedAt?.getTime() ?? null,
         createdAt: row.createdAt.toISOString(),
         userId: row.user.id,
         phone: row.user.phone,
@@ -262,6 +272,15 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
     languages: z.array(z.string().min(2).max(40)).min(1).max(10).optional(),
     perMinuteRate: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/).optional(),
     commissionSplit: z.string().regex(/^0(\.\d{1,4})?$|^1(\.0{1,4})?$/).optional(),
+    expertise: z.array(z.string().min(2).max(40)).max(8).optional(),
+    experienceYears: z.number().int().min(0).max(80).nullable().optional(),
+    /** A small square photo from the admin page; null removes it. */
+    photoDataUrl: z
+      .string()
+      .max(ASTROLOGER_PHOTO_MAX_CHARS, 'Photo is too large')
+      .regex(ASTROLOGER_PHOTO_PATTERN, 'Photo must be a JPEG, PNG or WebP image')
+      .nullable()
+      .optional(),
     /** Only OFFLINE ↔ online (IDLE). Never forces BUSY/IN_CALL. */
     online: z.boolean().optional(),
   });
@@ -298,7 +317,12 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
         where: { id: astrologerId },
         data: {
           ...(body.displayName !== undefined ? { displayName: body.displayName.trim() } : {}),
-          ...(body.languages !== undefined ? { languages: body.languages } : {}),
+          ...(body.languages !== undefined ? { languages: cleanTags(body.languages) } : {}),
+          ...(body.expertise !== undefined ? { expertise: cleanTags(body.expertise) } : {}),
+          ...(body.experienceYears !== undefined ? { experienceYears: body.experienceYears } : {}),
+          ...(body.photoDataUrl !== undefined
+            ? { photoDataUrl: body.photoDataUrl, photoUpdatedAt: body.photoDataUrl ? new Date() : null }
+            : {}),
           ...(body.perMinuteRate !== undefined
             ? { perMinuteRate: money(body.perMinuteRate) }
             : {}),
@@ -313,6 +337,9 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
           commissionSplit: true,
           status: true,
           languages: true,
+          expertise: true,
+          experienceYears: true,
+          photoUpdatedAt: true,
         },
       });
 
@@ -323,6 +350,9 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
         commissionSplit: updated.commissionSplit.toFixed(4),
         status: updated.status,
         languages: updated.languages,
+        expertise: updated.expertise,
+        experienceYears: updated.experienceYears,
+        photoVersion: updated.photoUpdatedAt?.getTime() ?? null,
       });
     },
   );

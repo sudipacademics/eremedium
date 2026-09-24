@@ -7,12 +7,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import {
   api,
-  type Astrologer,
   type AyurvedaProduct,
   type CmsArticle,
   type SiteContent,
 } from '@/lib/api';
 import { SiteFooter } from '@/components/SiteFooter';
+import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
 
 const CATEGORIES = [
@@ -142,7 +142,6 @@ export function HomePage() {
   const router = useRouter();
   const [site, setSite] = useState<SiteContent | null>(null);
   const [articles, setArticles] = useState<CmsArticle[]>([]);
-  const [astrologers, setAstrologers] = useState<Astrologer[]>([]);
   const [ayurveda, setAyurveda] = useState<AyurvedaProduct[] | null>(null);
   const [crystals, setCrystals] = useState<AyurvedaProduct[] | null>(null);
   const [query, setQuery] = useState('');
@@ -153,10 +152,6 @@ export function HomePage() {
       .get<{ articles: CmsArticle[] }>('content/articles?featured=true&limit=3')
       .then((res) => setArticles(res.articles))
       .catch(() => setArticles([]));
-    void api
-      .get<{ astrologers: Astrologer[] }>('astrologers')
-      .then((res) => setAstrologers(res.astrologers.slice(0, 6)))
-      .catch(() => setAstrologers([]));
     void api
       .get<{ products: AyurvedaProduct[] }>('content/products?category=AYURVEDA')
       .then((res) => setAyurveda(res.products))
@@ -370,29 +365,7 @@ export function HomePage() {
         loading={crystals === null}
       />
 
-      {/* Astrologers */}
-      {astrologers.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pb-12">
-          <SectionHead title="Consult Experts" href="/astrologers" linkLabel="See all" />
-          <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
-            {astrologers.map((a) => (
-              <Link
-                key={a.id}
-                href="/astrologers"
-                className="w-52 shrink-0 space-y-2 rounded-2xl border border-ved-green-900/8 bg-white p-4 shadow-sm transition hover:border-ved-green-500/25"
-              >
-                <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-ved-gold-300 to-ved-gold-500 font-display text-xl text-ved-green-950">
-                  {a.displayName.slice(0, 1)}
-                </div>
-                <p className="font-semibold text-ved-green-900">{a.displayName}</p>
-                <p className="text-xs text-ved-green-800/55">
-                  ₹{a.perMinuteRate}/min · {a.status}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <AstrologerCarousel />
 
       {/* Stats */}
       <section className="border-y border-ved-green-900/5 bg-[#F1EDE4]">
