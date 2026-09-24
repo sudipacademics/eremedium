@@ -12,20 +12,22 @@ type FontKey = 'regular' | 'bold';
 
 const FONT_RESOURCE: Record<FontKey, string> = { regular: 'F1', bold: 'F2' };
 
-/** Helvetica advance widths (per 1000 em) for the characters invoices actually use. */
-const WIDTHS: Record<FontKey, Record<string, number>> = {
-  regular: {
-    ' ': 278, '.': 278, ',': 278, ':': 278, '-': 333, '/': 278, '#': 556, '(': 333, ')': 333,
-    '0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556, '8': 556, '9': 556,
-    R: 722, s: 500, I: 278, N: 722, V: 667, O: 778, C: 722, E: 667, T: 611, A: 667, L: 556, P: 667,
-    x: 500, i: 222, l: 222, t: 278, f: 278, r: 333, j: 222,
-  },
-  bold: {
-    ' ': 278, '.': 278, ',': 278, ':': 333, '-': 333, '/': 278, '#': 556, '(': 333, ')': 333,
-    '0': 556, '1': 556, '2': 556, '3': 556, '4': 556, '5': 556, '6': 556, '7': 556, '8': 556, '9': 556,
-    R: 722, s: 556, I: 278, N: 722, V: 667, O: 778, C: 722, E: 667, T: 611, A: 722, L: 611, P: 667,
-    x: 556, i: 278, l: 278, t: 333, f: 333, r: 389, j: 278,
-  },
+/** Standard Helvetica AFM advance widths (per 1000 em) for ASCII 32..126, used for right alignment. */
+const ASCII_WIDTHS: Record<FontKey, readonly number[]> = {
+  regular: [
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778,
+    722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278,
+    278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+  ],
+  bold: [
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778,
+    722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333,
+    278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+  ],
 };
 const DEFAULT_WIDTH: Record<FontKey, number> = { regular: 556, bold: 611 };
 
@@ -56,9 +58,9 @@ export class PdfPage {
   private readonly ops: string[] = [];
 
   textWidth(text: string, size: number, font: FontKey = 'regular'): number {
-    const table = WIDTHS[font];
+    const table = ASCII_WIDTHS[font];
     let units = 0;
-    for (const ch of toWinAnsi(text)) units += table[ch] ?? DEFAULT_WIDTH[font];
+    for (const ch of toWinAnsi(text)) units += table[ch.charCodeAt(0) - 32] ?? DEFAULT_WIDTH[font];
     return (units / 1000) * size;
   }
 
