@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import { AppRole, AuthError, extractBearerToken, verifyAccessToken, type AuthClaims } from '../auth/jwt.js';
+import { AppRole, AuthError, extractBearerToken, type AuthClaims } from '../auth/jwt.js';
+import { verifySessionToken } from '../auth/session-revocation.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -11,10 +12,15 @@ declare module 'fastify' {
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     const token = extractBearerToken(request.headers.authorization);
-    request.auth = verifyAccessToken(token);
+    request.auth = await verifySessionToken(token);
   } catch (error) {
-    const message = error instanceof AuthError ? error.message : 'Unauthorized';
-    await reply.code(401).send({ error: 'UNAUTHORIZED', message });
+    if (error instanceof AuthError) {
+      await reply.code(401).send({ error: 'UNAUTHORIZED', message: error.message });
+      return;
+    }
+    // A Redis outage must not look like a bad token, or clients would discard valid sessions.
+    request.log.error({ err: error }, 'Session check unavailable');
+    await reply.code(503).send({ error: 'AUTH_UNAVAILABLE', message: 'Please try again shortly' });
   }
 }
 

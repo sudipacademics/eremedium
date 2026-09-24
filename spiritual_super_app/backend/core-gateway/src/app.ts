@@ -13,6 +13,7 @@ import { redis } from './lib/redis.js';
 import { astroRoutes } from './routes/astro.routes.js';
 import { astrologerRoutes } from './routes/astrologer.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
+import { billingRoutes } from './routes/billing.routes.js';
 import { callRoutes } from './routes/call.routes.js';
 import { livekitWebhookRoutes } from './routes/livekit.routes.js';
 import { paymentRoutes, paymentWebhookRoutes } from './routes/payment.routes.js';
@@ -105,6 +106,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(walletRoutes, { prefix: '/api/v1/wallet' });
+  await app.register(billingRoutes, { prefix: '/api/v1/billing' });
   await app.register(paymentRoutes, { prefix: '/api/v1/payments' });
   // Separate registration keeps the raw-body parser and the absent auth hook scoped to the webhook.
   await app.register(paymentWebhookRoutes, { prefix: '/api/v1/payments/webhook' });

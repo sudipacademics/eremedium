@@ -16,6 +16,8 @@ export const authClaimsSchema = z.object({
   role: z.nativeEnum(AppRole),
   astrologerId: z.string().uuid().optional(),
   phone: z.string().min(6),
+  /** Set by jsonwebtoken on signing; compared against the user's session-revocation cutoff. */
+  iat: z.number().int().optional(),
 });
 
 export type AuthClaims = z.infer<typeof authClaimsSchema>;

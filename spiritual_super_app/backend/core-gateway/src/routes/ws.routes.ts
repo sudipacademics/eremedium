@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole, AuthError, extractBearerToken, verifyAccessToken, type AuthClaims } from '../auth/jwt.js';
+import { AppRole, AuthError, extractBearerToken, type AuthClaims } from '../auth/jwt.js';
+import { verifySessionToken } from '../auth/session-revocation.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
 import { InCallRemedyDispatcher } from '../services/remedy.service.js';
@@ -26,7 +27,7 @@ export async function websocketRoutes(app: FastifyInstance): Promise<void> {
     let claims: AuthClaims;
     try {
       const query = handshakeQuerySchema.parse(request.query);
-      claims = verifyAccessToken(extractBearerToken(request.headers.authorization, query.token));
+      claims = await verifySessionToken(extractBearerToken(request.headers.authorization, query.token));
     } catch (error) {
       const message = error instanceof AuthError ? error.message : 'Handshake authentication failed';
       connection.send(JSON.stringify(envelope(ServerEvent.ERROR, { message })));
@@ -169,7 +170,7 @@ export async function websocketRoutes(app: FastifyInstance): Promise<void> {
   app.post('/rtc/token', async (request, reply) => {
     let claims: AuthClaims;
     try {
-      claims = verifyAccessToken(extractBearerToken(request.headers.authorization));
+      claims = await verifySessionToken(extractBearerToken(request.headers.authorization));
     } catch (error) {
       return reply.code(401).send({
         error: 'UNAUTHORIZED',

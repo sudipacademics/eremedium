@@ -1,7 +1,9 @@
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { AppRole, signAccessToken } from '../auth/jwt.js';
+import { SessionRevocation } from '../auth/session-revocation.js';
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireUser } from '../plugins/authenticate.js';
@@ -129,36 +131,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const claims = requireUser(request);
     const user = await prisma.user.findUnique({
       where: { id: claims.sub },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        dob: true,
-        birthPlace: true,
-        gotra: true,
-        latitude: true,
-        longitude: true,
-        createdAt: true,
-        astrologer: { select: { id: true } },
-      },
+      select: profileSelect,
     });
     if (!user) {
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'User not found' });
     }
-    const role = resolveRole(user.phone, user.astrologer !== null);
-    return reply.send({
-      userId: user.id,
-      name: user.name,
-      phone: user.phone,
-      role,
-      astrologerId: user.astrologer?.id ?? null,
-      dob: user.dob?.toISOString() ?? null,
-      birthPlace: user.birthPlace,
-      gotra: user.gotra,
-      latitude: user.latitude?.toString() ?? null,
-      longitude: user.longitude?.toString() ?? null,
-      createdAt: user.createdAt.toISOString(),
-    });
+    return reply.send(serializeProfile(user));
   });
 
   const profilePatchSchema = z.object({
@@ -168,6 +146,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     gotra: z.string().min(2).max(120).nullable().optional(),
     latitude: z.number().min(-90).max(90).nullable().optional(),
     longitude: z.number().min(-180).max(180).nullable().optional(),
+    email: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
+    address: z.string().trim().min(5).max(500).nullable().optional(),
+    photoDataUrl: z
+      .string()
+      .max(PHOTO_MAX_CHARS, 'Photo is too large')
+      .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, 'Photo must be a JPEG, PNG or WebP image')
+      .nullable()
+      .optional(),
   });
 
   app.patch('/profile', { preHandler: authenticate }, async (request, reply) => {
@@ -185,34 +171,85 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         ...(body.gotra !== undefined ? { gotra: body.gotra?.trim() || null } : {}),
         ...(body.latitude !== undefined ? { latitude: body.latitude } : {}),
         ...(body.longitude !== undefined ? { longitude: body.longitude } : {}),
+        ...(body.email !== undefined ? { email: body.email || null } : {}),
+        ...(body.address !== undefined ? { address: body.address || null } : {}),
+        ...(body.photoDataUrl !== undefined ? { photoDataUrl: body.photoDataUrl } : {}),
       },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        dob: true,
-        birthPlace: true,
-        gotra: true,
-        latitude: true,
-        longitude: true,
-        createdAt: true,
-        astrologer: { select: { id: true } },
-      },
+      select: profileSelect,
     });
 
-    const role = resolveRole(updated.phone, updated.astrologer !== null);
-    return reply.send({
-      userId: updated.id,
-      name: updated.name,
-      phone: updated.phone,
-      role,
-      astrologerId: updated.astrologer?.id ?? null,
-      dob: updated.dob?.toISOString() ?? null,
-      birthPlace: updated.birthPlace,
-      gotra: updated.gotra,
-      latitude: updated.latitude?.toString() ?? null,
-      longitude: updated.longitude?.toString() ?? null,
-      createdAt: updated.createdAt.toISOString(),
-    });
+    return reply.send(serializeProfile(updated));
   });
+
+  /**
+   * Signs out every other device. The caller re-proves possession of the phone with a fresh OTP
+   * (requested through /otp/request), so a stolen access token alone cannot lock the owner out.
+   * The current device receives a new token issued at the cutoff and stays signed in.
+   */
+  app.post(
+    '/sessions/revoke-others',
+    { preHandler: authenticate, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const claims = requireUser(request);
+      const { code } = z
+        .object({ code: z.string().regex(/^\d{4,8}$/, 'code must be numeric') })
+        .parse(request.body);
+
+      await OtpService.verify(claims.phone, code);
+
+      const cutoff = Math.floor(Date.now() / 1000);
+      await SessionRevocation.revokeAllIssuedBefore(claims.sub, cutoff);
+
+      return reply.send({
+        signedOutOtherDevices: true,
+        accessToken: signAccessToken({
+          sub: claims.sub,
+          phone: claims.phone,
+          role: claims.role,
+          ...(claims.astrologerId ? { astrologerId: claims.astrologerId } : {}),
+          iat: cutoff,
+        }),
+      });
+    },
+  );
+}
+
+/** A 256px JPEG is ~30 KB; this leaves headroom for PNG/WebP without admitting full-size photos. */
+const PHOTO_MAX_CHARS = 350_000;
+
+const profileSelect = {
+  id: true,
+  name: true,
+  phone: true,
+  dob: true,
+  birthPlace: true,
+  gotra: true,
+  latitude: true,
+  longitude: true,
+  email: true,
+  address: true,
+  photoDataUrl: true,
+  createdAt: true,
+  astrologer: { select: { id: true } },
+} as const;
+
+type ProfileRow = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
+
+function serializeProfile(user: ProfileRow) {
+  return {
+    userId: user.id,
+    name: user.name,
+    phone: user.phone,
+    role: resolveRole(user.phone, user.astrologer !== null),
+    astrologerId: user.astrologer?.id ?? null,
+    dob: user.dob?.toISOString() ?? null,
+    birthPlace: user.birthPlace,
+    gotra: user.gotra,
+    latitude: user.latitude?.toString() ?? null,
+    longitude: user.longitude?.toString() ?? null,
+    email: user.email,
+    address: user.address,
+    photoDataUrl: user.photoDataUrl,
+    createdAt: user.createdAt.toISOString(),
+  };
 }

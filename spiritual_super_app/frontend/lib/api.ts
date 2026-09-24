@@ -37,7 +37,25 @@ export interface UserProfileDetails {
   gotra: string | null;
   latitude: string | null;
   longitude: string | null;
+  email: string | null;
+  address: string | null;
+  /** Small data: URL avatar, or null. */
+  photoDataUrl: string | null;
   createdAt: string;
+}
+
+export type InvoiceKind = 'TOPUP' | 'PUJA' | 'AYURVEDA' | 'CONSULTATION';
+
+export interface Invoice {
+  id: string;
+  number: string;
+  kind: InvoiceKind;
+  title: string;
+  description: string;
+  amount: string;
+  currency: string;
+  issuedAt: string;
+  paymentMethod: string;
 }
 
 export const session = {
@@ -71,6 +89,35 @@ export const session = {
   },
 };
 
+/**
+ * An expired or revoked session gets `error: UNAUTHORIZED` from the gateway. Other 401s (a wrong OTP
+ * code, for instance) carry their own error names and must not sign the user out.
+ */
+function endSessionIfRejected(response: Response, parsed: unknown, sentToken: boolean): void {
+  if (!sentToken || response.status !== 401) return;
+  if ((parsed as { error?: string } | null)?.error !== 'UNAUTHORIZED') return;
+  session.clear();
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.assign('/login');
+  }
+}
+
+function errorFrom(response: Response, parsed: unknown): ApiError {
+  const message =
+    (parsed as { message?: string; error?: string } | null)?.message ??
+    (parsed as { error?: string } | null)?.error ??
+    `Request failed (${response.status})`;
+  return new ApiError(response.status, message, parsed);
+}
+
+function parseBody(text: string): unknown {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text;
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json' };
   const token = session.token;
@@ -88,23 +135,31 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     cache: 'no-store',
   });
 
-  const text = await response.text();
-  let parsed: unknown = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
+  const parsed = parseBody(await response.text());
 
   if (!response.ok) {
-    const message =
-      (parsed as { message?: string; error?: string } | null)?.message ??
-      (parsed as { error?: string } | null)?.error ??
-      `Request failed (${response.status})`;
-    throw new ApiError(response.status, message, parsed);
+    endSessionIfRejected(response, parsed, token !== null);
+    throw errorFrom(response, parsed);
   }
 
   return parsed as T;
+}
+
+/** Authenticated binary download (e.g. invoice PDFs); returns the file and the server's filename. */
+async function download(path: string, fallbackName: string): Promise<{ blob: Blob; filename: string }> {
+  const token = session.token;
+  const response = await fetch(`/api/gw/${path}`, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const parsed = parseBody(await response.text());
+    endSessionIfRejected(response, parsed, token !== null);
+    throw errorFrom(response, parsed);
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? fallbackName;
+  return { blob: await response.blob(), filename };
 }
 
 export const api = {
@@ -113,6 +168,7 @@ export const api = {
   put: <T,>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T,>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   del: <T,>(path: string) => request<T>('DELETE', path),
+  download,
 };
 
 // --- Typed endpoint shapes, mirroring the gateway's responses -----------------------------------

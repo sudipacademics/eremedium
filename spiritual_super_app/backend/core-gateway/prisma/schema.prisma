@@ -100,6 +100,11 @@ model User {
    */
   birthTimeKnown    Boolean   @default(false) @map("birth_time_known")
   gotra             String?   @db.VarChar(120)
+  /** Contact only — never a login credential, so neither unique nor verified. */
+  email             String?   @db.VarChar(254)
+  address           String?   @db.VarChar(500)
+  /** Client-resized avatar as a data: URL; format and size are also enforced by a CHECK constraint. */
+  photoDataUrl      String?   @map("photo_data_url") @db.Text
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 

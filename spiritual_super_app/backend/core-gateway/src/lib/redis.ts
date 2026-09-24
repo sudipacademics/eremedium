@@ -43,6 +43,7 @@ export const redisKeys = {
   otpChallenge: (phone: string) => `ssa:otp:challenge:${phone}`,
   otpCooldown: (phone: string) => `ssa:otp:cooldown:${phone}`,
   otpRequestCount: (phone: string) => `ssa:otp:count:${phone}`,
+  sessionsRevokedBefore: (userId: string) => `ssa:auth:revoked-before:${userId}`,
 } as const;
 
 export const redisChannels = {

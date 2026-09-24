@@ -56,14 +56,17 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
       signal: AbortSignal.timeout(20_000),
     });
 
-    const text = await upstream.text();
-    return new NextResponse(text, {
-      status: upstream.status,
-      headers: {
-        'content-type': upstream.headers.get('content-type') ?? 'application/json',
-        'cache-control': 'no-store',
-      },
-    });
+    // Bytes, not text: invoice PDFs are binary and would be corrupted by a UTF-8 round trip.
+    const payload = await upstream.arrayBuffer();
+    const responseHeaders: Record<string, string> = {
+      'content-type': upstream.headers.get('content-type') ?? 'application/json',
+      'cache-control': 'no-store',
+    };
+    const disposition = upstream.headers.get('content-disposition');
+    if (disposition) {
+      responseHeaders['content-disposition'] = disposition;
+    }
+    return new NextResponse(payload, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     return NextResponse.json(
       {
