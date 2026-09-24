@@ -2,7 +2,8 @@
 
 import { useId } from 'react';
 
-import { GRAHA_COLOR, SIGN_SHORT, grahaShort, normSign } from './vedic';
+import { ENGLISH, grahaShortIn, localDigits, type ChartLanguage } from './languages';
+import { GRAHA_COLOR, normSign } from './vedic';
 
 export type ChartStyle = 'north' | 'south' | 'east';
 
@@ -29,7 +30,7 @@ interface Region {
   polygon: readonly Pt[];
   centre: Pt;
   cols: number;
-  label: { at: Pt; text: string; anchor: 'start' | 'middle' | 'end' };
+  label: { at: Pt; anchor: 'start' | 'middle' | 'end' };
 }
 
 /*
@@ -59,7 +60,7 @@ function northRegions(lagnaSign: number): Region[] {
       polygon: house.polygon,
       centre: house.centre,
       cols: house.cols,
-      label: { at: house.num, text: String(sign), anchor: 'middle' },
+      label: { at: house.num, anchor: 'middle' },
     };
   });
 }
@@ -91,7 +92,7 @@ function southRegions(): Region[] {
       polygon: [[x, y], [x + 25, y], [x + 25, y + 25], [x, y + 25]],
       centre: [x + 12.5, y + 14],
       cols: 2,
-      label: { at: [x + 23, y + 4.6], text: SIGN_SHORT[i]!, anchor: 'end' },
+      label: { at: [x + 23, y + 4.6], anchor: 'end' },
     };
   });
 }
@@ -125,7 +126,7 @@ function eastRegions(): Region[] {
       polygon: cell.polygon,
       centre: cell.centre,
       cols: cell.cols,
-      label: { at: cell.lab, text: SIGN_SHORT[i]!, anchor: cell.anchor },
+      label: { at: cell.lab, anchor: cell.anchor },
     };
   });
 }
@@ -138,7 +139,17 @@ const GRID_LINES: Record<ChartStyle, string> = {
 
 const points = (polygon: readonly Pt[]) => polygon.map(([x, y]) => `${x},${y}`).join(' ');
 
-function PlanetCluster({ region, items, fontSize }: { region: Region; items: ChartPlacement[]; fontSize: number }) {
+function PlanetCluster({
+  region,
+  items,
+  fontSize,
+  language,
+}: {
+  region: Region;
+  items: ChartPlacement[];
+  fontSize: number;
+  language: ChartLanguage;
+}) {
   const [cx, cy] = region.centre;
   const cols = Math.min(region.cols, Math.max(1, items.length));
   const rows = Math.ceil(items.length / cols);
@@ -162,10 +173,10 @@ function PlanetCluster({ region, items, fontSize }: { region: Region; items: Cha
             fontWeight={700}
             fill={GRAHA_COLOR[item.body] ?? INK}
           >
-            {grahaShort(item.body)}
+            {grahaShortIn(language, item.body)}
             {item.retrograde && (
               <tspan fontSize={fontSize * 0.55} dy={-fontSize * 0.35}>
-                R
+                {language.retro}
               </tspan>
             )}
           </text>
@@ -187,6 +198,7 @@ export function KundaliChart({
   title,
   subtitle,
   compact,
+  language = ENGLISH,
 }: {
   chartStyle: ChartStyle;
   lagnaSign: number;
@@ -195,11 +207,21 @@ export function KundaliChart({
   title: string;
   subtitle?: string;
   compact?: boolean;
+  language?: ChartLanguage;
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const regions =
     chartStyle === 'north' ? northRegions(lagnaSign) : chartStyle === 'south' ? southRegions() : eastRegions();
-  const fontSize = compact ? (chartStyle === 'east' ? 4.6 : 5) : chartStyle === 'east' ? 3.9 : 4.3;
+  // Tamil abbreviates grahas to whole syllable clusters (சூரி, செவ்), which need a narrower face.
+  const scale = language.id === 'ta' ? 0.8 : 1;
+  const fontSize = (compact ? (chartStyle === 'east' ? 4.6 : 5) : chartStyle === 'east' ? 3.9 : 4.3) * scale;
+  const vernacular = language.id !== 'en';
+  const signFont =
+    chartStyle === 'north'
+      ? compact ? 4.4 : 3.6
+      : chartStyle === 'south'
+        ? (compact ? 3.8 : 3.1) * (vernacular ? 0.95 : 1) * (language.id === 'ta' ? 0.85 : 1)
+        : (compact ? 3.8 : 3.1) * (vernacular ? 0.85 : 1) * (language.id === 'ta' ? 0.78 : 1);
 
   const bySign = new Map<number, ChartPlacement[]>();
   for (const placement of placements) {
@@ -211,7 +233,7 @@ export function KundaliChart({
   const centreLabel = chartStyle !== 'north';
 
   return (
-    <svg viewBox="-7 -7 114 114" className="h-auto w-full" role="img" aria-label={`${title} chart`}>
+    <svg viewBox="-7 -7 114 114" className="h-auto w-full" role="img" aria-label={`${title} chart`} lang={language.id}>
       <defs>
         <radialGradient id={`bg${uid}`} cx="50%" cy="50%" r="70%">
           <stop offset="0%" stopColor="#fffdf7" />
@@ -253,7 +275,14 @@ export function KundaliChart({
           <text x="50" y={compact ? 49 : 45} fontSize={compact ? 9 : 8} fill={GOLD} fillOpacity="0.9" fontFamily="serif">
             ॐ
           </text>
-          <text x="50" y={compact ? 58 : 54} fontSize={compact ? 5.4 : 4.6} fontWeight={700} fill={INK} className="font-display">
+          <text
+            x="50"
+            y={compact ? 58 : 54}
+            fontSize={(compact ? 5.4 : 4.6) * (vernacular && !compact ? 0.9 : 1)}
+            fontWeight={700}
+            fill={INK}
+            className="font-display"
+          >
             {title}
           </text>
           {subtitle && !compact && (
@@ -270,29 +299,47 @@ export function KundaliChart({
           x={region.label.at[0]}
           y={region.label.at[1]}
           textAnchor={region.label.anchor}
-          fontSize={chartStyle === 'north' ? (compact ? 4.4 : 3.6) : compact ? 3.8 : 3.1}
+          fontSize={signFont}
           fontWeight={600}
           fill={GOLD}
         >
-          {region.label.text}
+          {chartStyle === 'north' ? localDigits(language, region.sign) : language.signs[region.sign - 1]}
         </text>
       ))}
 
-      {showLagna && <LagnaMark chartStyle={chartStyle} region={lagnaRegion} compact={compact} />}
+      {showLagna && (
+        <LagnaMark chartStyle={chartStyle} region={lagnaRegion} compact={compact} label={language.lagna} />
+      )}
 
       {regions.map((region) => (
-        <PlanetCluster key={`p${region.sign}`} region={region} items={bySign.get(region.sign) ?? []} fontSize={fontSize} />
+        <PlanetCluster
+          key={`p${region.sign}`}
+          region={region}
+          items={bySign.get(region.sign) ?? []}
+          fontSize={fontSize}
+          language={language}
+        />
       ))}
     </svg>
   );
 }
 
-function LagnaMark({ chartStyle, region, compact }: { chartStyle: ChartStyle; region: Region; compact?: boolean }) {
+function LagnaMark({
+  chartStyle,
+  region,
+  compact,
+  label,
+}: {
+  chartStyle: ChartStyle;
+  region: Region;
+  compact?: boolean;
+  label: string;
+}) {
   const size = compact ? 3.8 : 3;
   if (chartStyle === 'north') {
     return (
       <text x="50" y="11.5" textAnchor="middle" fontSize={size} fontWeight={700} fill={GOLD} letterSpacing="0.3">
-        Asc
+        {label}
       </text>
     );
   }
@@ -302,14 +349,13 @@ function LagnaMark({ chartStyle, region, compact }: { chartStyle: ChartStyle; re
       <g>
         <path d={`M${x} ${y + 6} L${x + 6} ${y}`} stroke={GOLD} strokeWidth="0.6" />
         <text x={x + 1.8} y={y + 23} fontSize={size} fontWeight={700} fill={GOLD}>
-          Asc
+          {label}
         </text>
       </g>
     );
   }
   const [cx, cy] = region.centre;
-  const polygon = region.polygon;
-  const isTriangle = polygon.length === 3;
+  const isTriangle = region.polygon.length === 3;
   return (
     <text
       x={cx}
@@ -319,7 +365,7 @@ function LagnaMark({ chartStyle, region, compact }: { chartStyle: ChartStyle; re
       fontWeight={700}
       fill={GOLD}
     >
-      Asc
+      {label}
     </text>
   );
 }

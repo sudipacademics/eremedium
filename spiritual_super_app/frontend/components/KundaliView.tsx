@@ -3,10 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CHART_STYLES, KundaliChart, type ChartPlacement, type ChartStyle } from '@/components/kundali/KundaliChart';
-import { GRAHA_COLOR, SHODASHVARGA, SIGN_SHORT, vargaSign, type VargaCode } from '@/components/kundali/vedic';
+import {
+  CHART_LANGUAGES,
+  ENGLISH,
+  SANSKRIT,
+  chartLanguage,
+  grahaNameIn,
+  type ChartLanguage,
+} from '@/components/kundali/languages';
+import { GRAHA_COLOR, SHODASHVARGA, vargaSign, type VargaCode } from '@/components/kundali/vedic';
 import type { DashaPeriod, Kundali } from '@/lib/api';
 
 const STYLE_KEY = 'vedsutra.kundali.style';
+const LANGUAGE_KEY = 'vedsutra.kundali.language';
 
 function formatDegrees(value: number): string {
   const degrees = Math.floor(value);
@@ -43,12 +52,30 @@ function useChartStyle(): [ChartStyle, (style: ChartStyle) => void] {
   ];
 }
 
+function useChartLanguage(): [ChartLanguage, (id: string) => void] {
+  const [language, setLanguage] = useState<ChartLanguage>(ENGLISH);
+  useEffect(() => {
+    const saved = chartLanguage(window.localStorage.getItem(LANGUAGE_KEY));
+    if (saved) setLanguage(saved);
+  }, []);
+  return [
+    language,
+    (id) => {
+      const next = chartLanguage(id) ?? ENGLISH;
+      setLanguage(next);
+      window.localStorage.setItem(LANGUAGE_KEY, next.id);
+    },
+  ];
+}
+
 export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: string }) {
   const { chart, dasha, profile, birthTimeAssumed } = kundali;
   const running = currentPeriod(dasha.periods as DashaPeriod[]);
   const runningSub = running ? currentPeriod(running.children) : null;
 
   const [chartStyle, setChartStyle] = useChartStyle();
+  const [language, setLanguage] = useChartLanguage();
+  const vernacular = language.id !== 'en';
   const [varga, setVarga] = useState<VargaCode>('D1');
   const mainChartRef = useRef<HTMLDivElement>(null);
 
@@ -117,12 +144,43 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
       <section className="overflow-hidden rounded-3xl border border-ved-gold-500/30 bg-gradient-to-b from-[#FBF7EE] to-[#F1EDE4] shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ved-gold-500/20 px-4 py-4 sm:px-6">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ved-gold-700">Janma kundali</p>
-            <h3 className="font-display text-2xl font-semibold text-ved-green-900">
-              {selected.info.name} <span className="text-ved-gold-700">· {selected.info.code}</span>
+            <p
+              lang={language.id}
+              className={`font-semibold text-ved-gold-700 ${
+                vernacular ? 'text-sm' : 'text-[11px] uppercase tracking-[0.2em]'
+              }`}
+            >
+              {language.kundali}
+            </p>
+            <h3 lang={language.id} className="font-display text-2xl font-semibold text-ved-green-900">
+              {language.vargas[selected.info.code]} <span className="text-ved-gold-700">· {selected.info.code}</span>
             </h3>
-            <p className="text-xs text-ved-green-800/60">{selected.info.signifies}</p>
+            <p className="text-xs text-ved-green-800/60">
+              {vernacular && <span>{selected.info.name} · </span>}
+              {language.vargas[selected.info.code] !== SANSKRIT.vargas[selected.info.code] && (
+                <span lang="sa" className="text-ved-gold-700" title="Sanskrit">
+                  {SANSKRIT.vargas[selected.info.code]} ·{' '}
+                </span>
+              )}
+              {selected.info.signifies}
+            </p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 rounded-full border border-ved-gold-500/40 bg-white/70 py-1 pl-3 pr-1 text-xs font-medium text-ved-green-800/70">
+            <span>Language</span>
+            <select
+              aria-label="Chart language"
+              className="rounded-full bg-ved-cream-100 px-2 py-1 text-xs font-semibold text-ved-green-900 focus:outline-none focus:ring-2 focus:ring-ved-gold-400"
+              value={language.id}
+              onChange={(event) => setLanguage(event.target.value)}
+            >
+              {CHART_LANGUAGES.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.id === 'en' ? 'English' : `${option.endonym} · ${option.english}`}
+                </option>
+              ))}
+            </select>
+          </label>
           <div
             role="radiogroup"
             aria-label="Chart style"
@@ -144,6 +202,7 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
                 {option.label}
               </button>
             ))}
+          </div>
           </div>
         </div>
 
@@ -172,15 +231,16 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
               lagnaSign={selected.lagna}
               showLagna={!birthTimeAssumed}
               placements={selected.placements}
-              title={`${selected.info.name} ${selected.info.code}`}
-              subtitle="Vedsutra"
+              title={`${language.vargas[selected.info.code]} ${selected.info.code}`}
+              subtitle={vernacular ? selected.info.name : 'Vedsutra'}
+              language={language}
             />
           </div>
           {birthTimeAssumed && (
             <p className="mt-2 text-center text-xs font-medium text-amber-800">House positions need a birth time</p>
           )}
 
-          <ChartLegend />
+          <ChartLegend language={language} />
 
           <p className="mt-3 text-center text-[11px] text-ved-green-800/50">
             {profile.placeLabel} · {profile.birthDate}
@@ -222,10 +282,18 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
                   placements={placements}
                   title={info.code}
                   compact
+                  language={language}
                 />
               </div>
               <p className="mt-1.5 px-1 text-sm font-semibold text-ved-green-900">
-                {info.name} <span className="text-ved-gold-700">{info.code}</span>
+                <span lang={language.id}>{language.vargas[info.code]}</span>{' '}
+                <span className="text-ved-gold-700">{info.code}</span>
+              </p>
+              <p className="px-1 text-[11px] text-ved-green-800/70">
+                {vernacular && <span>{info.name} · </span>}
+                {language.vargas[info.code] !== SANSKRIT.vargas[info.code] && (
+                  <span lang="sa">{SANSKRIT.vargas[info.code]}</span>
+                )}
               </p>
               <p className="px-1 text-[11px] leading-snug text-ved-green-800/60">{info.signifies}</p>
             </button>
@@ -237,7 +305,7 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
         <h3 className="mb-1 font-display text-xl font-semibold text-ved-green-900">Varga positions</h3>
         <p className="mb-3 text-xs text-ved-green-800/60">The sign each graha occupies in every divisional chart.</p>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-xs">
+          <table lang={language.id} className="w-full min-w-[720px] whitespace-nowrap text-xs">
             <thead>
               <tr className="text-left uppercase tracking-wide text-ved-green-800/50">
                 <th className="sticky left-0 bg-white pb-2 pr-3 font-medium">Graha</th>
@@ -250,10 +318,12 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
             </thead>
             <tbody className="divide-y divide-ved-green-900/5">
               <tr>
-                <td className="sticky left-0 bg-white py-1.5 pr-3 font-semibold text-ved-gold-700">Lagna</td>
+                <td className="sticky left-0 bg-white py-1.5 pr-3 font-semibold text-ved-gold-700">
+                  {vernacular ? language.lagna : 'Lagna'}
+                </td>
                 {vargas.map(({ info, lagna }) => (
                   <td key={info.code} className="px-1 py-1.5 text-center text-ved-green-900">
-                    {birthTimeAssumed ? '—' : SIGN_SHORT[lagna - 1]}
+                    {birthTimeAssumed ? '—' : language.signs[lagna - 1]}
                   </td>
                 ))}
               </tr>
@@ -263,11 +333,11 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
                     className="sticky left-0 bg-white py-1.5 pr-3 font-semibold"
                     style={{ color: GRAHA_COLOR[planet.body] }}
                   >
-                    {planet.body}
+                    {grahaNameIn(language, planet.body)}
                   </td>
                   {vargas.map(({ info, placements }) => (
                     <td key={info.code} className="px-1 py-1.5 text-center text-ved-green-800">
-                      {SIGN_SHORT[placements[index]!.sign - 1]}
+                      {language.signs[placements[index]!.sign - 1]}
                     </td>
                   ))}
                 </tr>
@@ -358,17 +428,22 @@ function SummaryTile({ label, children }: { label: string; children: React.React
   );
 }
 
-function ChartLegend() {
+function ChartLegend({ language }: { language: ChartLanguage }) {
   return (
-    <div className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ved-green-800/70">
+    <div
+      lang={language.id}
+      className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ved-green-800/70"
+    >
       {Object.entries(GRAHA_COLOR).map(([body, color]) => (
         <span key={body} className="inline-flex items-center gap-1">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-          {body}
+          {grahaNameIn(language, body)}
+          {language.id !== 'en' && <span className="text-ved-green-800/40">({body})</span>}
         </span>
       ))}
       <span className="inline-flex items-center gap-1">
-        <sup className="font-semibold">R</sup> retrograde
+        <sup className="font-semibold">{language.retro}</sup> retrograde
+        {language.id !== 'en' && ' (vakri)'}
       </span>
     </div>
   );

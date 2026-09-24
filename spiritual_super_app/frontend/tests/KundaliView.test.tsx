@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { KundaliView } from '@/components/KundaliView';
@@ -129,6 +129,16 @@ describe('KundaliView', () => {
 
     expect(screen.queryByText('Birth time unknown')).toBeNull();
     expect(screen.getByText(/Karka/)).toBeTruthy();
+  });
+
+  it('relabels the charts in the chosen Indian language, keeping the Sanskrit name alongside', () => {
+    render(<KundaliView kundali={kundali()} />);
+    fireEvent.change(screen.getByLabelText('Chart language'), { target: { value: 'hi' } });
+
+    expect(screen.getByText('जन्म कुंडली')).toBeTruthy();
+    expect(screen.getAllByText('सू').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('नवांश').length).toBeGreaterThan(0);
+    expect(window.localStorage.getItem('vedsutra.kundali.language')).toBe('hi');
   });
 
   it('renders the birth details it was cast from, so a wrong entry is visible', () => {
