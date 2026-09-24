@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { RasiChart } from '@/components/RasiChart';
+import { CHART_STYLES, KundaliChart, type ChartPlacement, type ChartStyle } from '@/components/kundali/KundaliChart';
+import { GRAHA_COLOR, SHODASHVARGA, SIGN_SHORT, vargaSign, type VargaCode } from '@/components/kundali/vedic';
 import type { DashaPeriod, Kundali } from '@/lib/api';
+
+const STYLE_KEY = 'vedsutra.kundali.style';
 
 function formatDegrees(value: number): string {
   const degrees = Math.floor(value);
@@ -25,14 +28,48 @@ function currentPeriod(periods: DashaPeriod[]): DashaPeriod | null {
   );
 }
 
+function useChartStyle(): [ChartStyle, (style: ChartStyle) => void] {
+  const [chartStyle, setChartStyle] = useState<ChartStyle>('north');
+  useEffect(() => {
+    const saved = window.localStorage.getItem(STYLE_KEY);
+    if (saved === 'north' || saved === 'south' || saved === 'east') setChartStyle(saved);
+  }, []);
+  return [
+    chartStyle,
+    (style) => {
+      setChartStyle(style);
+      window.localStorage.setItem(STYLE_KEY, style);
+    },
+  ];
+}
+
 export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: string }) {
   const { chart, dasha, profile, birthTimeAssumed } = kundali;
   const running = currentPeriod(dasha.periods as DashaPeriod[]);
   const runningSub = running ? currentPeriod(running.children) : null;
 
+  const [chartStyle, setChartStyle] = useChartStyle();
+  const [varga, setVarga] = useState<VargaCode>('D1');
+  const mainChartRef = useRef<HTMLDivElement>(null);
+
+  const vargas = useMemo(
+    () =>
+      SHODASHVARGA.map((info) => ({
+        info,
+        lagna: vargaSign(chart.ascendant.sidereal_longitude, info.code),
+        placements: chart.planets.map<ChartPlacement>((planet) => ({
+          body: planet.body,
+          sign: vargaSign(planet.sidereal_longitude, info.code),
+          retrograde: planet.is_retrograde,
+        })),
+      })),
+    [chart],
+  );
+  const selected = vargas.find((entry) => entry.info.code === varga)!;
+
   return (
-    <div className="space-y-4">
-      {heading && <h2 className="font-semibold">{heading}</h2>}
+    <div className="space-y-5">
+      {heading && <h2 className="font-display text-2xl font-semibold text-ved-green-900">{heading}</h2>}
 
       {/*
         Stated plainly rather than hidden in small print. The ascendant moves a degree every four
@@ -40,9 +77,9 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
         shown one would reasonably believe it.
       */}
       {birthTimeAssumed && (
-        <div className="card border-amber-400/30 bg-amber-500/10">
-          <p className="text-sm font-medium text-amber-100">Birth time unknown</p>
-          <p className="mt-1 text-xs text-amber-200/80">
+        <div className="rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">Birth time unknown</p>
+          <p className="mt-1 text-xs text-amber-800">
             The chart below was cast for noon. Planetary signs and nakshatras are reliable, but the
             ascendant and all house positions are not — they change completely with the time of day.
             Add a birth time to get a usable kundali.
@@ -50,44 +87,202 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
         </div>
       )}
 
-      <div className="card space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Lagna</p>
-            <p className="font-semibold">
-              {birthTimeAssumed ? '—' : `${chart.ascendant.zodiac_sign_name} ${formatDegrees(chart.ascendant.degrees_in_sign)}`}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SummaryTile label="Lagna">
+          <p className="font-display text-xl font-semibold text-ved-green-900">
+            {birthTimeAssumed ? '—' : `${chart.ascendant.zodiac_sign_name} ${formatDegrees(chart.ascendant.degrees_in_sign)}`}
+          </p>
+          {!birthTimeAssumed && (
+            <p className="text-xs text-ved-green-800/60">
+              {chart.ascendant.nakshatra_name} pada {chart.ascendant.nakshatra_pada}
             </p>
-            {!birthTimeAssumed && (
-              <p className="text-xs text-slate-400">
-                {chart.ascendant.nakshatra_name} pada {chart.ascendant.nakshatra_pada}
-              </p>
-            )}
+          )}
+        </SummaryTile>
+        <SummaryTile label="Janma nakshatra">
+          <p className="font-display text-xl font-semibold text-ved-green-900">{dasha.birth_nakshatra_name}</p>
+          <p className="text-xs text-ved-green-800/60">lord {dasha.birth_nakshatra_lord}</p>
+        </SummaryTile>
+        <SummaryTile label="Running dasha">
+          <p className="font-display text-xl font-semibold text-ved-green-900">
+            {running ? `${running.lord}${runningSub ? ` / ${runningSub.lord}` : ''}` : '—'}
+          </p>
+          {running && (
+            <p className="text-xs text-ved-green-800/60">
+              until {formatDate(runningSub ? runningSub.end_utc : running.end_utc)}
+            </p>
+          )}
+        </SummaryTile>
+      </div>
+
+      <section className="overflow-hidden rounded-3xl border border-ved-gold-500/30 bg-gradient-to-b from-[#FBF7EE] to-[#F1EDE4] shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ved-gold-500/20 px-4 py-4 sm:px-6">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ved-gold-700">Janma kundali</p>
+            <h3 className="font-display text-2xl font-semibold text-ved-green-900">
+              {selected.info.name} <span className="text-ved-gold-700">· {selected.info.code}</span>
+            </h3>
+            <p className="text-xs text-ved-green-800/60">{selected.info.signifies}</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Janma nakshatra</p>
-            <p className="font-semibold">{dasha.birth_nakshatra_name}</p>
-            <p className="text-xs text-slate-400">lord {dasha.birth_nakshatra_lord}</p>
+          <div
+            role="radiogroup"
+            aria-label="Chart style"
+            className="inline-flex rounded-full border border-ved-gold-500/40 bg-white/70 p-1 text-xs font-medium"
+          >
+            {CHART_STYLES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={chartStyle === option.id}
+                className={`rounded-full px-3 py-1.5 transition ${
+                  chartStyle === option.id
+                    ? 'bg-ved-green-800 text-ved-cream-50 shadow'
+                    : 'text-ved-green-800/70 hover:text-ved-green-900'
+                }`}
+                onClick={() => setChartStyle(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <RasiChart
-          ascendant={chart.ascendant}
-          planets={chart.planets}
-          unreliable={birthTimeAssumed}
-        />
+        <div className="-mb-px flex gap-1.5 overflow-x-auto px-4 pt-3 pb-1 sm:px-6" aria-label="Divisional chart">
+          {SHODASHVARGA.map((info) => (
+            <button
+              key={info.code}
+              type="button"
+              title={`${info.name} — ${info.signifies}`}
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold tabular transition ${
+                varga === info.code
+                  ? 'border-ved-gold-600 bg-ved-gold-500/20 text-ved-green-900'
+                  : 'border-ved-green-900/10 bg-white/60 text-ved-green-800/70 hover:border-ved-gold-500/50'
+              }`}
+              onClick={() => setVarga(info.code)}
+            >
+              {info.code}
+            </button>
+          ))}
+        </div>
 
-        <p className="text-center text-[11px] text-slate-500">
-          {profile.placeLabel} · {profile.birthDate}
-          {profile.birthTime ? ` ${profile.birthTime}` : ''} {profile.utcOffset}
-        </p>
-      </div>
+        <div ref={mainChartRef} className="scroll-mt-24 px-4 py-5 sm:px-6">
+          <div className={`relative mx-auto max-w-[520px] ${birthTimeAssumed ? 'opacity-60' : ''}`}>
+            <KundaliChart
+              chartStyle={chartStyle}
+              lagnaSign={selected.lagna}
+              showLagna={!birthTimeAssumed}
+              placements={selected.placements}
+              title={`${selected.info.name} ${selected.info.code}`}
+              subtitle="Vedsutra"
+            />
+          </div>
+          {birthTimeAssumed && (
+            <p className="mt-2 text-center text-xs font-medium text-amber-800">House positions need a birth time</p>
+          )}
 
-      <div className="card">
-        <h3 className="mb-2 text-sm font-semibold">Graha positions</h3>
+          <ChartLegend />
+
+          <p className="mt-3 text-center text-[11px] text-ved-green-800/50">
+            {profile.placeLabel} · {profile.birthDate}
+            {profile.birthTime ? ` ${profile.birthTime}` : ''} {profile.utcOffset}
+          </p>
+        </div>
+      </section>
+
+      <section className="card space-y-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ved-gold-700">Shodashvarga</p>
+          <h3 className="font-display text-xl font-semibold text-ved-green-900">The sixteen divisional charts</h3>
+          <p className="text-xs text-ved-green-800/60">
+            Parashara&apos;s sixteen vargas, each a finer division of the signs that is read for one area of
+            life. Tap a chart to open it above.
+            {birthTimeAssumed && ' The finer vargas shift within minutes, so they need an accurate birth time.'}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {vargas.map(({ info, lagna, placements }) => (
+            <button
+              key={info.code}
+              type="button"
+              className={`group rounded-2xl border p-2 text-left transition ${
+                varga === info.code
+                  ? 'border-ved-gold-500 bg-ved-gold-500/10 shadow-sm'
+                  : 'border-ved-green-900/10 bg-white/60 hover:border-ved-gold-500/60 hover:shadow-sm'
+              }`}
+              onClick={() => {
+                setVarga(info.code);
+                mainChartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            >
+              <div className={birthTimeAssumed ? 'opacity-60' : ''}>
+                <KundaliChart
+                  chartStyle={chartStyle}
+                  lagnaSign={lagna}
+                  showLagna={!birthTimeAssumed}
+                  placements={placements}
+                  title={info.code}
+                  compact
+                />
+              </div>
+              <p className="mt-1.5 px-1 text-sm font-semibold text-ved-green-900">
+                {info.name} <span className="text-ved-gold-700">{info.code}</span>
+              </p>
+              <p className="px-1 text-[11px] leading-snug text-ved-green-800/60">{info.signifies}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h3 className="mb-1 font-display text-xl font-semibold text-ved-green-900">Varga positions</h3>
+        <p className="mb-3 text-xs text-ved-green-800/60">The sign each graha occupies in every divisional chart.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-xs">
+            <thead>
+              <tr className="text-left uppercase tracking-wide text-ved-green-800/50">
+                <th className="sticky left-0 bg-white pb-2 pr-3 font-medium">Graha</th>
+                {SHODASHVARGA.map((info) => (
+                  <th key={info.code} className="pb-2 px-1 text-center font-medium tabular">
+                    {info.code}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ved-green-900/5">
+              <tr>
+                <td className="sticky left-0 bg-white py-1.5 pr-3 font-semibold text-ved-gold-700">Lagna</td>
+                {vargas.map(({ info, lagna }) => (
+                  <td key={info.code} className="px-1 py-1.5 text-center text-ved-green-900">
+                    {birthTimeAssumed ? '—' : SIGN_SHORT[lagna - 1]}
+                  </td>
+                ))}
+              </tr>
+              {chart.planets.map((planet, index) => (
+                <tr key={planet.body}>
+                  <td
+                    className="sticky left-0 bg-white py-1.5 pr-3 font-semibold"
+                    style={{ color: GRAHA_COLOR[planet.body] }}
+                  >
+                    {planet.body}
+                  </td>
+                  {vargas.map(({ info, placements }) => (
+                    <td key={info.code} className="px-1 py-1.5 text-center text-ved-green-800">
+                      {SIGN_SHORT[placements[index]!.sign - 1]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3 className="mb-2 font-display text-xl font-semibold text-ved-green-900">Graha positions</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-left text-xs uppercase tracking-wide text-ved-green-800/50">
                 <th className="pb-2 pr-2 font-medium">Graha</th>
                 <th className="pb-2 pr-2 font-medium">Rasi</th>
                 <th className="pb-2 pr-2 text-right font-medium">Degree</th>
@@ -95,25 +290,25 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
                 <th className="pb-2 text-right font-medium">Bhava</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-ved-green-900/5">
               {chart.planets.map((planet) => (
                 <tr key={planet.body}>
-                  <td className="py-1.5 pr-2 font-medium">
+                  <td className="py-1.5 pr-2 font-semibold" style={{ color: GRAHA_COLOR[planet.body] }}>
                     {planet.body}
                     {planet.is_retrograde && (
-                      <span className="ml-1 text-xs text-rose-300" title="Retrograde">
-                        ↺
+                      <span className="ml-1 text-xs text-rose-700" title="Retrograde">
+                        ℞
                       </span>
                     )}
                   </td>
-                  <td className="py-1.5 pr-2 text-slate-300">{planet.zodiac_sign_name}</td>
-                  <td className="tabular py-1.5 pr-2 text-right text-slate-300">
+                  <td className="py-1.5 pr-2 text-ved-green-900">{planet.zodiac_sign_name}</td>
+                  <td className="tabular py-1.5 pr-2 text-right text-ved-green-800">
                     {formatDegrees(planet.degrees_in_sign)}
                   </td>
-                  <td className="py-1.5 pr-2 text-slate-400">
-                    {planet.nakshatra_name} <span className="text-slate-600">{planet.nakshatra_pada}</span>
+                  <td className="py-1.5 pr-2 text-ved-green-800/80">
+                    {planet.nakshatra_name} <span className="text-ved-green-800/40">{planet.nakshatra_pada}</span>
                   </td>
-                  <td className="tabular py-1.5 text-right text-slate-300">
+                  <td className="tabular py-1.5 text-right text-ved-green-800">
                     {birthTimeAssumed ? '—' : planet.house}
                   </td>
                 </tr>
@@ -121,19 +316,19 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="card">
-        <h3 className="mb-2 text-sm font-semibold">Vimshottari dasha</h3>
+      <section className="card">
+        <h3 className="mb-2 font-display text-xl font-semibold text-ved-green-900">Vimshottari dasha</h3>
 
         {running ? (
-          <div className="mb-3 rounded-lg bg-saffron-500/10 px-3 py-2">
-            <p className="text-sm">
+          <div className="mb-3 rounded-xl border border-ved-gold-500/30 bg-ved-gold-500/10 px-3 py-2">
+            <p className="text-sm text-ved-green-900">
               <span className="font-semibold">{running.lord}</span>
-              {runningSub && <span className="text-slate-300"> / {runningSub.lord}</span>}
-              <span className="ml-2 text-xs text-saffron-200">running now</span>
+              {runningSub && <span className="text-ved-green-800/70"> / {runningSub.lord}</span>}
+              <span className="ml-2 text-xs text-ved-gold-700">running now</span>
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ved-green-800/60">
               until {formatDate(runningSub ? runningSub.end_utc : running.end_utc)}
             </p>
           </div>
@@ -144,12 +339,37 @@ export function KundaliView({ kundali, heading }: { kundali: Kundali; heading?: 
             <MahadashaRow key={`${period.lord}:${period.start_utc}`} period={period} running={running} />
           ))}
         </ol>
-      </div>
+      </section>
 
-      <p className="text-center text-[11px] text-slate-600">
+      <p className="text-center text-[11px] text-ved-green-800/50">
         {chart.ayanamsha_system.replaceAll('_', ' ').toLowerCase()} ayanamsha{' '}
         {chart.ayanamsha.toFixed(4)}° · {chart.node_type.replaceAll('_', ' ').toLowerCase()}
       </p>
+    </div>
+  );
+}
+
+function SummaryTile({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="card">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ved-gold-700">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function ChartLegend() {
+  return (
+    <div className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-ved-green-800/70">
+      {Object.entries(GRAHA_COLOR).map(([body, color]) => (
+        <span key={body} className="inline-flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+          {body}
+        </span>
+      ))}
+      <span className="inline-flex items-center gap-1">
+        <sup className="font-semibold">R</sup> retrograde
+      </span>
     </div>
   );
 }
@@ -164,29 +384,29 @@ function MahadashaRow({ period, running }: { period: DashaPeriod; running: Dasha
       <button
         type="button"
         className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-          isRunning ? 'bg-white/10' : 'hover:bg-white/5'
+          isRunning ? 'bg-ved-green-50 text-ved-green-900' : 'text-ved-green-800 hover:bg-ved-cream-100'
         }`}
         onClick={() => setOpen((value) => !value)}
         disabled={!hasChildren}
       >
         <span className={isRunning ? 'font-semibold' : ''}>
-          {hasChildren && <span className="mr-1 text-xs text-slate-500">{open ? '−' : '+'}</span>}
+          {hasChildren && <span className="mr-1 text-xs text-ved-green-800/40">{open ? '−' : '+'}</span>}
           {period.lord}
         </span>
-        <span className="tabular text-xs text-slate-400">
+        <span className="tabular text-xs text-ved-green-800/60">
           {formatDate(period.start_utc)} – {formatDate(period.end_utc)}
         </span>
       </button>
 
       {open && hasChildren && (
-        <ul className="ml-4 border-l border-white/10 pl-3">
+        <ul className="ml-4 border-l border-ved-gold-500/30 pl-3">
           {period.children.map((child) => (
             <li
               key={`${child.lord}:${child.start_utc}`}
               className="flex items-center justify-between gap-2 py-1 text-xs"
             >
-              <span className="text-slate-300">{child.lord}</span>
-              <span className="tabular text-slate-500">
+              <span className="text-ved-green-800">{child.lord}</span>
+              <span className="tabular text-ved-green-800/50">
                 {formatDate(child.start_utc)} – {formatDate(child.end_utc)}
               </span>
             </li>
