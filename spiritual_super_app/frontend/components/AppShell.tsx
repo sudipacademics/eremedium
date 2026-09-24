@@ -8,7 +8,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, session, type Profile, type WalletBalance } from '@/lib/api';
 import { SocketProvider, useSocket, useSocketEvent } from '@/lib/socket';
 
-const PUBLIC_EXACT = new Set(['/login', '/']);
+/** Marketing pages that render their own full-width layout and the site footer. */
+const INFO_PAGES = new Set(['/knowledge', '/disclaimer', '/terms', '/refund-policy', '/data-protection']);
+
+const PUBLIC_EXACT = new Set(['/login', '/', ...INFO_PAGES]);
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;
@@ -309,7 +312,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const publicPath = isPublicPath(pathname);
   const isHome = pathname === '/';
   const isAdmin = pathname.startsWith('/admin');
-  const fullBleed = isHome || pathname.startsWith('/articles');
+  const fullBleed = isHome || pathname.startsWith('/articles') || INFO_PAGES.has(pathname);
 
   useEffect(() => {
     const stored = session.profile;

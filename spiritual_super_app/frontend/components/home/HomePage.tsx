@@ -12,6 +12,7 @@ import {
   type CmsArticle,
   type SiteContent,
 } from '@/lib/api';
+import { SiteFooter } from '@/components/SiteFooter';
 
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
@@ -439,7 +440,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <HomeFooter />
+      <SiteFooter />
     </div>
   );
 }
@@ -460,75 +461,5 @@ function SectionHead({
         {linkLabel}
       </Link>
     </div>
-  );
-}
-
-function HomeFooter() {
-  return (
-    <footer className="bg-ved-green-950 text-cream-100">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-        <div>
-          <Image
-            src="/brand/vedsutra-logo.png"
-            alt="Vedsutra"
-            width={979}
-            height={206}
-            className="h-7 w-auto brightness-0 invert"
-          />
-          <p className="mt-3 max-w-xs text-sm text-cream-100/65">
-            Your life, in harmony — astrology, ritual, and Ayurveda under one trusted roof.
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Explore</p>
-          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
-            <li>
-              <Link href="/astrologers">Astrology</Link>
-            </li>
-            <li>
-              <Link href="/pujas">E-Puja</Link>
-            </li>
-            <li>
-              <Link href="/ayurveda">Shop</Link>
-            </li>
-            <li>
-              <Link href="/panchang">Panchang</Link>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Company</p>
-          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
-            <li>
-              <Link href="/gochar">Learn</Link>
-            </li>
-            <li>
-              <Link href="/ai">Jyotish AI</Link>
-            </li>
-            <li>
-              <Link href="/login">Login</Link>
-            </li>
-          </ul>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ved-gold-400">Support</p>
-          <ul className="mt-3 space-y-2 text-sm text-cream-100/70">
-            <li>
-              <Link href="/wallet">Wallet</Link>
-            </li>
-            <li>
-              <Link href="/profile">Profile</Link>
-            </li>
-            <li>
-              <Link href="/admin">Admin</Link>
-            </li>
-          </ul>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-4 text-[11px] text-cream-100/45">
-        <span>© {new Date().getFullYear()} Vedsutra. All rights reserved.</span>
-        <span>Made with care for a better tomorrow.</span>
-      </div>
-    </footer>
   );
 }
