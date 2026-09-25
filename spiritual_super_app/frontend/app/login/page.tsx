@@ -74,14 +74,20 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <Image
-          src="/brand/vedsutra-logo.png"
-          alt="Vedsutra"
-          width={979}
-          height={206}
-          className="mx-auto h-9 w-auto"
-          priority
-        />
+        <Link
+          href="/"
+          aria-label="Vedsutra home"
+          className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ved-gold-400"
+        >
+          <Image
+            src="/brand/vedsutra-logo.png"
+            alt="Vedsutra"
+            width={979}
+            height={206}
+            className="h-9 w-auto"
+            priority
+          />
+        </Link>
         <h1 className="mt-4 font-display text-3xl font-semibold text-ved-green-800">
           {next === '/' ? 'Welcome back' : 'Sign in to continue'}
         </h1>

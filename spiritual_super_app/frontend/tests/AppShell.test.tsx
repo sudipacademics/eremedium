@@ -99,6 +99,42 @@ describe('a logged-out visitor', () => {
   });
 });
 
+describe('the header logo', () => {
+  it.each(['/pujas', '/admin/hero', '/wallet'])('links home from %s', async (path) => {
+    signIn({ role: 'ADMIN' });
+    pathname = path;
+
+    render(<AppShell><SocketPage /></AppShell>);
+
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Vedsutra home' })).toHaveAttribute('href', '/'));
+  });
+
+  it('closes the mobile menu when clicked', async () => {
+    pathname = '/astrologers';
+
+    render(<AppShell><SocketPage /></AppShell>);
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(screen.getByRole('button', { name: 'Close menu' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Vedsutra home' }));
+    expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
+  });
+
+  it('scrolls back to the top when clicked on the homepage', async () => {
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    pathname = '/';
+
+    render(<AppShell><div>marketing home</div></AppShell>);
+    await waitFor(() => expect(screen.getByText('marketing home')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('link', { name: 'Vedsutra home' }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+  });
+});
+
 describe('a half-broken session', () => {
   /**
    * session.profile returns null when the stored JSON is corrupt, while the token survives. Guarding

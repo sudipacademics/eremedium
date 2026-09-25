@@ -233,7 +233,15 @@ function NavBar({
   return (
     <header className="sticky top-0 z-40 border-b border-ved-green-900/10 bg-white/95 text-ved-green-900 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-        <Link href="/" className="mr-1 flex shrink-0 items-center">
+        <Link
+          href="/"
+          aria-label="Vedsutra home"
+          onClick={() => {
+            setMenuOpen(false);
+            if (pathname === '/') window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="mr-1 flex shrink-0 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ved-gold-400"
+        >
           <BrandLogo className="h-6 w-auto sm:h-7" />
         </Link>
 
