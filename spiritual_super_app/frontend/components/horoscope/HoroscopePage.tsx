@@ -49,8 +49,8 @@ export function periodLabel(h: Pick<Horoscope, 'period' | 'start' | 'end'>): str
 function Stars({ value, size = 'text-base' }: { value: number; size?: string }) {
   return (
     <span className={`relative inline-block leading-none tracking-[0.1em] ${size}`} role="img" aria-label={`${value} out of 5 stars`}>
-      <span className="text-ved-gold-200">★★★★★</span>
-      <span className="absolute inset-0 overflow-hidden text-ved-gold-500" style={{ width: `${(value / 5) * 100}%` }}>
+      <span aria-hidden className="text-ved-gold-200">★★★★★</span>
+      <span aria-hidden className="absolute inset-0 overflow-hidden text-ved-gold-500" style={{ width: `${(value / 5) * 100}%` }}>
         ★★★★★
       </span>
     </span>

@@ -67,11 +67,12 @@ describe('signHoroscope', () => {
     expect(aries.headline).toContain('demanding day');
   });
 
-  it('picks best days and Chandrashtama days from the Moon across the week', () => {
+  it('picks best days (upcoming first) and Chandrashtama days from the Moon across the week', () => {
     const week = [1, 2, 3, 4, 5, 6, 7].map((moon, i) => sky(`2026-09-2${i + 1}`, { ...everywhere(3), Moon: moon }));
     const libra = signHoroscope(7, 'weekly', week, week[4]!);
     expect(libra.cautionDays).toEqual(['2026-09-22']);
-    expect(libra.bestDays).toEqual(['2026-09-21', '2026-09-24', '2026-09-25']);
+    // Favourable Moon on the 21st, 24th, 25th and 27th; from the 25th, both upcoming days win a slot.
+    expect(libra.bestDays).toEqual(['2026-09-21', '2026-09-25', '2026-09-27']);
     expect(libra.moon).toBeNull();
     expect(libra.influences.map((i) => i.body)).not.toContain('Moon');
   });

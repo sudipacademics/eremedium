@@ -284,8 +284,9 @@ export function signHoroscope(
         scored.push({ date: sample.date, score: share([sample], sign, (b) => PERIOD_WEIGHTS.daily[b]) });
       }
     }
+    const upcoming = (date: string) => (date >= reference.date ? 1 : 0);
     scored
-      .sort((a, b) => b.score - a.score || a.date.localeCompare(b.date))
+      .sort((a, b) => upcoming(b.date) - upcoming(a.date) || b.score - a.score || a.date.localeCompare(b.date))
       .slice(0, BEST_DAY_COUNT[period])
       .sort((a, b) => a.date.localeCompare(b.date))
       .forEach((d) => bestDays.push(d.date));
