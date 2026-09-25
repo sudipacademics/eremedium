@@ -10,6 +10,7 @@ import { ContentError } from '../services/content-security.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
 import { HeroService, type HeroSlideInput } from '../services/hero.service.js';
+import { ReviewService, type ReviewVideoInput } from '../services/review.service.js';
 
 const footerLink = z.string().max(500).nullable().optional();
 const footerBody = z
@@ -78,8 +79,24 @@ const heroSlideBody = z.object(heroFields).strict();
 const heroSlidePatch = z.object({ ...heroFields, title: heroFields.title.optional() }).strict();
 const heroOrderBody = z.object({ ids: z.array(z.string().uuid()).min(1).max(100) });
 
+const reviewVideoFields = {
+  url: z.string().min(11).max(500),
+  title: z.string().min(2).max(160),
+  description: z.string().max(400).nullable().optional(),
+  active: z.boolean().optional(),
+};
+const reviewVideoBody = z.object(reviewVideoFields).strict();
+const reviewVideoPatch = z
+  .object({ ...reviewVideoFields, url: reviewVideoFields.url.optional(), title: reviewVideoFields.title.optional() })
+  .strict();
+
+/** Drops keys whose value is undefined (exactOptionalPropertyTypes treats them as distinct from absent). */
+function definedOnly(body: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined));
+}
+
 function toHeroInput(body: z.infer<typeof heroSlidePatch>): HeroSlideInput {
-  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as HeroSlideInput;
+  return definedOnly(body) as HeroSlideInput;
 }
 
 const productsQuery = z.object({ category: z.nativeEnum(ProductCategory).optional() });
@@ -147,6 +164,11 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
   app.get('/hero-slides', async (_request, reply) => {
     reply.header('Cache-Control', 'public, max-age=30');
     return { slides: await HeroService.listLive() };
+  });
+
+  app.get('/review-videos', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=60');
+    return { videos: await ReviewService.listLive() };
   });
 
   app.get('/hero-slides/:id/image', async (request, reply) => {
@@ -261,6 +283,36 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/hero-slides/:id', async (request, reply) => {
     const { id } = idParams.parse(request.params);
     await HeroService.remove(id);
+    return reply.code(204).send();
+  });
+
+  app.get('/review-videos', async () => ({ videos: await ReviewService.listAll() }));
+
+  app.post('/review-videos', async (request, reply) => {
+    const claims = requireUser(request);
+    const body = reviewVideoBody.parse(request.body);
+    const input = { ...definedOnly(body), url: body.url, title: body.title } as ReviewVideoInput & {
+      url: string;
+      title: string;
+    };
+    return reply.code(201).send(await ReviewService.create(input, claims.sub));
+  });
+
+  app.put('/review-videos/order', async (request) => {
+    const { ids } = heroOrderBody.parse(request.body);
+    return { videos: await ReviewService.reorder(ids) };
+  });
+
+  app.patch('/review-videos/:id', async (request) => {
+    const claims = requireUser(request);
+    const { id } = idParams.parse(request.params);
+    const body = reviewVideoPatch.parse(request.body);
+    return ReviewService.update(id, definedOnly(body) as ReviewVideoInput, claims.sub);
+  });
+
+  app.delete('/review-videos/:id', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    await ReviewService.remove(id);
     return reply.code(204).send();
   });
 }

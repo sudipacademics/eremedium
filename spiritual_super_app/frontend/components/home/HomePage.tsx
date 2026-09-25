@@ -16,6 +16,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
 import { HeroSlider } from '@/components/home/HeroSlider';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
+import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
 
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
@@ -450,6 +451,8 @@ export function HomePage() {
           </form>
         </div>
       </section>
+
+      <ReviewsCarousel />
 
       <SiteFooter />
     </div>

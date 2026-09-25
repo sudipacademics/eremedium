@@ -36,6 +36,11 @@ const CARDS = [
     body: 'Add, edit, reorder, enable, and schedule homepage banner slides.',
   },
   {
+    href: '/admin/reviews',
+    title: 'Review videos',
+    body: 'YouTube testimonials in the homepage Reviews carousel — add, reorder, enable.',
+  },
+  {
     href: '/admin/articles',
     title: 'Articles',
     body: 'Create, feature, publish, or retire journal posts.',

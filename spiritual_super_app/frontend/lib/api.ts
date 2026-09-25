@@ -253,6 +253,30 @@ export interface AdminHeroSlide extends HeroSlide {
   updatedAt: string;
 }
 
+/** Active YouTube review video from `content/review-videos`. */
+export interface ReviewVideo {
+  id: string;
+  youtubeId: string;
+  title: string;
+  description: string | null;
+}
+
+export interface AdminReviewVideo extends ReviewVideo {
+  url: string;
+  sortOrder: number;
+  active: boolean;
+  updatedAt: string;
+}
+
+export function youtubeThumbnailUrl(youtubeId: string): string {
+  return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+}
+
+/** Privacy-enhanced embed; loaded only after the visitor presses play. */
+export function youtubeEmbedUrl(youtubeId: string): string {
+  return `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+}
+
 export function heroSlideImageUrl(slide: Pick<HeroSlide, 'id' | 'imageUrl' | 'imageVersion'>): string {
   return slide.imageVersion !== null
     ? `/api/gw/content/hero-slides/${slide.id}/image?v=${slide.imageVersion}`

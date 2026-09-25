@@ -513,6 +513,23 @@ model HeroSlide {
   @@map("hero_slides")
 }
 
+/// YouTube review videos for the homepage "Reviews" carousel.
+model ReviewVideo {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// The 11-character YouTube video id, parsed from whatever URL the admin pasted.
+  youtubeId   String   @map("youtube_id") @db.VarChar(11)
+  title       String   @db.VarChar(160)
+  description String?  @db.VarChar(400)
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy   String?  @map("updated_by") @db.Uuid
+
+  @@index([active, sortOrder])
+  @@map("review_videos")
+}
+
 model FooterSettings {
   id           String   @id @db.VarChar(32)
   facebookUrl  String?  @map("facebook_url") @db.VarChar(500)
