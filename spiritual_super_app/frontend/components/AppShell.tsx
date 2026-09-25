@@ -383,7 +383,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   if (pathname === '/login') {
-    return <main className="mx-auto max-w-md px-4 py-10">{children}</main>;
+    return <>{children}</>;
   }
 
   if (!profile && protectedPath) {

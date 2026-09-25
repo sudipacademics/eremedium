@@ -192,6 +192,7 @@ export const api = {
 // --- Typed endpoint shapes, mirroring the gateway's responses -----------------------------------
 
 export interface OtpRequestResult {
+  codeLength?: number;
   expiresInSeconds: number;
   resendAfterSeconds: number;
   debugCode?: string;
@@ -199,7 +200,7 @@ export interface OtpRequestResult {
 
 export interface VerifyResult {
   accessToken: string;
-  expiresInSeconds: number;
+  isNewAccount?: boolean;
   user: { id: string; phone: string; name: string | null; role: Profile['role']; astrologerId: string | null };
 }
 

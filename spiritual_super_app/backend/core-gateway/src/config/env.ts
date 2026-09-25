@@ -182,6 +182,13 @@ const envSchema = z.object({
         });
       }
     }
+    if (value.SMS_PROVIDER === 'msg91' && !value.MSG91_TEMPLATE_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MSG91_TEMPLATE_ID'],
+        message: 'MSG91_TEMPLATE_ID (a DLT-approved template with ##OTP##) is required when SMS_PROVIDER=msg91',
+      });
+    }
     if (value.SMS_PROVIDER === 'msg91' && !value.MSG91_AUTH_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

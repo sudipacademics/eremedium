@@ -63,6 +63,21 @@ describe('requesting a code', () => {
   });
 });
 
+describe('when the SMS cannot be delivered', () => {
+  it('rolls back the challenge, cooldown and window slot so the user can retry at once', async () => {
+    await clearCooldown(PHONE);
+    await redis.del(redisKeys.otpRequestCount(PHONE));
+    sendSms.mockRejectedValueOnce(new Error('vendor down'));
+
+    await expect(OtpService.request(PHONE)).rejects.toThrow('vendor down');
+
+    expect(await redis.get(redisKeys.otpChallenge(PHONE))).toBeNull();
+    expect(await redis.ttl(redisKeys.otpCooldown(PHONE))).toBeLessThanOrEqual(0);
+    expect(Number(await redis.get(redisKeys.otpRequestCount(PHONE)))).toBe(0);
+    await expect(OtpService.request(PHONE)).resolves.toBeDefined();
+  });
+});
+
 describe('verifying a code', () => {
   it('accepts the right code and consumes it, so one code cannot mint two sessions', async () => {
     const code = await issuedCode(PHONE);

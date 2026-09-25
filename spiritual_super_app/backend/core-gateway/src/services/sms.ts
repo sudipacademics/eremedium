@@ -1,11 +1,15 @@
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 
+/**
+ * The vendor's own error text stays in `detail` (logged server-side); callers only ever see the
+ * generic message, so MSG91 account or template details never reach a browser.
+ */
 export class SmsDeliveryError extends Error {
   readonly statusCode = 502;
 
-  constructor(message: string) {
-    super(message);
+  constructor(readonly detail: string) {
+    super('We could not send the SMS right now. Please try again in a minute.');
     this.name = 'SmsDeliveryError';
   }
 }
@@ -30,45 +34,60 @@ async function sendViaLog(phone: string, _code: string): Promise<void> {
  * MSG91 is the usual choice for Indian transactional SMS (DLT-registered template required).
  * The template must contain a ##OTP## variable, which MSG91 substitutes from `otp`.
  */
-async function sendViaMsg91(phone: string, code: string): Promise<void> {
+export async function sendViaMsg91(phone: string, code: string): Promise<void> {
+  const phoneLast4 = phone.slice(-4);
+  const fail = (detail: string): never => {
+    logger.error({ phoneLast4, provider: 'msg91', detail }, 'OTP SMS delivery failed');
+    throw new SmsDeliveryError(detail);
+  };
+
   if (!env.MSG91_AUTH_KEY || !env.MSG91_TEMPLATE_ID) {
-    throw new SmsDeliveryError('MSG91 is selected but MSG91_AUTH_KEY/MSG91_TEMPLATE_ID are missing');
+    fail('MSG91 is selected but MSG91_AUTH_KEY/MSG91_TEMPLATE_ID are missing');
   }
 
-  // MSG91 expects the number without a leading '+'.
-  const mobile = phone.replace(/^\+/, '');
+  // We generate and verify the code ourselves and hand it to MSG91 purely for delivery.
+  const url = new URL('https://control.msg91.com/api/v5/otp');
+  url.search = new URLSearchParams({
+    template_id: env.MSG91_TEMPLATE_ID!,
+    // MSG91 expects the number with country code and no leading '+'.
+    mobile: phone.replace(/^\+/, ''),
+    otp: code,
+    otp_length: String(code.length),
+    otp_expiry: String(Math.max(1, Math.ceil(env.OTP_TTL_SECONDS / 60))),
+    // Surfaces DLT/template rejections in this response instead of failing silently later.
+    realTimeResponse: '1',
+    ...(env.MSG91_SENDER ? { sender: env.MSG91_SENDER } : {}),
+  }).toString();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
+  let status = 0;
+  let text = '';
   try {
-    const response = await fetch('https://control.msg91.com/api/v5/otp', {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authkey: env.MSG91_AUTH_KEY,
-      },
-      body: JSON.stringify({
-        template_id: env.MSG91_TEMPLATE_ID,
-        mobile,
-        otp: code,
-        ...(env.MSG91_SENDER ? { sender: env.MSG91_SENDER } : {}),
-      }),
+      headers: { 'content-type': 'application/json', accept: 'application/json', authkey: env.MSG91_AUTH_KEY! },
+      body: '{}',
       signal: controller.signal,
     });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '<unreadable>');
-      throw new SmsDeliveryError(`MSG91 rejected the request: ${response.status} ${body.slice(0, 200)}`);
-    }
+    status = response.status;
+    text = await response.text().catch(() => '');
   } catch (error) {
-    if (error instanceof SmsDeliveryError) {
-      throw error;
-    }
-    throw new SmsDeliveryError(
-      error instanceof Error ? `MSG91 request failed: ${error.message}` : 'MSG91 request failed',
-    );
+    fail(error instanceof Error ? `MSG91 request failed: ${error.message}` : 'MSG91 request failed');
   } finally {
     clearTimeout(timeout);
+  }
+
+  // MSG91 reports most failures (bad key, unapproved template, blocked number) as HTTP 200 with
+  // {"type":"error"}, so the status code alone says nothing about delivery.
+  let parsed: { type?: string; message?: string } | null = null;
+  try {
+    parsed = JSON.parse(text) as { type?: string; message?: string };
+  } catch {
+    parsed = null;
+  }
+  if (status < 200 || status >= 300 || parsed?.type !== 'success') {
+    fail(`MSG91 rejected the request: HTTP ${status} ${(parsed?.message ?? text).slice(0, 200)}`);
   }
 }
 

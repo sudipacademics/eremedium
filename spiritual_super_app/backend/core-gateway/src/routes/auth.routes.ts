@@ -63,6 +63,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       // timings here would turn this route into a "does this person have an account?" oracle.
       return reply.code(202).send({
         sent: true,
+        codeLength: env.OTP_LENGTH,
         expiresInSeconds: challenge.expiresInSeconds,
         resendAfterSeconds: challenge.resendAfterSeconds,
         ...(challenge.debugCode === undefined ? {} : { debugCode: challenge.debugCode }),

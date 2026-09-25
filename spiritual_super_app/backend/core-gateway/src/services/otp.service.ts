@@ -104,7 +104,14 @@ export const OtpService = {
     if (fixedCode) {
       logger.warn({ phone }, 'Issued fixed staging OTP for an allowlisted test number');
     } else {
-      await sendSms(phone, code);
+      try {
+        await sendSms(phone, code);
+      } catch (error) {
+        // An undelivered code must not cost the user a cooldown or a slot in their request window.
+        await redis.del(redisKeys.otpChallenge(phone), cooldownKey);
+        await redis.decr(windowKey);
+        throw error;
+      }
     }
 
     return {

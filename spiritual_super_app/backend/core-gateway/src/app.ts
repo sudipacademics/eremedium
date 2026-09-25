@@ -75,6 +75,13 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(401).send({ error: 'UNAUTHORIZED', message: error.message });
     }
     if (hasStatusCode(error) && error.statusCode >= 400 && error.statusCode < 500) {
+      const retryAfter = (error as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+      if (typeof retryAfter === 'number') {
+        reply.header('retry-after', String(retryAfter));
+        return reply
+          .code(error.statusCode)
+          .send({ error: error.name, message: error.message, retryAfterSeconds: retryAfter });
+      }
       return reply.code(error.statusCode).send({ error: error.name, message: error.message });
     }
 
