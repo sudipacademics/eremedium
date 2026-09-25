@@ -16,7 +16,8 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'no-store, must-revalidate' }],
       },
       {
-        source: '/((?!_next/static|_next/image|brand|favicon).*)',
+        // api/gw/content sets its own Cache-Control (public only for anonymous GETs the gateway marks public).
+        source: '/((?!_next/static|_next/image|brand|favicon|api/gw/content/).*)',
         headers: [{ key: 'Cache-Control', value: 'no-store, must-revalidate' }],
       },
     ];
