@@ -157,6 +157,8 @@ services:
       MSG91_SENDER: ${MSG91_SENDER:-}
       # "phone:code" pairs that get a fixed OTP, so the web app is demonstrable without an SMS vendor.
       OTP_TEST_NUMBERS: ${OTP_TEST_NUMBERS:-}
+      # Demo mode: every non-admin number signs in with this code and no SMS is sent.
+      OTP_SIMULATED_CODE: ${OTP_SIMULATED_CODE:-}
       PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-localhost}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       # Wallet top-up. Compose passes ONLY the variables named here, so a secret added to .env

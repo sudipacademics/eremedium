@@ -314,7 +314,11 @@ export default function LoginPage() {
                     Edit
                   </button>
                 </p>
-                {debugCode && <p className="mt-2 text-xs text-ved-gold-700">Staging code: {debugCode}</p>}
+                {debugCode && (
+                  <p className="mt-3 rounded-lg bg-ved-gold-50 px-3 py-2 text-sm text-ved-gold-700">
+                    Demo mode: SMS is not live yet. Use code <strong className="tracking-widest">{debugCode}</strong>
+                  </p>
+                )}
 
                 <div className="mt-6">
                   <OtpInput

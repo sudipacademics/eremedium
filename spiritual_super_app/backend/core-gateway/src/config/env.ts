@@ -93,6 +93,14 @@ const envSchema = z.object({
           .filter(([phone, code]) => phone.length > 0 && /^\d{4,8}$/.test(code)),
       ),
     ),
+  // Demo mode: every non-admin number gets this code and no SMS is sent, so ANYONE can sign in to
+  // ANY non-admin account. Temporary stand-in while the SMS vendor is being set up.
+  OTP_SIMULATED_CODE: z
+    .string()
+    .trim()
+    .regex(/^\d{4,8}$/, 'OTP_SIMULATED_CODE must be 4-8 digits')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   // Codes are peppered before hashing so a Redis dump alone cannot be brute-forced offline.
   // Defaults to JWT_SECRET to avoid a mandatory new secret on already-deployed environments.
   OTP_PEPPER: optionalSecret(16),
@@ -181,6 +189,20 @@ const envSchema = z.object({
             'OTP_TEST_NUMBERS are fixed login codes; clear them or set ALLOW_STAGING_AUTH=true',
         });
       }
+      if (value.OTP_SIMULATED_CODE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OTP_SIMULATED_CODE'],
+          message: 'OTP_SIMULATED_CODE lets anyone sign in; clear it or set ALLOW_STAGING_AUTH=true',
+        });
+      }
+    }
+    if (value.OTP_SIMULATED_CODE && value.OTP_SIMULATED_CODE.length !== value.OTP_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OTP_SIMULATED_CODE'],
+        message: 'OTP_SIMULATED_CODE must have OTP_LENGTH digits',
+      });
     }
     if (value.SMS_PROVIDER === 'msg91' && !value.MSG91_TEMPLATE_ID) {
       ctx.addIssue({

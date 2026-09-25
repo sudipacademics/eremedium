@@ -153,3 +153,38 @@ describe('staging test numbers', () => {
     await expect(OtpService.verify(PHONE, '424242')).rejects.toThrow(OtpInvalidError);
   });
 });
+
+describe('simulated SMS mode', () => {
+  const ADMIN = '+919811112222';
+
+  it('gives every number the simulated code, sends no SMS and echoes the code', async () => {
+    const saved = { code: env.OTP_SIMULATED_CODE, admins: env.ADMIN_PHONES };
+    Object.assign(env, { OTP_SIMULATED_CODE: '123456', ADMIN_PHONES: [ADMIN] });
+    try {
+      sendSms.mockClear();
+      await clearCooldown(PHONE);
+      const challenge = await OtpService.request(PHONE);
+
+      expect(sendSms).not.toHaveBeenCalled();
+      expect(challenge.debugCode).toBe('123456');
+      await expect(OtpService.verify(PHONE, '123456')).resolves.toBeUndefined();
+    } finally {
+      Object.assign(env, { OTP_SIMULATED_CODE: saved.code, ADMIN_PHONES: saved.admins });
+    }
+  });
+
+  it('never gives the public code to an admin number', async () => {
+    const saved = { code: env.OTP_SIMULATED_CODE, admins: env.ADMIN_PHONES };
+    Object.assign(env, { OTP_SIMULATED_CODE: '123456', ADMIN_PHONES: [ADMIN] });
+    try {
+      const code = await issuedCode(ADMIN);
+
+      expect(code).toMatch(/^\d{6}$/);
+      if (code !== '123456') {
+        await expect(OtpService.verify(ADMIN, '123456')).rejects.toThrow(OtpInvalidError);
+      }
+    } finally {
+      Object.assign(env, { OTP_SIMULATED_CODE: saved.code, ADMIN_PHONES: saved.admins });
+    }
+  });
+});

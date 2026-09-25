@@ -34,7 +34,7 @@ interface OtpRecord {
 export interface OtpChallenge {
   readonly expiresInSeconds: number;
   readonly resendAfterSeconds: number;
-  /** Populated only when OTP_DEBUG_ECHO is on, which env.ts forbids in production. */
+  /** Populated when OTP_DEBUG_ECHO is on (forbidden in production) or for the public simulated code. */
   readonly debugCode?: string;
 }
 
@@ -95,13 +95,19 @@ export const OtpService = {
      * no code path that skips verification. Only numbers explicitly listed in env are affected, and
      * the list is empty by default.
      */
-    const fixedCode = env.OTP_TEST_NUMBERS[phone];
+    const testCode = env.OTP_TEST_NUMBERS[phone];
+    // Admin numbers never get the public demo code, or it would hand out the ADMIN role.
+    const simulatedCode =
+      testCode === undefined && !env.ADMIN_PHONES.includes(phone) ? env.OTP_SIMULATED_CODE : undefined;
+    const fixedCode = testCode ?? simulatedCode;
     const code = fixedCode ?? generateCode();
     const record: OtpRecord = { hash: hashCode(phone, code), attempts: 0 };
     await redis.set(redisKeys.otpChallenge(phone), JSON.stringify(record), 'EX', env.OTP_TTL_SECONDS);
     await redis.set(cooldownKey, '1', 'EX', env.OTP_RESEND_COOLDOWN_SECONDS);
 
-    if (fixedCode) {
+    if (simulatedCode) {
+      logger.warn({ phoneLast4: phone.slice(-4) }, 'Issued simulated OTP; no SMS sent');
+    } else if (fixedCode) {
       logger.warn({ phone }, 'Issued fixed staging OTP for an allowlisted test number');
     } else {
       try {
@@ -117,7 +123,7 @@ export const OtpService = {
     return {
       expiresInSeconds: env.OTP_TTL_SECONDS,
       resendAfterSeconds: env.OTP_RESEND_COOLDOWN_SECONDS,
-      ...(env.OTP_DEBUG_ECHO ? { debugCode: code } : {}),
+      ...(env.OTP_DEBUG_ECHO || simulatedCode ? { debugCode: code } : {}),
     };
   },
 
