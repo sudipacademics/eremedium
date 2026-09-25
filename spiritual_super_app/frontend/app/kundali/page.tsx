@@ -3,14 +3,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { KundaliView } from '@/components/KundaliView';
-import { ApiError, api, type BirthProfile, type Kundali, type PlaceMatch } from '@/lib/api';
+import { ApiError, api, session, type BirthProfile, type Kundali, type PlaceMatch } from '@/lib/api';
+import { takeIntentParam, useAuthGate } from '@/lib/auth-gate';
+
+/** Birth details a guest typed before signing in, restored (and cast) once they are back. */
+interface BirthDraft {
+  birthDate: string;
+  birthTime: string;
+  timeKnown: boolean;
+  query: string;
+  chosen: PlaceMatch;
+}
+
+const DRAFT_KEY = 'ssa.kundali-draft';
+
+function takeDraft(): BirthDraft | null {
+  const raw = window.sessionStorage.getItem(DRAFT_KEY);
+  window.sessionStorage.removeItem(DRAFT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as BirthDraft;
+  } catch {
+    return null;
+  }
+}
 
 export default function KundaliPage() {
+  const { signedIn } = useAuthGate();
   const [profile, setProfile] = useState<BirthProfile | null>(null);
   const [kundali, setKundali] = useState<Kundali | null>(null);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<BirthDraft | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -30,8 +55,17 @@ export default function KundaliPage() {
   }, []);
 
   useEffect(() => {
+    if (!signedIn) {
+      setLoading(false);
+      return;
+    }
+    const resumed = takeIntentParam('cast') === '1' ? takeDraft() : null;
+    if (resumed) {
+      setDraft(resumed);
+      setEditing(true);
+    }
     void load();
-  }, [load]);
+  }, [load, signedIn]);
 
   if (loading) {
     return <p className="text-sm text-ved-green-800/60">Loading…</p>;
@@ -40,19 +74,22 @@ export default function KundaliPage() {
   return (
     <div className="space-y-5">
       <div className="card bg-ved-green-50 border-ved-green-900/10">
-        <h1 className="text-xl font-semibold">Your kundali</h1>
+        <h1 className="text-xl font-semibold">{signedIn ? 'Your kundali' : 'Free kundali'}</h1>
         <p className="mt-1 text-sm text-ved-green-800/60">
           Cast from Swiss Ephemeris with Chitra Paksha (Lahiri) ayanamsha and true node positions —
           the same conventions your astrologer works with.
+          {!signedIn && ' Enter your birth details below; you will be asked to log in to save and view your chart.'}
         </p>
       </div>
 
       {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
 
-      {editing || !profile?.complete ? (
+      {!signedIn || editing || !profile?.complete ? (
         <BirthDataForm
-          profile={profile}
+          profile={signedIn ? profile : null}
+          draft={draft}
           onSaved={() => {
+            setDraft(null);
             setEditing(false);
             setLoading(true);
             void load();
@@ -84,20 +121,24 @@ export default function KundaliPage() {
 
 function BirthDataForm({
   profile,
+  draft,
   onSaved,
   onCancel,
 }: {
   profile: BirthProfile | null;
+  /** Restored guest input; cast straight away. */
+  draft: BirthDraft | null;
   onSaved: () => void;
   onCancel?: (() => void) | undefined;
 }) {
-  const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
-  const [birthTime, setBirthTime] = useState(profile?.birthTime ?? '');
-  const [timeKnown, setTimeKnown] = useState(profile?.birthTimeKnown ?? true);
-  const [query, setQuery] = useState(profile?.placeLabel ?? '');
+  const { requireLogin } = useAuthGate();
+  const [birthDate, setBirthDate] = useState(draft?.birthDate ?? profile?.birthDate ?? '');
+  const [birthTime, setBirthTime] = useState(draft?.birthTime ?? profile?.birthTime ?? '');
+  const [timeKnown, setTimeKnown] = useState(draft?.timeKnown ?? profile?.birthTimeKnown ?? true);
+  const [query, setQuery] = useState(draft?.query ?? profile?.placeLabel ?? '');
   const [matches, setMatches] = useState<PlaceMatch[]>([]);
   const [chosen, setChosen] = useState<PlaceMatch | null>(
-    profile?.complete && profile.latitude !== null && profile.longitude !== null
+    draft ? draft.chosen : profile?.complete && profile.latitude !== null && profile.longitude !== null
       ? {
           label: profile.placeLabel ?? '',
           name: profile.placeLabel ?? '',
@@ -136,6 +177,12 @@ function BirthDataForm({
       setError('Choose your birthplace, or enter its coordinates.');
       return;
     }
+    if (!session.token) {
+      const pending: BirthDraft = { birthDate, birthTime, timeKnown, query, chosen };
+      window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(pending));
+      requireLogin('/kundali?cast=1');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -162,6 +209,13 @@ function BirthDataForm({
       setBusy(false);
     }
   };
+
+  const autoCast = useRef(draft !== null);
+  useEffect(() => {
+    if (!autoCast.current) return;
+    autoCast.current = false;
+    void save();
+  });
 
   return (
     <div className="card space-y-4">
@@ -299,7 +353,7 @@ function BirthDataForm({
           onClick={() => void save()}
           disabled={busy || !birthDate || !chosen || (timeKnown && !birthTime)}
         >
-          {busy ? 'Casting…' : 'Cast my kundali'}
+          {busy ? 'Casting…' : session.token ? 'Cast my kundali' : 'Log in & cast my kundali'}
         </button>
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { ApiError, api, type BirthProfile, type Gochar, type PlaceMatch } from '@/lib/api';
+import { ApiError, api, session, type BirthProfile, type Gochar, type PlaceMatch } from '@/lib/api';
 
 const DEFAULT_PLACE: PlaceMatch = {
   label: 'Varanasi, IN',
@@ -49,6 +49,7 @@ export default function GocharPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!session.token) return;
     void api
       .get<BirthProfile>('vedic/birth-profile')
       .then((profile) => {
@@ -267,7 +268,9 @@ function GocharResult({ gochar, placeLabel }: { gochar: Gochar; placeLabel: stri
           </p>
         ) : (
           <p className="mt-1 text-xs text-amber-200/80">
-            Save a kundali birth profile to see houses from your natal Lagna.
+            {session.token
+              ? 'Save a kundali birth profile to see houses from your natal Lagna.'
+              : 'Log in and save your birth details on Kundali to see houses from your natal Lagna.'}
           </p>
         )}
       </div>

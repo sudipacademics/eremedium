@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { session } from '@/lib/api';
+import { loginHref, session } from '@/lib/api';
 
 export function AdminGate({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -13,7 +13,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     const profile = session.profile;
     if (!session.token || !profile) {
-      router.replace('/login');
+      router.replace(loginHref(window.location.pathname));
       return;
     }
     if (profile.role !== 'ADMIN') {

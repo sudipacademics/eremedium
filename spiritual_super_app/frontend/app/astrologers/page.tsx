@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, type Astrologer, type WalletBalance } from '@/lib/api';
+import { takeIntentParam, useAuthGate } from '@/lib/auth-gate';
 import { useSocket, useSocketEvent } from '@/lib/socket';
 
 interface QueuePosition {
@@ -30,6 +31,7 @@ const STATUS_LABELS: Record<Astrologer['status'], string> = {
 
 export default function AstrologersPage() {
   const router = useRouter();
+  const { signedIn, requireLogin } = useAuthGate();
   const { send, status: socketStatus } = useSocket();
   const [astrologers, setAstrologers] = useState<Astrologer[]>([]);
   const [balance, setBalance] = useState<string>('0.00');
@@ -40,22 +42,25 @@ export default function AstrologersPage() {
   const load = useCallback(() => {
     void Promise.all([
       api.get<{ astrologers: Astrologer[] }>('astrologers?onlineOnly=false&limit=50'),
-      api.get<WalletBalance>('wallet/balance'),
+      signedIn ? api.get<WalletBalance>('wallet/balance') : Promise.resolve(null),
     ])
       .then(([list, wallet]) => {
         setAstrologers(list.astrologers);
-        setBalance(wallet.balance);
+        if (wallet) setBalance(wallet.balance);
       })
       .catch((error: unknown) => setNotice(error instanceof Error ? error.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [signedIn]);
 
   useEffect(load, [load]);
 
-  // Arriving from a homepage card: bring that astrologer into view.
+  // Arriving from a homepage card: bring that astrologer into view. `talk=1` means the visitor
+  // pressed "Talk now" before signing in; join that queue once they are back and connected.
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [pendingTalk, setPendingTalk] = useState(false);
   useEffect(() => {
     setFocusId(new URLSearchParams(window.location.search).get('astrologer'));
+    setPendingTalk(takeIntentParam('talk') === '1');
   }, []);
   useEffect(() => {
     if (!focusId || loading) return;
@@ -79,6 +84,7 @@ export default function AstrologersPage() {
 
   const join = (astrologer: Astrologer) => {
     setNotice(null);
+    if (!requireLogin(`/astrologers?astrologer=${astrologer.id}&talk=1`)) return;
     if (Number(balance) < Number(astrologer.minimumBalanceRequired)) {
       setNotice(
         `You need at least ₹${astrologer.minimumBalanceRequired} to start a call at ₹${astrologer.perMinuteRate}/min. Top up your wallet first.`,
@@ -89,6 +95,14 @@ export default function AstrologersPage() {
     // live socket, so using the same channel guarantees we are visible to it.
     send({ type: 'USER_JOIN_QUEUE', astrologerId: astrologer.id });
   };
+
+  useEffect(() => {
+    if (!pendingTalk || !signedIn || loading || socketStatus !== 'open') return;
+    setPendingTalk(false);
+    const target = astrologers.find((a) => a.id === focusId);
+    if (target?.status === 'IDLE') join(target);
+    else if (target) setNotice(`${target.displayName} is not available right now — try again shortly.`);
+  }, [pendingTalk, signedIn, loading, socketStatus, astrologers, focusId]);
 
   const leave = (astrologerId: string) => {
     send({ type: 'USER_LEAVE_QUEUE', astrologerId });
@@ -104,7 +118,7 @@ export default function AstrologersPage() {
             You are charged per minute, only while connected.
           </p>
         </div>
-        {socketStatus !== 'open' && (
+        {signedIn && socketStatus !== 'open' && (
           <p className="pill bg-amber-500/10 text-amber-200">
             Connecting to the live channel — joining a queue needs it
           </p>
@@ -151,7 +165,7 @@ export default function AstrologersPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {astrologers.map((astrologer) => {
-            const affordable = Number(balance) >= Number(astrologer.minimumBalanceRequired);
+            const affordable = !signedIn || Number(balance) >= Number(astrologer.minimumBalanceRequired);
             const available = astrologer.status === 'IDLE';
             return (
               <div
@@ -184,7 +198,7 @@ export default function AstrologersPage() {
                   <button
                     type="button"
                     className={affordable ? 'btn-primary' : 'btn-ghost'}
-                    disabled={!available || queued !== null || socketStatus !== 'open'}
+                    disabled={!available || queued !== null || (signedIn && socketStatus !== 'open')}
                     onClick={() => join(astrologer)}
                   >
                     {!available ? 'Unavailable' : affordable ? 'Talk now' : 'Top up to talk'}

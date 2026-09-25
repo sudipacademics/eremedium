@@ -6,7 +6,7 @@ import { AppRole } from '../auth/jwt.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
-import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
 import { ASTROLOGER_PHOTO_PATTERN, cleanTags } from '../services/astrologer-directory.js';
 import { QueueService } from '../services/queue.service.js';
 
@@ -43,10 +43,10 @@ const listQuerySchema = z.object({
 });
 
 export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
+  app.addHook('preHandler', authenticateUnlessPublic);
 
   /** Browse consultants. Only IDLE astrologers are bookable right now. */
-  app.get('/', async (request) => {
+  app.get('/', { config: { public: true } }, async (request) => {
     const query = listQuerySchema.parse(request.query);
     const rows = await prisma.astrologer.findMany({
       where: query.onlineOnly === 'true' ? { status: AstrologerStatus.IDLE } : {},

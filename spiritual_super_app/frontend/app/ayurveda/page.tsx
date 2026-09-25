@@ -13,6 +13,7 @@ import {
   type AyurvedaProduct,
   type ProductCategory,
 } from '@/lib/api';
+import { useAuthGate } from '@/lib/auth-gate';
 import { useSocketEvent } from '@/lib/socket';
 
 type Tab = 'shop' | 'mine';
@@ -21,6 +22,7 @@ type DoshaFilter = 'ALL' | 'VATA' | 'PITTA' | 'KAPHA';
 const STATUS_STEPS: AyurvedaOrder['status'][] = ['CONFIRMED', 'PACKED', 'DISPATCHED'];
 
 export default function AyurvedaPage() {
+  const { signedIn, requireLogin } = useAuthGate();
   const [tab, setTab] = useState<Tab>('shop');
   const [category, setCategory] = useState<ProductCategory>('AYURVEDA');
   const [ready, setReady] = useState(false);
@@ -33,11 +35,15 @@ export default function AyurvedaPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = useCallback(() => {
+    if (!signedIn) {
+      setOrders([]);
+      return;
+    }
     void api
       .get<{ orders: AyurvedaOrder[] }>('ayurveda/shop/orders')
       .then((result) => setOrders(result.orders))
       .catch(() => undefined);
-  }, []);
+  }, [signedIn]);
 
   const loadProducts = useCallback((kind: ProductCategory, filter: DoshaFilter) => {
     setLoading(true);
@@ -150,13 +156,26 @@ export default function AyurvedaPage() {
             <ProductGrid products={products} onSelect={setSelection} />
           )}
         </>
-      ) : (
+      ) : signedIn ? (
         <OrderList orders={orders} />
+      ) : (
+        <div className="card space-y-3 text-center">
+          <p className="text-sm text-ved-green-800/70">Log in to see and track your orders.</p>
+          <button type="button" className="btn-primary" onClick={() => requireLogin('/ayurveda')}>
+            Log in / Sign up
+          </button>
+        </div>
       )}
 
       {selection && (
         <CheckoutDialog
           product={selection}
+          signedIn={signedIn}
+          onLogin={() =>
+            requireLogin(
+              `/ayurveda?${selection.category === 'CRYSTAL' ? 'category=crystal&' : ''}product=${selection.id}`,
+            )
+          }
           onClose={() => setSelection(null)}
           onOrdered={() => {
             setSelection(null);
@@ -289,10 +308,15 @@ function StatusTrail({ status }: { status: AyurvedaOrder['status'] }) {
 
 function CheckoutDialog({
   product,
+  signedIn,
+  onLogin,
   onClose,
   onOrdered,
 }: {
   product: AyurvedaProduct;
+  signedIn: boolean;
+  /** Sends a guest to login, returning to this product's checkout. */
+  onLogin: () => void;
   onClose: () => void;
   onOrdered: () => void;
 }) {
@@ -356,27 +380,41 @@ function CheckoutDialog({
                 Close
               </button>
             </div>
-            <div>
-              <label className="label">Name</label>
-              <input className="input" value={shippingName} onChange={(e) => setShippingName(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Phone</label>
-              <input className="input" value={shippingPhone} onChange={(e) => setShippingPhone(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Shipping address</label>
-              <textarea
-                className="input min-h-[80px]"
-                value={shippingAddress}
-                onChange={(e) => setShippingAddress(e.target.value)}
-                placeholder="House, street, city, PIN"
-              />
-            </div>
-            {error && <p className="text-sm text-rose-200">{error}</p>}
-            <button type="button" className="btn-primary w-full" disabled={busy} onClick={() => void confirm()}>
-              {busy ? 'Placing…' : `Pay ₹${product.price} from wallet`}
-            </button>
+            {!signedIn ? (
+              <>
+                {product.description && <p className="text-sm text-ved-green-800/70">{product.description}</p>}
+                <p className="text-sm text-ved-green-800/60">
+                  Log in or sign up to order — we&apos;ll bring you straight back to this checkout.
+                </p>
+                <button type="button" className="btn-primary w-full" onClick={onLogin}>
+                  Log in / Sign up to order
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="label">Name</label>
+                  <input className="input" value={shippingName} onChange={(e) => setShippingName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Phone</label>
+                  <input className="input" value={shippingPhone} onChange={(e) => setShippingPhone(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Shipping address</label>
+                  <textarea
+                    className="input min-h-[80px]"
+                    value={shippingAddress}
+                    onChange={(e) => setShippingAddress(e.target.value)}
+                    placeholder="House, street, city, PIN"
+                  />
+                </div>
+                {error && <p className="text-sm text-rose-200">{error}</p>}
+                <button type="button" className="btn-primary w-full" disabled={busy} onClick={() => void confirm()}>
+                  {busy ? 'Placing…' : `Pay ₹${product.price} from wallet`}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>

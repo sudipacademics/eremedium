@@ -76,6 +76,7 @@ export const session = {
   save(token: string, profile: Profile): void {
     window.localStorage.setItem(TOKEN_KEY, token);
     window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    window.dispatchEvent(new Event(SESSION_EVENT));
   },
   updateProfile(partial: Partial<Profile>): void {
     const current = this.profile;
@@ -86,8 +87,25 @@ export const session = {
   clear(): void {
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(PROFILE_KEY);
+    window.dispatchEvent(new Event(SESSION_EVENT));
   },
 };
+
+/** Fired on `window` whenever this tab signs in or out. */
+export const SESSION_EVENT = 'ssa:session';
+
+/** `/login` that returns to `next` (a same-site path) after signing in. */
+export function loginHref(next?: string): string {
+  return next && next !== '/' && !next.startsWith('/login') ? `/login?next=${encodeURIComponent(next)}` : '/login';
+}
+
+/** A post-login destination from `?next=`, restricted to same-site paths. */
+export function safeNextPath(raw: string | null | undefined): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\') || raw.startsWith('/login')) {
+    return '/';
+  }
+  return raw;
+}
 
 /**
  * An expired or revoked session gets `error: UNAUTHORIZED` from the gateway. Other 401s (a wrong OTP
@@ -98,7 +116,7 @@ function endSessionIfRejected(response: Response, parsed: unknown, sentToken: bo
   if ((parsed as { error?: string } | null)?.error !== 'UNAUTHORIZED') return;
   session.clear();
   if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-    window.location.assign('/login');
+    window.location.assign(loginHref(window.location.pathname + window.location.search));
   }
 }
 

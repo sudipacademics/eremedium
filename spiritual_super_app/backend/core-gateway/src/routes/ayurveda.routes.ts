@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
-import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
 import { AyurvedaService } from '../services/ayurveda.service.js';
 
 const productQuery = z.object({
@@ -31,10 +31,9 @@ const advanceBody = z.object({
 });
 
 export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
+  app.addHook('preHandler', authenticateUnlessPublic);
 
-  app.get('/products', async (request, reply) => {
-    requireUser(request);
+  app.get('/products', { config: { public: true } }, async (request, reply) => {
     const { dosha, category } = productQuery.parse(request.query);
     const products = await AyurvedaService.listProducts({
       ...(dosha === undefined ? {} : { dosha }),

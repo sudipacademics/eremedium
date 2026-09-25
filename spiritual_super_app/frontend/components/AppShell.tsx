@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { api, session, type Profile, type WalletBalance } from '@/lib/api';
+import { SESSION_EVENT, api, loginHref, session, type Profile, type WalletBalance } from '@/lib/api';
+import { isProtectedPath } from '@/lib/auth-gate';
 import { SocketProvider, useSocket, useSocketEvent } from '@/lib/socket';
 
 /** Marketing pages that render their own full-width layout and the site footer. */
@@ -20,14 +21,6 @@ const INFO_PAGES = new Set([
   '/faq',
   '/privacy-policy',
 ]);
-
-const PUBLIC_EXACT = new Set(['/login', '/', ...INFO_PAGES]);
-
-function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_EXACT.has(pathname)) return true;
-  if (pathname.startsWith('/articles')) return true;
-  return false;
-}
 
 function isActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
@@ -51,8 +44,15 @@ function StatusDot() {
   );
 }
 
-function ProfileMenu({ profile, initials }: { profile: Profile; initials: string }) {
-  const router = useRouter();
+function ProfileMenu({
+  profile,
+  initials,
+  onSignOut,
+}: {
+  profile: Profile;
+  initials: string;
+  onSignOut: () => void;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -113,10 +113,7 @@ function ProfileMenu({ profile, initials }: { profile: Profile; initials: string
             type="button"
             role="menuitem"
             className="block w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-            onClick={() => {
-              session.clear();
-              router.replace('/login');
-            }}
+            onClick={onSignOut}
           >
             Sign out
           </button>
@@ -212,9 +209,11 @@ function NavLinkList({
 function NavBar({
   profile,
   guest,
+  onSignOut,
 }: {
   profile: Profile | null;
   guest: boolean;
+  onSignOut: () => void;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -271,11 +270,11 @@ function NavBar({
           {!guest && profile && (
             <>
               <WalletPill />
-              <ProfileMenu profile={profile} initials={initials} />
+              <ProfileMenu profile={profile} initials={initials} onSignOut={onSignOut} />
             </>
           )}
           {guest && (
-            <Link href="/login" className="btn-primary px-4 py-2 text-xs sm:text-sm">
+            <Link href={loginHref(pathname)} className="btn-primary px-4 py-2 text-xs sm:text-sm">
               Login / Sign Up
             </Link>
           )}
@@ -311,29 +310,53 @@ function NavBar({
 }
 
 /**
- * Gates protected routes on a stored token. Marketing `/` and `/articles*` are public.
- * SocketProvider mounts only for authenticated sessions (WS requires JWT).
+ * Guests can browse every page except the account areas in PROTECTED_PREFIXES, which send them to
+ * login and back. SocketProvider is keyed on the user so it connects (WS requires a JWT) on sign-in
+ * and drops the connection on sign-out; for guests it stays idle.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [checked, setChecked] = useState(false);
-  const publicPath = isPublicPath(pathname);
+  const signingOut = useRef(false);
+  const protectedPath = isProtectedPath(pathname);
   const isHome = pathname === '/';
   const isAdmin = pathname.startsWith('/admin');
   const fullBleed =
     isHome || pathname === '/temple' || pathname.startsWith('/articles') || INFO_PAGES.has(pathname);
 
   useEffect(() => {
-    const stored = session.profile;
-    const token = session.token;
-    setProfile(token && stored ? stored : null);
-    setChecked(true);
-    if (!(token && stored) && !publicPath) {
-      router.replace('/login');
+    const sync = () => {
+      const stored = session.profile;
+      setProfile(session.token && stored ? stored : null);
+      setChecked(true);
+    };
+    sync();
+    window.addEventListener(SESSION_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(SESSION_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    signingOut.current = false;
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!checked || profile || !protectedPath || signingOut.current) return;
+    router.replace(loginHref(pathname + window.location.search));
+  }, [checked, profile, protectedPath, pathname, router]);
+
+  const signOut = () => {
+    if (protectedPath) {
+      signingOut.current = true;
+      router.replace('/');
     }
-  }, [pathname, router, publicPath]);
+    session.clear();
+  };
 
   useEffect(() => {
     document.body.classList.toggle('admin-ops', isAdmin);
@@ -348,22 +371,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <main className="mx-auto max-w-md px-4 py-10">{children}</main>;
   }
 
-  if (!profile && publicPath) {
-    return (
-      <>
-        <NavBar profile={null} guest />
-        <main className={fullBleed ? '' : 'mx-auto max-w-5xl px-4 py-6'}>{children}</main>
-      </>
-    );
-  }
-
-  if (!profile) {
+  if (!profile && protectedPath) {
     return null;
   }
 
   return (
-    <SocketProvider>
-      <NavBar profile={profile} guest={false} />
+    <SocketProvider key={profile?.userId ?? 'guest'}>
+      <NavBar profile={profile} guest={!profile} onSignOut={signOut} />
       <main className={fullBleed ? '' : 'mx-auto max-w-5xl px-4 py-6'}>{children}</main>
     </SocketProvider>
   );

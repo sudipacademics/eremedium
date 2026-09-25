@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
 import { money, prisma } from '../lib/prisma.js';
-import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
 import { PujaError, PujaService } from '../services/puja.service.js';
 
 const bookBody = z.object({
@@ -49,11 +49,11 @@ const offeringBody = z.object({
 });
 
 export async function pujaRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
+  app.addHook('preHandler', authenticateUnlessPublic);
 
   // --- Catalog -------------------------------------------------------------------------------
 
-  app.get('/temples', async (_request, reply) => {
+  app.get('/temples', { config: { public: true } }, async (_request, reply) => {
     const temples = await PujaService.listTemples();
     return reply.send({ temples });
   });

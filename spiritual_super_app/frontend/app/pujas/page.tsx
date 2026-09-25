@@ -12,6 +12,7 @@ import {
   type PujaOffering,
   type PujaTemple,
 } from '@/lib/api';
+import { takeIntentParam, useAuthGate } from '@/lib/auth-gate';
 import { useSocketEvent } from '@/lib/socket';
 
 type Tab = 'book' | 'mine';
@@ -22,6 +23,7 @@ interface Selection {
 }
 
 export default function PujasPage() {
+  const { signedIn, requireLogin } = useAuthGate();
   const [tab, setTab] = useState<Tab>('book');
   const [temples, setTemples] = useState<PujaTemple[]>([]);
   const [bookings, setBookings] = useState<PujaBooking[]>([]);
@@ -30,22 +32,41 @@ export default function PujasPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadBookings = useCallback(() => {
+    if (!signedIn) {
+      setBookings([]);
+      return;
+    }
     void api
       .get<{ bookings: PujaBooking[] }>('pujas/bookings')
       .then((result) => setBookings(result.bookings))
       .catch(() => undefined);
-  }, []);
+  }, [signedIn]);
 
   useEffect(() => {
+    // `?book=<offeringId>`: the visitor chose this puja before signing in; reopen it for them.
+    const resumeOfferingId = takeIntentParam('book');
     void api
       .get<{ temples: PujaTemple[] }>('pujas/temples')
-      .then((result) => setTemples(result.temples))
+      .then((result) => {
+        setTemples(result.temples);
+        if (!resumeOfferingId || !session.token) return;
+        for (const temple of result.temples) {
+          const offering = temple.offerings.find((o) => o.id === resumeOfferingId);
+          if (offering) setSelection({ temple, offering });
+        }
+      })
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Could not load the temples'),
       )
       .finally(() => setLoading(false));
-    loadBookings();
-  }, [loadBookings]);
+  }, []);
+
+  useEffect(loadBookings, [loadBookings]);
+
+  const choose = (temple: PujaTemple, offering: PujaOffering) => {
+    if (!requireLogin(`/pujas?book=${offering.id}`)) return;
+    setSelection({ temple, offering });
+  };
 
   // The temple advances the puja hours or days later, so the list must update without a reload.
   useSocketEvent<PujaBooking>('PUJA_BOOKING_UPDATED', (updated) => {
@@ -115,13 +136,20 @@ export default function PujasPage() {
               <TempleCard
                 key={temple.id}
                 temple={temple}
-                onSelect={(offering) => setSelection({ temple, offering })}
+                onSelect={(offering) => choose(temple, offering)}
               />
             ))}
           </div>
         )
-      ) : (
+      ) : signedIn ? (
         <MyPujas bookings={bookings} onBookNow={() => setTab('book')} />
+      ) : (
+        <div className="card space-y-3">
+          <p className="text-sm text-ved-green-800/60">Log in to see your booked pujas and their progress.</p>
+          <button type="button" className="btn-primary" onClick={() => requireLogin('/pujas')}>
+            Log in / Sign up
+          </button>
+        </div>
       )}
 
       {selection && (

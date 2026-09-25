@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell } from '@/components/AppShell';
@@ -19,11 +19,11 @@ vi.mock('next/navigation', () => ({
 }));
 
 /**
- * Stands in for a real page. Every protected page in this app calls useSocket, and useSocket throws
- * unless SocketProvider is above it -- so if the shell ever renders a page for a logged-out visitor
- * again, this component reproduces the exact crash rather than failing on a cosmetic assertion.
+ * Stands in for a real page. Several pages (astrologers, shop, E-Puja, wallet) call useSocket, which
+ * throws unless SocketProvider is above it -- so this reproduces the exact crash if the shell ever
+ * renders such a page without the provider.
  */
-function ProtectedPage() {
+function SocketPage() {
   useSocket();
   return <div>page content</div>;
 }
@@ -42,18 +42,16 @@ function signIn(overrides: Partial<Profile> = {}) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   replace.mockReset();
   pathname = '/';
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }),
+    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}), text: async () => '{}' }),
   );
 });
 
 describe('a logged-out visitor', () => {
-  /**
-   * Marketing home is public. It must not mount SocketProvider for guests, and must not crash.
-   */
   it('can view the public homepage without a session', async () => {
     pathname = '/';
 
@@ -63,14 +61,33 @@ describe('a logged-out visitor', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('is redirected away from any protected route', async () => {
-    pathname = '/wallet';
+  it.each(['/astrologers', '/ayurveda', '/pujas', '/panchang', '/kundali', '/temple', '/ai'])(
+    'can browse %s without being asked to log in',
+    async (path) => {
+      pathname = path;
 
-    expect(() => render(<AppShell><ProtectedPage /></AppShell>)).not.toThrow();
+      render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
-    expect(screen.queryByText('page content')).not.toBeInTheDocument();
-  });
+      await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+      expect(replace).not.toHaveBeenCalled();
+      expect(screen.getByRole('link', { name: 'Login / Sign Up' })).toHaveAttribute(
+        'href',
+        `/login?next=${encodeURIComponent(path)}`,
+      );
+    },
+  );
+
+  it.each(['/wallet', '/profile', '/call/abc', '/astrologer', '/admin/hero'])(
+    'is sent to login from the account area %s, and back afterwards',
+    async (path) => {
+      pathname = path;
+
+      expect(() => render(<AppShell><SocketPage /></AppShell>)).not.toThrow();
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(`/login?next=${encodeURIComponent(path)}`));
+      expect(screen.queryByText('page content')).not.toBeInTheDocument();
+    },
+  );
 
   it('can still reach the login page itself', async () => {
     pathname = '/login';
@@ -92,56 +109,56 @@ describe('a half-broken session', () => {
     window.localStorage.setItem('ssa.profile', '{not json');
     pathname = '/wallet';
 
-    expect(() => render(<AppShell><ProtectedPage /></AppShell>)).not.toThrow();
+    expect(() => render(<AppShell><SocketPage /></AppShell>)).not.toThrow();
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=%2Fwallet'));
   });
 
   it('is sent to login when a profile is stored without a token', async () => {
     window.localStorage.setItem('ssa.profile', JSON.stringify({ id: 'u1', name: 'Test' }));
     pathname = '/wallet';
 
-    render(<AppShell><ProtectedPage /></AppShell>);
+    render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login?next=%2Fwallet'));
   });
 });
 
 describe('a signed-in user', () => {
-  it('sees the page, which means the socket provider is mounted above it', async () => {
+  it('sees account pages, which means the socket provider is mounted above them', async () => {
     signIn();
-    pathname = '/';
+    pathname = '/wallet';
 
-    render(<AppShell><ProtectedPage /></AppShell>);
+    render(<AppShell><SocketPage /></AppShell>);
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('gets the navigation chrome', async () => {
+  it('gets the navigation chrome and profile menu', async () => {
     signIn();
     pathname = '/';
 
-    render(<AppShell><ProtectedPage /></AppShell>);
+    render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(screen.getByText('Astrologers')).toBeInTheDocument());
-    expect(screen.getByText('Kundali')).toBeInTheDocument();
-    expect(screen.getByText('Match')).toBeInTheDocument();
-    expect(screen.getByText('Gochar')).toBeInTheDocument();
-    expect(screen.getByText('Panchang')).toBeInTheDocument();
-    expect(screen.getByText('E-Puja')).toBeInTheDocument();
-    expect(screen.getByText('Ayurveda')).toBeInTheDocument();
-    expect(screen.getByText('Wallet')).toBeInTheDocument();
-    expect(screen.getByText('Sign out')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('Astrology').length).toBeGreaterThan(0));
+    for (const label of ['Panchang', 'E-Puja', 'Temple', 'Ayurveda', 'Shop', 'Consult Experts']) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByRole('link', { name: 'Login / Sign Up' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    expect(screen.getByRole('menuitem', { name: 'Wallet' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
   });
 
   it('is not offered the astrologer console when they are not an astrologer', async () => {
     signIn();
     pathname = '/';
 
-    render(<AppShell><ProtectedPage /></AppShell>);
+    render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(screen.getByText('Astrologers')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(screen.queryByText('My console')).not.toBeInTheDocument();
   });
 
@@ -149,8 +166,37 @@ describe('a signed-in user', () => {
     signIn({ role: 'ASTROLOGER', astrologerId: 'a1' });
     pathname = '/';
 
-    render(<AppShell><ProtectedPage /></AppShell>);
+    render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(screen.getByText('My console')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('My console').length).toBeGreaterThan(0));
+  });
+
+  it('stays on a public page after signing out, now as a guest', async () => {
+    signIn();
+    pathname = '/pujas';
+
+    render(<AppShell><SocketPage /></AppShell>);
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' })));
+
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Login / Sign Up' })).toBeInTheDocument());
+    expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('goes home, not to login, after signing out on an account page', async () => {
+    signIn();
+    pathname = '/wallet';
+
+    render(<AppShell><SocketPage /></AppShell>);
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' })));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/'));
+    expect(replace).not.toHaveBeenCalledWith(expect.stringContaining('/login'));
   });
 });

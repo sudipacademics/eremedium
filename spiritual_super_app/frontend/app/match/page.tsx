@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { ApiError, api, type BirthProfile, type MatchResult, type PlaceMatch } from '@/lib/api';
+import { ApiError, api, session, type BirthProfile, type MatchResult, type PlaceMatch } from '@/lib/api';
 
 type PersonDraft = {
   label: string;
@@ -31,6 +31,10 @@ export default function MatchPage() {
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   useEffect(() => {
+    if (!session.token) {
+      setProfileLoaded(true);
+      return;
+    }
     void api
       .get<BirthProfile>('vedic/birth-profile')
       .then((profile) => {

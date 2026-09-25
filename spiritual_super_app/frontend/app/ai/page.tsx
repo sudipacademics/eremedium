@@ -11,6 +11,7 @@ import {
   type AiPredictTurn,
   type BirthProfile,
 } from '@/lib/api';
+import { takeIntentParam, useAuthGate } from '@/lib/auth-gate';
 
 const SUGGESTIONS = [
   'What does my current dasha emphasise for career?',
@@ -35,11 +36,15 @@ export default function JyotishAiPage() {
   const [error, setError] = useState<string | null>(null);
   const [disclaimer, setDisclaimer] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const { signedIn, requireLogin } = useAuthGate();
 
   useEffect(() => {
+    // `?ask=`: a question typed before signing in; put it back in the box.
+    const pending = takeIntentParam('ask');
+    if (pending) setQuestion(pending.slice(0, 1500));
     void Promise.all([
       api.get<AiPredictStatus>('vedic/ai-predict/status'),
-      api.get<BirthProfile>('vedic/birth-profile'),
+      signedIn ? api.get<BirthProfile>('vedic/birth-profile') : Promise.resolve(null),
     ])
       .then(([aiStatus, birth]) => {
         setStatus(aiStatus);
@@ -48,7 +53,7 @@ export default function JyotishAiPage() {
       .catch((caught) => {
         setError(caught instanceof Error ? caught.message : 'Could not load AI status');
       });
-  }, []);
+  }, [signedIn]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -57,6 +62,7 @@ export default function JyotishAiPage() {
   async function ask(nextQuestion: string) {
     const trimmed = nextQuestion.trim();
     if (!trimmed || loading) return;
+    if (!requireLogin(`/ai?ask=${encodeURIComponent(trimmed.slice(0, 500))}`)) return;
 
     setError(null);
     setLoading(true);
@@ -124,6 +130,13 @@ export default function JyotishAiPage() {
           </p>
         )}
       </div>
+
+      {!signedIn && (
+        <div className="rounded-xl border border-ved-green-900/10 bg-ved-cream-100 px-4 py-3 text-sm text-ved-green-800">
+          Readings are personal to your chart, so you&apos;ll be asked to log in or sign up when you ask your
+          first question — we&apos;ll bring you right back here with your question.
+        </div>
+      )}
 
       {needsBirth && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
@@ -231,7 +244,7 @@ export default function JyotishAiPage() {
             className="btn-primary"
             disabled={!aiReady || needsBirth || loading || question.trim().length < 3}
           >
-            {loading ? 'Asking…' : 'Ask Jyotish AI'}
+            {loading ? 'Asking…' : signedIn ? 'Ask Jyotish AI' : 'Log in & ask Jyotish AI'}
           </button>
         </div>
         {disclaimer && <p className="text-[11px] leading-relaxed text-ved-green-800/50">{disclaimer}</p>}

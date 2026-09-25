@@ -7,6 +7,10 @@ declare module 'fastify' {
   interface FastifyRequest {
     auth?: AuthClaims;
   }
+  interface FastifyContextConfig {
+    /** Browsable without signing in; see authenticateUnlessPublic. */
+    public?: boolean;
+  }
 }
 
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -22,6 +26,16 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     request.log.error({ err: error }, 'Session check unavailable');
     await reply.code(503).send({ error: 'AUTH_UNAVAILABLE', message: 'Please try again shortly' });
   }
+}
+
+/**
+ * For route groups that mix public catalog reads with protected actions. Routes declared with
+ * `config: { public: true }` serve guests; a bearer token, when sent, is still verified so the
+ * handler can personalise. Every other route in the group requires a valid session.
+ */
+export async function authenticateUnlessPublic(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.routeOptions.config.public === true && !request.headers.authorization) return;
+  await authenticate(request, reply);
 }
 
 export function requireRole(...allowed: readonly AppRole[]) {

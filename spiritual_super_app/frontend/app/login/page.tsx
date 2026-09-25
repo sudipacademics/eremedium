@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { api, session, type OtpRequestResult, type VerifyResult } from '@/lib/api';
+import { api, safeNextPath, session, type OtpRequestResult, type VerifyResult } from '@/lib/api';
+import { isProtectedPath } from '@/lib/auth-gate';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,6 +18,13 @@ export default function LoginPage() {
   const [cooldown, setCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [next, setNext] = useState('/');
+
+  useEffect(() => {
+    const target = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+    setNext(target);
+    if (session.token && session.profile) router.replace(target);
+  }, [router]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -55,7 +63,7 @@ export default function LoginPage() {
         name: result.user.name,
         phone: result.user.phone,
       });
-      router.replace('/');
+      router.replace(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not verify the code');
     } finally {
@@ -74,9 +82,13 @@ export default function LoginPage() {
           className="mx-auto h-9 w-auto"
           priority
         />
-        <h1 className="mt-4 font-display text-3xl font-semibold text-ved-green-800">Welcome back</h1>
+        <h1 className="mt-4 font-display text-3xl font-semibold text-ved-green-800">
+          {next === '/' ? 'Welcome back' : 'Sign in to continue'}
+        </h1>
         <p className="mt-1 text-sm text-ved-green-800/65">
-          Sign in with your phone to consult, book pujas, and shop Ayurveda.
+          {next === '/'
+            ? 'Sign in with your phone to consult, book pujas, and shop Ayurveda.'
+            : 'Log in or sign up with your phone — we’ll take you right back to where you left off.'}
         </p>
       </div>
 
@@ -149,6 +161,11 @@ export default function LoginPage() {
         )}
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
+      <p className="text-center text-sm">
+        <Link href={isProtectedPath(next.split('?')[0]!) ? '/' : next} className="text-ved-green-700 underline-offset-2 hover:underline">
+          ← Continue browsing without signing in
+        </Link>
+      </p>
     </div>
   );
 }
