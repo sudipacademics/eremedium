@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { AppRole } from '../auth/jwt.js';
 import { prisma } from '../lib/prisma.js';
 import { authenticateUnlessPublic, requireAstrologer, requireRole, requireUser } from '../plugins/authenticate.js';
+import { AI_ASTROLOGER_IDS } from '../services/ai-astrologers.js';
 import { AiPredictionService } from '../services/ai-prediction.service.js';
 import { AstroServiceClient } from '../services/astro.client.js';
 import { KundaliService } from '../services/kundali.service.js';
@@ -102,6 +103,12 @@ const gocharBody = z.object({
 
 const aiPredictBody = z.object({
   question: z.string().min(3).max(1_500),
+  astrologer: z.enum(AI_ASTROLOGER_IDS).default('vedic'),
+  fullName: z.string().trim().min(2).max(120).optional(),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   history: z
     .array(
       z.object({
@@ -382,9 +389,13 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
     { config: { rateLimit: { max: 8, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const claims = requireUser(request);
-      const body = aiPredictBody.parse(request.body);
+      const { fullName, birthDate, ...body } = aiPredictBody.parse(request.body);
       try {
-        return await AiPredictionService.predict(claims.sub, body);
+        return await AiPredictionService.predict(claims.sub, {
+          ...body,
+          ...(fullName !== undefined ? { fullName } : {}),
+          ...(birthDate !== undefined ? { birthDate } : {}),
+        });
       } catch (error) {
         if (error instanceof OpenAiError) {
           return reply.code(error.statusCode).send({

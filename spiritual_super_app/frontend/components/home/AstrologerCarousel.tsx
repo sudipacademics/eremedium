@@ -147,7 +147,7 @@ function AstrologerCard({ astrologer }: { astrologer: DirectoryAstrologer }) {
         <Link
           href="/ai"
           className="flex items-center justify-center gap-1.5 rounded-full border border-ved-green-700/30 py-2.5 text-sm font-semibold text-ved-green-800 transition hover:bg-ved-green-50"
-          title="Chat about your chart with Jyotish AI"
+          title="Chat about your chart with an AI astrologer"
         >
           <ChatIcon />
           Chat

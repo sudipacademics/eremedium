@@ -554,6 +554,7 @@ export interface AiPredictTurn {
 }
 
 export interface AiPredictResult {
+  astrologer: 'vedic' | 'nadi' | 'western' | 'numerology';
   answer: string;
   model: string;
   birthTimeAssumed: boolean;

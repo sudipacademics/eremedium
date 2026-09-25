@@ -30,7 +30,7 @@ const CATEGORIES = [
 ] as const;
 
 const QUICK_ACTIONS = [
-  { href: '/ai', label: 'Chat with Astrologer', tag: 'Ask about your chart', icon: 'chat' },
+  { href: '/ai', label: 'AI Astrologers', tag: 'Vedic · Nadi · Western · Numerology', icon: 'chat' },
   { href: '/astrologers', label: 'Call Astrologer', tag: 'Talk to a verified expert', icon: 'call' },
   { href: '/gochar', label: 'Daily Horoscope', tag: "Today's transits for you", icon: 'sun' },
   { href: '/kundali', label: 'Get Free Kundali', tag: 'Your birth chart in seconds', icon: 'chart' },

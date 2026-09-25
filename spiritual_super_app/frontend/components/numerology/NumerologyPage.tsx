@@ -631,12 +631,20 @@ export function NumerologyPage() {
             <p className="mt-2 text-sm text-ved-green-800/70">
               Discuss your numerology chart, career, relationships and life path with experienced Vedsutra numerologists.
             </p>
-            <Link
-              href="/astrologers"
-              className="mt-5 inline-flex w-fit items-center gap-2 rounded-lg bg-ved-green-800 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ved-green-700"
-            >
-              Talk to a Numerologist <span aria-hidden>→</span>
-            </Link>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                href="/astrologers"
+                className="inline-flex w-fit items-center gap-2 rounded-lg bg-ved-green-800 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ved-green-700"
+              >
+                Talk to a Numerologist <span aria-hidden>→</span>
+              </Link>
+              <Link
+                href="/ai?astrologer=numerology"
+                className="inline-flex w-fit items-center gap-2 rounded-lg border border-ved-green-800/30 bg-white/70 px-5 py-3 text-sm font-semibold text-ved-green-800 transition hover:bg-white"
+              >
+                Ask Ank Guru (AI)
+              </Link>
+            </div>
           </div>
           <ul className="flex flex-col justify-center gap-3 border-t border-ved-gold-400/25 p-6 md:border-l md:border-t-0">
             {EXPERT_POINTS.map((point) => (
