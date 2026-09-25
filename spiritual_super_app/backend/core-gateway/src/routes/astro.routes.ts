@@ -9,6 +9,8 @@ import { authenticateUnlessPublic, requireAstrologer, requireRole, requireUser }
 import { AI_ASTROLOGER_IDS } from '../services/ai-astrologers.js';
 import { AiPredictionService } from '../services/ai-prediction.service.js';
 import { AstroServiceClient } from '../services/astro.client.js';
+import { HOROSCOPE_PERIODS } from '../services/horoscope.js';
+import { HoroscopeService } from '../services/horoscope.service.js';
 import { KundaliService } from '../services/kundali.service.js';
 import { PlaceService, toBirthInstant } from '../services/place.service.js';
 import { OpenAiError } from '../services/openai.client.js';
@@ -99,6 +101,10 @@ const gocharBody = z.object({
   longitude: z.number().min(-180).max(180),
   /** When true (default), overlay houses from the signed-in user's natal Lagna if a profile exists. */
   useNatalOverlay: z.boolean().default(true),
+});
+
+const horoscopeQuery = z.object({
+  period: z.enum(HOROSCOPE_PERIODS).default('daily'),
 });
 
 const aiPredictBody = z.object({
@@ -371,6 +377,18 @@ export async function astroRoutes(app: FastifyInstance): Promise<void> {
         natalOverlayApplied,
         birthTimeAssumed,
       };
+    },
+  );
+
+  /** Rashi horoscopes for all twelve Moon signs, for today, this week or this month (IST). */
+  app.get(
+    '/horoscope',
+    { config: { public: true, rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { period } = horoscopeQuery.parse(request.query);
+      const result = await HoroscopeService.forPeriod(period);
+      reply.header('cache-control', 'public, max-age=900');
+      return result;
     },
   );
 

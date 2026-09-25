@@ -541,6 +541,49 @@ export interface Kundali {
   fromCache: boolean;
 }
 
+export type HoroscopePeriod = 'daily' | 'weekly' | 'monthly';
+export type HoroscopeArea = 'love' | 'career' | 'money' | 'health';
+
+export interface HoroscopeInfluence {
+  body: string;
+  sign: number;
+  house: number;
+  favourable: boolean;
+  text: string;
+}
+
+export interface SignHoroscope {
+  sign: number;
+  name: string;
+  vedicName: string;
+  lord: string;
+  overall: number;
+  areas: Record<HoroscopeArea, number>;
+  headline: string;
+  summary: string;
+  influences: HoroscopeInfluence[];
+  bestDays: string[];
+  cautionDays: string[];
+  moon: { sign: number; house: number; nakshatra: string; chandrashtama: boolean } | null;
+  lucky: { colour: string; day: string; number: number };
+  remedy: string;
+}
+
+export interface Horoscope {
+  period: HoroscopePeriod;
+  start: string;
+  end: string;
+  today: string;
+  sky: {
+    date: string;
+    ayanamsha: number;
+    planets: Array<{ body: string; sign: number; degree: number; retrograde: boolean; nakshatra: string }>;
+  };
+  signs: SignHoroscope[];
+  events: Array<{ date: string; text: string }>;
+  retrograde: string[];
+}
+
 export interface AiPredictStatus {
   configured: boolean;
   model: string;

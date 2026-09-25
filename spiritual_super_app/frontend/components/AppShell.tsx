@@ -166,6 +166,7 @@ function BrandLogo({ className = 'h-8 w-auto' }: { className?: string }) {
 const MAIN_NAV = [
   { href: '/', label: 'Home' },
   { href: '/astrologers', label: 'Astrology' },
+  { href: '/horoscope', label: 'Horoscope' },
   { href: '/panchang', label: 'Panchang' },
   { href: '/numerology', label: 'Numerology' },
   { href: '/pujas', label: 'E-Puja' },
@@ -336,6 +337,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     isHome ||
     pathname === '/temple' ||
     pathname === '/numerology' ||
+    pathname === '/horoscope' ||
     pathname.startsWith('/articles') ||
     INFO_PAGES.has(pathname);
 

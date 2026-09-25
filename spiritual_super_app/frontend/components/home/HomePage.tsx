@@ -21,6 +21,7 @@ import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
 const CATEGORIES = [
   { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
   { href: '/kundali', label: 'Kundali', tag: 'Know Your Self', icon: '◎' },
+  { href: '/horoscope', label: 'Horoscope', tag: 'Daily Rashifal', icon: '♈\uFE0E' },
   { href: '/match', label: 'Match Making', tag: 'Build Together', icon: '⚭' },
   { href: '/gochar', label: 'Gochar', tag: 'Plan Ahead', icon: '☾' },
   { href: '/panchang', label: 'Panchang', tag: 'Auspicious Timings', icon: '☀' },
@@ -32,7 +33,7 @@ const CATEGORIES = [
 const QUICK_ACTIONS = [
   { href: '/ai', label: 'AI Astrologers', tag: 'Vedic · Nadi · Western · Numerology', icon: 'chat' },
   { href: '/astrologers', label: 'Call Astrologer', tag: 'Talk to a verified expert', icon: 'call' },
-  { href: '/gochar', label: 'Daily Horoscope', tag: "Today's transits for you", icon: 'sun' },
+  { href: '/horoscope', label: 'Daily Horoscope', tag: 'Daily, weekly & monthly rashifal', icon: 'sun' },
   { href: '/kundali', label: 'Get Free Kundali', tag: 'Your birth chart in seconds', icon: 'chart' },
 ] as const;
 
@@ -225,7 +226,7 @@ export function HomePage() {
 
       {/* Categories */}
       <section className="mx-auto max-w-7xl px-4 py-10">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid grid-cols-3 gap-3 lg:grid-cols-9">
           {CATEGORIES.map((cat) => (
             <Link
               key={cat.label}
