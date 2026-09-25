@@ -9,6 +9,7 @@ import { AyurvedaService } from '../services/ayurveda.service.js';
 import { ContentError } from '../services/content-security.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
+import { HeroService, type HeroSlideInput } from '../services/hero.service.js';
 
 const footerLink = z.string().max(500).nullable().optional();
 const footerBody = z
@@ -59,6 +60,27 @@ const listQuery = z.object({
     .optional()
     .transform((v) => v === 'true'),
 });
+
+const heroFields = {
+  eyebrow: z.string().max(120).nullable().optional(),
+  title: z.string().min(2).max(160),
+  description: z.string().max(400).nullable().optional(),
+  imageUrl: z.string().max(500).nullable().optional(),
+  /** Size and format are checked by the service. */
+  imageData: z.string().nullable().optional(),
+  ctaText: z.string().max(40).nullable().optional(),
+  ctaHref: z.string().max(500).nullable().optional(),
+  active: z.boolean().optional(),
+  startsAt: z.string().datetime({ offset: true }).nullable().optional(),
+  endsAt: z.string().datetime({ offset: true }).nullable().optional(),
+};
+const heroSlideBody = z.object(heroFields).strict();
+const heroSlidePatch = z.object({ ...heroFields, title: heroFields.title.optional() }).strict();
+const heroOrderBody = z.object({ ids: z.array(z.string().uuid()).min(1).max(100) });
+
+function toHeroInput(body: z.infer<typeof heroSlidePatch>): HeroSlideInput {
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as HeroSlideInput;
+}
 
 const productsQuery = z.object({ category: z.nativeEnum(ProductCategory).optional() });
 
@@ -120,6 +142,23 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
     reply.header('Cache-Control', 'public, max-age=60');
     const products = await AyurvedaService.listProducts(category === undefined ? {} : { category });
     return { products };
+  });
+
+  app.get('/hero-slides', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=30');
+    return { slides: await HeroService.listLive() };
+  });
+
+  app.get('/hero-slides/:id/image', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const image = await HeroService.image(id);
+    if (!image) {
+      throw new ContentError('No uploaded image', 404);
+    }
+    return reply
+      .header('Content-Type', image.contentType)
+      .header('Cache-Control', 'public, max-age=86400')
+      .send(image.bytes);
   });
 
   app.get('/astrologers', async (_request, reply) => {
@@ -196,6 +235,32 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/articles/:id', async (request, reply) => {
     const { id } = idParams.parse(request.params);
     await ContentService.deleteArticle(id);
+    return reply.code(204).send();
+  });
+
+  app.get('/hero-slides', async () => ({ slides: await HeroService.listAll() }));
+
+  app.post('/hero-slides', async (request, reply) => {
+    const claims = requireUser(request);
+    const body = heroSlideBody.parse(request.body);
+    return reply.code(201).send(await HeroService.create(toHeroInput(body) as HeroSlideInput & { title: string }, claims.sub));
+  });
+
+  app.put('/hero-slides/order', async (request) => {
+    const { ids } = heroOrderBody.parse(request.body);
+    return { slides: await HeroService.reorder(ids) };
+  });
+
+  app.patch('/hero-slides/:id', async (request) => {
+    const claims = requireUser(request);
+    const { id } = idParams.parse(request.params);
+    const body = heroSlidePatch.parse(request.body);
+    return HeroService.update(id, toHeroInput(body), claims.sub);
+  });
+
+  app.delete('/hero-slides/:id', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    await HeroService.remove(id);
     return reply.code(204).send();
   });
 }

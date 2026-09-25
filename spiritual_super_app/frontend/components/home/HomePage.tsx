@@ -9,10 +9,12 @@ import {
   api,
   type AyurvedaProduct,
   type CmsArticle,
+  type HeroSlide,
   type SiteContent,
 } from '@/lib/api';
 import { SiteFooter } from '@/components/SiteFooter';
 import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
+import { HeroSlider } from '@/components/home/HeroSlider';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
 
 const CATEGORIES = [
@@ -144,9 +146,14 @@ export function HomePage() {
   const [articles, setArticles] = useState<CmsArticle[]>([]);
   const [ayurveda, setAyurveda] = useState<AyurvedaProduct[] | null>(null);
   const [crystals, setCrystals] = useState<AyurvedaProduct[] | null>(null);
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[] | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
+    void api
+      .get<{ slides: HeroSlide[] }>('content/hero-slides')
+      .then((res) => setHeroSlides(res.slides))
+      .catch(() => setHeroSlides([]));
     void api.get<SiteContent>('content/home').then(setSite).catch(() => setSite(null));
     void api
       .get<{ articles: CmsArticle[] }>('content/articles?featured=true&limit=3')
@@ -178,81 +185,42 @@ export function HomePage() {
     else router.push('/astrologers');
   }
 
-  // Brand hero copy + art are fixed to the Vedsutra mock; CMS only supplies the quote.
   const promoQuote = site?.promoQuote?.trim() || 'Aligned with the Stars, Rooted in Nature';
-  const heroImage = '/brand/vedsutra-hero-mandala.png';
-  const heroEyebrow = 'Ancient wisdom for a brighter tomorrow';
-  const heroSubtitle =
-    'Astrology | Puja | Panchang | Ayurveda — all in one trusted platform – Vedsutra';
 
   return (
     <div className="bg-[#F7F4EE] text-ved-green-900">
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-ved-green-900/5 bg-[#F7F4EE]">
-        <div className="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-ved-gold-200/50 blur-3xl" />
-        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 lg:grid-cols-2 lg:py-16">
-          <div className="animate-fade-up">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ved-gold-600">
-              {heroEyebrow}
-            </p>
-            <h1 className="mt-3 font-display text-4xl font-semibold leading-[1.15] text-ved-green-900 sm:text-5xl lg:text-[3.4rem]">
-              Your Life, Guided by <span className="text-ved-gold-500">Vedic Wisdom</span>
-            </h1>
-            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ved-green-800/70">
-              {heroSubtitle}
-            </p>
-            <form
-              onSubmit={onSearch}
-              className="mt-8 flex overflow-hidden rounded-full border border-ved-green-900/10 bg-white shadow-[0_8px_30px_rgba(11,79,69,0.08)]"
+      <HeroSlider slides={heroSlides} promoQuote={promoQuote}>
+        <form
+          onSubmit={onSearch}
+          className="mt-6 flex overflow-hidden rounded-full border border-ved-green-900/10 bg-white shadow-[0_8px_30px_rgba(11,79,69,0.08)]"
+        >
+          <input
+            className="min-w-0 flex-1 bg-transparent px-5 py-3.5 text-sm outline-none placeholder:text-ved-green-900/35"
+            placeholder="Search astrologers, puja, products, articles…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="m-1.5 rounded-full bg-ved-green-800 px-7 py-2.5 text-sm font-semibold text-white hover:bg-ved-green-700"
+          >
+            Search
+          </button>
+        </form>
+        <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3">
+          {TRUST.map((item) => (
+            <span
+              key={item.label}
+              className="inline-flex items-center gap-2 text-xs font-medium text-ved-green-800/70"
             >
-              <input
-                className="min-w-0 flex-1 bg-transparent px-5 py-3.5 text-sm outline-none placeholder:text-ved-green-900/35"
-                placeholder="Search astrologers, puja, products, articles…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="m-1.5 rounded-full bg-ved-green-800 px-7 py-2.5 text-sm font-semibold text-white hover:bg-ved-green-700"
-              >
-                Search
-              </button>
-            </form>
-            <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3">
-              {TRUST.map((item) => (
-                <span
-                  key={item.label}
-                  className="inline-flex items-center gap-2 text-xs font-medium text-ved-green-800/70"
-                >
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-ved-gold-100 text-[10px] text-ved-gold-700">
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative mx-auto aspect-[4/5] w-full max-w-md animate-float lg:max-w-lg">
-            <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-ved-gold-300/50 to-ved-green-200/40 blur-2xl" />
-            <div className="relative h-full overflow-hidden rounded-[2rem] border border-ved-gold-400/40 bg-[#F7F4EE] shadow-xl">
-              <Image
-                src={heroImage}
-                alt="Vedic mandala and diya"
-                fill
-                unoptimized
-                className="object-cover object-center"
-                sizes="(max-width: 1024px) 90vw, 40vw"
-                priority
-              />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
-              <p className="absolute bottom-5 right-5 max-w-[11rem] text-right font-display text-base italic leading-snug text-white drop-shadow">
-                {promoQuote}
-              </p>
-            </div>
-          </div>
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-ved-gold-100 text-[10px] text-ved-gold-700">
+                {item.icon}
+              </span>
+              {item.label}
+            </span>
+          ))}
         </div>
-      </section>
+      </HeroSlider>
 
       {/* Categories */}
       <section className="mx-auto max-w-7xl px-4 py-10">

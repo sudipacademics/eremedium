@@ -488,6 +488,31 @@ model SiteContent {
  * Singleton footer settings. Id is always "default".
  * Admins edit via /api/v1/content/admin/footer; the public footer reads /api/v1/content/footer.
  */
+/// Homepage hero carousel slide. Live when active and now is within [startsAt, endsAt).
+model HeroSlide {
+  id             String    @id @default(uuid()) @db.Uuid
+  eyebrow        String?   @db.VarChar(120)
+  /// *Asterisks* mark words rendered in gold.
+  title          String    @db.VarChar(160)
+  description    String?   @db.VarChar(400)
+  imageUrl       String?   @map("image_url") @db.VarChar(500)
+  /// Admin-uploaded banner as a data URL; takes precedence over imageUrl.
+  imageData      String?   @map("image_data") @db.Text
+  imageUpdatedAt DateTime? @map("image_updated_at") @db.Timestamptz(3)
+  ctaText        String?   @map("cta_text") @db.VarChar(40)
+  ctaHref        String?   @map("cta_href") @db.VarChar(500)
+  sortOrder      Int       @default(0) @map("sort_order")
+  active         Boolean   @default(true)
+  startsAt       DateTime? @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime? @map("ends_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy      String?   @map("updated_by") @db.Uuid
+
+  @@index([active, sortOrder])
+  @@map("hero_slides")
+}
+
 model FooterSettings {
   id           String   @id @db.VarChar(32)
   facebookUrl  String?  @map("facebook_url") @db.VarChar(500)

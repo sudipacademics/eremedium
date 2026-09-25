@@ -28,7 +28,12 @@ const CARDS = [
   {
     href: '/admin/home',
     title: 'Homepage CMS',
-    body: 'Hero title, subtitle, image, and promo quote.',
+    body: 'Promo quote shown on the hero image, and homepage copy.',
+  },
+  {
+    href: '/admin/hero',
+    title: 'Hero slides',
+    body: 'Add, edit, reorder, enable, and schedule homepage banner slides.',
   },
   {
     href: '/admin/articles',

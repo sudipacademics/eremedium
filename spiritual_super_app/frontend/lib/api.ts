@@ -212,6 +212,35 @@ export function astrologerPhotoUrl(astrologer: { id: string; photoVersion: numbe
     : `/api/gw/content/astrologers/${astrologer.id}/photo?v=${astrologer.photoVersion}`;
 }
 
+/** Live homepage hero slide from `content/hero-slides`. Wrap words in `*…*` to show them in gold. */
+export interface HeroSlide {
+  id: string;
+  eyebrow: string | null;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  imageVersion: number | null;
+  ctaText: string | null;
+  ctaHref: string | null;
+}
+
+export type HeroSlideStatus = 'LIVE' | 'SCHEDULED' | 'EXPIRED' | 'DISABLED';
+
+export interface AdminHeroSlide extends HeroSlide {
+  sortOrder: number;
+  active: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  status: HeroSlideStatus;
+  updatedAt: string;
+}
+
+export function heroSlideImageUrl(slide: Pick<HeroSlide, 'id' | 'imageUrl' | 'imageVersion'>): string {
+  return slide.imageVersion !== null
+    ? `/api/gw/content/hero-slides/${slide.id}/image?v=${slide.imageVersion}`
+    : (slide.imageUrl ?? '');
+}
+
 export interface WalletBalance {
   walletId: string;
   balance: string;
