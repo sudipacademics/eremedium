@@ -277,6 +277,70 @@ export function youtubeEmbedUrl(youtubeId: string): string {
   return `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
 }
 
+export type NumerologyGender = 'MALE' | 'FEMALE' | 'OTHER';
+
+export interface NumerologyRequest {
+  fullName: string;
+  email: string;
+  phone: string;
+  /** YYYY-MM-DD */
+  birthDate: string;
+  gender: NumerologyGender;
+}
+
+export interface NumerologyNumbers {
+  lifePath: number;
+  destiny: number;
+  soulUrge: number;
+  personality: number;
+  birthday: number;
+  personalYear: number;
+}
+
+export interface NumberMeaning {
+  number: number;
+  title: string;
+  keywords: string[];
+  summary: string;
+  strengths: string[];
+  challenges: string[];
+  careers: string[];
+  relationships: string;
+  planet: string;
+  luckyDay: string;
+  luckyColour: string;
+}
+
+export interface NumerologyReading {
+  name: string;
+  birthDate: string;
+  numbers: NumerologyNumbers;
+  meanings: Record<string, NumberMeaning>;
+  compatibleNumbers: number[];
+  luckyNumbers: number[];
+  personalYearTheme: string;
+}
+
+export interface NumerologyLead {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  birthDate: string;
+  gender: NumerologyGender;
+  lifePath: number;
+  destiny: number;
+  soulUrge: number;
+  personality: number;
+  birthday: number;
+  createdAt: string;
+}
+
+export interface NumerologySettings {
+  videoYoutubeId: string | null;
+  videoUrl: string | null;
+}
+
 export function heroSlideImageUrl(slide: Pick<HeroSlide, 'id' | 'imageUrl' | 'imageVersion'>): string {
   return slide.imageVersion !== null
     ? `/api/gw/content/hero-slides/${slide.id}/image?v=${slide.imageVersion}`

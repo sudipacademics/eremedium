@@ -41,6 +41,11 @@ const CARDS = [
     body: 'YouTube testimonials in the homepage Reviews carousel — add, reorder, enable.',
   },
   {
+    href: '/admin/numerology',
+    title: 'Numerology',
+    body: 'Leads from the free numerology calculator, and the explainer video on /numerology.',
+  },
+  {
     href: '/admin/articles',
     title: 'Articles',
     body: 'Create, feature, publish, or retire journal posts.',

@@ -167,6 +167,7 @@ const MAIN_NAV = [
   { href: '/', label: 'Home' },
   { href: '/astrologers', label: 'Astrology' },
   { href: '/panchang', label: 'Panchang' },
+  { href: '/numerology', label: 'Numerology' },
   { href: '/pujas', label: 'E-Puja' },
   { href: '/temple', label: 'Temple' },
   { href: '/ayurveda', label: 'Ayurveda' },
@@ -332,7 +333,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isHome = pathname === '/';
   const isAdmin = pathname.startsWith('/admin');
   const fullBleed =
-    isHome || pathname === '/temple' || pathname.startsWith('/articles') || INFO_PAGES.has(pathname);
+    isHome ||
+    pathname === '/temple' ||
+    pathname === '/numerology' ||
+    pathname.startsWith('/articles') ||
+    INFO_PAGES.has(pathname);
 
   useEffect(() => {
     const sync = () => {

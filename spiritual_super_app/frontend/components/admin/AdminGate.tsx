@@ -65,6 +65,9 @@ export function AdminGate({ children }: { children: ReactNode }) {
           <Link href="/admin/reviews" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
             Reviews
           </Link>
+          <Link href="/admin/numerology" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
+            Numerology
+          </Link>
           <Link href="/admin/articles" className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">
             Articles
           </Link>

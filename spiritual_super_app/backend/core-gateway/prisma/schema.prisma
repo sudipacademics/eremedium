@@ -530,6 +530,36 @@ model ReviewVideo {
   @@map("review_videos")
 }
 
+/// A report produced by the free calculator on /numerology, kept as a lead for admins.
+model NumerologyReport {
+  id          String   @id @default(uuid()) @db.Uuid
+  fullName    String   @map("full_name") @db.VarChar(120)
+  email       String   @db.VarChar(254)
+  phone       String   @db.VarChar(20)
+  birthDate   DateTime @map("birth_date") @db.Date
+  /// MALE | FEMALE | OTHER
+  gender      String   @db.VarChar(10)
+  lifePath    Int      @map("life_path") @db.SmallInt
+  destiny     Int      @db.SmallInt
+  soulUrge    Int      @map("soul_urge") @db.SmallInt
+  personality Int      @db.SmallInt
+  birthday    Int      @db.SmallInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("numerology_reports")
+}
+
+/// Singleton (id "default") numerology page settings.
+model NumerologySettings {
+  id             String   @id @db.VarChar(32)
+  videoYoutubeId String?  @map("video_youtube_id") @db.VarChar(11)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+
+  @@map("numerology_settings")
+}
+
 model FooterSettings {
   id           String   @id @db.VarChar(32)
   facebookUrl  String?  @map("facebook_url") @db.VarChar(500)

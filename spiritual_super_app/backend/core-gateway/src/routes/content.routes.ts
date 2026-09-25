@@ -10,6 +10,7 @@ import { ContentError } from '../services/content-security.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
 import { HeroService, type HeroSlideInput } from '../services/hero.service.js';
+import { NumerologyService } from '../services/numerology.service.js';
 import { ReviewService, type ReviewVideoInput } from '../services/review.service.js';
 
 const footerLink = z.string().max(500).nullable().optional();
@@ -89,6 +90,22 @@ const reviewVideoBody = z.object(reviewVideoFields).strict();
 const reviewVideoPatch = z
   .object({ ...reviewVideoFields, url: reviewVideoFields.url.optional(), title: reviewVideoFields.title.optional() })
   .strict();
+
+const numerologyReportBody = z
+  .object({
+    fullName: z.string().trim().min(2).max(120),
+    email: z.string().trim().email().max(254),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+?[\d\s-]{8,20}$/, 'Enter a valid phone number')
+      .refine((phone) => phone.replace(/\D/g, '').length >= 10, 'Enter a valid phone number'),
+    birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+  })
+  .strict();
+const numerologySettingsBody = z.object({ videoUrl: z.string().max(500).nullable() }).strict();
+const leadsQuery = z.object({ limit: z.coerce.number().int().min(1).max(1000).default(200) });
 
 /** Drops keys whose value is undefined (exactOptionalPropertyTypes treats them as distinct from absent). */
 function definedOnly(body: Record<string, unknown>): Record<string, unknown> {
@@ -170,6 +187,18 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
     reply.header('Cache-Control', 'public, max-age=60');
     return { videos: await ReviewService.listLive() };
   });
+
+  app.get('/numerology', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=60');
+    const { videoYoutubeId } = await NumerologyService.getSettings();
+    return { videoYoutubeId };
+  });
+
+  app.post(
+    '/numerology/report',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request) => NumerologyService.createReport(numerologyReportBody.parse(request.body)),
+  );
 
   app.get('/hero-slides/:id/image', async (request, reply) => {
     const { id } = idParams.parse(request.params);
@@ -314,5 +343,24 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
     const { id } = idParams.parse(request.params);
     await ReviewService.remove(id);
     return reply.code(204).send();
+  });
+
+  app.get('/numerology/leads', async (request) => {
+    const { limit } = leadsQuery.parse(request.query);
+    return NumerologyService.listLeads(limit);
+  });
+
+  app.delete('/numerology/leads/:id', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!(await NumerologyService.removeLead(id))) throw new ContentError('Lead not found', 404);
+    return reply.code(204).send();
+  });
+
+  app.get('/numerology/settings', async () => NumerologyService.getSettings());
+
+  app.put('/numerology/settings', async (request) => {
+    const claims = requireUser(request);
+    const { videoUrl } = numerologySettingsBody.parse(request.body);
+    return NumerologyService.updateSettings(videoUrl, claims.sub);
   });
 }
