@@ -446,7 +446,7 @@ export function NumerologyPage() {
       {/* Hero */}
       <section className="relative overflow-hidden bg-ved-green-950 text-white">
         <Image src="/numerology/hero.webp" alt="" fill priority className="object-cover object-[70%_center]" sizes="100vw" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#031814] via-[#031814]/85 to-[#031814]/10 md:via-[#031814]/60" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#031814] via-[#031814]/85 to-[#031814]/50 md:via-[#031814]/60 md:to-[#031814]/10" />
         <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-6 sm:pb-14">
           <nav aria-label="Breadcrumb" className="text-xs text-white/60">
             <Link href="/" className="hover:text-white">
@@ -598,7 +598,17 @@ export function NumerologyPage() {
             </ol>
           </div>
           <div className="relative mx-auto aspect-[4/3] w-full max-w-sm lg:max-w-none">
-            <Image src="/numerology/scroll.webp" alt="" fill className="object-contain mix-blend-multiply" sizes="(min-width: 1024px) 33vw, 80vw" />
+            <Image
+              src="/numerology/scroll.webp"
+              alt=""
+              fill
+              className="object-contain"
+              style={{
+                maskImage: 'radial-gradient(ellipse 56% 50% at 62% 58%, #000 55%, transparent 100%)',
+                WebkitMaskImage: 'radial-gradient(ellipse 56% 50% at 62% 58%, #000 55%, transparent 100%)',
+              }}
+              sizes="(min-width: 1024px) 33vw, 80vw"
+            />
           </div>
         </div>
       </section>
