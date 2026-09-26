@@ -150,10 +150,30 @@ function tithiOf(value: unknown): string | undefined {
   return name && paksha && !name.toLowerCase().includes(paksha.toLowerCase()) ? `${paksha} ${name}` : name;
 }
 
+const TITHI_NAMES = [
+  'Pratipada', 'Dwitiya', 'Tritiya', 'Chaturthi', 'Panchami', 'Shashthi', 'Saptami', 'Ashtami',
+  'Navami', 'Dashami', 'Ekadashi', 'Dwadashi', 'Trayodashi', 'Chaturdashi',
+];
+
+/** The engine numbers tithis 1–30: 1–15 Shukla (15 = Purnima), 16–30 Krishna (30 = Amavasya). */
+export function tithiFromNumber(value: unknown): string | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 30) return undefined;
+  if (value === 15) return 'Purnima';
+  if (value === 30) return 'Amavasya';
+  return value < 15 ? `Shukla ${TITHI_NAMES[value - 1]}` : `Krishna ${TITHI_NAMES[value - 16]}`;
+}
+
+/** "Diwali (Kartika Amavasya purnimanta / Aswina Amavasya amanta)" → name "Diwali" + that note. */
+function splitCalendarNote(name: string): { name: string; note?: string } {
+  const match = /^(.*?)\s*\(([^()]*\b(?:purnimanta|amanta)\b[^()]*)\)\s*$/i.exec(name);
+  return match?.[1] && match[2] ? { name: match[1], note: match[2] } : { name };
+}
+
 function toFestival(node: Json, date: string): Festival | undefined {
   const english = first(node.name_en, node.english_name);
-  const name = english ?? first(node.name, node.festival, node.title, node.label);
-  if (!name) return undefined;
+  const rawName = english ?? first(node.name, node.festival, node.title, node.label);
+  if (!rawName) return undefined;
+  const { name, note } = splitCalendarNote(rawName);
   const localName = first(
     node.local_name,
     node.name_local,
@@ -168,10 +188,11 @@ function toFestival(node: Json, date: string): Festival | undefined {
   const description = [node.description, node.summary, node.significance, details.description, details.summary, node.note]
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
     .find((value) => value.length > 0);
-  if (description) festival.description = description;
+  const about = description ?? note;
+  if (about) festival.description = about;
   const category = first(node.category, node.type, node.kind, node.family);
   if (category) festival.category = category;
-  const tithi = tithiOf(node.tithi);
+  const tithi = tithiOf(node.tithi) ?? tithiFromNumber(node.tithi_number);
   if (tithi) festival.tithi = tithi;
   const anchor = first(node.anchor, node.anchoring_rule, node.anchor_rule, node.observance_rule, node.rule);
   if (anchor) festival.anchor = anchor;
@@ -180,12 +201,18 @@ function toFestival(node: Json, date: string): Festival | undefined {
   return festival;
 }
 
-function collect(node: unknown, inheritedDate: string | undefined, depth: number, out: Festival[]): void {
+function collect(
+  node: unknown,
+  inheritedDate: string | undefined,
+  depth: number,
+  out: Festival[],
+  replaced: Set<string>,
+): void {
   if (depth > MAX_DEPTH) return;
   if (Array.isArray(node)) {
     for (const entry of node) {
       if (typeof entry === 'string' && inheritedDate) out.push({ date: inheritedDate, name: entry.trim() });
-      else collect(entry, inheritedDate, depth + 1, out);
+      else collect(entry, inheritedDate, depth + 1, out, replaced);
     }
     return;
   }
@@ -197,12 +224,15 @@ function collect(node: unknown, inheritedDate: string | undefined, depth: number
     const festival = toFestival(node, date);
     if (festival) {
       out.push(festival);
+      // A named Ekadashi row repeats the generic vrat row it names; keep only the named one.
+      const fromVrat = text(node.from_vrat);
+      if (fromVrat) replaced.add(`${date}|${fromVrat}`);
       return;
     }
   }
   for (const [key, value] of Object.entries(node)) {
     if (Array.isArray(value) || (isObject(value) && CONTAINER_KEY.test(key))) {
-      collect(value, date, depth + 1, out);
+      collect(value, date, depth + 1, out, replaced);
     }
   }
 }
@@ -217,11 +247,13 @@ function collect(node: unknown, inheritedDate: string | undefined, depth: number
 export function normaliseFestivals(payload: unknown, from?: string, to?: string): Festival[] {
   const root = isObject(payload) && 'data' in payload ? payload.data : payload;
   const found: Festival[] = [];
-  collect(root, undefined, 0, found);
+  const replaced = new Set<string>();
+  collect(root, undefined, 0, found, replaced);
 
   const seen = new Set<string>();
   return found
     .filter((f) => f.name.length > 0 && (!from || f.date >= from) && (!to || f.date <= to))
+    .filter((f) => !(f.key && replaced.has(`${f.date}|${f.key}`)))
     .filter((f) => {
       const id = `${f.date}|${f.name.toLowerCase()}`;
       if (seen.has(id)) return false;

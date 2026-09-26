@@ -25,6 +25,40 @@ function reply(status: number, body: unknown) {
 }
 
 describe('normaliseFestivals', () => {
+  it('reads the live engine shape: drops the vrat twin of a named Ekadashi, names tithis, tidies names', () => {
+    const festivals = normaliseFestivals({
+      data: {
+        from: '2026-10-01',
+        to: '2026-11-15',
+        count: 5,
+        festivals: [
+          { family: 'vrat', date: '2026-10-03', name: 'Masik Kalashtami', key: 'masik_kalashtami', tithi_number: 23 },
+          { family: 'vrat', date: '2026-10-06', name: 'Krishna Ekadashi', key: 'ekadashi_krishna', tithi_number: 26 },
+          { family: 'ekadashi', date: '2026-10-06', name: 'Indira Ekadashi', key: 'indira_ekadashi', from_vrat: 'ekadashi_krishna' },
+          { family: 'vrat', date: '2026-10-22', name: 'Shukla Ekadashi', key: 'ekadashi_shukla', tithi_number: 11 },
+          {
+            family: 'lunar',
+            date: '2026-11-08',
+            name: 'Diwali (Kartika Amavasya purnimanta / Aswina Amavasya amanta)',
+            key: 'diwali',
+          },
+        ],
+        no_date: [{ family: 'lunar', name: 'Raksha Bandhan (Shravana Purnima)', key: 'raksha_bandhan' }],
+        not_included: [{ family: 'regional', needs: 'region', detail: 'pass a region' }],
+      },
+    });
+
+    expect(festivals.map((f) => `${f.date} ${f.name}`)).toEqual([
+      '2026-10-03 Masik Kalashtami',
+      '2026-10-06 Indira Ekadashi',
+      '2026-10-22 Shukla Ekadashi',
+      '2026-11-08 Diwali',
+    ]);
+    expect(festivals[0]).toMatchObject({ category: 'vrat', tithi: 'Krishna Ashtami' });
+    expect(festivals[2]!.tithi).toBe('Shukla Ekadashi');
+    expect(festivals[3]!.description).toBe('Kartika Amavasya purnimanta / Aswina Amavasya amanta');
+  });
+
   it('reads a flat list with object names, tithi and anchor', () => {
     const festivals = normaliseFestivals({
       data: {
