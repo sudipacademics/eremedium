@@ -163,6 +163,33 @@ const envSchema = z.object({
   GROQ_API_KEY: optionalSecret(20),
   GROQ_MODEL: z.string().min(1).default('llama-3.3-70b-versatile'),
   AI_PREDICT_MAX_TOKENS: z.coerce.number().int().min(256).max(4_096).default(1_200),
+
+  // --- Festival calendar (Kalia Panjika) ------------------------------------------------------
+  // Optional so the gateway boots without it; /api/v1/festivals answers 503 until the key is set.
+  // Sent only as a server-side Authorization header, never to the browser.
+  KALIAPANJIKA_API_KEY: optionalSecret(8),
+  KALIAPANJIKA_API_BASE: z.string().url().default('https://api.kaliapanjika.com'),
+  // Regional calendar tradition (e.g. north_purnimanta, bengali, odia). Unset = the engine's base list.
+  KALIAPANJIKA_REGION: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .enum([
+        'odia',
+        'bengali',
+        'tamil',
+        'assamese',
+        'malayalam',
+        'marathi',
+        'nepali',
+        'gujarati',
+        'telugu',
+        'kannada',
+        'iskcon',
+        'north_purnimanta',
+        'manipuri',
+      ])
+      .optional(),
+  ),
 })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && value.OTP_DEBUG_ECHO) {

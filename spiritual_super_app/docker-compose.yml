@@ -177,6 +177,10 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
       AI_PREDICT_MAX_TOKENS: ${AI_PREDICT_MAX_TOKENS:-1200}
+      # Festival calendar (Kalia Panjika). Without the key /api/v1/festivals answers 503.
+      KALIAPANJIKA_API_KEY: ${KALIAPANJIKA_API_KEY:-}
+      KALIAPANJIKA_API_BASE: ${KALIAPANJIKA_API_BASE:-https://api.kaliapanjika.com}
+      KALIAPANJIKA_REGION: ${KALIAPANJIKA_REGION:-}
       # Astrologer supply side and call-lifecycle backstops.
       ASTROLOGER_DEFAULT_RATE: ${ASTROLOGER_DEFAULT_RATE:-20.00}
       ADMIN_PHONES: ${ADMIN_PHONES:-}

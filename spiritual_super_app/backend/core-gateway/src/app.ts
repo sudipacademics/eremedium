@@ -20,6 +20,7 @@ import { paymentRoutes, paymentWebhookRoutes } from './routes/payment.routes.js'
 import { pujaRoutes } from './routes/puja.routes.js';
 import { ayurvedaRoutes } from './routes/ayurveda.routes.js';
 import { contentAdminRoutes, contentPublicRoutes } from './routes/content.routes.js';
+import { festivalRoutes } from './routes/festival.routes.js';
 import { historyAdminRoutes } from './routes/history.routes.js';
 import { remedyRoutes } from './routes/remedy.routes.js';
 import { walletRoutes } from './routes/wallet.routes.js';
@@ -126,6 +127,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Commerce under /api/v1/ayurveda/shop so nginx can keep FastAPI on /prakriti* only.
   await app.register(ayurvedaRoutes, { prefix: '/api/v1/ayurveda/shop' });
   await app.register(astroRoutes, { prefix: '/api/v1/vedic' });
+  await app.register(festivalRoutes, { prefix: '/api/v1/festivals' });
   // Public marketing content (no auth). Admin CMS under /admin with ADMIN role.
   await app.register(contentPublicRoutes, { prefix: '/api/v1/content' });
   await app.register(contentAdminRoutes, { prefix: '/api/v1/content/admin' });

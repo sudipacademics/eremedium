@@ -585,6 +585,33 @@ export interface Horoscope {
   retrograde: string[];
 }
 
+export interface Festival {
+  /** Local civil date, YYYY-MM-DD. */
+  date: string;
+  name: string;
+  localName?: string;
+  description?: string;
+  category?: string;
+  tithi?: string;
+  anchor?: string;
+  key?: string;
+}
+
+export interface FestivalMonth {
+  month: string;
+  from: string;
+  to: string;
+  today: string;
+  locale: 'en' | 'hi';
+  festivals: Festival[];
+}
+
+export interface UpcomingFestivals {
+  today: string;
+  locale: 'en' | 'hi';
+  festivals: Festival[];
+}
+
 export interface AiPredictStatus {
   configured: boolean;
   model: string;

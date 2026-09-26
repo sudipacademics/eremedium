@@ -168,6 +168,7 @@ const MAIN_NAV = [
   { href: '/astrologers', label: 'Astrology' },
   { href: '/horoscope', label: 'Horoscope' },
   { href: '/panchang', label: 'Panchang' },
+  { href: '/festivals', label: 'Festivals' },
   { href: '/numerology', label: 'Numerology' },
   { href: '/pujas', label: 'E-Puja' },
   { href: '/temple', label: 'Temple' },
@@ -338,6 +339,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname === '/temple' ||
     pathname === '/numerology' ||
     pathname === '/horoscope' ||
+    pathname === '/festivals' ||
     pathname.startsWith('/articles') ||
     INFO_PAGES.has(pathname);
 

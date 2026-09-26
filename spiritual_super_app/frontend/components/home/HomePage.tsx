@@ -13,6 +13,7 @@ import {
   type SiteContent,
 } from '@/lib/api';
 import { SiteFooter } from '@/components/SiteFooter';
+import { UpcomingFestivalsCard } from '@/components/festivals/UpcomingFestivalsCard';
 import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
 import { HeroSlider } from '@/components/home/HeroSlider';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
@@ -299,6 +300,8 @@ export function HomePage() {
           ))}
         </ul>
       </nav>
+
+      <UpcomingFestivalsCard className="mx-auto max-w-7xl px-4 pb-12" />
 
       {/* Popular services */}
       <section className="mx-auto max-w-7xl px-4 pb-12">
