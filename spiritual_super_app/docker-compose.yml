@@ -166,6 +166,8 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      # Provider payouts through RazorpayX (same key pair). Without it, only manual payout records.
+      RAZORPAYX_ACCOUNT_NUMBER: ${RAZORPAYX_ACCOUNT_NUMBER:-}
       TOPUP_MIN_AMOUNT: ${TOPUP_MIN_AMOUNT:-10.00}
       TOPUP_MAX_AMOUNT: ${TOPUP_MAX_AMOUNT:-100000.00}
       # Jyotish AI. auto → OpenAI → Gemini → Groq → local trial (no key).

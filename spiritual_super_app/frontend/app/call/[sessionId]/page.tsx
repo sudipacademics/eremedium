@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ClientKundali } from '@/components/ClientKundali';
+import { RateCall } from '@/components/RateCall';
 import { RemedyCard } from '@/components/RemedyCard';
 import { RemedyDispatcher } from '@/components/RemedyDispatcher';
 import { api, session as store, type CallSessionView, type RtcToken } from '@/lib/api';
@@ -192,6 +193,7 @@ export default function CallPage() {
             </p>
           )}
         </div>
+        {!isAstrologer && <RateCall sessionId={sessionId} />}
         <button type="button" className="btn-primary w-full" onClick={() => router.replace('/')}>
           Back to astrologers
         </button>

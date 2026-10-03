@@ -149,6 +149,14 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: optionalSecret(8),
   RAZORPAY_WEBHOOK_SECRET: optionalSecret(8),
   RAZORPAY_API_BASE: z.string().url().default('https://api.razorpay.com/v1'),
+  /**
+   * RazorpayX business account (the "customer identifier" account number) that provider payouts are
+   * debited from. Payouts reuse RAZORPAY_KEY_ID/SECRET; without this they answer 503.
+   */
+  RAZORPAYX_ACCOUNT_NUMBER: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().regex(/^\d{6,30}$/).optional(),
+  ),
   TOPUP_MIN_AMOUNT: z.string().regex(decimalAmount).default('10.00'),
   TOPUP_MAX_AMOUNT: z.string().regex(decimalAmount).default('100000.00'),
 

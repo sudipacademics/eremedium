@@ -9,6 +9,7 @@ import { money, prisma } from '../lib/prisma.js';
 import { authenticateUnlessPublic, requireUser } from '../plugins/authenticate.js';
 import { requirePermission } from '../plugins/staff.js';
 import { ASTROLOGER_PHOTO_PATTERN, cleanTags } from '../services/astrologer-directory.js';
+import { publicListableWhere } from '../services/provider-admin-rules.js';
 import { QueueService } from '../services/queue.service.js';
 
 /** A 320px square JPEG is roughly 25â€“40 KB; this rejects full-size photos. */
@@ -45,7 +46,7 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/', { config: { public: true } }, async (request) => {
     const query = listQuerySchema.parse(request.query);
     const rows = await prisma.astrologer.findMany({
-      where: query.onlineOnly === 'true' ? { status: AstrologerStatus.IDLE } : {},
+      where: { ...(query.onlineOnly === 'true' ? { status: AstrologerStatus.IDLE } : {}), ...publicListableWhere() },
       orderBy: { createdAt: 'asc' },
       take: query.limit,
       select: {

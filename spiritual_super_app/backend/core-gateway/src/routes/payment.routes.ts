@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { authenticate, requireUser } from '../plugins/authenticate.js';
 import { PaymentService } from '../services/payment.service.js';
+import { ProviderAdminService } from '../services/provider-admin.service.js';
 import { RazorpayClient, paymentsConfigured } from '../services/razorpay.client.js';
 
 const createOrderSchema = z.object({
@@ -20,6 +21,17 @@ const webhookEventSchema = z.object({
           order_id: z.string().min(3).nullable().optional(),
           amount: z.number().int().nonnegative(),
           error_description: z.string().nullable().optional(),
+        }),
+      })
+      .optional(),
+    payout: z
+      .object({
+        entity: z.object({
+          id: z.string().min(3),
+          status: z.string().min(3),
+          utr: z.string().nullable().optional(),
+          failure_reason: z.string().nullable().optional(),
+          status_details: z.object({ description: z.string().nullable().optional() }).nullable().optional(),
         }),
       })
       .optional(),
@@ -78,6 +90,17 @@ export async function paymentWebhookRoutes(app: FastifyInstance): Promise<void> 
     } catch (error) {
       logger.error({ err: error }, 'Signed webhook body failed validation');
       return reply.code(400).send({ error: 'MALFORMED_EVENT' });
+    }
+
+    const payout = event.payload.payout?.entity;
+    if (event.event.startsWith('payout.') && payout) {
+      const outcome = await ProviderAdminService.applyWebhook({
+        razorpayPayoutId: payout.id,
+        status: payout.status,
+        utr: payout.utr ?? null,
+        failureReason: payout.failure_reason ?? payout.status_details?.description ?? null,
+      });
+      return reply.code(200).send({ received: true, ...outcome });
     }
 
     const entity = event.payload.payment?.entity;

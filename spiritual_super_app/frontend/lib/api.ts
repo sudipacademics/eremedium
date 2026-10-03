@@ -872,4 +872,6 @@ export interface CallSessionView {
   totalDeducted: string;
   startTime: string | null;
   endTime: string | null;
+  /** The devotee's own rating of this call, if they left one. */
+  review?: { rating: number; comment: string | null; createdAt: string } | null;
 }

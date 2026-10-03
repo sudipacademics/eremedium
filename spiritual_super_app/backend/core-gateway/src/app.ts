@@ -27,6 +27,7 @@ import { walletRoutes } from './routes/wallet.routes.js';
 import { websocketRoutes } from './routes/ws.routes.js';
 import { adminRoutes } from './routes/admin.routes.js';
 import { joinRequestAdminRoutes, joinRequestPublicRoutes } from './routes/join-request.routes.js';
+import { providerAdminRoutes } from './routes/provider-admin.routes.js';
 import { notificationRoutes } from './routes/notification.routes.js';
 import { describeStaffMutation, recordAudit } from './services/audit.service.js';
 import { hub } from './ws/hub.js';
@@ -144,6 +145,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(historyAdminRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminRoutes, { prefix: '/api/v1/admin' });
   await app.register(joinRequestAdminRoutes, { prefix: '/api/v1/admin/join-requests' });
+  await app.register(providerAdminRoutes, { prefix: '/api/v1/admin/providers' });
   await app.register(joinRequestPublicRoutes, { prefix: '/api/v1/join-requests' });
   await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(websocketRoutes, { prefix: '/api/v1' });

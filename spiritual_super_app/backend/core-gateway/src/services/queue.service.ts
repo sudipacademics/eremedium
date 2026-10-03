@@ -8,6 +8,7 @@ import { matchingQueue } from '../queues/index.js';
 import { hub } from '../ws/hub.js';
 import { ServerEvent } from '../ws/protocol.js';
 import { LiveKitTokenService } from './livekit.service.js';
+import { isPubliclyListable } from './provider-admin-rules.js';
 import { WalletService } from './wallet.service.js';
 
 export type AstrologerPresence = 'ONLINE' | 'BUSY' | 'OFFLINE';
@@ -48,10 +49,13 @@ export const QueueService = {
   async setAstrologerPresence(astrologerId: string, presence: AstrologerPresence): Promise<AstrologerStatus> {
     const current = await prisma.astrologer.findUnique({
       where: { id: astrologerId },
-      select: { status: true },
+      select: { status: true, accountStatus: true, deboardEffectiveAt: true },
     });
     if (!current) {
       throw new QueueError(`Astrologer ${astrologerId} not found`);
+    }
+    if (presence !== 'OFFLINE' && !isPubliclyListable(current)) {
+      throw new QueueError('This provider account is suspended or deboarded and cannot go online');
     }
     if (current.status === AstrologerStatus.IN_CALL && presence !== 'OFFLINE') {
       throw new QueueError('Cannot change presence while IN_CALL; end the session first');
@@ -80,10 +84,13 @@ export const QueueService = {
   async joinQueue(userId: string, astrologerId: string): Promise<WaitlistPosition> {
     const astrologer = await prisma.astrologer.findUnique({
       where: { id: astrologerId },
-      select: { id: true, perMinuteRate: true, status: true },
+      select: { id: true, perMinuteRate: true, status: true, accountStatus: true, deboardEffectiveAt: true },
     });
     if (!astrologer) {
       throw new QueueError(`Astrologer ${astrologerId} not found`);
+    }
+    if (!isPubliclyListable(astrologer)) {
+      throw new QueueError('This expert is not taking consultations');
     }
     if (astrologer.status === AstrologerStatus.OFFLINE) {
       throw new QueueError('Astrologer is offline');

@@ -8,6 +8,8 @@ import { money, prisma } from '../lib/prisma.js';
 import { authenticate, requireAstrologer, requireRole, requireUser } from '../plugins/authenticate.js';
 import { requirePermission } from '../plugins/staff.js';
 import { CallService } from '../services/call.service.js';
+import { publicListableWhere } from '../services/provider-admin-rules.js';
+import { ProviderReviewService } from '../services/provider-review.service.js';
 import { LiveKitTokenService } from '../services/livekit.service.js';
 import { QueueService } from '../services/queue.service.js';
 
@@ -21,7 +23,7 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/astrologers', async () => {
     const astrologers = await prisma.astrologer.findMany({
-      where: { status: { not: AstrologerStatus.OFFLINE } },
+      where: { status: { not: AstrologerStatus.OFFLINE }, ...publicListableWhere() },
       orderBy: [{ status: 'asc' }, { displayName: 'asc' }],
       select: {
         id: true,
@@ -146,10 +148,13 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: 'FORBIDDEN', message: 'Not a participant of this session' });
     }
 
+    const review = isAstrologer ? null : await ProviderReviewService.forSession(session.id);
+
     return reply.send({
       id: session.id,
       status: session.status,
       channelId: session.channelId,
+      review,
       astrologer: { id: session.astrologerId, displayName: session.astrologer.displayName },
       /*
        * Only sent to the astrologer, who needs it to open the client's chart. The devotee already
@@ -163,6 +168,15 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
       startTime: session.startTime?.toISOString() ?? null,
       endTime: session.endTime?.toISOString() ?? null,
     });
+  });
+
+  app.post('/sessions/:callSessionId/review', async (request, reply) => {
+    const claims = requireUser(request);
+    const { callSessionId } = sessionIdParams.parse(request.params);
+    const body = z
+      .object({ rating: z.number().int().min(1).max(5), comment: z.string().max(1000).optional() })
+      .parse(request.body);
+    return reply.code(201).send(await ProviderReviewService.submit(claims.sub, callSessionId, body));
   });
 
   // --- Support (admin) -----------------------------------------------------------------------

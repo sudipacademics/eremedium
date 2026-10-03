@@ -97,48 +97,52 @@ enum JoinRequestFileKind {
 }
 
 model User {
-  id                String    @id @default(uuid()) @db.Uuid
-  phone             String    @unique @db.VarChar(20)
-  name              String    @db.VarChar(160)
+  id             String    @id @default(uuid()) @db.Uuid
+  phone          String    @unique @db.VarChar(20)
+  name           String    @db.VarChar(160)
   /**
    * The birth moment as a UTC instant, derived from the local fields below. Everything the ephemeris
    * does starts here, so it is computed once on save rather than re-derived per request.
    */
-  dob               DateTime? @db.Timestamptz(3)
-  birthPlace        String?   @map("birth_place") @db.VarChar(180)
-  latitude          Decimal?  @db.Decimal(9, 6)
-  longitude         Decimal?  @db.Decimal(9, 6)
+  dob            DateTime? @db.Timestamptz(3)
+  birthPlace     String?   @map("birth_place") @db.VarChar(180)
+  latitude       Decimal?  @db.Decimal(9, 6)
+  longitude      Decimal?  @db.Decimal(9, 6)
   /**
    * The local wall-clock birth date and time, kept alongside the UTC instant.
-   *
    * A UTC timestamp alone cannot be shown back to the user as the time they were born, and it cannot
    * be recomputed if the zone was wrong, because the offset is not recoverable from the instant.
    */
-  birthDateLocal    DateTime? @map("birth_date_local") @db.Date
-  /** "HH:mm" in the birthplace's own zone. */
-  birthTimeLocal    String?   @map("birth_time_local") @db.VarChar(5)
+  birthDateLocal DateTime? @map("birth_date_local") @db.Date
+  /**
+   * "HH:mm" in the birthplace's own zone.
+   */
+  birthTimeLocal String?   @map("birth_time_local") @db.VarChar(5)
   /**
    * IANA zone of the birthplace, e.g. Asia/Kolkata. Required to turn the local time into an instant:
    * India used +05:30 from 1955 but +06:30 during the 1942-45 wartime shifts, so a fixed offset would
    * silently misplace older births by an hour.
    */
-  birthTimezone     String?   @map("birth_timezone") @db.VarChar(64)
+  birthTimezone  String?   @map("birth_timezone") @db.VarChar(64)
   /**
    * False when the person does not know their birth time.
-   *
    * The ascendant and the house positions move roughly one degree every four minutes, so without a
    * time they are not merely approximate, they are meaningless. This flag exists so the UI can refuse
    * to present a lagna as if it were known.
    */
-  birthTimeKnown    Boolean   @default(false) @map("birth_time_known")
-  gotra             String?   @db.VarChar(120)
-  /** Contact only — never a login credential, so neither unique nor verified. */
-  email             String?   @db.VarChar(254)
-  address           String?   @db.VarChar(500)
-  /** Client-resized avatar as a data: URL; format and size are also enforced by a CHECK constraint. */
-  photoDataUrl      String?   @map("photo_data_url") @db.Text
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  birthTimeKnown Boolean   @default(false) @map("birth_time_known")
+  gotra          String?   @db.VarChar(120)
+  /**
+   * Contact only — never a login credential, so neither unique nor verified.
+   */
+  email          String?   @db.VarChar(254)
+  address        String?   @db.VarChar(500)
+  /**
+   * Client-resized avatar as a data: URL; format and size are also enforced by a CHECK constraint.
+   */
+  photoDataUrl   String?   @map("photo_data_url") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   wallet            Wallet?
   astrologer        Astrologer?
@@ -150,37 +154,40 @@ model User {
   staffMember       StaffMember?
   notifications     Notification[]
   joinRequests      ProviderJoinRequest[]
+  providerReviews   ProviderReview[]
 
   @@map("users")
 }
 
 /**
  * Cache of computed charts.
- *
  * A chart is a pure function of the birth instant, the coordinates and the engine's conventions, so a
  * cached row can never go stale: the same inputs will produce the same planetary longitudes forever.
  * That is why the cache key is a fingerprint of the inputs and there is no expiry. Charts are shared
  * across users too -- twins born in the same place get one row.
- *
  * It exists because the astrologer opens the client's chart during a live consultation, where a
  * round-trip to the Python service on every glance is latency the caller can hear.
  */
 model NatalChart {
-  id String @id @default(uuid()) @db.Uuid
-  /** sha256 of the birth instant, rounded coordinates and the engine revision. */
-  fingerprint  String   @unique @db.VarChar(64)
-  birthInstant DateTime @map("birth_instant") @db.Timestamptz(3)
-  latitude     Decimal  @db.Decimal(9, 6)
-  longitude    Decimal  @db.Decimal(9, 6)
+  id             String   @id @default(uuid()) @db.Uuid
+  /**
+   * sha256 of the birth instant, rounded coordinates and the engine revision.
+   */
+  fingerprint    String   @unique @db.VarChar(64)
+  birthInstant   DateTime @map("birth_instant") @db.Timestamptz(3)
+  latitude       Decimal  @db.Decimal(9, 6)
+  longitude      Decimal  @db.Decimal(9, 6)
   /**
    * The conventions the chart was computed under. Changing ayanamsha, node type or house system
    * changes every number in the payload, so it belongs in the fingerprint rather than being assumed.
    */
-  engineRevision String @map("engine_revision") @db.VarChar(60)
-  ayanamsha      Decimal @db.Decimal(9, 6)
-  /** The compute service's response, stored verbatim. */
-  chart     Json
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  engineRevision String   @map("engine_revision") @db.VarChar(60)
+  ayanamsha      Decimal  @db.Decimal(9, 6)
+  /**
+   * The compute service's response, stored verbatim.
+   */
+  chart          Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([birthInstant])
   @@map("natal_charts")
@@ -223,21 +230,25 @@ model WalletTransaction {
  * PAID, so this table is the audit trail linking external payments to internal ledger entries.
  */
 model PaymentOrder {
-  id                String             @id @default(uuid()) @db.Uuid
-  userId            String             @map("user_id") @db.Uuid
-  provider          PaymentProvider    @default(RAZORPAY)
-  providerOrderId   String             @unique @map("provider_order_id") @db.VarChar(120)
-  /** Unique: the database, not application logic, is the final guard against double-crediting a replayed webhook. */
-  providerPaymentId String?            @unique @map("provider_payment_id") @db.VarChar(120)
-  amount            Decimal            @db.Decimal(12, 2)
-  currency          String             @default("INR") @db.Char(3)
-  status            PaymentOrderStatus @default(CREATED)
-  /** Set when the credit lands, giving a two-way link between payment and ledger. */
-  walletTransactionId String?          @unique @map("wallet_transaction_id") @db.Uuid
-  failureReason     String?            @map("failure_reason") @db.VarChar(300)
-  paidAt            DateTime?          @map("paid_at") @db.Timestamptz(3)
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String             @id @default(uuid()) @db.Uuid
+  userId              String             @map("user_id") @db.Uuid
+  provider            PaymentProvider    @default(RAZORPAY)
+  providerOrderId     String             @unique @map("provider_order_id") @db.VarChar(120)
+  /**
+   * Unique: the database, not application logic, is the final guard against double-crediting a replayed webhook.
+   */
+  providerPaymentId   String?            @unique @map("provider_payment_id") @db.VarChar(120)
+  amount              Decimal            @db.Decimal(12, 2)
+  currency            String             @default("INR") @db.Char(3)
+  status              PaymentOrderStatus @default(CREATED)
+  /**
+   * Set when the credit lands, giving a two-way link between payment and ledger.
+   */
+  walletTransactionId String?            @unique @map("wallet_transaction_id") @db.Uuid
+  failureReason       String?            @map("failure_reason") @db.VarChar(300)
+  paidAt              DateTime?          @map("paid_at") @db.Timestamptz(3)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
@@ -251,53 +262,214 @@ model Astrologer {
   userId          String           @unique @map("user_id") @db.Uuid
   displayName     String           @map("display_name") @db.VarChar(160)
   perMinuteRate   Decimal          @map("per_minute_rate") @db.Decimal(12, 2)
-  /** The ASTROLOGER's share of each billed minute, 0..1. The platform keeps (1 - commissionSplit). */
+  /**
+   * The ASTROLOGER's share of each billed minute, 0..1. The platform keeps (1 - commissionSplit).
+   */
   commissionSplit Decimal          @default("0.50") @map("commission_split") @db.Decimal(5, 4)
   status          AstrologerStatus @default(OFFLINE)
   languages       String[]         @default([])
-  /** Public card photo (small data URL), uploaded by an admin. Separate from User.photoDataUrl. */
+  /**
+   * Public card photo (small data URL), uploaded by an admin. Separate from User.photoDataUrl.
+   */
   photoDataUrl    String?          @map("photo_data_url") @db.Text
-  /** Set with photoDataUrl; used as the photo's cache-busting version. */
+  /**
+   * Set with photoDataUrl; used as the photo's cache-busting version.
+   */
   photoUpdatedAt  DateTime?        @map("photo_updated_at") @db.Timestamptz(3)
-  /** e.g. ["Vedic", "Numerology", "Tarot"] */
+  /**
+   * e.g. ["Vedic", "Numerology", "Tarot"]
+   */
   expertise       String[]         @default([])
   experienceYears Int?             @map("experience_years") @db.SmallInt
   category        ProviderCategory @default(ASTROLOGER)
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /**
+   * Short public bio shown on the profile.
+   */
+  bio             String?          @db.VarChar(2000)
+  /**
+   * e.g. ["Kundali Analysis", "Marriage Matching"]
+   */
+  services        String[]         @default([])
+  /**
+   * Weekly availability: { mon: [{ start: "09:00", end: "18:00" }], ... } in IST. Informational.
+   */
+  weeklySchedule  Json?            @map("weekly_schedule")
 
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  callSessions CallSession[]
-  earnings     AstrologerEarning[]
-  pujaReferals PujaBooking[]       @relation("PujaReferral")
+  /**
+   * Only ACTIVE (or DEBOARDING before its effective date) providers are bookable or listed publicly.
+   */
+  accountStatus      ProviderAccountStatus @default(ACTIVE) @map("account_status")
+  suspendedAt        DateTime?             @map("suspended_at") @db.Timestamptz(3)
+  suspensionReason   String?               @map("suspension_reason") @db.VarChar(500)
+  deboardReason      String?               @map("deboard_reason") @db.VarChar(120)
+  deboardNotes       String?               @map("deboard_notes") @db.VarChar(2000)
+  deboardEffectiveAt DateTime?             @map("deboard_effective_at") @db.Timestamptz(3)
+  deboardRequestedAt DateTime?             @map("deboard_requested_at") @db.Timestamptz(3)
+
+  kycStatus        ProviderKycStatus @default(PENDING) @map("kyc_status")
+  identityVerified Boolean           @default(false) @map("identity_verified")
+  profileApproved  Boolean           @default(false) @map("profile_approved")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  callSessions  CallSession[]
+  earnings      AstrologerEarning[]
+  pujaReferals  PujaBooking[]          @relation("PujaReferral")
+  payoutAccount ProviderPayoutAccount?
+  payouts       ProviderPayout[]
+  reviews       ProviderReview[]
 
   @@index([status])
   @@index([category])
+  @@index([accountStatus])
   @@map("astrologers")
+}
+
+enum ProviderAccountStatus {
+  ACTIVE
+  SUSPENDED
+  DEBOARDING
+  DEBOARDED
+}
+
+enum ProviderKycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ProviderPayoutMethod {
+  RAZORPAYX
+  MANUAL
+}
+
+/**
+ * Mirrors RazorpayX payout states; MANUAL payouts are recorded straight as PROCESSED.
+ */
+enum ProviderPayoutStatus {
+  PROCESSING
+  QUEUED
+  PENDING
+  PROCESSED
+  FAILED
+  REVERSED
+  CANCELLED
+  REJECTED
+}
+
+/**
+ * Where a provider's payouts go. Razorpay ids are cached and cleared whenever the details change.
+ */
+model ProviderPayoutAccount {
+  astrologerId          String   @id @map("astrologer_id") @db.Uuid
+  /**
+   * BANK or UPI
+   */
+  accountType           String   @map("account_type") @db.VarChar(8)
+  accountName           String   @map("account_name") @db.VarChar(120)
+  accountNumber         String?  @map("account_number") @db.VarChar(34)
+  ifsc                  String?  @db.VarChar(11)
+  vpa                   String?  @db.VarChar(100)
+  razorpayContactId     String?  @map("razorpay_contact_id") @db.VarChar(40)
+  razorpayFundAccountId String?  @map("razorpay_fund_account_id") @db.VarChar(40)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy             String?  @map("updated_by") @db.Uuid
+
+  astrologer Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Cascade)
+
+  @@map("provider_payout_accounts")
+}
+
+model ProviderPayout {
+  id               String               @id @default(uuid()) @db.Uuid
+  astrologerId     String               @map("astrologer_id") @db.Uuid
+  amount           Decimal              @db.Decimal(12, 2)
+  method           ProviderPayoutMethod
+  status           ProviderPayoutStatus
+  /**
+   * IMPS / NEFT / UPI for RazorpayX; free text (e.g. "Bank transfer") for manual records.
+   */
+  mode             String?              @db.VarChar(40)
+  razorpayPayoutId String?              @unique @map("razorpay_payout_id") @db.VarChar(40)
+  /**
+   * Bank UTR or the manual transfer reference.
+   */
+  reference        String?              @db.VarChar(120)
+  failureReason    String?              @map("failure_reason") @db.VarChar(500)
+  note             String?              @db.VarChar(500)
+  /**
+   * Masked destination at the time of payout, e.g. "HDFC ••••4321" or "name@upi".
+   */
+  destination      String?              @db.VarChar(140)
+  createdBy        String?              @map("created_by") @db.Uuid
+  processedAt      DateTime?            @map("processed_at") @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  astrologer Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
+
+  @@index([astrologerId, createdAt])
+  @@index([status, processedAt])
+  @@map("provider_payouts")
+}
+
+/**
+ * One rating per call, left by the user who paid for it.
+ */
+model ProviderReview {
+  id            String   @id @default(uuid()) @db.Uuid
+  callSessionId String   @unique @map("call_session_id") @db.Uuid
+  astrologerId  String   @map("astrologer_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  rating        Int      @db.SmallInt
+  comment       String?  @db.VarChar(1000)
+  /**
+   * Moderated out by staff; excluded from averages.
+   */
+  hidden        Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  astrologer  Astrologer  @relation(fields: [astrologerId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  callSession CallSession @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+
+  @@index([astrologerId, createdAt])
+  @@map("provider_reviews")
 }
 
 /**
  * One row per billed minute, written in the SAME transaction as the user's debit.
- *
  * Without this an astrologer earned nothing: `commissionSplit` existed but no code ever read it.
  * Splitting inside the billing transaction means platform revenue and astrologer payable can never
  * disagree with what the user was actually charged.
  */
 model AstrologerEarning {
-  id            String   @id @default(uuid()) @db.Uuid
-  astrologerId  String   @map("astrologer_id") @db.Uuid
-  callSessionId String   @map("call_session_id") @db.Uuid
-  /** Which billing minute this covers; pairs with callSessionId for replay safety. */
-  minuteNumber  Int      @map("minute_number")
-  /** What the user was charged for this minute. */
-  grossAmount   Decimal  @map("gross_amount") @db.Decimal(12, 2)
-  /** Astrologer's share, gross * commissionSplit at the time of the call. */
-  netAmount     Decimal  @map("net_amount") @db.Decimal(12, 2)
-  /** Platform's share, always gross - net. */
-  platformFee   Decimal  @map("platform_fee") @db.Decimal(12, 2)
-  /** Snapshot of the rate applied, so later rate changes cannot rewrite history. */
-  commissionSplit Decimal @map("commission_split") @db.Decimal(5, 4)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id              String   @id @default(uuid()) @db.Uuid
+  astrologerId    String   @map("astrologer_id") @db.Uuid
+  callSessionId   String   @map("call_session_id") @db.Uuid
+  /**
+   * Which billing minute this covers; pairs with callSessionId for replay safety.
+   */
+  minuteNumber    Int      @map("minute_number")
+  /**
+   * What the user was charged for this minute.
+   */
+  grossAmount     Decimal  @map("gross_amount") @db.Decimal(12, 2)
+  /**
+   * Astrologer's share, gross * commissionSplit at the time of the call.
+   */
+  netAmount       Decimal  @map("net_amount") @db.Decimal(12, 2)
+  /**
+   * Platform's share, always gross - net.
+   */
+  platformFee     Decimal  @map("platform_fee") @db.Decimal(12, 2)
+  /**
+   * Snapshot of the rate applied, so later rate changes cannot rewrite history.
+   */
+  commissionSplit Decimal  @map("commission_split") @db.Decimal(5, 4)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   astrologer  Astrologer  @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
   callSession CallSession @relation(fields: [callSessionId], references: [id], onDelete: Restrict)
@@ -308,22 +480,23 @@ model AstrologerEarning {
 }
 
 model CallSession {
-  id             String            @id @default(uuid()) @db.Uuid
-  userId         String            @map("user_id") @db.Uuid
-  astrologerId   String            @map("astrologer_id") @db.Uuid
-  channelId      String            @unique @map("channel_id") @db.VarChar(120)
-  ratePerMinute  Decimal           @map("rate_per_minute") @db.Decimal(12, 2)
-  startTime      DateTime?         @map("start_time") @db.Timestamptz(3)
-  endTime        DateTime?         @map("end_time") @db.Timestamptz(3)
-  totalMinutes   Int               @default(0) @map("total_minutes")
-  totalDeducted  Decimal           @default(0) @map("total_deducted") @db.Decimal(12, 2)
-  status         CallSessionStatus @default(INITIATED)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String            @id @default(uuid()) @db.Uuid
+  userId        String            @map("user_id") @db.Uuid
+  astrologerId  String            @map("astrologer_id") @db.Uuid
+  channelId     String            @unique @map("channel_id") @db.VarChar(120)
+  ratePerMinute Decimal           @map("rate_per_minute") @db.Decimal(12, 2)
+  startTime     DateTime?         @map("start_time") @db.Timestamptz(3)
+  endTime       DateTime?         @map("end_time") @db.Timestamptz(3)
+  totalMinutes  Int               @default(0) @map("total_minutes")
+  totalDeducted Decimal           @default(0) @map("total_deducted") @db.Decimal(12, 2)
+  status        CallSessionStatus @default(INITIATED)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user       User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   astrologer Astrologer          @relation(fields: [astrologerId], references: [id], onDelete: Restrict)
   earnings   AstrologerEarning[]
+  review     ProviderReview?
 
   @@index([userId, createdAt])
   @@index([astrologerId, createdAt])
@@ -332,15 +505,17 @@ model CallSession {
 }
 
 model Temple {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @db.VarChar(180)
-  location       String   @db.VarChar(180)
-  primaryDeity   String   @map("primary_deity") @db.VarChar(120)
-  liveStreamUrl  String?  @map("live_stream_url") @db.VarChar(500)
-  /** Hides a temple from the catalog without deleting it, which bookings would forbid anyway. */
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.VarChar(180)
+  location      String   @db.VarChar(180)
+  primaryDeity  String   @map("primary_deity") @db.VarChar(120)
+  liveStreamUrl String?  @map("live_stream_url") @db.VarChar(500)
+  /**
+   * Hides a temple from the catalog without deleting it, which bookings would forbid anyway.
+   */
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   pujaBookings PujaBooking[]
   offerings    PujaOffering[]
@@ -352,7 +527,6 @@ model Temple {
 
 /**
  * The priced catalog of pujas a temple performs.
- *
  * This table exists because price was previously whatever the caller put in the request body: the
  * astrologer's in-call remedy card carried its own `packagePrice`, so the amount a devotee was
  * charged was decided by the client rather than by the platform. Every booking now takes its price
@@ -360,19 +534,25 @@ model Temple {
  * somebody already paid.
  */
 model PujaOffering {
-  id            String   @id @default(uuid()) @db.Uuid
-  templeId      String   @map("temple_id") @db.Uuid
-  name          String   @db.VarChar(160)
-  description   String?  @db.VarChar(1000)
-  /** What the devotee pays. The single source of truth for the price of this puja. */
-  price         Decimal  @db.Decimal(12, 2)
-  /** Indicative duration shown in the catalog, e.g. "45 minutes". */
-  durationLabel String?  @map("duration_label") @db.VarChar(60)
-  /** What arrives by post afterwards, e.g. "Prasad, rudraksha and photographs". */
-  prasadIncluded String? @map("prasad_included") @db.VarChar(300)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  templeId       String   @map("temple_id") @db.Uuid
+  name           String   @db.VarChar(160)
+  description    String?  @db.VarChar(1000)
+  /**
+   * What the devotee pays. The single source of truth for the price of this puja.
+   */
+  price          Decimal  @db.Decimal(12, 2)
+  /**
+   * Indicative duration shown in the catalog, e.g. "45 minutes".
+   */
+  durationLabel  String?  @map("duration_label") @db.VarChar(60)
+  /**
+   * What arrives by post afterwards, e.g. "Prasad, rudraksha and photographs".
+   */
+  prasadIncluded String?  @map("prasad_included") @db.VarChar(300)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   temple   Temple        @relation(fields: [templeId], references: [id], onDelete: Cascade)
   bookings PujaBooking[]
@@ -386,9 +566,13 @@ model PujaBooking {
   id                     String            @id @default(uuid()) @db.Uuid
   userId                 String            @map("user_id") @db.Uuid
   templeId               String            @map("temple_id") @db.Uuid
-  /** Nullable only for bookings made before the catalog existed. */
+  /**
+   * Nullable only for bookings made before the catalog existed.
+   */
   pujaOfferingId         String?           @map("puja_offering_id") @db.Uuid
-  /** Snapshot of the offering name, so renaming a puja cannot rewrite an existing booking. */
+  /**
+   * Snapshot of the offering name, so renaming a puja cannot rewrite an existing booking.
+   */
   pujaName               String            @map("puja_name") @db.VarChar(160)
   referredByAstrologerId String?           @map("referred_by_astrologer_id") @db.Uuid
   sankalpName            String            @map("sankalp_name") @db.VarChar(160)
@@ -396,7 +580,9 @@ model PujaBooking {
   sankalpWish            String?           @map("sankalp_wish") @db.VarChar(1000)
   packagePrice           Decimal           @map("package_price") @db.Decimal(12, 2)
   status                 PujaBookingStatus @default(CONFIRMED)
-  /** Set when the temple performs the puja. */
+  /**
+   * Set when the temple performs the puja.
+   */
   scheduledFor           DateTime?         @map("scheduled_for") @db.Timestamptz(3)
   performedAt            DateTime?         @map("performed_at") @db.Timestamptz(3)
   videoProofUrl          String?           @map("video_proof_url") @db.VarChar(500)
@@ -443,26 +629,31 @@ model AyurvedicProfile {
 
 /**
  * Priced Ayurveda catalog — kits, churnas, oils.
- *
  * Same rule as puja offerings: the amount charged is always read from here, never from the client.
  * `suitedDoshas` is a soft recommendation tag for the storefront, not a medical claim.
  */
 model AyurvedaProduct {
-  id           String   @id @default(uuid()) @db.Uuid
-  /** Stable catalog key used by seed upserts, e.g. "vata-balance-kit". */
-  sku          String   @unique @db.VarChar(80)
-  name         String   @db.VarChar(160)
-  description  String?  @db.VarChar(1000)
-  price        Decimal  @db.Decimal(12, 2)
-  suitedDoshas Dosha[]  @map("suited_doshas")
-  /** kit | churna | oil | syrup | tumbled | raw — display only. */
+  id           String          @id @default(uuid()) @db.Uuid
+  /**
+   * Stable catalog key used by seed upserts, e.g. "vata-balance-kit".
+   */
+  sku          String          @unique @db.VarChar(80)
+  name         String          @db.VarChar(160)
+  description  String?         @db.VarChar(1000)
+  price        Decimal         @db.Decimal(12, 2)
+  suitedDoshas Dosha[]         @map("suited_doshas")
+  /**
+   * kit | churna | oil | syrup | tumbled | raw — display only.
+   */
   formFactor   String          @default("kit") @map("form_factor") @db.VarChar(40)
   category     ProductCategory @default(AYURVEDA)
-  /** Site-relative path (/shop/...) or an https image on an allowed host. */
+  /**
+   * Site-relative path (/shop/...) or an https image on an allowed host.
+   */
   imageUrl     String?         @map("image_url") @db.VarChar(500)
   active       Boolean         @default(true)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   orders AyurvedaOrder[]
 
@@ -480,7 +671,9 @@ model AyurvedaOrder {
   id              String              @id @default(uuid()) @db.Uuid
   userId          String              @map("user_id") @db.Uuid
   productId       String?             @map("product_id") @db.Uuid
-  /** Snapshots so a later catalog rename/price change cannot rewrite what was paid for. */
+  /**
+   * Snapshots so a later catalog rename/price change cannot rewrite what was paid for.
+   */
   productSku      String              @map("product_sku") @db.VarChar(80)
   productName     String              @map("product_name") @db.VarChar(160)
   unitPrice       Decimal             @map("unit_price") @db.Decimal(12, 2)
@@ -509,14 +702,14 @@ model AyurvedaOrder {
  * Admins edit via /api/v1/content/home; the public site reads the same row.
  */
 model SiteContent {
-  id            String   @id @db.VarChar(32)
-  heroEyebrow   String   @map("hero_eyebrow") @db.VarChar(120)
-  heroTitle     String   @map("hero_title") @db.VarChar(200)
-  heroSubtitle  String   @map("hero_subtitle") @db.VarChar(500)
-  heroImageUrl  String?  @map("hero_image_url") @db.VarChar(500)
-  promoQuote    String?  @map("promo_quote") @db.VarChar(200)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  updatedBy     String?  @map("updated_by") @db.Uuid
+  id           String   @id @db.VarChar(32)
+  heroEyebrow  String   @map("hero_eyebrow") @db.VarChar(120)
+  heroTitle    String   @map("hero_title") @db.VarChar(200)
+  heroSubtitle String   @map("hero_subtitle") @db.VarChar(500)
+  heroImageUrl String?  @map("hero_image_url") @db.VarChar(500)
+  promoQuote   String?  @map("promo_quote") @db.VarChar(200)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy    String?  @map("updated_by") @db.Uuid
 
   @@map("site_content")
 }
@@ -552,21 +745,21 @@ model HeroSlide {
 
 /// YouTube review videos for the homepage "Reviews" carousel.
 model ReviewVideo {
-  id          String   @id @default(uuid()) @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
   /// The 11-character YouTube video id, parsed from whatever URL the admin pasted.
-  youtubeId   String   @map("youtube_id") @db.VarChar(11)
-  title       String   @db.VarChar(160)
-  description String?  @db.VarChar(400)
-  sortOrder   Int      @default(0) @map("sort_order")
-  active      Boolean  @default(true)
+  youtubeId          String    @map("youtube_id") @db.VarChar(11)
+  title              String    @db.VarChar(160)
+  description        String?   @db.VarChar(400)
+  sortOrder          Int       @default(0) @map("sort_order")
+  active             Boolean   @default(true)
   /// Featured videos lead the carousel, ahead of the sort order.
-  featured    Boolean  @default(false)
+  featured           Boolean   @default(false)
   /// Admin-uploaded thumbnail as a data URL; replaces YouTube's own thumbnail when set.
   thumbnailData      String?   @map("thumbnail_data") @db.Text
   thumbnailUpdatedAt DateTime? @map("thumbnail_updated_at") @db.Timestamptz(3)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy          String?   @map("updated_by") @db.Uuid
 
   @@index([active, sortOrder])
   @@map("review_videos")
@@ -667,21 +860,25 @@ model NewsletterSubscriber {
 }
 
 model Article {
-  id           String    @id @default(uuid()) @db.Uuid
-  slug         String    @unique @db.VarChar(120)
-  title        String    @db.VarChar(200)
-  excerpt      String    @db.VarChar(500)
-  /** Plain markdown — never raw HTML. Rendered with a sanitizing client. */
-  body         String    @db.Text
-  coverUrl     String?   @map("cover_url") @db.VarChar(500)
-  /** Optional internal path (e.g. /gochar). Must be same-origin relative. */
-  ctaHref      String?   @map("cta_href") @db.VarChar(200)
-  published    Boolean   @default(false)
-  featured     Boolean   @default(false)
-  publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  updatedBy    String?   @map("updated_by") @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  slug        String    @unique @db.VarChar(120)
+  title       String    @db.VarChar(200)
+  excerpt     String    @db.VarChar(500)
+  /**
+   * Plain markdown — never raw HTML. Rendered with a sanitizing client.
+   */
+  body        String    @db.Text
+  coverUrl    String?   @map("cover_url") @db.VarChar(500)
+  /**
+   * Optional internal path (e.g. /gochar). Must be same-origin relative.
+   */
+  ctaHref     String?   @map("cta_href") @db.VarChar(200)
+  published   Boolean   @default(false)
+  featured    Boolean   @default(false)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy   String?   @map("updated_by") @db.Uuid
 
   @@index([published, featured, publishedAt])
   @@map("articles")

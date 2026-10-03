@@ -642,6 +642,11 @@ export const JoinRequestService = {
               experienceYears: row.experienceYears,
               perMinuteRate: money(env.ASTROLOGER_DEFAULT_RATE),
               status: AstrologerStatus.OFFLINE,
+              services: cleanList(row.services, 12, 60),
+              // Documents were reviewed as part of approving the application.
+              kycStatus: 'VERIFIED',
+              identityVerified: true,
+              profileApproved: true,
               ...(photoDataUrl ? { photoDataUrl, photoUpdatedAt: new Date() } : {}),
             },
             select: { id: true },

@@ -1,5 +1,6 @@
 import { money, prisma } from '../lib/prisma.js';
 import { decodePhotoDataUrl, sortForDirectory, type DirectoryStatus } from './astrologer-directory.js';
+import { publicListableWhere } from './provider-admin-rules.js';
 
 export interface DirectoryAstrologer {
   readonly id: string;
@@ -17,6 +18,7 @@ export interface DirectoryAstrologer {
 export const AstrologerDirectoryService = {
   async list(): Promise<DirectoryAstrologer[]> {
     const rows = await prisma.astrologer.findMany({
+      where: publicListableWhere(),
       take: 100,
       select: {
         id: true,
