@@ -614,6 +614,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return null;
   }
 
+  if (isAdmin) {
+    return <SocketProvider key={profile?.userId ?? 'guest'}>{children}</SocketProvider>;
+  }
+
   return (
     <SocketProvider key={profile?.userId ?? 'guest'}>
       <NavBar profile={profile} guest={!profile} onSignOut={signOut} />

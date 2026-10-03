@@ -1,22 +1,16 @@
-import {
-  AstrologerStatus,
-  AyurvedaOrderStatus,
-  JoinRequestStatus,
-  PaymentOrderStatus,
-  PujaBookingStatus,
-  StaffRole,
-  type Prisma,
-} from '@prisma/client';
+import { JoinRequestStatus, StaffRole, type Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { Permission, STAFF_ROLE_LABELS, permissionsFor } from '../auth/permissions.js';
 import { env } from '../config/env.js';
-import { money, prisma } from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 import { authenticate } from '../plugins/authenticate.js';
 import { requirePermission } from '../plugins/staff.js';
+import { buildDashboard } from '../services/admin-dashboard.service.js';
 import { recordAudit } from '../services/audit.service.js';
-import { CATEGORY_LABELS, OPEN_STATUSES, STATUS_LABELS, csvCell } from '../services/join-request-rules.js';
+import { DASHBOARD_PERIODS } from '../services/dashboard-rules.js';
+import { csvCell } from '../services/join-request-rules.js';
 
 class AdminError extends Error {
   readonly statusCode: number;
@@ -66,17 +60,6 @@ function auditWhere(query: Omit<z.infer<typeof auditQuerySchema>, 'page' | 'page
   return and.length > 0 ? { AND: and } : {};
 }
 
-function daysAgo(days: number): Date {
-  return new Date(Date.now() - days * 86_400_000);
-}
-
-function startOfTodayIst(): Date {
-  const istOffsetMs = 330 * 60_000;
-  const nowIst = new Date(Date.now() + istOffsetMs);
-  nowIst.setUTCHours(0, 0, 0, 0);
-  return new Date(nowIst.getTime() - istOffsetMs);
-}
-
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
 
@@ -90,97 +73,32 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   /** Who am I in the admin: role and the permissions that drive the dashboard navigation. */
   app.get('/me', { preHandler: requirePermission() }, async (request) => {
     const staff = request.staff!;
+    const [user, joinRequestsPending] = await Promise.all([
+      prisma.user.findUnique({ where: { id: staff.userId }, select: { name: true } }),
+      staff.permissions.includes(Permission.JOIN_REQUESTS)
+        ? prisma.providerJoinRequest.count({ where: { status: JoinRequestStatus.PENDING } })
+        : Promise.resolve(0),
+    ]);
     return {
+      name: user?.name ?? null,
+      phone: staff.phone,
       role: staff.role,
       roleLabel: STAFF_ROLE_LABELS[staff.role],
       permissions: staff.permissions,
       viaAdminPhones: env.ADMIN_PHONES.includes(staff.phone),
+      badges: { joinRequestsPending },
     };
   });
 
-  app.get('/overview', { preHandler: requirePermission(Permission.DASHBOARD) }, async (request) => {
-    const staff = request.staff!;
-    const canFinance = staff.permissions.includes(Permission.FINANCE);
-    const canJoin = staff.permissions.includes(Permission.JOIN_REQUESTS);
-    const today = startOfTodayIst();
-    const monthAgo = daysAgo(30);
-
-    const [
-      usersTotal,
-      usersNew7d,
-      providersTotal,
-      providersOnline,
-      providersByCategory,
-      joinOpen,
-      joinPending,
-      pujaOpen,
-      ordersOpen,
-      callsToday,
-      callsActive,
-      recentJoin,
-      recharge30d,
-      consultation30d,
-    ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { createdAt: { gte: daysAgo(7) } } }),
-      prisma.astrologer.count(),
-      prisma.astrologer.count({ where: { status: { in: [AstrologerStatus.IDLE, AstrologerStatus.BUSY, AstrologerStatus.IN_CALL] } } }),
-      prisma.astrologer.groupBy({ by: ['category'], _count: { _all: true } }),
-      prisma.providerJoinRequest.count({ where: { status: { in: [...OPEN_STATUSES] } } }),
-      prisma.providerJoinRequest.count({ where: { status: JoinRequestStatus.PENDING } }),
-      prisma.pujaBooking.count({ where: { status: { in: [PujaBookingStatus.CONFIRMED, PujaBookingStatus.IN_PROGRESS] } } }),
-      prisma.ayurvedaOrder.count({ where: { status: { in: [AyurvedaOrderStatus.CONFIRMED, AyurvedaOrderStatus.PACKED] } } }),
-      prisma.callSession.count({ where: { createdAt: { gte: today } } }),
-      prisma.callSession.count({ where: { status: 'ACTIVE' } }),
-      canJoin
-        ? prisma.providerJoinRequest.findMany({
-            orderBy: { createdAt: 'desc' },
-            take: 5,
-            select: { id: true, applicationNo: true, name: true, category: true, city: true, status: true, createdAt: true },
-          })
-        : Promise.resolve([]),
-      canFinance
-        ? prisma.paymentOrder.aggregate({ where: { status: PaymentOrderStatus.PAID, paidAt: { gte: monthAgo } }, _sum: { amount: true }, _count: true })
-        : Promise.resolve(null),
-      canFinance
-        ? prisma.astrologerEarning.aggregate({ where: { createdAt: { gte: monthAgo } }, _sum: { grossAmount: true, platformFee: true } })
-        : Promise.resolve(null),
-    ]);
-
-    return {
-      generatedAt: new Date().toISOString(),
-      users: { total: usersTotal, new7d: usersNew7d },
-      providers: {
-        total: providersTotal,
-        online: providersOnline,
-        byCategory: providersByCategory.map((group) => ({
-          category: group.category,
-          label: CATEGORY_LABELS[group.category],
-          count: group._count._all,
-        })),
-      },
-      joinRequests: { open: joinOpen, pending: joinPending },
-      operations: { pujaBookingsOpen: pujaOpen, shopOrdersOpen: ordersOpen, callsToday, callsActive },
-      finance:
-        recharge30d && consultation30d
-          ? {
-              walletRecharges30d: money(recharge30d._sum.amount ?? 0).toFixed(2),
-              walletRechargeCount30d: recharge30d._count,
-              consultationGross30d: money(consultation30d._sum.grossAmount ?? 0).toFixed(2),
-              platformFee30d: money(consultation30d._sum.platformFee ?? 0).toFixed(2),
-            }
-          : null,
-      recentJoinRequests: recentJoin.map((row) => ({
-        id: row.id,
-        applicationNo: row.applicationNo,
-        name: row.name,
-        categoryLabel: CATEGORY_LABELS[row.category],
-        city: row.city,
-        status: row.status,
-        statusLabel: STATUS_LABELS[row.status],
-        createdAt: row.createdAt.toISOString(),
-      })),
-    };
+  app.get('/dashboard', { preHandler: requirePermission(Permission.DASHBOARD) }, async (request) => {
+    const query = z
+      .object({
+        period: z.enum(DASHBOARD_PERIODS).default('month'),
+        revenueRange: z.enum(['year', '12m']).default('year'),
+        growthMonths: z.coerce.number().pipe(z.union([z.literal(6), z.literal(12)])).default(6),
+      })
+      .parse(request.query);
+    return buildDashboard({ ...query, permissions: request.staff!.permissions });
   });
 
   // --- Staff & roles (Super Admin only) ---------------------------------------------------------

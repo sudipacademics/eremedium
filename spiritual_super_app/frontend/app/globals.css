@@ -15,9 +15,93 @@ body {
   background-image: none;
 }
 
-/* Admin ops panels keep denser dark surfaces inside AdminGate */
 body.admin-ops {
-  @apply bg-ved-cream-100;
+  background-color: #f6f2ea;
+}
+
+/*
+ * The admin workspace is light. Admin pages written for the old dark panel use these utilities;
+ * inside .admin-light they read as their light-theme equivalents. White text on a coloured
+ * background (buttons, badges) is left alone.
+ */
+.admin-light .text-white:not([class*='bg-']),
+.admin-light .text-slate-100,
+.admin-light .text-slate-200 {
+  color: theme('colors.ved-green.900');
+}
+.admin-light .text-slate-300 {
+  color: theme('colors.ved-green.800');
+}
+.admin-light .text-slate-400 {
+  color: rgb(11 79 69 / 0.7);
+}
+.admin-light .text-slate-500 {
+  color: rgb(11 79 69 / 0.55);
+}
+.admin-light .text-rose-200,
+.admin-light .text-rose-300,
+.admin-light .hover\:text-rose-300:hover {
+  color: theme('colors.rose.700');
+}
+.admin-light .text-emerald-100,
+.admin-light .text-emerald-200,
+.admin-light .text-emerald-300 {
+  color: theme('colors.emerald.700');
+}
+.admin-light .text-sky-200,
+.admin-light .text-sky-300 {
+  color: theme('colors.sky.700');
+}
+.admin-light .text-amber-200,
+.admin-light .text-amber-300 {
+  color: theme('colors.amber.700');
+}
+.admin-light .text-violet-200,
+.admin-light .text-violet-300 {
+  color: theme('colors.violet.700');
+}
+.admin-light .text-ved-gold-200,
+.admin-light .text-ved-gold-300,
+.admin-light .text-ved-gold-300\/80,
+.admin-light .hover\:text-ved-gold-200:hover {
+  color: theme('colors.ved-gold.700');
+}
+.admin-light .border-white\/5,
+.admin-light .border-white\/10,
+.admin-light .border-white\/15,
+.admin-light .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.admin-light .divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(11 79 69 / 0.1);
+}
+.admin-light .ring-white\/10 {
+  --tw-ring-color: rgb(11 79 69 / 0.1);
+}
+.admin-light .bg-white\/5,
+.admin-light .bg-black\/30,
+.admin-light .hover\:bg-white\/5:hover {
+  background-color: rgb(11 79 69 / 0.035);
+}
+.admin-light .bg-white\/10,
+.admin-light .bg-white\/15,
+.admin-light .hover\:bg-white\/10:hover,
+.admin-light .hover\:bg-white\/15:hover {
+  background-color: rgb(11 79 69 / 0.07);
+}
+.admin-light .bg-emerald-400\/10,
+.admin-light .bg-emerald-500\/10,
+.admin-light .bg-emerald-500\/15 {
+  background-color: theme('colors.emerald.50');
+}
+.admin-light .bg-rose-400\/10,
+.admin-light .bg-rose-500\/10,
+.admin-light .bg-rose-500\/15 {
+  background-color: theme('colors.rose.50');
+}
+.admin-light .bg-sky-500\/15 {
+  background-color: theme('colors.sky.50');
+}
+.admin-light .bg-slate-500\/20 {
+  background-color: theme('colors.slate.100');
 }
 
 @layer components {

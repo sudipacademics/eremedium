@@ -3,10 +3,13 @@ import type { AdminPermission } from './admin-nav';
 export type StaffRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CONTENT_MANAGER' | 'FINANCE_MANAGER' | 'SUPPORT';
 
 export interface AdminMe {
+  name: string | null;
+  phone: string;
   role: StaffRole;
   roleLabel: string;
   permissions: AdminPermission[];
   viaAdminPhones: boolean;
+  badges: { joinRequestsPending: number };
 }
 
 export type ProviderCategory =
@@ -39,11 +42,11 @@ export const JOIN_STATUSES: readonly { value: JoinRequestStatus; label: string }
 ];
 
 export const STATUS_TONE: Record<JoinRequestStatus, string> = {
-  PENDING: 'bg-amber-400/15 text-amber-200 ring-1 ring-amber-300/30',
-  UNDER_REVIEW: 'bg-sky-400/15 text-sky-200 ring-1 ring-sky-300/30',
-  MORE_INFO_REQUESTED: 'bg-violet-400/15 text-violet-200 ring-1 ring-violet-300/30',
-  APPROVED: 'bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-300/30',
-  REJECTED: 'bg-rose-400/15 text-rose-200 ring-1 ring-rose-300/30',
+  PENDING: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  UNDER_REVIEW: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
+  MORE_INFO_REQUESTED: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
+  APPROVED: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  REJECTED: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
 };
 
 export interface JoinRequestListItem {
@@ -126,19 +129,42 @@ export interface JoinRequestDetail {
   events: JoinRequestEvent[];
 }
 
-export interface AdminOverview {
+export type DashboardPeriod = 'month' | 'quarter' | 'year' | 'all';
+
+export const DASHBOARD_PERIODS: readonly { value: DashboardPeriod; label: string }[] = [
+  { value: 'month', label: 'This Month' },
+  { value: 'quarter', label: 'This Quarter' },
+  { value: 'year', label: 'This Year' },
+  { value: 'all', label: 'All Time' },
+];
+
+export interface Kpi {
+  total: number;
+  inPeriod: number;
+  changePct: number | null;
+}
+
+export interface AdminDashboard {
   generatedAt: string;
-  users: { total: number; new7d: number };
-  providers: { total: number; online: number; byCategory: { category: ProviderCategory; label: string; count: number }[] };
-  joinRequests: { open: number; pending: number };
-  operations: { pujaBookingsOpen: number; shopOrdersOpen: number; callsToday: number; callsActive: number };
-  finance: {
-    walletRecharges30d: string;
-    walletRechargeCount30d: number;
-    consultationGross30d: string;
-    platformFee30d: string;
+  period: DashboardPeriod;
+  periodLabel: string;
+  kpis: {
+    users: Kpi;
+    providers: Kpi;
+    joinRequests: Kpi & { pending: number };
+    consultations: Kpi;
+    pujaBookings: Kpi;
+    shopOrders: Kpi;
+    revenue: Kpi | null;
+  };
+  revenueTrend: {
+    range: 'year' | '12m';
+    months: { month: string; label: string; consultations: number; epuja: number; shop: number }[];
   } | null;
-  recentJoinRequests: {
+  serviceRevenue: { total: number; items: { key: string; label: string; amount: number; pct: number }[] } | null;
+  userGrowth: { month: string; label: string; newUsers: number; total: number }[];
+  pending: { joinRequests: number; pujaBookings: number; shopOrders: number; liveCalls: number };
+  latestJoinRequests: {
     id: string;
     applicationNo: string;
     name: string;
@@ -148,6 +174,55 @@ export interface AdminOverview {
     statusLabel: string;
     createdAt: string;
   }[];
+  recentConsultations: {
+    id: string;
+    userName: string;
+    providerName: string;
+    service: string;
+    at: string;
+    minutes: number;
+    status: 'INITIATED' | 'ACTIVE' | 'COMPLETED' | 'DROPPED_INSUFFICIENT_FUNDS';
+    statusLabel: string;
+  }[];
+  latestOrders: {
+    id: string;
+    productName: string;
+    imageUrl: string | null;
+    amount: number;
+    status: 'CONFIRMED' | 'PACKED' | 'DISPATCHED';
+    statusLabel: string;
+    createdAt: string;
+  }[];
+  topLocations: { basis: number; items: { label: string; count: number; pct: number }[] };
+  providersByCategory: { category: ProviderCategory; label: string; count: number }[];
+  topServices: { label: string; kind: string; count: number }[];
+  recentActivity: { kind: 'user' | 'join' | 'puja' | 'order' | 'call' | 'audit'; text: string; at: string; href: string | null }[];
+}
+
+const INR_FULL = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+
+export function formatInr(amount: number): string {
+  return `₹${INR_FULL.format(amount)}`;
+}
+
+/** ₹8.92L / ₹1.2Cr / ₹45K, for chart axes and big totals. */
+export function formatInrCompact(amount: number): string {
+  const abs = Math.abs(amount);
+  const trim = (value: number) => value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2).replace(/\.?0+$/, '');
+  if (abs >= 1e7) return `₹${trim(amount / 1e7)}Cr`;
+  if (abs >= 1e5) return `₹${trim(amount / 1e5)}L`;
+  if (abs >= 1e3) return `₹${trim(amount / 1e3)}K`;
+  return `₹${INR_FULL.format(amount)}`;
+}
+
+export function timeAgo(iso: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return days < 30 ? `${days} day${days === 1 ? '' : 's'} ago` : new Date(iso).toLocaleDateString('en-IN', { dateStyle: 'medium' });
 }
 
 export interface StaffList {

@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { ADMIN_NAV, navItemForPath, visibleNav } from '@/lib/admin-nav';
+import { ADMIN_NAV, navItemForPath, searchNav, visibleNav } from '@/lib/admin-nav';
 
 describe('admin navigation', () => {
-  it('shows a content manager only the dashboard and content pages', () => {
+  it('shows a content manager only the dashboard, content and website pages', () => {
     const groups = visibleNav(['dashboard.view', 'content.manage']);
-    expect(groups.map((group) => group.label)).toEqual(['Overview', 'Content']);
+    expect(groups.map((group) => group.label)).toEqual([null, 'Content & Resources', 'Website']);
+    expect(groups[1]!.items.map((item) => item.label)).toEqual(['Blogs', 'Numerology']);
+  });
+
+  it('searches only pages the role can open', () => {
+    expect(searchNav('orders', ['operations.manage']).map((item) => item.href)).toEqual(['/admin/ayurveda-orders']);
+    expect(searchNav('orders', ['content.manage'])).toEqual([]);
+    expect(searchNav('join req', ['joinRequests.manage']).map((item) => item.label)).toEqual(['Provider Join Requests']);
+    expect(searchNav('  ', ['joinRequests.manage'])).toEqual([]);
   });
 
   it('gives customer history to support and finance alike', () => {

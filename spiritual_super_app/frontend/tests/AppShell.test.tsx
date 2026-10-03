@@ -100,13 +100,23 @@ describe('a logged-out visitor', () => {
 });
 
 describe('the header logo', () => {
-  it.each(['/pujas', '/admin/hero', '/wallet'])('links home from %s', async (path) => {
+  it.each(['/pujas', '/wallet'])('links home from %s', async (path) => {
     signIn({ role: 'ADMIN' });
     pathname = path;
 
     render(<AppShell><SocketPage /></AppShell>);
 
     await waitFor(() => expect(screen.getByRole('link', { name: 'Vedsutra home' })).toHaveAttribute('href', '/'));
+  });
+
+  it('leaves the site header out of admin pages, which bring their own sidebar', async () => {
+    signIn({ role: 'ADMIN' });
+    pathname = '/admin/hero';
+
+    render(<AppShell><SocketPage /></AppShell>);
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: 'Vedsutra home' })).not.toBeInTheDocument();
   });
 
   it('closes the mobile menu when clicked', async () => {
