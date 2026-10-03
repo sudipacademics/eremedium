@@ -38,10 +38,12 @@ describe('ReviewsCarousel', () => {
     expect(document.querySelector('iframe')?.getAttribute('src')).toContain('/embed/aaaaaaaaaaa');
   });
 
-  it('renders nothing when no review is active', async () => {
+  it('keeps the Reviews section visible with a placeholder when no review is active', async () => {
     vi.spyOn(api, 'get').mockResolvedValue({ videos: [] });
-    const { container } = render(<ReviewsCarousel />);
+    render(<ReviewsCarousel />);
     await flush();
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Reviews');
+    expect(screen.getByText(/coming soon/)).toBeInTheDocument();
+    expect(document.querySelector('iframe')).toBeNull();
   });
 });

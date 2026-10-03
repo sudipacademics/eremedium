@@ -29,8 +29,23 @@ describe('HeroSlider', () => {
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading).toHaveTextContent('Your Life, Guided by Vedic Wisdom');
     expect(heading.querySelector('.text-ved-gold-500')).toHaveTextContent('Vedic Wisdom');
-    expect(screen.getByText('Aligned with the Stars')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Next slide')).not.toBeInTheDocument();
+    expect(currentSlide()).toHaveTextContent('Aligned with the Stars');
+  });
+
+  it('fills the 3D stack with companion cards when fewer than three slides are live', () => {
+    render(<HeroSlider slides={[]} promoQuote="Aligned with the Stars" />);
+    const cards = screen.getAllByRole('group', { hidden: true });
+    expect(cards).toHaveLength(3);
+    expect(cards[1]).toHaveTextContent('Natural Remedies for a Healthier You');
+    expect(cards[2]).toHaveTextContent('Connect with Divine Energy');
+    expect(screen.getByLabelText('Next slide')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Show slide/ })).toHaveLength(3);
+  });
+
+  it('uses only the live slides once three or more are published', () => {
+    render(<HeroSlider slides={[slide('a', 'One'), slide('b', 'Two'), slide('c', 'Three'), slide('d', 'Four')]} promoQuote="Quote" />);
+    expect(screen.getAllByRole('group', { hidden: true })).toHaveLength(4);
+    expect(screen.queryByText('Connect with Divine Energy')).not.toBeInTheDocument();
   });
 
   it('shows the CTA and rotates through live slides, pausing on hover', () => {

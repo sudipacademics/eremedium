@@ -21,6 +21,40 @@ export const DEFAULT_HERO_SLIDE: HeroSlide = {
   ctaHref: null,
 };
 
+/** Fill the 3D stack when fewer than three slides are live: right of the front card, then left. */
+export const COMPANION_HERO_SLIDES: readonly HeroSlide[] = [
+  {
+    id: 'builtin-natural-remedies',
+    eyebrow: null,
+    title: 'Natural Remedies for a *Healthier You*',
+    description: 'Ayurvedic herbs in a stone mortar',
+    imageUrl: '/home/hero-natural-remedies.webp',
+    imageVersion: null,
+    ctaText: null,
+    ctaHref: null,
+  },
+  {
+    id: 'builtin-divine-energy',
+    eyebrow: null,
+    title: 'Connect with *Divine Energy*',
+    description: 'A lotus beneath the full moon',
+    imageUrl: '/home/hero-divine-energy.webp',
+    imageVersion: null,
+    ctaText: null,
+    ctaHref: null,
+  },
+];
+
+const MIN_STACK = 3;
+
+export function withCompanionSlides(live: HeroSlide[]): HeroSlide[] {
+  const base = live.length > 0 ? live : [DEFAULT_HERO_SLIDE];
+  if (base.length >= MIN_STACK) return base;
+  const used = new Set(base.map((slide) => slide.imageUrl));
+  const extras = COMPANION_HERO_SLIDES.filter((slide) => !used.has(slide.imageUrl));
+  return [...base, ...extras].slice(0, Math.max(MIN_STACK, base.length));
+}
+
 /** Renders `*gold words*` spans of a slide title. */
 export function HeroTitle({ title, accentClassName = 'text-ved-gold-500' }: { title: string; accentClassName?: string }) {
   return (
@@ -91,7 +125,7 @@ export function HeroSlider({
   /** Static content under the hero copy (search, trust badges). */
   children?: ReactNode;
 }) {
-  const slides = loaded && loaded.length > 0 ? loaded : [DEFAULT_HERO_SLIDE];
+  const slides = withCompanionSlides(loaded ?? []);
   const count = slides.length;
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);

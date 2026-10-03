@@ -35,7 +35,25 @@ export function ReviewsCarousel() {
       .catch(() => setVideos([]));
   }, []);
 
-  if (!videos || videos.length === 0) return null;
+  if (!videos) return null;
+
+  if (videos.length === 0) {
+    return (
+      <section className="bg-[#F7F4EE]" aria-label="Reviews">
+        <div className="mx-auto max-w-7xl px-4 py-12">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ved-gold-600">In their own words</p>
+          <h2 className="mt-1 font-display text-3xl font-semibold text-ved-green-900">Reviews</h2>
+          <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ved-gold-400/50 bg-white/70 px-6 py-10 text-center">
+            <PlayIcon />
+            <p className="font-display text-xl text-ved-green-900">Video stories from our devotees are coming soon</p>
+            <p className="max-w-md text-sm text-ved-green-800/65">
+              Hear how Vedsutra&apos;s astrologers, pujas and Ayurveda have guided seekers across India.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="bg-[#F7F4EE]" aria-roledescription="carousel" aria-label="Reviews">
