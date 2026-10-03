@@ -11,6 +11,7 @@ import {
   type OtpRequestResult,
   type UserProfileDetails,
 } from '@/lib/api';
+import { WalletPanel } from '@/components/WalletPanel';
 import { resizeSquarePhoto } from '@/lib/photo';
 
 const PHOTO_SIZE = 256;
@@ -32,6 +33,7 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const scrolledToHash = useRef(false);
 
   useEffect(() => {
     void api
@@ -50,6 +52,13 @@ export default function ProfilePage() {
         setError(caught instanceof Error ? caught.message : 'Could not load profile'),
       );
   }, []);
+
+  // The page renders a loading state first, so the browser's own #wallet jump finds nothing.
+  useEffect(() => {
+    if (!data || scrolledToHash.current || window.location.hash !== '#wallet') return;
+    scrolledToHash.current = true;
+    document.getElementById('wallet')?.scrollIntoView({ behavior: 'smooth' });
+  }, [data]);
 
   async function onPhotoPicked(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -261,9 +270,9 @@ export default function ProfilePage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Link href="/wallet" className="card hover:border-ved-green-500/30">
+        <Link href="#wallet" className="card hover:border-ved-green-500/30">
           <p className="font-semibold text-ved-green-800">Wallet</p>
-          <p className="mt-1 text-sm text-ved-green-800/60">Balance and top-ups</p>
+          <p className="mt-1 text-sm text-ved-green-800/60">Balance, top-ups and transactions</p>
         </Link>
         <Link href="/pujas" className="card hover:border-ved-green-500/30">
           <p className="font-semibold text-ved-green-800">E-Puja</p>
@@ -274,6 +283,15 @@ export default function ProfilePage() {
           <p className="mt-1 text-sm text-ved-green-800/60">Orders and kits</p>
         </Link>
       </div>
+
+      {data && (
+        <section id="wallet" aria-labelledby="wallet-heading" className="max-w-xl scroll-mt-24 space-y-3">
+          <h2 id="wallet-heading" className="font-display text-xl font-semibold text-ved-green-800">
+            Wallet
+          </h2>
+          <WalletPanel />
+        </section>
+      )}
 
       {data && <InvoicesCard />}
       {data && <LoginSecurityCard phone={data.phone} />}

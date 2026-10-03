@@ -78,6 +78,33 @@ describe('OTP login', () => {
     expect(router.replace).toHaveBeenCalledWith('/astrologers');
   });
 
+  it('takes staff to the admin panel when they sign in from the site login', async () => {
+    window.history.replaceState(null, '', '/login');
+    vi.spyOn(api, 'post')
+      .mockResolvedValueOnce({ codeLength: 6, expiresInSeconds: 300, resendAfterSeconds: 60 })
+      .mockResolvedValueOnce(verified({ user: { ...verified().user, role: 'ADMIN' } }));
+    render(<LoginPage />);
+    await flush();
+    await reachCodeStep();
+    pasteCode('482913');
+    await flush();
+
+    expect(router.replace).toHaveBeenCalledWith('/admin');
+  });
+
+  it('still honours an explicit destination for staff', async () => {
+    vi.spyOn(api, 'post')
+      .mockResolvedValueOnce({ codeLength: 6, expiresInSeconds: 300, resendAfterSeconds: 60 })
+      .mockResolvedValueOnce(verified({ user: { ...verified().user, role: 'ADMIN' } }));
+    render(<LoginPage />);
+    await flush();
+    await reachCodeStep();
+    pasteCode('482913');
+    await flush();
+
+    expect(router.replace).toHaveBeenCalledWith('/astrologers');
+  });
+
   it('asks a new user for their name before continuing', async () => {
     vi.spyOn(api, 'post')
       .mockResolvedValueOnce({ codeLength: 6, expiresInSeconds: 300, resendAfterSeconds: 60 })

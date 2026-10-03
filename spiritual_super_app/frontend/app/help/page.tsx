@@ -41,7 +41,7 @@ export default function HelpCentrePage() {
             </li>
             <li>
               Check your balance and transactions, or add money, from your{' '}
-              <Link href="/wallet" className={linkClass}>wallet</Link>.
+              <Link href="/profile#wallet" className={linkClass}>wallet</Link>.
             </li>
           </ul>
         </PolicySection>

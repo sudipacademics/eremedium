@@ -254,8 +254,20 @@ describe('a signed-in user', () => {
     expect(screen.queryByRole('link', { name: 'Login / Sign Up' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Test/ }));
-    expect(screen.getByRole('menuitem', { name: 'Wallet' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Wallet' })).toHaveAttribute('href', '/profile#wallet');
     expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('shows staff neither an Admin link nor a wallet balance in the site header', async () => {
+    signIn({ role: 'ADMIN' });
+    pathname = '/';
+
+    render(<AppShell><SocketPage /></AppShell>);
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Admin/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/₹/)).not.toBeInTheDocument();
   });
 
   it('is not offered the astrologer console when they are not an astrologer', async () => {

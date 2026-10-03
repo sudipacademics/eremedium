@@ -32,6 +32,11 @@ function maskPhone(phone: string): string {
     : phone.replace(/\d(?=\d{3})/g, '•');
 }
 
+/** Staff have no Admin link in the site header, so signing in without a destination takes them to the panel. */
+function landingFor(role: string, next: string): string {
+  return role === 'ADMIN' && next === '/' ? '/admin' : next;
+}
+
 function waitMessage(seconds: number): string {
   return seconds >= 120 ? `about ${Math.ceil(seconds / 60)} minutes` : `${seconds} seconds`;
 }
@@ -57,7 +62,7 @@ export default function LoginPage() {
   useEffect(() => {
     const target = safeNextPath(new URLSearchParams(window.location.search).get('next'));
     setNext(target);
-    if (session.token && session.profile) router.replace(target);
+    if (session.token && session.profile) router.replace(landingFor(session.profile.role, target));
   }, [router]);
 
   useEffect(() => {
@@ -122,10 +127,12 @@ export default function LoginPage() {
         name: result.user.name,
         phone: result.user.phone,
       });
+      const landing = landingFor(result.user.role, next);
+      setNext(landing);
       if (result.isNewAccount || !result.user.name || result.user.name === 'Devotee') {
         setStep('name');
       } else {
-        router.replace(next);
+        router.replace(landing);
       }
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {

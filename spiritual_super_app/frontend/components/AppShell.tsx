@@ -6,9 +6,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { NotificationBell } from '@/components/NotificationBell';
-import { SESSION_EVENT, api, loginHref, session, type Profile, type WalletBalance } from '@/lib/api';
+import { SESSION_EVENT, loginHref, session, type Profile } from '@/lib/api';
 import { isProtectedPath } from '@/lib/auth-gate';
-import { SocketProvider, useSocket, useSocketEvent } from '@/lib/socket';
+import { SocketProvider, useSocket } from '@/lib/socket';
 
 /** Marketing pages that render their own full-width layout and the site footer. */
 const INFO_PAGES = new Set([
@@ -106,7 +106,7 @@ function ProfileMenu({
           <Link href="/profile" role="menuitem" className={itemClass}>
             My profile
           </Link>
-          <Link href="/wallet" role="menuitem" className={itemClass}>
+          <Link href="/profile#wallet" role="menuitem" className={itemClass}>
             Wallet
           </Link>
           <div className="my-1 border-t border-ved-green-900/10" />
@@ -121,32 +121,6 @@ function ProfileMenu({
         </div>
       )}
     </div>
-  );
-}
-
-function WalletPill() {
-  const [balance, setBalance] = useState<string | null>(null);
-
-  const load = () => {
-    void api
-      .get<WalletBalance>('wallet/balance')
-      .then((wallet) => setBalance(wallet.balance))
-      .catch(() => setBalance(null));
-  };
-
-  useEffect(load, []);
-  useSocketEvent<{ balanceAfter: string }>('BILLING_TICK', (payload) => setBalance(payload.balanceAfter));
-  useSocketEvent('CALL_ENDED', load);
-
-  if (balance === null) return null;
-
-  return (
-    <Link
-      href="/wallet"
-      className="inline-flex items-center gap-1.5 rounded-full border border-ved-gold-400/50 bg-ved-gold-50 px-2.5 py-1 text-xs text-ved-gold-700 hover:bg-ved-gold-100"
-    >
-      ₹<span className="tabular font-semibold">{balance}</span>
-    </Link>
   );
 }
 
@@ -176,7 +150,7 @@ interface NavMenu {
   wide?: boolean;
 }
 
-/** Top menu for guests and signed-in users; Learn lives in the footer, Wallet in the profile menu. */
+/** Top menu for guests and signed-in users; Learn lives in the footer, Wallet in Profile. Admin has no public link. */
 export const NAV_MENUS: readonly NavMenu[] = [
   {
     id: 'astrology',
@@ -447,10 +421,7 @@ function NavBar({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const extras: NavItem[] = [
-    ...(!guest && profile?.astrologerId ? [{ href: '/astrologer', label: 'My console' }] : []),
-    ...(!guest && profile?.role === 'ADMIN' ? [{ href: '/admin', label: 'Admin' }] : []),
-  ];
+  const extras: NavItem[] = !guest && profile?.astrologerId ? [{ href: '/astrologer', label: 'My console' }] : [];
 
   useEffect(() => {
     setMenuOpen(false);
@@ -503,7 +474,6 @@ function NavBar({
           </Link>
           {!guest && profile && (
             <>
-              <WalletPill />
               <NotificationBell />
               <ProfileMenu profile={profile} initials={initials} onSignOut={onSignOut} />
             </>
