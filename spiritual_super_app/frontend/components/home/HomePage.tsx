@@ -142,6 +142,24 @@ const BANNERS = [
       'https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&w=900&q=80',
     overlay: 'from-ved-green-800/95 to-[#5c3a2a]/50',
   },
+  {
+    title: 'Donate Bhandara',
+    body: 'Support a sacred meal and help feed devotees in need.',
+    href: '/pujas',
+    cta: 'Donate Now →',
+    image:
+      'https://images.unsplash.com/photo-1567337710282-00832b415979?auto=format&fit=crop&w=900&q=80',
+    overlay: 'from-[#6b3410]/95 to-[#6b3410]/50',
+  },
+  {
+    title: 'Find Pandit',
+    body: 'Find verified Pandits for Puja, rituals and ceremonies.',
+    href: '/astrologers',
+    cta: 'Find Pandit →',
+    image:
+      'https://images.unsplash.com/photo-1561361058-c24cecae35ca?auto=format&fit=crop&w=900&q=80',
+    overlay: 'from-[#3b2a5c]/95 to-[#3b2a5c]/50',
+  },
 ] as const;
 
 export function HomePage() {
@@ -246,7 +264,7 @@ export function HomePage() {
       </section>
 
       {/* CTA banners */}
-      <section className="mx-auto grid max-w-7xl gap-4 px-4 pb-12 md:grid-cols-3">
+      <section className="mx-auto grid max-w-7xl gap-4 px-4 pb-12 sm:grid-cols-2 lg:grid-cols-3">
         {BANNERS.map((banner) => (
           <Link
             key={banner.title}
@@ -258,7 +276,7 @@ export function HomePage() {
               alt=""
               fill
               className="object-cover transition duration-500 group-hover:scale-105"
-              sizes="33vw"
+              sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             />
             <div className={`absolute inset-0 bg-gradient-to-r ${banner.overlay}`} />
             <div className="relative flex h-full flex-col justify-end p-5 text-white">
