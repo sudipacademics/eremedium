@@ -1,7 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
@@ -21,7 +22,26 @@ type DoshaFilter = 'ALL' | 'VATA' | 'PITTA' | 'KAPHA';
 
 const STATUS_STEPS: AyurvedaOrder['status'][] = ['CONFIRMED', 'PACKED', 'DISPATCHED'];
 
+/** Menu categories without a catalog yet; their links land here with a notice instead of a dead end. */
+const UPCOMING_CATEGORIES: Record<string, string> = {
+  rudraksha: 'Rudraksha',
+  'puja-samagri': 'Puja Samagri',
+  spiritual: 'Spiritual Products',
+};
+
 export default function AyurvedaPage() {
+  return (
+    <Suspense fallback={null}>
+      <ShopPage />
+    </Suspense>
+  );
+}
+
+function ShopPage() {
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get('category')?.toLowerCase() ?? null;
+  const productParam = searchParams.get('product');
+  const upcoming = categoryParam ? UPCOMING_CATEGORIES[categoryParam] : undefined;
   const { signedIn, requireLogin } = useAuthGate();
   const [tab, setTab] = useState<Tab>('shop');
   const [category, setCategory] = useState<ProductCategory>('AYURVEDA');
@@ -66,11 +86,11 @@ export default function AyurvedaPage() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('category')?.toUpperCase() === 'CRYSTAL') setCategory('CRYSTAL');
-    wantedProduct.current = params.get('product');
+    setCategory(categoryParam === 'crystal' ? 'CRYSTAL' : 'AYURVEDA');
+    wantedProduct.current = productParam;
+    setTab('shop');
     setReady(true);
-  }, []);
+  }, [categoryParam, productParam]);
 
   useEffect(() => {
     if (!ready) return;
@@ -129,6 +149,12 @@ export default function AyurvedaPage() {
 
       {tab === 'shop' ? (
         <>
+          {upcoming && (
+            <p role="status" className="rounded-xl border border-ved-gold-400/40 bg-ved-gold-50 px-4 py-3 text-sm text-ved-gold-700">
+              <strong>{upcoming}</strong> — coming soon to the Vedsutra shop. Meanwhile, explore our Ayurveda and
+              Crystals collections below.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-1 rounded-xl bg-ved-cream-200/80 p-1" role="radiogroup" aria-label="Product category">
               {(['AYURVEDA', 'CRYSTAL'] as const).map((option) => (

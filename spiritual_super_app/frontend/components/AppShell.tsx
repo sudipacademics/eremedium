@@ -162,50 +162,275 @@ function BrandLogo({ className = 'h-8 w-auto' }: { className?: string }) {
   );
 }
 
-/** Top menu for guests and signed-in users; Learn lives in the footer, Wallet in the profile menu. */
-const MAIN_NAV = [
-  { href: '/', label: 'Home' },
-  { href: '/astrologers', label: 'Astrology' },
-  { href: '/horoscope', label: 'Horoscope' },
-  { href: '/panchang', label: 'Panchang' },
-  { href: '/festivals', label: 'Festivals' },
-  { href: '/numerology', label: 'Numerology' },
-  { href: '/pujas', label: 'E-Puja' },
-  { href: '/temple', label: 'Temple' },
-  { href: '/ayurveda', label: 'Ayurveda' },
-  { href: '/ayurveda', label: 'Shop' },
-  { href: '/astrologers', label: 'Consult Experts' },
-] as const;
+interface NavItem {
+  href: string;
+  label: string;
+}
 
-function NavLinkList({
-  links,
+interface NavMenu {
+  id: string;
+  label: string;
+  items: readonly NavItem[];
+  /** Long menus lay their links out in two columns on desktop. */
+  wide?: boolean;
+}
+
+/** Top menu for guests and signed-in users; Learn lives in the footer, Wallet in the profile menu. */
+export const NAV_MENUS: readonly NavMenu[] = [
+  {
+    id: 'astrology',
+    label: 'Astrology',
+    wide: true,
+    items: [
+      { href: '/astrologers', label: 'Consult Astrologer' },
+      { href: '/ai', label: 'AI Astrology' },
+      { href: '/kundali', label: 'Kundali' },
+      { href: '/horoscope', label: 'Horoscope' },
+      { href: '/gochar', label: 'Gochar / Transit' },
+      { href: '/kundali', label: 'Birth Chart Analysis' },
+      { href: '/match', label: 'Match Making' },
+      { href: '/panchang', label: 'Muhurat' },
+      { href: '/pujas', label: 'Remedies' },
+      { href: '/panchang', label: 'Panchang' },
+    ],
+  },
+  {
+    id: 'vedic',
+    label: 'Vedic Services',
+    items: [
+      { href: '/panchang', label: 'Panchang' },
+      { href: '/pujas', label: 'E-Puja' },
+      { href: '/pujas', label: 'Puja Services' },
+      { href: '/temple', label: 'Temple' },
+      { href: '/festivals', label: 'Festivals' },
+    ],
+  },
+  {
+    id: 'numerology',
+    label: 'Numerology',
+    items: [
+      { href: '/numerology#calculator', label: 'Numerology Calculator' },
+      { href: '/numerology#insights', label: 'Life Path Number' },
+      { href: '/numerology#calculator', label: 'Name Numerology' },
+      { href: '/numerology#insights', label: 'Destiny Number' },
+      { href: '/numerology#insights', label: 'Compatibility' },
+      { href: '/numerology#how-it-works', label: 'Numerology Reports' },
+      { href: '/numerology#consult', label: 'Consult Numerologist' },
+    ],
+  },
+  {
+    id: 'ayurveda',
+    label: 'Ayurveda & Wellness',
+    items: [
+      { href: '/ayurveda?category=ayurveda', label: 'Ayurveda' },
+      { href: '/ayurveda?category=ayurveda', label: 'Ayurvedic Products' },
+    ],
+  },
+  {
+    id: 'shop',
+    label: 'Vedsutra Shop',
+    items: [
+      { href: '/ayurveda', label: 'All Products' },
+      { href: '/ayurveda?category=ayurveda', label: 'Ayurveda' },
+      { href: '/ayurveda?category=crystal', label: 'Crystals' },
+      { href: '/ayurveda?category=rudraksha', label: 'Rudraksha' },
+      { href: '/ayurveda?category=puja-samagri', label: 'Puja Samagri' },
+      { href: '/ayurveda?category=spiritual', label: 'Spiritual Products' },
+      { href: '/#featured-products', label: 'Featured Products' },
+    ],
+  },
+];
+
+function pathOf(href: string): string {
+  return href.split(/[?#]/)[0] || '/';
+}
+
+function menuIsActive(pathname: string, menu: NavMenu): boolean {
+  return menu.items.some((item) => pathOf(item.href) !== '/' && isActive(pathname, pathOf(item.href)));
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <path d="M5 7.5l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const subLinkClass =
+  'block rounded-lg px-3 py-2 text-sm text-ved-green-800/85 transition hover:bg-ved-cream-100 hover:text-ved-green-900 focus-visible:bg-ved-cream-100 focus-visible:outline-none';
+
+/** Desktop disclosure menus: open on hover or click, close on Escape, outside click or navigation. */
+function DesktopNav({ menus, extras, pathname }: { menus: readonly NavMenu[]; extras: NavItem[]; pathname: string }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setOpenId(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!openId) return;
+    const onPointer = (event: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(event.target as Node)) setOpenId(null);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [openId]);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+
+  const openNow = (id: string) => {
+    window.clearTimeout(closeTimer.current);
+    setOpenId(id);
+  };
+  const closeSoon = () => {
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setOpenId(null), 150);
+  };
+
+  return (
+    <nav ref={navRef} aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
+      {menus.map((menu) => {
+        const open = openId === menu.id;
+        const active = menuIsActive(pathname, menu);
+        return (
+          <div
+            key={menu.id}
+            className="relative"
+            onMouseEnter={() => openNow(menu.id)}
+            onMouseLeave={closeSoon}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && open) {
+                setOpenId(null);
+                (event.currentTarget.querySelector('button') as HTMLButtonElement | null)?.focus();
+              }
+            }}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpenId((id) => (id === menu.id ? null : id));
+            }}
+          >
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={`nav-menu-${menu.id}`}
+              onClick={() => (open ? setOpenId(null) : openNow(menu.id))}
+              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ved-gold-400 ${
+                active || open
+                  ? 'bg-ved-green-50 font-semibold text-ved-green-700'
+                  : 'text-ved-green-800/75 hover:bg-ved-cream-200 hover:text-ved-green-900'
+              }`}
+            >
+              {menu.label}
+              <Chevron open={open} />
+            </button>
+            {open && (
+              <div id={`nav-menu-${menu.id}`} className="absolute left-1/2 top-full z-50 -translate-x-1/2 pt-2">
+                <ul
+                  className={`grid gap-0.5 rounded-2xl border border-ved-green-900/10 bg-white p-2 shadow-[0_18px_40px_-12px_rgba(11,79,69,0.25)] ${
+                    menu.wide ? 'w-[28rem] grid-cols-2' : 'w-60'
+                  }`}
+                >
+                  {menu.items.map((item) => (
+                    <li key={item.label}>
+                      <Link
+                        href={item.href}
+                        aria-current={item.href === pathname ? 'page' : undefined}
+                        onClick={() => setOpenId(null)}
+                        className={`${subLinkClass} ${item.href === pathname ? 'font-semibold text-ved-green-700' : ''}`}
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {extras.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
+            isActive(pathname, item.href)
+              ? 'bg-ved-green-50 font-semibold text-ved-green-700'
+              : 'text-ved-green-800/75 hover:bg-ved-cream-200 hover:text-ved-green-900'
+          }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Mobile accordion: the section holding the current page starts expanded. */
+function MobileNav({
+  menus,
+  extras,
   pathname,
   onNavigate,
 }: {
-  links: readonly { href: string; label: string }[];
+  menus: readonly NavMenu[];
+  extras: NavItem[];
   pathname: string;
-  onNavigate?: () => void;
+  onNavigate: () => void;
 }) {
+  const [expanded, setExpanded] = useState<string | null>(() => menus.find((menu) => menuIsActive(pathname, menu))?.id ?? null);
+
   return (
-    <>
-      {links.map((link) => {
-        const active = isActive(pathname, link.href);
+    <nav aria-label="Main" className="flex flex-col gap-1">
+      {menus.map((menu) => {
+        const open = expanded === menu.id;
         return (
-          <Link
-            key={`${link.href}-${link.label}`}
-            href={link.href}
-            onClick={onNavigate}
-            className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm transition ${
-              active
-                ? 'bg-ved-green-50 font-semibold text-ved-green-700'
-                : 'text-ved-green-800/75 hover:bg-ved-cream-200 hover:text-ved-green-900'
-            }`}
-          >
-            {link.label}
-          </Link>
+          <div key={menu.id} className="rounded-xl">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={`mobile-menu-${menu.id}`}
+              onClick={() => setExpanded(open ? null : menu.id)}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                open || menuIsActive(pathname, menu) ? 'bg-ved-green-50 text-ved-green-700' : 'text-ved-green-900 hover:bg-ved-cream-100'
+              }`}
+            >
+              {menu.label}
+              <Chevron open={open} />
+            </button>
+            {open && (
+              <ul id={`mobile-menu-${menu.id}`} className="mb-1 ml-3 mt-1 grid gap-0.5 border-l border-ved-gold-400/40 pl-2">
+                {menu.items.map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      aria-current={item.href === pathname ? 'page' : undefined}
+                      onClick={onNavigate}
+                      className={`${subLinkClass} ${item.href === pathname ? 'font-semibold text-ved-green-700' : ''}`}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         );
       })}
-    </>
+      {extras.map((item) => (
+        <Link key={item.href} href={item.href} onClick={onNavigate} className="rounded-xl px-3 py-2.5 text-sm font-semibold text-ved-green-900 hover:bg-ved-cream-100">
+          {item.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -221,8 +446,7 @@ function NavBar({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const links = [
-    ...MAIN_NAV,
+  const extras: NavItem[] = [
     ...(!guest && profile?.astrologerId ? [{ href: '/astrologer', label: 'My console' }] : []),
     ...(!guest && profile?.role === 'ADMIN' ? [{ href: '/admin', label: 'Admin' }] : []),
   ];
@@ -248,9 +472,7 @@ function NavBar({
           <BrandLogo className="h-6 w-auto sm:h-7" />
         </Link>
 
-        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
-          <NavLinkList links={links} pathname={pathname} />
-        </nav>
+        <DesktopNav menus={NAV_MENUS} extras={extras} pathname={pathname} />
 
         <div className="ml-auto flex items-center gap-2">
           <Link
@@ -310,10 +532,8 @@ function NavBar({
       </div>
 
       {menuOpen && (
-        <div className="border-t border-ved-green-900/10 bg-white px-4 py-3 lg:hidden">
-          <nav className="flex flex-col gap-1">
-            <NavLinkList links={links} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
-          </nav>
+        <div className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-ved-green-900/10 bg-white px-4 py-3 lg:hidden">
+          <MobileNav menus={NAV_MENUS} extras={extras} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
         </div>
       )}
     </header>

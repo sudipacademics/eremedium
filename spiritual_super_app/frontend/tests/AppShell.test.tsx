@@ -135,6 +135,66 @@ describe('the header logo', () => {
   });
 });
 
+describe('the main menu', () => {
+  it('opens a sub menu on click with every sub page, and closes on Escape', async () => {
+    pathname = '/';
+    render(<AppShell><div>marketing home</div></AppShell>);
+    await waitFor(() => expect(screen.getByText('marketing home')).toBeInTheDocument());
+
+    const astrology = screen.getByRole('button', { name: 'Astrology' });
+    fireEvent.click(astrology);
+    expect(astrology).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(astrology.getAttribute('aria-controls')!)!;
+    const links = Array.from(panel.querySelectorAll('a')).map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links).toEqual([
+      ['Consult Astrologer', '/astrologers'],
+      ['AI Astrology', '/ai'],
+      ['Kundali', '/kundali'],
+      ['Horoscope', '/horoscope'],
+      ['Gochar / Transit', '/gochar'],
+      ['Birth Chart Analysis', '/kundali'],
+      ['Match Making', '/match'],
+      ['Muhurat', '/panchang'],
+      ['Remedies', '/pujas'],
+      ['Panchang', '/panchang'],
+    ]);
+
+    fireEvent.keyDown(astrology, { key: 'Escape' });
+    expect(astrology).toHaveAttribute('aria-expanded', 'false');
+    expect(astrology).toHaveFocus();
+  });
+
+  it('opens on hover and switches between menus', async () => {
+    pathname = '/';
+    render(<AppShell><div>marketing home</div></AppShell>);
+    await waitFor(() => expect(screen.getByText('marketing home')).toBeInTheDocument());
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Vedsutra Shop' }).parentElement!);
+    expect(screen.getByRole('link', { name: 'Crystals' })).toHaveAttribute('href', '/ayurveda?category=crystal');
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Numerology' }).parentElement!);
+    expect(screen.queryByRole('link', { name: 'Crystals' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Consult Numerologist' })).toHaveAttribute('href', '/numerology#consult');
+  });
+
+  it('marks the section of the current page and expands it in the mobile menu', async () => {
+    pathname = '/festivals';
+    render(<AppShell><SocketPage /></AppShell>);
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Vedic Services' })).toHaveClass('font-semibold');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const vedic = screen.getAllByRole('button', { name: 'Vedic Services' }).at(-1)!;
+    expect(vedic).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: 'Festivals' })).toHaveAttribute('aria-current', 'page');
+
+    const shop = screen.getAllByRole('button', { name: 'Vedsutra Shop' }).at(-1)!;
+    fireEvent.click(shop);
+    expect(shop).toHaveAttribute('aria-expanded', 'true');
+    expect(vedic).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('link', { name: 'Rudraksha' })).toHaveAttribute('href', '/ayurveda?category=rudraksha');
+  });
+});
+
 describe('a half-broken session', () => {
   /**
    * session.profile returns null when the stored JSON is corrupt, while the token survives. Guarding
@@ -177,9 +237,9 @@ describe('a signed-in user', () => {
 
     render(<AppShell><SocketPage /></AppShell>);
 
-    await waitFor(() => expect(screen.getAllByText('Astrology').length).toBeGreaterThan(0));
-    for (const label of ['Panchang', 'E-Puja', 'Temple', 'Ayurveda', 'Shop', 'Consult Experts']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Astrology' })).toBeInTheDocument());
+    for (const label of ['Vedic Services', 'Numerology', 'Ayurveda & Wellness', 'Vedsutra Shop']) {
+      expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-expanded', 'false');
     }
     expect(screen.queryByRole('link', { name: 'Login / Sign Up' })).not.toBeInTheDocument();
 

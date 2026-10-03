@@ -616,7 +616,7 @@ export function NumerologyPage() {
       <GuidesCarousel cards={guides} />
 
       {/* Expert CTA */}
-      <section className="mx-auto max-w-7xl px-4 pb-14">
+      <section id="consult" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-14">
         <div className="grid overflow-hidden rounded-3xl bg-gradient-to-r from-[#F6EAD2] via-[#FBF3E3] to-[#F7EBD5] shadow-sm ring-1 ring-ved-gold-400/25 md:grid-cols-[0.9fr_1.3fr_1fr]">
           <div className="relative min-h-[14rem]">
             <Image src="/numerology/expert.webp" alt="" fill className="object-cover object-[65%_20%]" sizes="(min-width: 768px) 28vw, 100vw" />

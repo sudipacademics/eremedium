@@ -325,18 +325,20 @@ export function HomePage() {
         </div>
       </section>
 
-      <ProductCarousel
-        title="Featured Ayurvedic Products"
-        category="AYURVEDA"
-        products={ayurveda ?? []}
-        loading={ayurveda === null}
-      />
-      <ProductCarousel
-        title="Featured Crystals"
-        category="CRYSTAL"
-        products={crystals ?? []}
-        loading={crystals === null}
-      />
+      <div id="featured-products" className="scroll-mt-20">
+        <ProductCarousel
+          title="Featured Ayurvedic Products"
+          category="AYURVEDA"
+          products={ayurveda ?? []}
+          loading={ayurveda === null}
+        />
+        <ProductCarousel
+          title="Featured Crystals"
+          category="CRYSTAL"
+          products={crystals ?? []}
+          loading={crystals === null}
+        />
+      </div>
 
       <AstrologerCarousel />
 
