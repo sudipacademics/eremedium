@@ -16,6 +16,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { UpcomingFestivalsCard } from '@/components/festivals/UpcomingFestivalsCard';
 import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
 import { HeroSlider } from '@/components/home/HeroSlider';
+import { JoinUsBanner } from '@/components/home/JoinUsBanner';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
 import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
 
@@ -429,6 +430,8 @@ export function HomePage() {
           ))}
         </div>
       </section>
+
+      <JoinUsBanner />
 
       {/* Newsletter */}
       <section className="border-t border-ved-green-900/5 bg-[#F1EDE4]">
