@@ -280,23 +280,23 @@ export default function AdminHeroPage() {
           <form onSubmit={onSubmit} className="card space-y-4">
             <h2 className="text-lg font-semibold">{editing === 'new' ? 'New slide' : 'Edit slide'}</h2>
             <label className="block">
-              <span className="label">Small heading (optional)</span>
+              <span className="label">Card label (optional) — small gold text above the caption</span>
               <input className="input" value={form.eyebrow} maxLength={120} onChange={(e) => setForm((f) => ({ ...f, eyebrow: e.target.value }))} />
             </label>
             <label className="block">
-              <span className="label">Title — wrap words in *asterisks* to show them in gold</span>
+              <span className="label">Card caption — wrap words in *asterisks* to show them in gold</span>
               <input
                 className="input"
                 required
                 minLength={2}
                 maxLength={160}
                 value={form.title}
-                placeholder="Your Life, Guided by *Vedic Wisdom*"
+                placeholder="Aligned with the Stars, *Rooted in Nature*"
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
             </label>
             <label className="block">
-              <span className="label">Description (optional)</span>
+              <span className="label">Image description for screen readers (optional)</span>
               <textarea
                 className="input min-h-[4.5rem]"
                 maxLength={400}

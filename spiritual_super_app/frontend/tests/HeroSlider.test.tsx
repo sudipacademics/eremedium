@@ -52,4 +52,48 @@ describe('HeroSlider', () => {
     fireEvent.click(screen.getByLabelText('Show slide 1'));
     expect(currentSlide()).toHaveTextContent('First slide');
   });
+
+  const three = () => [slide('a', 'Connect with *Divine Energy*'), slide('b', 'Aligned with the Stars'), slide('c', 'Natural Remedies')];
+
+  it('keeps the hero heading fixed while the cards change', () => {
+    render(<HeroSlider slides={three()} promoQuote="Quote" />);
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent('Your Life, Guided by Vedic Wisdom');
+
+    fireEvent.click(screen.getByLabelText('Next slide'));
+    expect(currentSlide()).toHaveTextContent('Aligned with the Stars');
+    expect(screen.getByRole('heading', { level: 1 })).toBe(heading);
+    expect(screen.getAllByRole('heading')).toHaveLength(1);
+  });
+
+  it('stacks the neighbours behind the active card and brings a clicked one to the front', () => {
+    render(<HeroSlider slides={three()} promoQuote="Quote" />);
+    const cards = screen.getAllByRole('group', { hidden: true });
+    const z = (el: HTMLElement) => Number(el.style.zIndex);
+    expect(z(cards[0]!)).toBeGreaterThan(z(cards[1]!));
+    expect(z(cards[1]!)).toBe(z(cards[2]!));
+    expect(cards[2]!.style.transform).toContain('rotateY(18deg)');
+    expect(cards[1]!.style.transform).toContain('rotateY(-18deg)');
+
+    fireEvent.click(cards[2]!);
+    expect(currentSlide()).toHaveTextContent('Natural Remedies');
+  });
+
+  it('moves with the keyboard arrows and with a horizontal swipe, ignoring vertical scrolls', () => {
+    render(<HeroSlider slides={three()} promoQuote="Quote" />);
+    const next = screen.getByLabelText('Next slide');
+    fireEvent.keyDown(next, { key: 'ArrowLeft' });
+    expect(currentSlide()).toHaveTextContent('Natural Remedies');
+    fireEvent.keyDown(next, { key: 'ArrowRight' });
+    expect(currentSlide()).toHaveTextContent('Connect with Divine Energy');
+
+    const stage = currentSlide().parentElement!;
+    fireEvent.pointerDown(stage, { clientX: 300, clientY: 100 });
+    fireEvent.pointerUp(stage, { clientX: 200, clientY: 110 });
+    expect(currentSlide()).toHaveTextContent('Aligned with the Stars');
+
+    fireEvent.pointerDown(stage, { clientX: 200, clientY: 100 });
+    fireEvent.pointerUp(stage, { clientX: 150, clientY: 260 });
+    expect(currentSlide()).toHaveTextContent('Aligned with the Stars');
+  });
 });
