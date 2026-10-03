@@ -106,7 +106,7 @@ function mockApi(admin: AdminMe, data: AdminDashboard) {
 
 describe('admin dashboard', () => {
   beforeEach(() => {
-    session.save('jwt', { id: 'u1', phone: '+919800000001', name: 'Anita Rao', role: 'ADMIN', astrologerId: null });
+    session.save('jwt', { userId: 'u1', phone: '+919800000001', name: 'Anita Rao', role: 'ADMIN', astrologerId: null });
   });
 
   afterEach(() => {

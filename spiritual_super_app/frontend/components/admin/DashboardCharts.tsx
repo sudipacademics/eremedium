@@ -39,7 +39,7 @@ export function LineChart({
   labels,
   series,
   format,
-  height = 210,
+  height = 250,
 }: {
   labels: string[];
   series: LineSeries[];
@@ -48,8 +48,8 @@ export function LineChart({
 }) {
   const gradientId = useId();
   const [hover, setHover] = useState<number | null>(null);
-  const width = 640;
-  const pad = { top: 12, right: 12, bottom: 26, left: 52 };
+  const width = 440;
+  const pad = { top: 12, right: 10, bottom: 26, left: 48 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const max = niceMax(Math.max(0, ...series.flatMap((s) => s.values)));

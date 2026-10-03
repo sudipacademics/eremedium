@@ -152,15 +152,16 @@ function WelcomeBanner({ name, periodLabel }: { name: string; periodLabel: strin
       <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="font-display text-3xl font-semibold sm:text-4xl">
-            Welcome Back, <span className="text-ved-gold-300">{name}</span> <span aria-hidden>👋</span>
+            Welcome Back, <span className="text-[#e3c878]">{name}</span> <span aria-hidden>👋</span>
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-emerald-50/75">
+          <p className="mt-2 max-w-xl text-sm text-[#d5ebe3]/80">
             Here’s what’s happening across Vedsutra — {periodLabel.toLowerCase()} at a glance.
           </p>
         </div>
         <div className="flex items-center gap-5">
-          <LotusMark className="hidden h-20 w-20 text-ved-gold-300 drop-shadow-[0_0_18px_rgba(201,166,74,0.45)] sm:block" />
-          <div className="border-l border-ved-gold-300/30 pl-5 font-display text-lg leading-snug text-ved-gold-200">
+          {/* Literal colours: .admin-light remaps the ved-gold-200/300 utilities to a dark gold. */}
+          <LotusMark className="hidden h-20 w-20 text-[#dcc06c] drop-shadow-[0_0_18px_rgba(201,166,74,0.45)] sm:block" />
+          <div className="border-l border-[#dcc06c]/30 pl-5 font-display text-lg leading-snug text-[#ead7a0]">
             <p>Ancient Wisdom</p>
             <p>Modern Technology</p>
             <p>A Better Tomorrow</p>
@@ -401,20 +402,20 @@ function Dashboard({ period }: { period: DashboardPeriod }) {
 
         {data.serviceRevenue && (
           <Panel title="Service Wise Revenue" className="xl:col-span-4">
-            <div className="flex flex-col items-center gap-5 sm:flex-row xl:flex-col 2xl:flex-row">
-              <Donut slices={serviceSlices}>
+            <div className="flex flex-col items-center gap-5 sm:flex-row xl:flex-col">
+              <Donut slices={serviceSlices} size={160}>
                 <div>
                   <p className="text-[11px] text-ved-green-800/55">Total</p>
                   <p className="font-display text-xl font-semibold text-ved-green-900">{formatInrCompact(data.serviceRevenue.total)}</p>
                 </div>
               </Donut>
-              <ul className="w-full space-y-2.5 text-sm">
+              <ul className="w-full min-w-0 flex-1 space-y-2.5 text-sm">
                 {data.serviceRevenue.items.map((item) => (
                   <li key={item.key} className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: SERVICE_COLORS[item.key] ?? '#64748b' }} />
                     <span className="min-w-0 flex-1 truncate text-ved-green-800">{item.label}</span>
                     <span className="tabular font-semibold text-ved-green-900">{formatInrCompact(item.amount)}</span>
-                    <span className="w-12 text-right tabular text-xs text-ved-green-800/55">{item.pct.toFixed(1)}%</span>
+                    <span className="w-10 shrink-0 text-right tabular text-[11px] text-ved-green-800/55">{item.pct.toFixed(0)}%</span>
                   </li>
                 ))}
               </ul>
@@ -513,7 +514,7 @@ function Dashboard({ period }: { period: DashboardPeriod }) {
                 <Empty>No applications yet.</Empty>
               ) : (
                 <div className="-mx-5 overflow-x-auto">
-                  <table className="w-full min-w-[30rem] text-left text-sm">
+                  <table className="w-full min-w-[34rem] text-left text-sm">
                     <thead>
                       <tr className="border-b border-ved-green-900/[0.07] text-[11px] uppercase tracking-wider text-ved-green-800/50">
                         <th className="px-5 pb-2 font-semibold">Name</th>
@@ -534,9 +535,9 @@ function Dashboard({ period }: { period: DashboardPeriod }) {
                           <td className="py-2.5 text-ved-green-800/75">{row.categoryLabel}</td>
                           <td className="py-2.5 text-ved-green-800/75">{row.city}</td>
                           <td className="py-2.5">
-                            <span className={`pill ${STATUS_TONE[row.status]}`}>{row.statusLabel}</span>
+                            <span className={`pill whitespace-nowrap ${STATUS_TONE[row.status]}`}>{row.statusLabel}</span>
                           </td>
-                          <td className="px-5 py-2.5 text-right text-xs text-ved-green-800/55">{timeAgo(row.createdAt)}</td>
+                          <td className="whitespace-nowrap px-5 py-2.5 text-right text-xs text-ved-green-800/55">{timeAgo(row.createdAt)}</td>
                         </tr>
                       ))}
                     </tbody>
