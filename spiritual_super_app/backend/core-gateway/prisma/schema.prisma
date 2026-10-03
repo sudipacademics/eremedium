@@ -613,6 +613,21 @@ model FooterSettings {
   @@map("footer_settings")
 }
 
+/// Singleton (id "default") figures for the homepage stat cards.
+model HomeStats {
+  id                String   @id @db.VarChar(32)
+  happyUsers        Int      @map("happy_users")
+  verifiedExperts   Int      @map("verified_experts")
+  pujasPerformed    Int      @map("pujas_performed")
+  authenticProducts Int      @map("authentic_products")
+  /// Out of 5, one decimal place.
+  userRating        Decimal  @map("user_rating") @db.Decimal(2, 1)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy         String?  @map("updated_by") @db.Uuid
+
+  @@map("home_stats")
+}
+
 model Article {
   id           String    @id @default(uuid()) @db.Uuid
   slug         String    @unique @db.VarChar(120)

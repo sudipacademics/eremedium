@@ -688,6 +688,16 @@ export interface FooterSettings {
   updatedAt: string | null;
 }
 
+export interface HomeStats {
+  happyUsers: number;
+  verifiedExperts: number;
+  pujasPerformed: number;
+  authenticProducts: number;
+  /** Out of 5, one decimal place. */
+  userRating: number;
+  updatedAt: string | null;
+}
+
 export interface CmsArticle {
   id: string;
   slug: string;

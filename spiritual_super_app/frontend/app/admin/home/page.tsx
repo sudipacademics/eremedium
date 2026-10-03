@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { AdminGate } from '@/components/admin/AdminGate';
+import { HomeStatsForm } from '@/components/admin/HomeStatsForm';
 import { api, type SiteContent } from '@/lib/api';
 
 export default function AdminHomePage() {
@@ -93,6 +94,9 @@ export default function AdminHomePage() {
           {busy ? 'Saving…' : 'Save homepage'}
         </button>
       </form>
+      <div className="mt-6">
+        <HomeStatsForm />
+      </div>
     </AdminGate>
   );
 }

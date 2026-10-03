@@ -11,6 +11,8 @@ import { ContentError } from '../services/content-security.js';
 import { ContentService, type ArticleInput, type SiteContentInput } from '../services/content.service.js';
 import { FooterService, type FooterSettingsInput } from '../services/footer.service.js';
 import { HeroService, type HeroSlideInput } from '../services/hero.service.js';
+import { homeStatsBody } from '../services/home-stats-rules.js';
+import { HomeStatsService } from '../services/home-stats.service.js';
 import { NumerologyService } from '../services/numerology.service.js';
 import { ReviewService, type ReviewVideoInput } from '../services/review.service.js';
 
@@ -172,6 +174,11 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
     return FooterService.get();
   });
 
+  app.get('/home-stats', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=60');
+    return HomeStatsService.get();
+  });
+
   app.get('/products', async (request, reply) => {
     const { category } = productsQuery.parse(request.query);
     reply.header('Cache-Control', 'public, max-age=60');
@@ -260,6 +267,11 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
     const claims = requireUser(request);
     const body = footerBody.parse(request.body);
     return FooterService.update(toFooterInput(body), claims.sub);
+  });
+
+  app.put('/home-stats', async (request) => {
+    const claims = requireUser(request);
+    return HomeStatsService.update(homeStatsBody.parse(request.body), claims.sub);
   });
 
   app.get('/articles', async () => ({
