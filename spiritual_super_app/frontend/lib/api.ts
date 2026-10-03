@@ -290,6 +290,9 @@ export interface ReviewVideo {
   youtubeId: string;
   title: string;
   description: string | null;
+  featured: boolean;
+  /** Set when an admin uploaded a custom thumbnail; null means YouTube's own. */
+  thumbnailVersion: number | null;
 }
 
 export interface AdminReviewVideo extends ReviewVideo {
@@ -299,8 +302,42 @@ export interface AdminReviewVideo extends ReviewVideo {
   updatedAt: string;
 }
 
+/** Written review card in the homepage "Reviews" carousel. */
+export interface Testimonial {
+  id: string;
+  name: string;
+  location: string | null;
+  /** 1–5 stars. */
+  rating: number;
+  body: string;
+  featured: boolean;
+  photoVersion: number | null;
+}
+
+export interface AdminTestimonial extends Testimonial {
+  sortOrder: number;
+  active: boolean;
+  updatedAt: string;
+}
+
 export function youtubeThumbnailUrl(youtubeId: string): string {
   return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+}
+
+export function reviewThumbnailUrl(video: Pick<ReviewVideo, 'id' | 'youtubeId' | 'thumbnailVersion'>): string {
+  return video.thumbnailVersion !== null
+    ? `/api/gw/content/review-videos/${video.id}/thumbnail?v=${video.thumbnailVersion}`
+    : youtubeThumbnailUrl(video.youtubeId);
+}
+
+export function testimonialPhotoUrl(testimonial: Pick<Testimonial, 'id' | 'photoVersion'>): string | null {
+  return testimonial.photoVersion === null
+    ? null
+    : `/api/gw/content/testimonials/${testimonial.id}/photo?v=${testimonial.photoVersion}`;
+}
+
+export function youtubeWatchUrl(youtubeId: string): string {
+  return `https://www.youtube.com/watch?v=${youtubeId}`;
 }
 
 /** Privacy-enhanced embed; loaded only after the visitor presses play. */

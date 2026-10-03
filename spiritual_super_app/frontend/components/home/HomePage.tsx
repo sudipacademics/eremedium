@@ -19,7 +19,7 @@ import { HeroSlider } from '@/components/home/HeroSlider';
 import { JoinUsBanner } from '@/components/home/JoinUsBanner';
 import { NewsletterSection } from '@/components/home/NewsletterSection';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
-import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
+import { ReviewsSection } from '@/components/home/ReviewsSection';
 import { StatsSection } from '@/components/home/StatsSection';
 
 const CATEGORIES = [
@@ -444,7 +444,7 @@ export function HomePage() {
 
       <NewsletterSection />
 
-      <ReviewsCarousel />
+      <ReviewsSection />
 
       <SiteFooter />
     </div>

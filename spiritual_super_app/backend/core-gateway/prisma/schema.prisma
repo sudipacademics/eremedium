@@ -559,12 +559,39 @@ model ReviewVideo {
   description String?  @db.VarChar(400)
   sortOrder   Int      @default(0) @map("sort_order")
   active      Boolean  @default(true)
+  /// Featured videos lead the carousel, ahead of the sort order.
+  featured    Boolean  @default(false)
+  /// Admin-uploaded thumbnail as a data URL; replaces YouTube's own thumbnail when set.
+  thumbnailData      String?   @map("thumbnail_data") @db.Text
+  thumbnailUpdatedAt DateTime? @map("thumbnail_updated_at") @db.Timestamptz(3)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedBy   String?  @map("updated_by") @db.Uuid
 
   @@index([active, sortOrder])
   @@map("review_videos")
+}
+
+/// Written review cards beside the video in the homepage "Reviews" carousel.
+model Testimonial {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @db.VarChar(80)
+  location       String?   @db.VarChar(120)
+  /// 1–5 stars.
+  rating         Int       @default(5) @db.SmallInt
+  body           String    @db.VarChar(600)
+  /// Square reviewer photo as a data URL.
+  photoData      String?   @map("photo_data") @db.Text
+  photoUpdatedAt DateTime? @map("photo_updated_at") @db.Timestamptz(3)
+  sortOrder      Int       @default(0) @map("sort_order")
+  active         Boolean   @default(true)
+  featured       Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy      String?   @map("updated_by") @db.Uuid
+
+  @@index([active, sortOrder])
+  @@map("testimonials")
 }
 
 /// A report produced by the free calculator on /numerology, kept as a lead for admins.

@@ -16,6 +16,7 @@ import { HomeStatsService } from '../services/home-stats.service.js';
 import { NewsletterService, newsletterBody } from '../services/newsletter.service.js';
 import { NumerologyService } from '../services/numerology.service.js';
 import { ReviewService, type ReviewVideoInput } from '../services/review.service.js';
+import { TestimonialService, type TestimonialInput } from '../services/testimonial.service.js';
 
 const footerLink = z.string().max(500).nullable().optional();
 const footerBody = z
@@ -89,10 +90,28 @@ const reviewVideoFields = {
   title: z.string().min(2).max(160),
   description: z.string().max(400).nullable().optional(),
   active: z.boolean().optional(),
+  featured: z.boolean().optional(),
+  /** Size and format are checked by the service. */
+  thumbnailData: z.string().nullable().optional(),
 };
 const reviewVideoBody = z.object(reviewVideoFields).strict();
 const reviewVideoPatch = z
   .object({ ...reviewVideoFields, url: reviewVideoFields.url.optional(), title: reviewVideoFields.title.optional() })
+  .strict();
+
+const testimonialFields = {
+  name: z.string().min(2).max(80),
+  location: z.string().max(120).nullable().optional(),
+  rating: z.number().int().min(1).max(5).optional(),
+  body: z.string().min(10).max(600),
+  /** Size and format are checked by the service. */
+  photoData: z.string().nullable().optional(),
+  active: z.boolean().optional(),
+  featured: z.boolean().optional(),
+};
+const testimonialBody = z.object(testimonialFields).strict();
+const testimonialPatch = z
+  .object({ ...testimonialFields, name: testimonialFields.name.optional(), body: testimonialFields.body.optional() })
   .strict();
 
 const numerologyReportBody = z
@@ -201,6 +220,26 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
   app.get('/review-videos', async (_request, reply) => {
     reply.header('Cache-Control', 'public, max-age=60');
     return { videos: await ReviewService.listLive() };
+  });
+
+  app.get('/reviews', async (_request, reply) => {
+    reply.header('Cache-Control', 'public, max-age=60');
+    const [videos, testimonials] = await Promise.all([ReviewService.listLive(), TestimonialService.listLive()]);
+    return { videos, testimonials };
+  });
+
+  app.get('/review-videos/:id/thumbnail', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const image = await ReviewService.thumbnail(id);
+    if (!image) throw new ContentError('No uploaded thumbnail', 404);
+    return reply.header('Content-Type', image.contentType).header('Cache-Control', 'public, max-age=86400').send(image.bytes);
+  });
+
+  app.get('/testimonials/:id/photo', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const photo = await TestimonialService.photo(id);
+    if (!photo) throw new ContentError('No photo', 404);
+    return reply.header('Content-Type', photo.contentType).header('Cache-Control', 'public, max-age=86400').send(photo.bytes);
   });
 
   app.get('/numerology', async (_request, reply) => {
@@ -367,6 +406,33 @@ export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/review-videos/:id', async (request, reply) => {
     const { id } = idParams.parse(request.params);
     await ReviewService.remove(id);
+    return reply.code(204).send();
+  });
+
+  app.get('/testimonials', async () => ({ testimonials: await TestimonialService.listAll() }));
+
+  app.post('/testimonials', async (request, reply) => {
+    const claims = requireUser(request);
+    const body = testimonialBody.parse(request.body);
+    const input = { ...definedOnly(body), name: body.name, body: body.body } as TestimonialInput & { name: string; body: string };
+    return reply.code(201).send(await TestimonialService.create(input, claims.sub));
+  });
+
+  app.put('/testimonials/order', async (request) => {
+    const { ids } = heroOrderBody.parse(request.body);
+    return { testimonials: await TestimonialService.reorder(ids) };
+  });
+
+  app.patch('/testimonials/:id', async (request) => {
+    const claims = requireUser(request);
+    const { id } = idParams.parse(request.params);
+    const body = testimonialPatch.parse(request.body);
+    return TestimonialService.update(id, definedOnly(body) as TestimonialInput, claims.sub);
+  });
+
+  app.delete('/testimonials/:id', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    await TestimonialService.remove(id);
     return reply.code(204).send();
   });
 
