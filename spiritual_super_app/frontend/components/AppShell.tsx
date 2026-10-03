@@ -532,6 +532,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname === '/numerology' ||
     pathname === '/horoscope' ||
     pathname === '/festivals' ||
+    pathname === '/profile' ||
     pathname.startsWith('/articles') ||
     INFO_PAGES.has(pathname);
 

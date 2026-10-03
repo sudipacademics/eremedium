@@ -797,6 +797,9 @@ export interface WalletTransaction {
   amount: string;
   type: string;
   referenceType: string | null;
+  /** Human label from GET wallet/transactions, e.g. "E-Puja booking" / "Mahalakshmi Puja". */
+  title?: string;
+  detail?: string | null;
   balanceAfter: string;
   createdAt: string;
 }

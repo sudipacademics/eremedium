@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { api, session, type WalletBalance, type WalletTransaction } from '@/lib/api';
+import { ProfileIcon, type ProfileIconName } from '@/components/profile/ProfileIcon';
+import { api, session, type WalletTransaction } from '@/lib/api';
 import { useSocketEvent } from '@/lib/socket';
 
 interface CreatedOrder {
@@ -19,12 +20,28 @@ declare global {
   }
 }
 
-const PRESETS = ['100', '250', '500', '1000'];
+const PRESETS = ['500', '1000', '2000', '5000', '10000'];
+const RECENT_ROWS = 6;
+const INR = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const INR_WHOLE = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
-const TYPE_STYLES: Record<string, string> = {
-  CREDIT: 'text-emerald-700',
-  DEBIT: 'text-rose-600',
-};
+export const inr = (value: string | number) => `₹${INR.format(Number(value))}`;
+
+/** en-IN abbreviates September as "Sept"; every other month is three letters. */
+const shortMonth = (text: string) => text.replace('Sept', 'Sep');
+
+export function formatDate(iso: string): string {
+  return shortMonth(new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
+}
+
+export function formatDateTime(iso: string): string {
+  return shortMonth(new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+}
+
+/** "+91 9000000000" for Indian numbers; other countries as stored. */
+export function formatPhone(phone: string): string {
+  return /^\+91\d{10}$/.test(phone) ? `+91 ${phone.slice(3)}` : phone;
+}
 
 function loadRazorpayScript(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -40,17 +57,27 @@ function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-function describeTransaction(transaction: WalletTransaction): string {
-  if (transaction.referenceType === 'CALL_SESSION') return 'Consultation minute';
-  if (transaction.referenceType === 'RECHARGE') return 'Wallet top-up';
-  return transaction.type;
+const KIND_STYLE: Record<string, { icon: ProfileIconName; tone: string }> = {
+  CALL_SESSION: { icon: 'consultation', tone: 'bg-amber-50 text-amber-600 ring-amber-100' },
+  RECHARGE: { icon: 'wallet', tone: 'bg-emerald-50 text-emerald-600 ring-emerald-100' },
+  PUJA_BOOKING: { icon: 'temple', tone: 'bg-rose-50 text-rose-500 ring-rose-100' },
+  AYURVEDA_ORDER: { icon: 'bag', tone: 'bg-pink-50 text-pink-500 ring-pink-100' },
+};
+
+function titleOf(transaction: WalletTransaction): string {
+  if (transaction.title) return transaction.title;
+  if (transaction.referenceType === 'CALL_SESSION') return 'Consultation payment';
+  if (transaction.referenceType === 'RECHARGE') return 'Wallet top up';
+  return transaction.type === 'CREDIT' ? 'Credit' : 'Debit';
 }
 
-/** Balance, top-up and recent transactions; lives in Profile → Wallet. */
-export function WalletPanel() {
-  const [wallet, setWallet] = useState<WalletBalance | null>(null);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [amount, setAmount] = useState('500');
+/** Balance with top-up, then the transaction history; the Wallet part of Profile. */
+export function WalletSection() {
+  const [balance, setBalance] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<WalletTransaction[] | null>(null);
+  const [amount, setAmount] = useState('2000');
+  const [custom, setCustom] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [paymentsEnabled, setPaymentsEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -58,12 +85,12 @@ export function WalletPanel() {
 
   const load = useCallback(() => {
     void api
-      .get<{ balance: string; currency: string; transactions: WalletTransaction[] }>('wallet/transactions?limit=25')
+      .get<{ balance: string; currency: string; transactions: WalletTransaction[] }>('wallet/transactions?limit=50')
       .then((result) => {
         setTransactions(result.transactions);
-        setWallet({ walletId: '', balance: result.balance, currency: result.currency });
+        setBalance(result.balance);
       })
-      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Failed to load'));
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Could not load your wallet'));
   }, []);
 
   useEffect(() => {
@@ -122,89 +149,156 @@ export function WalletPanel() {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="card border-ved-green-900/10 bg-ved-green-50">
-        <p className="text-xs uppercase tracking-wide text-ved-green-800/60">Wallet balance</p>
-        <p className="tabular mt-1 text-4xl font-semibold text-ved-green-900">₹{wallet?.balance ?? '—'}</p>
-        <p className="mt-1 text-sm text-ved-green-800/60">Consultations are debited a minute at a time while you are connected.</p>
-      </div>
+  const validAmount = Number(amount) > 0;
+  const rows = transactions ? (showAll ? transactions : transactions.slice(0, RECENT_ROWS)) : [];
 
-      <div className="card space-y-4">
-        <h3 className="font-semibold text-ved-green-900">Add money</h3>
+  return (
+    <>
+      <section id="wallet" aria-labelledby="wallet-heading" className="profile-card scroll-mt-24">
+        <h2 id="wallet-heading" className="profile-card-title">
+          Wallet
+        </h2>
+        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#F6EFE2] text-ved-gold-600 ring-1 ring-ved-gold-400/20">
+              <ProfileIcon name="wallet" className="h-7 w-7" />
+            </span>
+            <div>
+              <p className="text-sm text-ved-green-800/65">Wallet Balance</p>
+              <p className="tabular text-4xl font-bold tracking-tight text-ved-green-900">{balance === null ? '—' : inr(balance)}</p>
+              <p className="mt-0.5 text-xs text-ved-green-800/55">Use your wallet for consultations, e-puja, shop orders and more.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-ved-green-800 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ved-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || paymentsEnabled !== true || !validAmount}
+            onClick={() => void topUp()}
+          >
+            <ProfileIcon name="plus" className="h-5 w-5" />
+            {busy ? 'Opening payment…' : validAmount ? `Add ₹${INR_WHOLE.format(Number(amount))}` : 'Add Money'}
+          </button>
+        </div>
+
+        <p className="mt-5 text-xs font-medium text-ved-green-800/70">Quick Add Amount</p>
+        <div className="mt-2 flex flex-wrap gap-2.5">
+          {PRESETS.map((preset) => {
+            const active = !custom && amount === preset;
+            return (
+              <button
+                key={preset}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setCustom(false);
+                  setAmount(preset);
+                }}
+                className={`min-w-[5.5rem] rounded-full px-5 py-2.5 text-sm font-semibold tabular transition ${
+                  active ? 'bg-ved-green-700 text-white shadow-sm' : 'bg-[#F4EFE6] text-ved-green-900 hover:bg-[#EDE5D6]'
+                }`}
+              >
+                ₹{INR_WHOLE.format(Number(preset))}
+              </button>
+            );
+          })}
+          {custom ? (
+            <label className="flex items-center rounded-full bg-[#F4EFE6] px-4 ring-2 ring-ved-green-700">
+              <span className="text-sm font-semibold text-ved-green-900">₹</span>
+              <span className="sr-only">Other amount</span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ''))}
+                className="w-24 bg-transparent py-2.5 pl-1 text-sm font-semibold tabular text-ved-green-900 outline-none"
+              />
+            </label>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setCustom(true);
+                setAmount('');
+              }}
+              className="rounded-full border border-dashed border-ved-green-900/20 px-5 py-2.5 text-sm font-medium text-ved-green-800/75 hover:bg-[#F4EFE6]"
+            >
+              Other
+            </button>
+          )}
+        </div>
 
         {paymentsEnabled === false && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Online top-ups are not available yet. Please check back soon.
-          </p>
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">Online top-ups are not available yet. Please check back soon.</p>
         )}
+        {notice && <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">{notice}</p>}
+        {error && <p className="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{error}</p>}
+      </section>
 
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => setAmount(preset)}
-              className={`btn ${
-                amount === preset
-                  ? 'bg-ved-green-600 text-white'
-                  : 'border border-ved-green-900/15 bg-ved-cream-200/80 text-ved-green-800 hover:bg-ved-green-100'
-              }`}
-            >
-              ₹{preset}
+      <section id="transactions" aria-labelledby="transactions-heading" className="profile-card scroll-mt-24">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="transactions-heading" className="profile-card-title">
+            Transaction History
+          </h2>
+          {transactions && transactions.length > RECENT_ROWS && (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="inline-flex items-center gap-1 text-sm font-semibold text-ved-green-900 hover:text-ved-green-600">
+              {showAll ? 'Show less' : 'View All'} <ProfileIcon name="arrowRight" className="h-4 w-4" />
             </button>
-          ))}
+          )}
         </div>
 
-        <div>
-          <label className="label" htmlFor="wallet-amount">
-            Or enter an amount
-          </label>
-          <input
-            id="wallet-amount"
-            className="input tabular"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ''))}
-          />
-        </div>
-
-        <button
-          type="button"
-          className="btn-primary w-full"
-          disabled={busy || paymentsEnabled !== true || Number(amount) <= 0}
-          onClick={() => void topUp()}
-        >
-          {busy ? 'Opening payment…' : `Add ₹${amount || '0'}`}
-        </button>
-
-        {notice && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
-        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-      </div>
-
-      <div className="card">
-        <h3 className="mb-3 font-semibold text-ved-green-900">Transactions</h3>
-        {transactions.length === 0 ? (
-          <p className="text-sm text-ved-green-800/60">No transactions yet.</p>
-        ) : (
-          <ul className="divide-y divide-ved-green-900/10">
-            {transactions.map((transaction) => (
-              <li key={transaction.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-ved-green-900">{describeTransaction(transaction)}</p>
-                  <p className="text-xs text-ved-green-800/50">{new Date(transaction.createdAt).toLocaleString('en-IN')}</p>
-                </div>
-                <div className="text-right">
-                  <p className={`tabular text-sm font-semibold ${TYPE_STYLES[transaction.type] ?? ''}`}>
-                    {transaction.type === 'DEBIT' ? '−' : '+'}₹{transaction.amount}
-                  </p>
-                  <p className="tabular text-xs text-ved-green-800/50">Balance ₹{transaction.balanceAfter}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {transactions === null && !error && <p className="mt-4 text-sm text-ved-green-800/60">Loading transactions…</p>}
+        {transactions !== null && transactions.length === 0 && (
+          <p className="mt-4 rounded-xl bg-ved-cream-100 px-4 py-3 text-sm text-ved-green-800/65">No transactions yet. Top-ups and payments will appear here.</p>
         )}
-      </div>
-    </div>
+
+        {rows.length > 0 && (
+          <div className="mt-4">
+            <div className="hidden grid-cols-[12.5rem_minmax(0,1fr)_5.5rem_7rem_7rem] gap-3 rounded-xl bg-[#FAF7F1] px-3 py-2.5 text-xs font-medium text-ved-green-800/65 md:grid">
+              <span>Date &amp; Time</span>
+              <span>Description</span>
+              <span>Type</span>
+              <span className="text-right">Amount</span>
+              <span className="text-right">Balance</span>
+            </div>
+            <ul className="divide-y divide-ved-green-900/[0.06]">
+              {rows.map((transaction) => {
+                const credit = transaction.type === 'CREDIT';
+                const style = KIND_STYLE[transaction.referenceType ?? ''] ?? { icon: credit ? 'refund' : 'wallet', tone: 'bg-slate-50 text-slate-500 ring-slate-100' };
+                return (
+                  <li
+                    key={transaction.id}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-1 py-3 md:grid-cols-[12.5rem_minmax(0,1fr)_5.5rem_7rem_7rem] md:px-3"
+                  >
+                    <span className="order-3 col-span-2 flex items-center gap-2 text-xs text-ved-green-800/60 md:order-none md:col-span-1 md:whitespace-nowrap md:text-sm md:text-ved-green-800/80">
+                      <ProfileIcon name="calendar" className="hidden h-4 w-4 text-sky-600 md:block" />
+                      {formatDateTime(transaction.createdAt)}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ring-1 ${style.tone}`}>
+                        <ProfileIcon name={style.icon} className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-ved-green-900">{titleOf(transaction)}</span>
+                        {transaction.detail && <span className="block truncate text-xs text-ved-green-800/55">{transaction.detail}</span>}
+                      </span>
+                    </span>
+                    <span className="hidden md:block">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${credit ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+                        {credit ? 'Credit' : 'Debit'}
+                      </span>
+                    </span>
+                    <span className={`text-right text-sm font-bold tabular ${credit ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {credit ? '+' : '−'}
+                      {inr(transaction.amount)}
+                    </span>
+                    <span className="hidden text-right text-sm tabular text-ved-green-900 md:block">{inr(transaction.balanceAfter)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </section>
+    </>
   );
 }

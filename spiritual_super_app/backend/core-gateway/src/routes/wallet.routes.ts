@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { authenticate, requireUser } from '../plugins/authenticate.js';
 import { prisma } from '../lib/prisma.js';
+import { describeTransactions } from '../services/wallet-describe.service.js';
 import { WalletService } from '../services/wallet.service.js';
 
 const historyQuerySchema = z.object({
@@ -56,15 +57,19 @@ export async function walletRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    const descriptions = await describeTransactions(claims.sub, rows);
+
     return {
       balance: wallet.balance.toFixed(2),
       currency: wallet.currency,
-      transactions: rows.map((row) => ({
+      transactions: rows.map((row, index) => ({
         id: row.id,
         amount: row.amount.toFixed(2),
         type: row.type,
         referenceType: row.referenceType,
         referenceId: row.referenceId,
+        title: descriptions[index]!.title,
+        detail: descriptions[index]!.detail,
         balanceAfter: row.balanceAfter.toFixed(2),
         createdAt: row.createdAt.toISOString(),
       })),
