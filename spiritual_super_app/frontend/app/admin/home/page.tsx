@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import { AdminGate } from '@/components/admin/AdminGate';
 import { HomeStatsForm } from '@/components/admin/HomeStatsForm';
+import { NewsletterSubscribers } from '@/components/admin/NewsletterSubscribers';
 import { api, type SiteContent } from '@/lib/api';
 
 export default function AdminHomePage() {
@@ -96,6 +97,9 @@ export default function AdminHomePage() {
       </form>
       <div className="mt-6">
         <HomeStatsForm />
+      </div>
+      <div className="mt-6">
+        <NewsletterSubscribers />
       </div>
     </AdminGate>
   );

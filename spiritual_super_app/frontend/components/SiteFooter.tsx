@@ -27,8 +27,8 @@ const LEGAL = [
   { href: '/data-protection', label: 'Data Protection Policy' },
 ] as const;
 
-function SocialIcon({ platform }: { platform: SocialPlatform }) {
-  const common = { viewBox: '0 0 24 24', className: 'h-4 w-4', 'aria-hidden': true } as const;
+export function SocialIcon({ platform, className = 'h-4 w-4' }: { platform: SocialPlatform; className?: string }) {
+  const common = { viewBox: '0 0 24 24', className, 'aria-hidden': true } as const;
   switch (platform) {
     case 'instagram':
       return (

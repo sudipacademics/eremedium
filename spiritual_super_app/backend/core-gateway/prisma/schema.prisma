@@ -628,6 +628,17 @@ model HomeStats {
   @@map("home_stats")
 }
 
+/// Homepage "Stay Connected" sign-ups.
+model NewsletterSubscriber {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Lower-cased, so the unique index de-duplicates regardless of case.
+  email     String   @unique @db.VarChar(254)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("newsletter_subscribers")
+}
+
 model Article {
   id           String    @id @default(uuid()) @db.Uuid
   slug         String    @unique @db.VarChar(120)

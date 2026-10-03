@@ -17,6 +17,7 @@ import { UpcomingFestivalsCard } from '@/components/festivals/UpcomingFestivalsC
 import { AstrologerCarousel } from '@/components/home/AstrologerCarousel';
 import { HeroSlider } from '@/components/home/HeroSlider';
 import { JoinUsBanner } from '@/components/home/JoinUsBanner';
+import { NewsletterSection } from '@/components/home/NewsletterSection';
 import { ProductCarousel } from '@/components/home/ProductCarousel';
 import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
 import { StatsSection } from '@/components/home/StatsSection';
@@ -441,33 +442,7 @@ export function HomePage() {
 
       <JoinUsBanner />
 
-      {/* Newsletter */}
-      <section className="border-t border-ved-green-900/5 bg-[#F1EDE4]">
-        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 py-12 md:flex-row md:items-center">
-          <div>
-            <h2 className="font-display text-2xl font-semibold text-ved-green-900">Stay Connected</h2>
-            <p className="mt-1 text-sm text-ved-green-800/65">
-              Muhurta tips, gochar notes, and shop drops — gently, in your inbox.
-            </p>
-          </div>
-          <form
-            className="flex w-full max-w-md overflow-hidden rounded-full border border-ved-green-900/10 bg-white"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            <input
-              type="email"
-              placeholder="Email address"
-              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm outline-none"
-            />
-            <button
-              type="submit"
-              className="m-1 rounded-full bg-ved-green-800 px-5 py-2 text-sm font-semibold text-white"
-            >
-              Subscribe
-            </button>
-          </form>
-        </div>
-      </section>
+      <NewsletterSection />
 
       <ReviewsCarousel />
 
