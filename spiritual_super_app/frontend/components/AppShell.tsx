@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { NotificationBell } from '@/components/NotificationBell';
 import { SESSION_EVENT, api, loginHref, session, type Profile, type WalletBalance } from '@/lib/api';
 import { isProtectedPath } from '@/lib/auth-gate';
 import { SocketProvider, useSocket, useSocketEvent } from '@/lib/socket';
@@ -503,6 +504,7 @@ function NavBar({
           {!guest && profile && (
             <>
               <WalletPill />
+              <NotificationBell />
               <ProfileMenu profile={profile} initials={initials} onSignOut={onSignOut} />
             </>
           )}

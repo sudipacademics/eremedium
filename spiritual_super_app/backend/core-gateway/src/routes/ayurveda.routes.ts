@@ -2,8 +2,9 @@ import { AyurvedaOrderStatus, Dosha, ProductCategory } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole } from '../auth/jwt.js';
-import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
+import { Permission } from '../auth/permissions.js';
+import { authenticateUnlessPublic, requireUser } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { AyurvedaService } from '../services/ayurveda.service.js';
 
 const productQuery = z.object({
@@ -14,7 +15,7 @@ const productQuery = z.object({
 const orderBody = z.object({
   productId: z.string().uuid(),
   /*
-   * No price field. Amount is always read from the catalog — the same rule as E-Puja.
+   * No price field. Amount is always read from the catalog â€” the same rule as E-Puja.
    */
   shippingName: z.string().min(2).max(160),
   shippingPhone: z.string().min(8).max(20),
@@ -69,14 +70,14 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(order);
   });
 
-  app.get('/admin/fulfilment', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+  app.get('/admin/fulfilment', { preHandler: requirePermission(Permission.OPERATIONS) }, async (_request, reply) => {
     const orders = await AyurvedaService.listPendingFulfilment();
     return reply.send({ orders });
   });
 
   app.post(
     '/admin/orders/:orderId/advance',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.OPERATIONS) },
     async (request, reply) => {
       const { orderId } = orderParams.parse(request.params);
       const body = advanceBody.parse(request.body);
@@ -118,12 +119,12 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
 
   const productParams = z.object({ productId: z.string().uuid() });
 
-  app.get('/admin/products', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+  app.get('/admin/products', { preHandler: requirePermission(Permission.CATALOG) }, async (_request, reply) => {
     const products = await AyurvedaService.listProductsAdmin();
     return reply.send({ products });
   });
 
-  app.post('/admin/products', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+  app.post('/admin/products', { preHandler: requirePermission(Permission.CATALOG) }, async (request, reply) => {
     const body = productBody.parse(request.body);
     const product = await AyurvedaService.createProduct({
       sku: body.sku,
@@ -141,7 +142,7 @@ export async function ayurvedaRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch(
     '/admin/products/:productId',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.CATALOG) },
     async (request, reply) => {
       const { productId } = productParams.parse(request.params);
       const body = productPatch.parse(request.body);

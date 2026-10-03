@@ -19,6 +19,6 @@ describe('JoinUsBanner', () => {
     }
     const roles = within(screen.getByRole('list', { name: 'Roles we are hiring for' }));
     expect(roles.getAllByRole('listitem')).toHaveLength(4);
-    expect(screen.getByRole('link', { name: /Join as an Expert/ })).toHaveAttribute('href', '/astrologer');
+    expect(screen.getByRole('link', { name: /Join as an Expert/ })).toHaveAttribute('href', '/join');
   });
 });

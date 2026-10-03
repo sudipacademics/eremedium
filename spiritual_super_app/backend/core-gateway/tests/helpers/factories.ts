@@ -1,4 +1,4 @@
-import { AstrologerStatus, CallSessionStatus } from '@prisma/client';
+import { AstrologerStatus, CallSessionStatus, StaffRole } from '@prisma/client';
 
 import { prisma } from '../../src/lib/prisma.js';
 
@@ -68,6 +68,11 @@ export async function seedCallSession(options: {
     select: { id: true, channelId: true },
   });
   return session;
+}
+
+/** Staff rights live in staff_members, so an ADMIN token alone no longer passes admin routes. */
+export async function seedStaff(userId: string, role: StaffRole = StaffRole.ADMIN): Promise<void> {
+  await prisma.staffMember.create({ data: { userId, role } });
 }
 
 export async function balanceOf(userId: string): Promise<string> {

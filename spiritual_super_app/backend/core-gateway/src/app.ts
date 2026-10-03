@@ -25,6 +25,10 @@ import { historyAdminRoutes } from './routes/history.routes.js';
 import { remedyRoutes } from './routes/remedy.routes.js';
 import { walletRoutes } from './routes/wallet.routes.js';
 import { websocketRoutes } from './routes/ws.routes.js';
+import { adminRoutes } from './routes/admin.routes.js';
+import { joinRequestAdminRoutes, joinRequestPublicRoutes } from './routes/join-request.routes.js';
+import { notificationRoutes } from './routes/notification.routes.js';
+import { describeStaffMutation, recordAudit } from './services/audit.service.js';
 import { hub } from './ws/hub.js';
 
 interface StatusCarrying {
@@ -64,6 +68,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await hub.initialise();
+
+  app.addHook('onResponse', async (request, reply) => {
+    if (!request.staff || request.auditHandled || reply.statusCode >= 400) return;
+    const entry = describeStaffMutation(request);
+    if (entry) await recordAudit(request, entry);
+  });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
@@ -132,6 +142,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(contentPublicRoutes, { prefix: '/api/v1/content' });
   await app.register(contentAdminRoutes, { prefix: '/api/v1/content/admin' });
   await app.register(historyAdminRoutes, { prefix: '/api/v1/admin' });
+  await app.register(adminRoutes, { prefix: '/api/v1/admin' });
+  await app.register(joinRequestAdminRoutes, { prefix: '/api/v1/admin/join-requests' });
+  await app.register(joinRequestPublicRoutes, { prefix: '/api/v1/join-requests' });
+  await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
   await app.register(websocketRoutes, { prefix: '/api/v1' });
 
   return app;

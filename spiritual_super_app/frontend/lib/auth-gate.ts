@@ -9,7 +9,7 @@ import { SESSION_EVENT, loginHref, session } from './api';
  * Account areas. Everything else is browsable by guests; pages ask for login only when the visitor
  * starts a transaction (see useAuthGate).
  */
-const PROTECTED_PREFIXES = ['/wallet', '/profile', '/call', '/astrologer', '/admin'] as const;
+const PROTECTED_PREFIXES = ['/wallet', '/profile', '/call', '/astrologer', '/admin', '/notifications'] as const;
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

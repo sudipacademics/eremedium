@@ -2,15 +2,16 @@ import { AstrologerStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole } from '../auth/jwt.js';
+import { Permission } from '../auth/permissions.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { money, prisma } from '../lib/prisma.js';
-import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
+import { authenticateUnlessPublic, requireUser } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { ASTROLOGER_PHOTO_PATTERN, cleanTags } from '../services/astrologer-directory.js';
 import { QueueService } from '../services/queue.service.js';
 
-/** A 320px square JPEG is roughly 25–40 KB; this rejects full-size photos. */
+/** A 320px square JPEG is roughly 25â€“40 KB; this rejects full-size photos. */
 const ASTROLOGER_PHOTO_MAX_CHARS = 200_000;
 
 export class AstrologerError extends Error {
@@ -22,11 +23,6 @@ export class AstrologerError extends Error {
     this.statusCode = statusCode;
   }
 }
-
-const applySchema = z.object({
-  displayName: z.string().min(2).max(160),
-  languages: z.array(z.string().min(2).max(40)).min(1).max(10),
-});
 
 const availabilitySchema = z.object({
   online: z.boolean(),
@@ -77,45 +73,12 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Self-service application. The rate is deliberately NOT caller-supplied: pricing is a platform
-   * decision, and letting an applicant name their own per-minute rate would let them set what users
-   * are charged. An admin adjusts it afterwards.
+   * Retired: becoming a provider now goes through the reviewed "Join as an Expert" application
+   * (/api/v1/join-requests), so nobody gets the provider role just by asking for it.
    */
-  app.post('/apply', async (request, reply) => {
-    const claims = requireUser(request);
-    const body = applySchema.parse(request.body);
-
-    const existing = await prisma.astrologer.findUnique({
-      where: { userId: claims.sub },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new AstrologerError('This account is already registered as an astrologer');
-    }
-
-    const created = await prisma.astrologer.create({
-      data: {
-        userId: claims.sub,
-        displayName: body.displayName,
-        languages: body.languages,
-        perMinuteRate: money(env.ASTROLOGER_DEFAULT_RATE),
-        // Starts OFFLINE: nobody becomes bookable just by applying.
-        status: AstrologerStatus.OFFLINE,
-      },
-      select: { id: true, displayName: true, perMinuteRate: true, status: true, commissionSplit: true },
-    });
-
-    logger.info({ userId: claims.sub, astrologerId: created.id }, 'Astrologer profile created');
-
-    return reply.code(201).send({
-      id: created.id,
-      displayName: created.displayName,
-      perMinuteRate: money(created.perMinuteRate).toFixed(2),
-      status: created.status,
-      note: 'Re-authenticate to receive a token carrying the ASTROLOGER role',
-    });
+  app.post('/apply', async () => {
+    throw new AstrologerError('Apply through the Join as an Expert form at /join; applications are reviewed by our team', 410);
   });
-
   /**
    * Go online / offline. Only the OFFLINE <-> IDLE transition is caller-controlled; BUSY and IN_CALL
    * are owned by the matching and call engines, and letting a client set them would corrupt the
@@ -196,11 +159,8 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Pricing changes are an admin action: they decide what every future user is charged. */
-  app.patch('/:astrologerId/pricing', async (request) => {
+  app.patch('/:astrologerId/pricing', { preHandler: requirePermission(Permission.PROVIDERS) }, async (request) => {
     const claims = requireUser(request);
-    if (claims.role !== AppRole.ADMIN) {
-      throw new AstrologerError('Admin role required', 403);
-    }
     const { astrologerId } = z.object({ astrologerId: z.string().uuid() }).parse(request.params);
     const body = rateSchema.parse(request.body);
     if (!body.perMinuteRate && !body.commissionSplit) {
@@ -230,7 +190,7 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Admin roster: every profile with contact phone for support. */
-  app.get('/admin/roster', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+  app.get('/admin/roster', { preHandler: requirePermission(Permission.PROVIDERS) }, async (_request, reply) => {
     const rows = await prisma.astrologer.findMany({
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -281,13 +241,13 @@ export async function astrologerRoutes(app: FastifyInstance): Promise<void> {
       .regex(ASTROLOGER_PHOTO_PATTERN, 'Photo must be a JPEG, PNG or WebP image')
       .nullable()
       .optional(),
-    /** Only OFFLINE ↔ online (IDLE). Never forces BUSY/IN_CALL. */
+    /** Only OFFLINE â†” online (IDLE). Never forces BUSY/IN_CALL. */
     online: z.boolean().optional(),
   });
 
   app.patch(
     '/admin/:astrologerId',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.PROVIDERS) },
     async (request, reply) => {
       const { astrologerId } = z.object({ astrologerId: z.string().uuid() }).parse(request.params);
       const body = adminProfileSchema.parse(request.body);

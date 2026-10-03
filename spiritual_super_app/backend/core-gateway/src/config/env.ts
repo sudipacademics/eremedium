@@ -164,6 +164,24 @@ const envSchema = z.object({
   GROQ_MODEL: z.string().min(1).default('llama-3.3-70b-versatile'),
   AI_PREDICT_MAX_TOKENS: z.coerce.number().int().min(256).max(4_096).default(1_200),
 
+  // --- Provider join requests -----------------------------------------------------------------
+  // Private directory (a Docker volume) for applicant photos and documents. Never served publicly;
+  // staff download files through an authenticated admin endpoint.
+  UPLOAD_DIR: z.string().min(1).default('/data/uploads'),
+
+  // --- Email (applicant notifications) ---------------------------------------------------------
+  // Optional: without SMTP_HOST, emails are written to the log instead of being sent.
+  SMTP_HOST: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // true for implicit TLS (port 465); false uses STARTTLS when the server offers it.
+  SMTP_SECURE: booleanFromEnv.default('false'),
+  SMTP_USER: optionalSecret(1),
+  SMTP_PASS: optionalSecret(1),
+  SMTP_FROM: z.string().min(3).default('Vedsutra <no-reply@vedsutra.in>'),
+
   // --- Festival calendar (Kalia Panjika) ------------------------------------------------------
   // Optional so the gateway boots without it; /api/v1/festivals answers 503 until the key is set.
   // Sent only as a server-side Authorization header, never to the browser.

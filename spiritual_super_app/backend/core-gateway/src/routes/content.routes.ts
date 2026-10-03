@@ -2,8 +2,9 @@ import { ProductCategory } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole } from '../auth/jwt.js';
-import { authenticate, requireRole, requireUser } from '../plugins/authenticate.js';
+import { Permission } from '../auth/permissions.js';
+import { authenticate, requireUser } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { AstrologerDirectoryService } from '../services/astrologer-directory.service.js';
 import { AyurvedaService } from '../services/ayurveda.service.js';
 import { ContentError } from '../services/content-security.js';
@@ -161,7 +162,7 @@ function toArticlePatch(body: z.infer<typeof articlePatch>): Partial<ArticleInpu
  * Public marketing content + ADMIN CMS.
  *
  * Public GETs have no auth so the homepage can load for anonymous visitors.
- * Mutations require ADMIN (phone allowlist via ADMIN_PHONES).
+ * Mutations require staff with the content.manage permission.
  */
 export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
   app.get('/home', async () => ContentService.getHome());
@@ -247,7 +248,7 @@ export async function contentPublicRoutes(app: FastifyInstance): Promise<void> {
 
 export async function contentAdminRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requireRole(AppRole.ADMIN));
+  app.addHook('preHandler', requirePermission(Permission.CONTENT));
 
   app.put('/home', async (request) => {
     const claims = requireUser(request);

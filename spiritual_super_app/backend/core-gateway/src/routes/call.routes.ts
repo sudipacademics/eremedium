@@ -3,8 +3,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { AppRole } from '../auth/jwt.js';
+import { Permission } from '../auth/permissions.js';
 import { money, prisma } from '../lib/prisma.js';
 import { authenticate, requireAstrologer, requireRole, requireUser } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { CallService } from '../services/call.service.js';
 import { LiveKitTokenService } from '../services/livekit.service.js';
 import { QueueService } from '../services/queue.service.js';
@@ -165,7 +167,7 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Support (admin) -----------------------------------------------------------------------
 
-  app.get('/admin/support', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+  app.get('/admin/support', { preHandler: requirePermission(Permission.SUPPORT) }, async (request, reply) => {
     const query = z
       .object({ limit: z.coerce.number().int().min(1).max(100).default(50) })
       .parse(request.query);
@@ -175,7 +177,7 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/admin/sessions/:callSessionId/end',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.SUPPORT) },
     async (request, reply) => {
       const { callSessionId } = sessionIdParams.parse(request.params);
       const body = z

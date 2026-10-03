@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, StaffRole } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -7,6 +7,7 @@ import { SessionRevocation } from '../auth/session-revocation.js';
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireUser } from '../plugins/authenticate.js';
+import { resolveStaffRole } from '../plugins/staff.js';
 import { OtpService } from '../services/otp.service.js';
 
 const phoneSchema = z
@@ -32,14 +33,14 @@ const verifyOtpSchema = z.object({
 });
 
 /**
- * ADMIN comes from an env allowlist rather than any endpoint, so admin rights cannot be granted over
- * the API even by another admin. Changing the list requires a deploy, which is the intended friction.
+ * ADMIN means "staff": a phone in the ADMIN_PHONES allowlist (implicit Super Admin) or an active row
+ * in staff_members, which only a Super Admin can create. What a staff member may do is decided per
+ * request from their stored role (see requirePermission), not from this token claim.
  */
-function resolveRole(phone: string, isAstrologer: boolean): AppRole {
-  if (env.ADMIN_PHONES.includes(phone)) {
-    return AppRole.ADMIN;
-  }
-  return isAstrologer ? AppRole.ASTROLOGER : AppRole.USER;
+async function resolveRole(userId: string, phone: string, isAstrologer: boolean): Promise<{ role: AppRole; staffRole: StaffRole | null }> {
+  const staffRole = await resolveStaffRole(userId, phone);
+  if (staffRole) return { role: AppRole.ADMIN, staffRole };
+  return { role: isAstrologer ? AppRole.ASTROLOGER : AppRole.USER, staffRole: null };
 }
 
 /**
@@ -105,7 +106,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           return { ...created, astrologer: null as { id: string } | null };
         }));
 
-      const role = resolveRole(user.phone, user.astrologer !== null);
+      const { role, staffRole } = await resolveRole(user.id, user.phone, user.astrologer !== null);
       const astrologerId = user.astrologer?.id ?? null;
 
       return reply.code(existing ? 200 : 201).send({
@@ -114,6 +115,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           name: user.name,
           phone: user.phone,
           role,
+          staffRole,
           astrologerId,
         },
         role,
@@ -137,7 +139,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!user) {
       return reply.code(404).send({ error: 'NOT_FOUND', message: 'User not found' });
     }
-    return reply.send(serializeProfile(user));
+    return reply.send(await serializeProfile(user));
   });
 
   const profilePatchSchema = z.object({
@@ -179,7 +181,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       select: profileSelect,
     });
 
-    return reply.send(serializeProfile(updated));
+    return reply.send(await serializeProfile(updated));
   });
 
   /**
@@ -236,12 +238,14 @@ const profileSelect = {
 
 type ProfileRow = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
 
-function serializeProfile(user: ProfileRow) {
+async function serializeProfile(user: ProfileRow) {
+  const { role, staffRole } = await resolveRole(user.id, user.phone, user.astrologer !== null);
   return {
     userId: user.id,
     name: user.name,
     phone: user.phone,
-    role: resolveRole(user.phone, user.astrologer !== null),
+    role,
+    staffRole,
     astrologerId: user.astrologer?.id ?? null,
     dob: user.dob?.toISOString() ?? null,
     birthPlace: user.birthPlace,

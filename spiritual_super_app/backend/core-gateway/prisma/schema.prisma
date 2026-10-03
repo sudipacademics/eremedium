@@ -64,6 +64,38 @@ enum Dosha {
   TRIDOSHIC
 }
 
+enum StaffRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  CONTENT_MANAGER
+  FINANCE_MANAGER
+  SUPPORT
+}
+
+enum ProviderCategory {
+  ASTROLOGER
+  NUMEROLOGIST
+  VASTU_EXPERT
+  AYURVEDA_EXPERT
+  PANDIT
+  SPIRITUAL_GUIDE
+  OTHER
+}
+
+enum JoinRequestStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  MORE_INFO_REQUESTED
+}
+
+enum JoinRequestFileKind {
+  PHOTO
+  DOCUMENT
+}
+
 model User {
   id                String    @id @default(uuid()) @db.Uuid
   phone             String    @unique @db.VarChar(20)
@@ -115,6 +147,9 @@ model User {
   pujaBookings      PujaBooking[]
   ayurvedicProfiles AyurvedicProfile[]
   ayurvedaOrders    AyurvedaOrder[]
+  staffMember       StaffMember?
+  notifications     Notification[]
+  joinRequests      ProviderJoinRequest[]
 
   @@map("users")
 }
@@ -227,6 +262,7 @@ model Astrologer {
   /** e.g. ["Vedic", "Numerology", "Tarot"] */
   expertise       String[]         @default([])
   experienceYears Int?             @map("experience_years") @db.SmallInt
+  category        ProviderCategory @default(ASTROLOGER)
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -236,6 +272,7 @@ model Astrologer {
   pujaReferals PujaBooking[]       @relation("PujaReferral")
 
   @@index([status])
+  @@index([category])
   @@map("astrologers")
 }
 
@@ -595,4 +632,128 @@ model Article {
 
   @@index([published, featured, publishedAt])
   @@map("articles")
+}
+
+/// Staff member with a database-stored role. Phones in ADMIN_PHONES are implicit Super Admins.
+model StaffMember {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  role      StaffRole
+  active    Boolean   @default(true)
+  createdBy String?   @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("staff_members")
+}
+
+/// Append-only record of staff actions.
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorPhone  String?  @map("actor_phone") @db.VarChar(20)
+  actorRole   String?  @map("actor_role") @db.VarChar(32)
+  action      String   @db.VarChar(80)
+  entityType  String   @map("entity_type") @db.VarChar(60)
+  entityId    String?  @map("entity_id") @db.VarChar(120)
+  summary     String   @db.VarChar(500)
+  metadata    Json?
+  ip          String?  @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  phone     String?   @db.VarChar(20)
+  title     String    @db.VarChar(160)
+  body      String    @db.VarChar(1000)
+  link      String?   @db.VarChar(300)
+  readAt    DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([phone, createdAt])
+  @@map("notifications")
+}
+
+model ProviderJoinRequest {
+  id                   String            @id @default(uuid()) @db.Uuid
+  applicationNo        String            @unique @map("application_no") @db.VarChar(24)
+  userId               String?           @map("user_id") @db.Uuid
+  name                 String            @db.VarChar(160)
+  phone                String            @db.VarChar(20)
+  email                String            @db.VarChar(254)
+  address              String            @db.VarChar(500)
+  city                 String            @db.VarChar(100)
+  state                String            @db.VarChar(100)
+  dateOfBirth          DateTime          @map("date_of_birth") @db.Date
+  category             ProviderCategory
+  categoryOther        String?           @map("category_other") @db.VarChar(80)
+  expertise            String[]          @default([])
+  experienceYears      Int               @map("experience_years") @db.SmallInt
+  languages            String[]          @default([])
+  qualification        String            @db.VarChar(500)
+  about                String            @db.VarChar(3000)
+  services             String[]          @default([])
+  status               JoinRequestStatus @default(PENDING)
+  adminNote            String?           @map("admin_note") @db.VarChar(2000)
+  reviewedBy           String?           @map("reviewed_by") @db.Uuid
+  reviewedAt           DateTime?         @map("reviewed_at") @db.Timestamptz(3)
+  providerAstrologerId String?           @map("provider_astrologer_id") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  files  JoinRequestFile[]
+  events JoinRequestEvent[]
+
+  @@index([status, createdAt])
+  @@index([category])
+  @@index([phone])
+  @@map("provider_join_requests")
+}
+
+model JoinRequestFile {
+  id           String              @id @default(uuid()) @db.Uuid
+  requestId    String              @map("request_id") @db.Uuid
+  kind         JoinRequestFileKind
+  label        String?             @db.VarChar(120)
+  originalName String              @map("original_name") @db.VarChar(200)
+  mimeType     String              @map("mime_type") @db.VarChar(60)
+  sizeBytes    Int                 @map("size_bytes")
+  storageKey   String              @map("storage_key") @db.VarChar(200)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  request ProviderJoinRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("join_request_files")
+}
+
+model JoinRequestEvent {
+  id          String             @id @default(uuid()) @db.Uuid
+  requestId   String             @map("request_id") @db.Uuid
+  actorUserId String?            @map("actor_user_id") @db.Uuid
+  /// APPLICANT | STAFF | SYSTEM
+  actorKind   String             @map("actor_kind") @db.VarChar(16)
+  action      String             @db.VarChar(40)
+  fromStatus  JoinRequestStatus? @map("from_status")
+  toStatus    JoinRequestStatus? @map("to_status")
+  note        String?            @db.VarChar(2000)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  request ProviderJoinRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("join_request_events")
 }

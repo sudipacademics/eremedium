@@ -32,6 +32,9 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 
+# A fresh named volume copies this directory's ownership, so the non-root user can write uploads.
+RUN mkdir -p /data/uploads && chown node:node /data/uploads && chmod 700 /data/uploads
+
 USER node
 EXPOSE 8000
 

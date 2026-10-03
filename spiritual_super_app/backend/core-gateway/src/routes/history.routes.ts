@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole } from '../auth/jwt.js';
-import { authenticate, requireRole } from '../plugins/authenticate.js';
+import { Permission } from '../auth/permissions.js';
+import { authenticate } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { HistoryError, HistoryService } from '../services/history.service.js';
 
 const querySchema = z.object({
@@ -23,7 +24,7 @@ const querySchema = z.object({
  */
 export async function historyAdminRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requireRole(AppRole.ADMIN));
+  app.addHook('preHandler', requirePermission(Permission.SUPPORT, Permission.FINANCE));
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof HistoryError) {

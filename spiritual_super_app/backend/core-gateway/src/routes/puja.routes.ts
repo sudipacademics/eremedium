@@ -2,9 +2,10 @@ import { PujaBookingStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { AppRole } from '../auth/jwt.js';
+import { Permission } from '../auth/permissions.js';
 import { money, prisma } from '../lib/prisma.js';
-import { authenticateUnlessPublic, requireRole, requireUser } from '../plugins/authenticate.js';
+import { authenticateUnlessPublic, requireUser } from '../plugins/authenticate.js';
+import { requirePermission } from '../plugins/staff.js';
 import { PujaError, PujaService } from '../services/puja.service.js';
 
 const bookBody = z.object({
@@ -92,14 +93,14 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
   // Admin-only and role-gated on its own, not merely hidden from the UI: these endpoints decide
   // whether a devotee is told their puja was performed and their prasad posted.
 
-  app.get('/admin/fulfilment', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+  app.get('/admin/fulfilment', { preHandler: requirePermission(Permission.OPERATIONS) }, async (_request, reply) => {
     const bookings = await PujaService.listPendingFulfilment();
     return reply.send({ bookings });
   });
 
   app.post(
     '/admin/bookings/:bookingId/schedule',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.OPERATIONS) },
     async (request, reply) => {
       const { bookingId } = bookingParams.parse(request.params);
       const { scheduledFor } = scheduleBody.parse(request.body);
@@ -110,7 +111,7 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/admin/bookings/:bookingId/advance',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.OPERATIONS) },
     async (request, reply) => {
       const { bookingId } = bookingParams.parse(request.params);
       const body = advanceBody.parse(request.body);
@@ -125,7 +126,7 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Catalog administration ----------------------------------------------------------------
 
-  app.post('/admin/temples', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+  app.post('/admin/temples', { preHandler: requirePermission(Permission.CATALOG) }, async (request, reply) => {
     const body = templeBody.parse(request.body);
     const temple = await prisma.temple.create({
       data: {
@@ -139,7 +140,7 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(temple);
   });
 
-  app.post('/admin/offerings', { preHandler: requireRole(AppRole.ADMIN) }, async (request, reply) => {
+  app.post('/admin/offerings', { preHandler: requirePermission(Permission.CATALOG) }, async (request, reply) => {
     const body = offeringBody.parse(request.body);
     const temple = await prisma.temple.findUnique({ where: { id: body.templeId }, select: { id: true } });
     if (!temple) {
@@ -164,14 +165,14 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({ ...offering, price: money(offering.price).toFixed(2) });
   });
 
-  app.get('/admin/catalog', { preHandler: requireRole(AppRole.ADMIN) }, async (_request, reply) => {
+  app.get('/admin/catalog', { preHandler: requirePermission(Permission.CATALOG) }, async (_request, reply) => {
     const temples = await PujaService.listCatalogAdmin();
     return reply.send({ temples });
   });
 
   app.patch(
     '/admin/temples/:templeId',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.CATALOG) },
     async (request, reply) => {
       const { templeId } = z.object({ templeId: z.string().uuid() }).parse(request.params);
       const body = templeBody
@@ -194,7 +195,7 @@ export async function pujaRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch(
     '/admin/offerings/:offeringId',
-    { preHandler: requireRole(AppRole.ADMIN) },
+    { preHandler: requirePermission(Permission.CATALOG) },
     async (request, reply) => {
       const { offeringId } = z.object({ offeringId: z.string().uuid() }).parse(request.params);
       const body = offeringBody

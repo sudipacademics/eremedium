@@ -21,6 +21,8 @@ const PROFILE_KEY = 'ssa.profile';
 export interface Profile {
   userId: string;
   role: 'USER' | 'ASTROLOGER' | 'ADMIN';
+  /** Set for staff (role ADMIN); what they may do comes from GET admin/me. */
+  staffRole?: string | null;
   astrologerId: string | null;
   name?: string | null;
   phone: string;
@@ -42,6 +44,34 @@ export interface UserProfileDetails {
   /** Small data: URL avatar, or null. */
   photoDataUrl: string | null;
   createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationList {
+  unread: number;
+  notifications: AppNotification[];
+}
+
+/** Notification links are absolute (they also appear in emails); keep same-site ones in-app. */
+export function notificationHref(link: string): string {
+  try {
+    const url = new URL(link, window.location.origin);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '/notifications';
+    if (url.origin === window.location.origin || /(^|\.)vedsutra\.in$/.test(url.hostname)) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+    return url.toString();
+  } catch {
+    return '/notifications';
+  }
 }
 
 export type InvoiceKind = 'TOPUP' | 'PUJA' | 'AYURVEDA' | 'CONSULTATION';

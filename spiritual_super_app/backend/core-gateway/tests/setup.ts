@@ -24,6 +24,13 @@ const TABLES = [
   'natal_charts',
   'ayurveda_orders',
   'ayurveda_products',
+  // Not owned by a user (or only optionally), so they survive the users CASCADE.
+  'audit_logs',
+  'notifications',
+  'join_request_events',
+  'join_request_files',
+  'provider_join_requests',
+  'staff_members',
   'astrologers',
   'wallets',
   'users',

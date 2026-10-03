@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -28,8 +29,6 @@ export default function AstrologerConsolePage() {
   const profile = store.profile;
   const [me, setMe] = useState<Me | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
-  const [applyName, setApplyName] = useState(profile?.name ?? '');
-  const [languages, setLanguages] = useState('Hindi, English');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,25 +53,6 @@ export default function AstrologerConsolePage() {
   });
   useSocketEvent('CALL_ENDED', load);
 
-  const apply = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post('astrologers/apply', {
-        displayName: applyName.trim(),
-        languages: languages
-          .split(',')
-          .map((value) => value.trim())
-          .filter(Boolean),
-      });
-      setNotice('Profile created. Sign in again to pick up your astrologer role, then go online.');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not apply');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const setAvailability = async (online: boolean) => {
     setBusy(true);
     setError(null);
@@ -96,50 +76,22 @@ export default function AstrologerConsolePage() {
       <div className="mx-auto max-w-md space-y-4">
         <div className="card space-y-4">
           <div>
-            <h1 className="text-lg font-semibold">Become an astrologer</h1>
+            <h1 className="text-lg font-semibold">Become a Vedsutra expert</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Your per-minute rate is set by the platform, not here.
+              Astrologers, Numerologists, Vastu and Ayurveda experts, Pandits and Spiritual Guides apply through our
+              Join as an Expert form. Our team verifies every application.
             </p>
           </div>
-
-          <div>
-            <label className="label" htmlFor="displayName">
-              Display name
-            </label>
-            <input
-              id="displayName"
-              className="input"
-              value={applyName}
-              onChange={(event) => setApplyName(event.target.value)}
-              placeholder="Pandit Sharma"
-            />
-          </div>
-
-          <div>
-            <label className="label" htmlFor="languages">
-              Languages (comma separated)
-            </label>
-            <input
-              id="languages"
-              className="input"
-              value={languages}
-              onChange={(event) => setLanguages(event.target.value)}
-            />
-          </div>
-
-          <button
-            type="button"
-            className="btn-primary w-full"
-            disabled={busy || applyName.trim().length < 2}
-            onClick={() => void apply()}
-          >
-            {busy ? 'Submitting…' : 'Create profile'}
-          </button>
-
-          {notice && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{notice}</p>
-          )}
-          {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
+          <Link href="/join" className="btn-primary block w-full text-center">
+            Apply to join
+          </Link>
+          <p className="text-sm text-slate-400">
+            Already applied?{' '}
+            <Link href="/join/status" className="font-medium underline">
+              Check your application status
+            </Link>
+            . If your application was approved, sign out and sign in again to open your console.
+          </p>
         </div>
       </div>
     );

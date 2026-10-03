@@ -78,7 +78,7 @@ export default function AdminAstrologersPage() {
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {message && <p className="text-sm text-emerald-300">{message}</p>}
       <p className="text-sm text-slate-400">
-        New astrologers still apply from <strong>My console</strong>. Here you set the public profile shown on the
+        New providers join through <strong>Provider Join Requests</strong> once approved. Here you set the public profile shown on the
         homepage (photo, expertise, languages, experience), rates, commission and online status. Busy / in-call
         cannot be forced offline mid-session. Changes appear on the homepage within about 30 seconds.
       </p>

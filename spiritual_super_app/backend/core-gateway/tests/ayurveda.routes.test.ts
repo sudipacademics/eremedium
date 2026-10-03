@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppRole } from '../src/auth/jwt.js';
 import { prisma } from '../src/lib/prisma.js';
-import { balanceOf, seedUser } from './helpers/factories.js';
+import { balanceOf, seedStaff, seedUser } from './helpers/factories.js';
 
 vi.mock('../src/services/livekit.service.js', () => ({
   LiveKitTokenService: {
@@ -192,6 +192,7 @@ describe('admin fulfilment', () => {
     });
     const orderId = placed.json().order.id as string;
 
+    await seedStaff(userId);
     const packed = await app.inject({
       method: 'POST',
       url: `/api/v1/ayurveda/shop/admin/orders/${orderId}/advance`,

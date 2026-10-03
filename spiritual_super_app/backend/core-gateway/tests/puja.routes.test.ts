@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppRole } from '../src/auth/jwt.js';
 import { prisma } from '../src/lib/prisma.js';
-import { balanceOf, seedAstrologer, seedCallSession, seedUser } from './helpers/factories.js';
+import { balanceOf, seedAstrologer, seedCallSession, seedStaff, seedUser } from './helpers/factories.js';
 
 vi.mock('../src/services/livekit.service.js', () => ({
   LiveKitTokenService: {
@@ -239,6 +239,7 @@ describe('fulfilment is admin-only', () => {
   it('lets an admin walk the booking through fulfilment', async () => {
     const { bookingId } = await bookedPuja();
     const admin = await seedUser('0.00');
+    await seedStaff(admin.userId);
     const adminAuth = auth(tokenFor(admin.userId, AppRole.ADMIN));
 
     const queue = await app.inject({
@@ -273,6 +274,7 @@ describe('fulfilment is admin-only', () => {
   it('rejects a video proof that is not a URL', async () => {
     const { bookingId } = await bookedPuja();
     const admin = await seedUser('0.00');
+    await seedStaff(admin.userId);
     const adminAuth = auth(tokenFor(admin.userId, AppRole.ADMIN));
 
     await app.inject({
@@ -295,6 +297,7 @@ describe('fulfilment is admin-only', () => {
   it('only lets an admin add a temple to the catalog', async () => {
     const { userId } = await seedUser('0.00');
     const admin = await seedUser('0.00');
+    await seedStaff(admin.userId);
 
     const asDevotee = await app.inject({
       method: 'POST',

@@ -187,6 +187,17 @@ services:
       STALE_INITIATED_SESSION_SECONDS: ${STALE_INITIATED_SESSION_SECONDS:-300}
       STALE_ACTIVE_SESSION_SECONDS: ${STALE_ACTIVE_SESSION_SECONDS:-180}
       STALE_SESSION_SWEEP_SECONDS: ${STALE_SESSION_SWEEP_SECONDS:-120}
+      # Provider join-request documents live on a private volume, never served publicly.
+      UPLOAD_DIR: /data/uploads
+      # Applicant emails. Without SMTP_HOST they are logged instead of sent.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Vedsutra <no-reply@vedsutra.in>}
+    volumes:
+      - uploads-data:/data/uploads
     expose:
       - "8000"
     ports:
@@ -308,6 +319,8 @@ volumes:
   postgres-data:
     driver: local
   redis-data:
+    driver: local
+  uploads-data:
     driver: local
 
 networks:

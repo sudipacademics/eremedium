@@ -126,7 +126,7 @@ export function JoinUsBanner() {
 
           <div className="mt-7 flex items-center gap-4">
             <Link
-              href="/astrologer"
+              href="/join"
               className="inline-flex items-center gap-2 rounded-full bg-ved-green-800 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_10px_25px_-10px_rgba(11,79,69,0.7)] ring-1 ring-ved-gold-400/40 transition hover:bg-ved-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ved-gold-400 sm:text-base"
             >
               Join as an Expert <span aria-hidden>→</span>
