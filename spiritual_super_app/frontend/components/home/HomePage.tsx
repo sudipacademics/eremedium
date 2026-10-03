@@ -21,15 +21,15 @@ import { ProductCarousel } from '@/components/home/ProductCarousel';
 import { ReviewsCarousel } from '@/components/home/ReviewsCarousel';
 
 const CATEGORIES = [
-  { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: '✦' },
-  { href: '/kundali', label: 'Kundali', tag: 'Know Your Self', icon: '◎' },
-  { href: '/horoscope', label: 'Horoscope', tag: 'Daily Rashifal', icon: '♈\uFE0E' },
-  { href: '/match', label: 'Match Making', tag: 'Build Together', icon: '⚭' },
-  { href: '/gochar', label: 'Gochar', tag: 'Plan Ahead', icon: '☾' },
-  { href: '/panchang', label: 'Panchang', tag: 'Auspicious Timings', icon: '☀' },
-  { href: '/pujas', label: 'E-Puja', tag: 'Sacred Rituals', icon: '🕯' },
-  { href: '/temple', label: 'Virtual Temple', tag: '16 Upacharas', icon: '🛕' },
-  { href: '/ayurveda', label: 'Ayurveda', tag: 'Natural Wellness', icon: '🌿' },
+  { href: '/astrologers', label: 'Astrology', tag: 'Get Clarity', icon: 'astrology', tint: 'from-amber-50 to-amber-100/70' },
+  { href: '/kundali', label: 'Kundali', tag: 'Know Your Self', icon: 'kundali', tint: 'from-orange-50 to-rose-100/70' },
+  { href: '/horoscope', label: 'Horoscope', tag: 'Daily Rashifal', icon: 'horoscope', tint: 'from-violet-50 to-violet-100/80' },
+  { href: '/match', label: 'Match Making', tag: 'Build Together', icon: 'match', tint: 'from-rose-50 to-pink-100/80' },
+  { href: '/gochar', label: 'Gochar', tag: 'Plan Ahead', icon: 'gochar', tint: 'from-sky-50 to-blue-100/80' },
+  { href: '/panchang', label: 'Panchang', tag: 'Auspicious Timings', icon: 'panchang', tint: 'from-amber-50 to-yellow-100/80' },
+  { href: '/pujas', label: 'E-Puja', tag: 'Sacred Rituals', icon: 'epuja', tint: 'from-orange-50 to-orange-100/80' },
+  { href: '/temple', label: 'Virtual Temple', tag: '16 Upacharas', icon: 'temple', tint: 'from-purple-50 to-fuchsia-100/60' },
+  { href: '/ayurveda', label: 'Ayurveda', tag: 'Natural Wellness', icon: 'ayurveda', tint: 'from-emerald-50 to-green-100/80' },
 ] as const;
 
 const QUICK_ACTIONS = [
@@ -246,18 +246,28 @@ export function HomePage() {
 
       {/* Categories */}
       <section className="mx-auto max-w-7xl px-4 py-10">
-        <div className="grid grid-cols-3 gap-3 lg:grid-cols-9">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
           {CATEGORIES.map((cat) => (
             <Link
               key={cat.label}
               href={cat.href}
-              className="group flex flex-col items-center gap-2 rounded-2xl border border-ved-gold-400/30 bg-[#FBF8F2] px-2 py-4 text-center transition hover:-translate-y-0.5 hover:border-ved-green-500/40 hover:shadow-md"
+              className="group relative flex flex-col items-center rounded-2xl border border-ved-gold-400/40 bg-gradient-to-b from-white to-[#FCF9F3] px-2 pb-11 pt-5 text-center shadow-[0_6px_18px_-10px_rgba(176,138,50,0.35)] transition duration-300 hover:-translate-y-1 hover:border-ved-gold-400/70 hover:shadow-[0_14px_28px_-12px_rgba(176,138,50,0.45)]"
             >
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-white text-lg text-ved-gold-600 shadow-sm ring-1 ring-ved-gold-400/20 transition group-hover:scale-105">
-                {cat.icon}
+              <span
+                className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${cat.tint} shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition duration-300 group-hover:scale-105`}
+              >
+                <Image src={`/home/categories/${cat.icon}.webp`} alt="" width={44} height={44} unoptimized className="h-11 w-11 object-contain drop-shadow-[0_2px_3px_rgba(120,80,20,0.18)]" />
               </span>
-              <span className="text-xs font-semibold text-ved-green-900">{cat.label}</span>
-              <span className="text-[10px] text-ved-green-800/50">{cat.tag}</span>
+              <span className="mt-3 font-display text-[15px] font-bold leading-tight text-ved-green-900 sm:text-base">{cat.label}</span>
+              <span className="mt-1 text-[11px] leading-snug text-ved-green-800/60">{cat.tag}</span>
+              <span
+                aria-hidden
+                className="absolute bottom-2.5 right-2.5 grid h-6 w-6 place-items-center rounded-full border border-ved-gold-400/60 bg-white text-ved-gold-700 transition group-hover:bg-ved-gold-400 group-hover:text-white"
+              >
+                <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.2}>
+                  <path d="M4 10h11M11 5.5 15.5 10 11 14.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
             </Link>
           ))}
         </div>
