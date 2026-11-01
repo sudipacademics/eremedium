@@ -648,6 +648,14 @@ def assign_employee_org(employee, wing="", division="", department="", designati
 	return {"employee": employee, **{k: updates.get(k, "") for k in ("people_wing", "people_division", "department", "designation", "people_unit", "people_position", "reports_to")}}
 
 
+def department_title(erp_name):
+	"""WDD title of an ERPNext Department. ERPNext names cannot be renamed, so they can carry an old title."""
+	if not erp_name or not frappe.db.exists("DocType", MASTER_DT):
+		return ""
+	rows = frappe.get_all(MASTER_DT, filters={"kind": "Department", "erp_name": erp_name}, fields=["title", "active"], order_by="active desc, modified desc", limit=1)
+	return cstr(rows[0].title) if rows else ""
+
+
 def employee_org_for_user(user):
 	employee = frappe.db.get_value("Employee", {"user_id": user}, "name") if user else None
 	if not employee:
@@ -668,6 +676,7 @@ def employee_org_for_user(user):
 		"wing": row.get("people_wing") or "",
 		"division": row.get("people_division") or "",
 		"department": row.get("department") or "",
+		"department_title": department_title(row.get("department")),
 		"designation": row.get("designation") or "",
 		"unit": row.get("people_unit") or row.get("branch") or "",
 		"position": row.get("people_position") or "",
@@ -719,6 +728,7 @@ def employee_detail(employee):
 			"unit": row.get("people_unit") or row.get("branch") or "",
 			"position": row.get("people_position") or "",
 			"reports_to_name": manager or "",
+			"department_title": department_title(row.get("department")),
 		}
 	)
 	return out

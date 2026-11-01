@@ -33,7 +33,7 @@ TAGS = (
     '<link rel="stylesheet" href="/people-org.css?v=18" />',
     '<script src="/qrcode-generator.js"></script>',
     '<script src="/people-user-menu.js" defer></script>',
-    '<script src="/employee-id-card.js?v=12" defer></script>',
+    '<script src="/employee-id-card.js?v=13" defer></script>',
     '<link rel="stylesheet" href="/people-access.css?v=9" />',
     '<script src="/people-access.js?v=14" defer></script>',
     '<script src="/people-org.js?v=30" defer></script>',

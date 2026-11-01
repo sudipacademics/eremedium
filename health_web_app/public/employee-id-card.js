@@ -72,7 +72,8 @@
       ['Wing', card.wing],
       ['Division', card.division],
       ['Department', cleanDepartment(card.department)],
-      ['Position', card.position || card.designation],
+      ['Designation', card.designation],
+      ['Position', card.position],
       ['Unit / Centre', card.unit],
       ['Manager Name', card.managerName],
       ['Date of Joining', joiningLabel(card.dateOfJoining)],
@@ -116,7 +117,7 @@
       division: '',
       department: map['Department'] || '',
       designation: map['Designation'] || '',
-      position: map['Designation'] || '',
+      position: map['Position'] || '',
       managerName: map['Reporting Manager'] || '',
       dateOfJoining: map['Date of Joining'] || '',
       photoUrl: img ? img.getAttribute('src') || '' : '',
@@ -129,9 +130,9 @@
       empId: emp.id || '',
       wing: emp.wing || '',
       division: emp.division || '',
-      department: emp.department || '',
+      department: emp.department_title || emp.department || '',
       designation: emp.designation || '',
-      position: emp.position || emp.designation || '',
+      position: emp.position || '',
       unit: emp.unit || emp.people_unit || '',
       managerName: emp.reports_to_name || '',
       dateOfJoining: emp.date_of_joining || '',
@@ -247,9 +248,9 @@
     var headerH = 205;
     var photoR = 66;
     var rowsTop = 372;
-    var lineH = 52;
     var qrSize = 200;
     var qrTop = 830;
+    var lineH = Math.min(52, Math.floor((qrTop - 22 - rowsTop) / Math.max(1, rows.length)));
     var canvas = document.createElement('canvas');
     canvas.width = Math.round(w * scale);
     canvas.height = Math.round(h * scale);
@@ -485,11 +486,9 @@
           if (!me || fetchedSid !== sid || !fields) return;
           if (me.wing) fields.wing = me.wing;
           if (me.division) fields.division = me.division;
-          if (me.department) fields.department = me.department;
-          if (me.designation) {
-            fields.designation = me.designation;
-            fields.position = me.designation;
-          }
+          if (me.department) fields.department = me.department_title || me.department;
+          if (me.designation) fields.designation = me.designation;
+          fields.position = me.position || '';
           if (me.unit) fields.unit = me.unit;
           if (me.reports_to_name) fields.managerName = me.reports_to_name;
           document.querySelectorAll('.eidc-card').forEach(function (node) { node.removeAttribute('data-smilecure'); });
