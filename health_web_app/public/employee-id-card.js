@@ -172,10 +172,19 @@
     return src ? photoUrl(src) : '';
   }
 
+  function hasData(card) {
+    return !!(card && (card.empId || card.name));
+  }
+
   function apply() {
     if (document.querySelector('.eidc-card[data-built="react"]')) return;
-    if (!fields || (!fields.empId && !fields.name)) fields = readProfile();
-    if (!fields) return;
+    if (currentSid() !== fetchedSid) {
+      fields = null;
+      fetchProfile();
+    }
+    if (!hasData(fields)) fields = readProfile();
+    // Painting replaces the card's markup, so never paint before the employee data is known.
+    if (!hasData(fields)) return;
     var live = profilePhoto();
     if (live && live !== fields.photoUrl) fields.photoUrl = live;
     var link = verifyUrl(fields.empId);
@@ -422,13 +431,25 @@
     new MutationObserver(function () { apply(); }).observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
   }
 
+  var fetchedSid = null;
+
+  function currentSid() {
+    try {
+      var session = JSON.parse(localStorage.getItem('hec_web_session') || 'null');
+      return (session && session.sid) || '';
+    } catch (e) { return ''; }
+  }
+
   function load() {
     fields = readProfile();
     watch();
-    var session = null;
-    try { session = JSON.parse(localStorage.getItem('hec_web_session') || 'null'); } catch (e) { session = null; }
-    var body = new URLSearchParams();
-    if (session && session.sid) body.set('sid', session.sid);
+  }
+
+  function fetchProfile() {
+    var sid = currentSid();
+    fetchedSid = sid;
+    if (!sid) return;
+    var body = new URLSearchParams({ sid: sid });
     fetch('/api/method/health_ecosystem_core.health_ecosystem_core.api.get_people_hrms_dashboard', {
       method: 'POST',
       credentials: 'include',
@@ -441,9 +462,10 @@
     }).then(function (res) { return res.json(); }).then(function (json) {
       var nested = json && json.message && typeof json.message === 'object' ? json.message : json;
       var data = nested && nested.data && nested.data.employee ? nested.data : nested;
+      if (fetchedSid !== sid) return;
       if (data && data.employee) {
         var next = fromEmployee(data.employee);
-        if (!next.photoUrl) next.photoUrl = fields.photoUrl;
+        if (!next.photoUrl && fields) next.photoUrl = fields.photoUrl;
         fields = next;
         document.querySelectorAll('.eidc-card').forEach(function (node) { node.removeAttribute('data-smilecure'); });
         apply();
@@ -460,7 +482,7 @@
           var orgNested = orgJson && orgJson.message && typeof orgJson.message === 'object' ? orgJson.message : orgJson;
           var org = orgNested && orgNested.data ? orgNested.data : orgNested;
           var me = org && org.me;
-          if (!me) return;
+          if (!me || fetchedSid !== sid || !fields) return;
           if (me.wing) fields.wing = me.wing;
           if (me.division) fields.division = me.division;
           if (me.department) fields.department = me.department;
