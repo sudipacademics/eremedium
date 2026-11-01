@@ -48,8 +48,7 @@ export function AuthorizeReportDialog({
           />
         </label>
         <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-          Authorizing generates the NABL PDF and sends the patient a report-ready SMS/email/WhatsApp
-          (when notification keys are configured).
+          Authorizing locks results. After sign-off, use Send to WhatsApp (secure Patient Portal link) or Download Report. No public PDF is shared.
         </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button type="button" className="btn" disabled={busy} onClick={() => onConfirm(notes.trim())}>

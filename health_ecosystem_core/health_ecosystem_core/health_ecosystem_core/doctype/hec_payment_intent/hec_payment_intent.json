@@ -1,0 +1,172 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-09-29 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "scope",
+    "provider",
+    "status",
+    "amount",
+    "provider_order_id",
+    "provider_payment_id",
+    "column_break_1",
+    "reference_doctype",
+    "reference_name",
+    "party_type",
+    "party",
+    "completed_via",
+    "completed_at",
+    "attempts",
+    "section_log",
+    "last_event",
+    "last_error"
+  ],
+  "fields": [
+    {
+      "default": "HPI-.YYYY.-.######",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "HPI-.YYYY.-.######",
+      "reqd": 1
+    },
+    {
+      "fieldname": "scope",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Scope",
+      "options": "patient_checkout\nsubscriptions\npatient_wallet\nb2b_wallet\nffms_fees",
+      "reqd": 1
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider",
+      "fieldtype": "Select",
+      "label": "Provider",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "default": "Created",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Created\nPaid\nFailed\nExpired\nRejected"
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Amount"
+    },
+    {
+      "fieldname": "provider_order_id",
+      "fieldtype": "Data",
+      "in_standard_filter": 1,
+      "label": "Provider Order ID",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "provider_payment_id",
+      "fieldtype": "Data",
+      "label": "Provider Payment ID",
+      "search_index": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "reference_doctype",
+      "fieldtype": "Link",
+      "label": "Reference DocType",
+      "options": "DocType"
+    },
+    {
+      "fieldname": "reference_name",
+      "fieldtype": "Dynamic Link",
+      "label": "Reference",
+      "options": "reference_doctype"
+    },
+    {
+      "fieldname": "party_type",
+      "fieldtype": "Data",
+      "label": "Party Type"
+    },
+    {
+      "fieldname": "party",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Party"
+    },
+    {
+      "fieldname": "completed_via",
+      "fieldtype": "Select",
+      "label": "Completed Via",
+      "options": "\nCheckout\nWebhook\nPoller\nManual"
+    },
+    {
+      "fieldname": "completed_at",
+      "fieldtype": "Datetime",
+      "label": "Completed At"
+    },
+    {
+      "default": "0",
+      "fieldname": "attempts",
+      "fieldtype": "Int",
+      "label": "Failed Attempts"
+    },
+    {
+      "fieldname": "section_log",
+      "fieldtype": "Section Break",
+      "label": "Log"
+    },
+    {
+      "fieldname": "last_event",
+      "fieldtype": "Small Text",
+      "label": "Last Provider Event"
+    },
+    {
+      "fieldname": "last_error",
+      "fieldtype": "Small Text",
+      "label": "Last Error"
+    }
+  ],
+  "in_create": 1,
+  "links": [],
+  "modified": "2026-09-29 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Payment Intent",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin"
+    },
+    {
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "role": "Accounts Manager"
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 0
+}

@@ -296,3 +296,39 @@ def setup_phase48_eprescribe():
     ensure_phase48_fields()
     frappe.clear_cache(doctype="Clinical Prescription")
     return {"ok": True, "phase": "48", "feature": "e_prescriptions"}
+
+
+def smoke_phase48_eprescribe():
+    """Verify e-prescribe APIs and print format are loadable on live."""
+    setup_phase48_eprescribe()
+    from health_ecosystem_core.health_ecosystem_core.clinical_prescription_format import (
+        prescription_print_payload,
+        render_prescription_html,
+    )
+
+    out = {"ok": True, "phase": "48", "checks": []}
+
+    rx = frappe.get_all("Clinical Prescription", pluck="name", order_by="creation desc", limit=1)
+    if rx:
+        payload = prescription_print_payload(rx[0])
+        html = render_prescription_html(payload)
+        out["checks"].append({"prescription_sample": rx[0], "html_len": len(html or "")})
+    else:
+        out["checks"].append({"prescription_sample": None, "html_len": 0})
+
+    doctor = frappe.get_all("Doctor", filters={"status": "Active"}, pluck="name", limit=1)
+    if doctor:
+        apts = frappe.get_all(
+            "Doctor Appointment",
+            filters={"doctor": doctor[0], "status": ["not in", ["Cancelled", "No Show"]]},
+            fields=["name", "patient_name", "appointment_date"],
+            order_by="appointment_date desc",
+            limit=3,
+        )
+        out["sample_doctor"] = doctor[0]
+        out["sample_appointments"] = apts
+    else:
+        out["sample_doctor"] = None
+        out["sample_appointments"] = []
+
+    return out

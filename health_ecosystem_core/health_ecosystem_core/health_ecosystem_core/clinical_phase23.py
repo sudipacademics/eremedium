@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, today
+from frappe.utils import cint, cstr, flt, today
 
 LAB_ITEM_GROUPS = ("Lab Tests", "Services", "Laboratory", "Diagnostics", "Lab")
 MIN_WALLET_RECHARGE = 500
@@ -150,10 +152,12 @@ def _price_from_list(item_code, price_list):
     return flt(frappe.db.get_value("Item", item_code, "standard_rate"))
 
 
-def _lab_items(limit=200):
+def _lab_items(limit=5000):
+    # Match ERP Lab Tests / public catalog — do not include Services (consultations).
+    lab_groups = tuple(g for g in LAB_ITEM_GROUPS if g != "Services")
     rows = frappe.get_all(
         "Item",
-        filters={"disabled": 0, "item_group": ("in", list(LAB_ITEM_GROUPS))},
+        filters={"disabled": 0, "is_sales_item": 1, "item_group": ("in", list(lab_groups))},
         fields=["name", "item_name", "item_group", "standard_rate"],
         order_by="item_name asc",
         limit=limit,
@@ -239,7 +243,9 @@ def _ensure_platform_customer(profile):
     if profile.get("platform_customer") and frappe.db.exists("Customer", profile.platform_customer):
         return profile.platform_customer
 
-    company = _default_company()
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import sales_company
+
+    company = sales_company() or _default_company()
     customer_name = f"{profile.franchise_name} ({profile.branch_code})"
     existing = frappe.db.get_value("Customer", {"customer_name": customer_name}, "name")
     if existing:
@@ -288,7 +294,9 @@ def serialize_franchisee_b2b(profile):
     if isinstance(profile, str):
         profile = frappe.get_doc("Franchisee Profile", profile)
     ftype = profile.get("franchisee_type") or "Pulse"
-    rate_label = "Vector wholesale" if ftype == "Vector" else "FOCO rate"
+    rate_label = "Vector wholesale" if ftype == "Vector" else "FOCO − commission"
+    credit_limit = flt(profile.get("credit_limit")) if ftype == "Vector" else 0
+    wallet_balance = flt(profile.get("wallet_balance"))
     return {
         "name": profile.name,
         "franchise_name": profile.franchise_name,
@@ -300,7 +308,14 @@ def serialize_franchisee_b2b(profile):
         "wholesale_price_list": profile.get("wholesale_price_list"),
         "franchisee_rate_label": rate_label,
         "platform_customer": profile.get("platform_customer"),
-        "wallet_balance": flt(profile.get("wallet_balance")),
+        "wallet_balance": wallet_balance,
+        "credit_limit": credit_limit,
+        "available_to_bill": round(wallet_balance + credit_limit, 2),
+        "parent_foco": (profile.get("parent_foco") or "").strip(),
+        "override_upsell_commission": flt(profile.get("override_upsell_commission") or 20),
+        "address": (profile.get("address") or "").strip(),
+        "contact_phone": (profile.get("contact_phone") or "").strip(),
+        "contact_email": (profile.get("contact_email") or "").strip(),
     }
 
 
@@ -364,22 +379,51 @@ def credit_b2b_wallet(franchisee_id, amount, payment_reference=None, remarks=Non
     }
 
 
+def wallet_available_to_bill(franchisee_id, profile=None):
+    """Pulse: prepaid wallet only. Vector: wallet + Franchisee Profile credit_limit."""
+    if profile is None:
+        profile = frappe.get_doc("Franchisee Profile", franchisee_id)
+    ftype = (profile.get("franchisee_type") or "Pulse").strip()
+    balance = flt(profile.get("wallet_balance"))
+    credit_limit = flt(profile.get("credit_limit")) if ftype == "Vector" else 0
+    return {
+        "franchisee_type": ftype,
+        "wallet_balance": balance,
+        "credit_limit": credit_limit,
+        "available_to_bill": round(balance + credit_limit, 2),
+    }
+
+
+def assert_wallet_covers_platform_fee(franchisee_id, platform_fee, profile=None):
+    info = wallet_available_to_bill(franchisee_id, profile)
+    fee = flt(platform_fee)
+    if info["available_to_bill"] + 1e-9 < fee:
+        if info["credit_limit"]:
+            frappe.throw(
+                _(
+                    "Billing stopped: platform fee ₹{0} exceeds wallet ₹{1} plus credit limit ₹{2}."
+                ).format(fee, info["wallet_balance"], info["credit_limit"]),
+                frappe.ValidationError,
+            )
+        frappe.throw(
+            _(
+                "Insufficient wallet balance. Platform fee is ₹{0} but wallet has ₹{1}. "
+                "Recharge your wallet to book tests."
+            ).format(fee, info["wallet_balance"]),
+            frappe.ValidationError,
+        )
+    return info
+
+
 def debit_b2b_wallet_platform_fee(franchisee_id, amount, trf_id):
     amount = flt(amount)
     if amount <= 0:
         frappe.throw(_("Invalid platform fee amount"), frappe.ValidationError)
 
     profile = frappe.get_doc("Franchisee Profile", franchisee_id)
-    balance = flt(profile.wallet_balance)
-    if balance < amount:
-        frappe.throw(
-            _(
-                "Insufficient wallet balance. Platform fee is ₹{0} but wallet has ₹{1}. "
-                "Recharge your wallet to book tests."
-            ).format(amount, balance),
-            frappe.ValidationError,
-        )
+    assert_wallet_covers_platform_fee(franchisee_id, amount, profile)
 
+    balance = flt(profile.wallet_balance)
     new_balance = round(balance - amount, 2)
     profile.wallet_balance = new_balance
     profile.save(ignore_permissions=True)
@@ -427,12 +471,26 @@ def get_b2b_wallet_payload(franchisee_id, limit=30):
         }
         for row in rows
     ]
-    return {
+    headroom = wallet_available_to_bill(franchisee_id)
+    payload = {
         "wallet_balance": balance,
+        "credit_limit": headroom["credit_limit"],
+        "available_to_bill": headroom["available_to_bill"],
+        "franchisee_type": headroom["franchisee_type"],
         "min_recharge": MIN_WALLET_RECHARGE,
         "transactions": transactions,
         "razorpay_recharge_enabled": True,
     }
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+            foco_pending_and_profit,
+        )
+
+        payload.update(foco_pending_and_profit(franchisee_id))
+    except Exception:
+        payload["pending_fofo_earnings"] = 0
+        payload["profit_from_centre"] = 0
+    return payload
 
 
 def prepare_wallet_recharge(user, amount):
@@ -457,7 +515,7 @@ def stash_wallet_razorpay_order(order_id, franchisee_id, amount):
     frappe.cache().set_value(
         f"b2b_wallet_order:{order_id}",
         {"franchisee_id": franchisee_id, "amount": flt(amount)},
-        expires_in_sec=3600,
+        expires_in_sec=86400,
     )
 
 
@@ -476,6 +534,7 @@ def complete_wallet_razorpay_credit(franchisee_id, amount, payment_id, order_id=
     """Idempotent credit after Razorpay verify (keyed by payment_id)."""
     if not payment_id:
         frappe.throw(_("Payment id required"))
+    frappe.db.get_value("Franchisee Profile", franchisee_id, "name", for_update=True)
     existing = frappe.db.get_value(
         "Franchisee Wallet Transaction",
         {"payment_reference": payment_id, "transaction_type": "Recharge"},
@@ -497,6 +556,9 @@ def complete_wallet_razorpay_credit(franchisee_id, amount, payment_id, order_id=
         payment_reference=payment_id,
         remarks=_("Razorpay wallet recharge{0}").format(f" ({order_id})" if order_id else ""),
     )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import book_wallet_topup
+
+    row["journal_entry"] = book_wallet_topup("b2b", franchisee_id, amount, payment_id, source="razorpay")
     if order_id:
         clear_wallet_razorpay_order(order_id)
     row["already_credited"] = False
@@ -507,9 +569,7 @@ def complete_wallet_razorpay_credit(franchisee_id, amount, payment_id, order_id=
 def get_b2b_catalog(franchisee_id):
     from health_ecosystem_core.health_ecosystem_core.clinical_phase54_franchisee_rate_model import (
         company_mrp_price_list,
-        franchisee_rate,
-        franchisee_rate_price_list,
-        mrp_rate,
+        line_settlement,
     )
 
     profile = frappe.get_doc("Franchisee Profile", franchisee_id)
@@ -517,29 +577,39 @@ def get_b2b_catalog(franchisee_id):
         ensure_franchisee_b2b_setup(franchisee_id)
         profile.reload()
 
-    # Always display shared company MRP — never a per-branch MRP list
     retail_pl = company_mrp_price_list()
     ftype = profile.get("franchisee_type") or "Pulse"
-    wholesale_pl = franchisee_rate_price_list(ftype)
-    rate_label = "Vector wholesale" if ftype == "Vector" else "FOCO rate"
+    wholesale_pl = profile.get("wholesale_price_list")
+    rate_label = "Vector wholesale" if ftype == "Vector" else "FOCO − commission"
+    patient_label = "MRP" if ftype == "Vector" else "FOCO rate"
 
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase127_pricing_chart import circuit_catalog_items
+
+    # Circuit partners (FOCO / Master FOCO / Orange FOCO / mapped Vector) see only tests priced in the master chart.
+    chart_items = circuit_catalog_items(franchisee_id)
     items = []
     for row in _lab_items():
-        retail = mrp_rate(row.name) or flt(row.standard_rate)
-        if not retail:
+        if chart_items is not None and row.name not in chart_items:
             continue
-        wholesale = franchisee_rate(row.name, franchisee_type=ftype)
-        if not wholesale:
-            # Missing franchisee-list rate: leave 0 (do not invent a new MRP clone)
-            wholesale = 0
+        settled = line_settlement(row.name, franchisee_id=franchisee_id, franchisee_type=ftype)
+        patient = flt(settled["rate"])
+        if not patient and not flt(settled["mrp"]):
+            continue
         items.append(
             {
                 "item_code": row.name,
                 "item_name": row.item_name,
                 "item_group": row.item_group,
-                "retail_rate": retail,
-                "wholesale_rate": wholesale,
-                "margin": round(retail - wholesale, 2) if wholesale else 0,
+                "retail_rate": patient,
+                "wholesale_rate": flt(settled["platform_fee"]),
+                "margin": flt(settled["commission_value"]),
+                "mrp": flt(settled["mrp"]),
+                "foco_rate": flt(settled["foco_rate"]),
+                "platform_fee": flt(settled["platform_fee"]),
+                "commission_value": flt(settled["commission_value"]),
+                "show_mrp_slash": bool(settled["show_mrp_slash"]),
+                "price_basis": settled["price_basis"],
+                "patient_rate_label": patient_label,
                 "mrp_price_list": retail_pl,
                 "franchisee_price_list": wholesale_pl,
                 "franchisee_type": ftype,
@@ -593,7 +663,7 @@ def get_b2b_portal_payload(user=None):
         if flt(t.wholesale_amount) > 0
     )
 
-    return {
+    payload = {
         "b2b_available": True,
         "franchisee": serialize_franchisee_b2b(profile),
         "setup": setup,
@@ -607,6 +677,18 @@ def get_b2b_portal_payload(user=None):
             "wallet_balance": get_wallet_balance(franchisee_id),
         },
     }
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+            foco_pending_and_profit,
+        )
+
+        extra = foco_pending_and_profit(franchisee_id)
+        payload["stats"].update(extra)
+        payload["franchisee"]["profit_from_centre"] = extra["profit_from_centre"]
+        payload["franchisee"]["pending_fofo_earnings"] = extra["pending_fofo_earnings"]
+    except Exception:
+        pass
+    return payload
 
 
 def get_b2b_statements(franchisee_id, limit=50):
@@ -677,192 +759,328 @@ def _ensure_patient_customer(patient_name, phone=None):
     return customer.name
 
 
-def _submit_sales_invoice(customer, item_code, rate, remarks, price_list=None):
-    company = _default_company()
-    if not company:
-        frappe.throw(_("Company not configured"))
-    invoice_data = {
-        "doctype": "Sales Invoice",
-        "customer": customer,
-        "company": company,
-        "due_date": today(),
-        "items": [
-            {
-                "item_code": item_code,
-                "qty": 1,
-                "rate": flt(rate),
-                "description": remarks,
-            }
-        ],
-        "remarks": remarks,
-    }
-    if price_list and frappe.get_meta("Sales Invoice").has_field("selling_price_list"):
-        invoice_data["selling_price_list"] = price_list
-    if frappe.get_meta("Sales Invoice").has_field("service_unit"):
-        invoice_data["service_unit"] = None
-    si = frappe.get_doc(invoice_data)
-    si.insert(ignore_permissions=True)
-    si.submit()
-    return si.name
+def _submit_sales_invoice(customer, item_code, rate, remarks, price_list=None, discount_amount=0):
+	return _submit_sales_invoice_items(
+		customer,
+		[{"item_code": item_code, "qty": 1, "rate": flt(rate)}],
+		remarks,
+		price_list=price_list,
+		discount_amount=discount_amount,
+	)
 
 
-def create_b2b_dual_invoices(trf, profile, retail, wholesale):
-    """Patient SI at MRP + platform SI to franchisee Customer at wholesale.
+def _submit_sales_invoice_items(customer, items, remarks, price_list=None, discount_amount=0):
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import sales_company
 
-    Soft-fails individually so wallet debit / TRF booking still succeed if
-    accounting masters are incomplete.
-    """
-    result = {"patient_invoice": None, "platform_invoice": None, "errors": []}
-    item_code = trf.test_required
-    if not item_code:
-        result["errors"].append("no_item")
-        return result
+	company = sales_company() or _default_company()
+	if not company:
+		frappe.throw(_("Company not configured"))
+	if not items:
+		frappe.throw(_("At least one invoice item is required"))
+	allowed = frappe.get_all("Allowed To Transact With", filters={"parent": customer, "parenttype": "Customer"}, pluck="company")
+	if allowed and company not in allowed:
+		customer_doc = frappe.get_doc("Customer", customer)
+		customer_doc.append("companies", {"company": company})
+		customer_doc.save(ignore_permissions=True)
+	invoice_data = {
+		"doctype": "Sales Invoice",
+		"customer": customer,
+		"company": company,
+		"due_date": today(),
+		"items": [
+			{
+				"item_code": row["item_code"],
+				"qty": flt(row.get("qty") or 1),
+				"rate": flt(row.get("rate") or 0),
+				"description": remarks,
+			}
+			for row in items
+		],
+		"remarks": remarks,
+	}
+	discount = flt(discount_amount or 0)
+	if discount > 0:
+		invoice_data["additional_discount_amount"] = discount
+		if frappe.get_meta("Sales Invoice").has_field("apply_discount_on"):
+			invoice_data["apply_discount_on"] = "Grand Total"
+	if price_list and frappe.get_meta("Sales Invoice").has_field("selling_price_list"):
+		invoice_data["selling_price_list"] = price_list
+	if frappe.get_meta("Sales Invoice").has_field("service_unit"):
+		invoice_data["service_unit"] = None
+	si = frappe.get_doc(invoice_data)
+	si.insert(ignore_permissions=True)
+	si.submit()
+	return si.name
 
-    if not trf.get("sales_invoice"):
-        try:
-            patient_customer = _ensure_patient_customer(trf.patient_name, trf.patient_phone)
-            si_name = _submit_sales_invoice(
-                patient_customer,
-                item_code,
-                retail,
-                f"B2B retail TRF {trf.name} — {trf.patient_name}",
-                price_list=profile.get("retail_price_list"),
-            )
-            trf.db_set("sales_invoice", si_name)
-            result["patient_invoice"] = si_name
-        except Exception:
-            frappe.log_error(title="phase23_patient_invoice", message=frappe.get_traceback())
-            result["errors"].append("patient_invoice_failed")
 
-    platform_customer = profile.get("platform_customer") or _ensure_platform_customer(profile)
-    meta = frappe.get_meta("Customer TRF")
-    existing_platform = (
-        trf.get("platform_sales_invoice") if meta.has_field("platform_sales_invoice") else None
-    )
-    if not existing_platform and platform_customer and flt(wholesale) > 0:
-        try:
-            psi_name = _submit_sales_invoice(
-                platform_customer,
-                item_code,
-                wholesale,
-                f"B2B wholesale TRF {trf.name} — {profile.branch_code}",
-                price_list=profile.get("wholesale_price_list"),
-            )
-            if meta.has_field("platform_sales_invoice"):
-                trf.db_set("platform_sales_invoice", psi_name)
-            result["platform_invoice"] = psi_name
-        except Exception:
-            frappe.log_error(title="phase23_platform_invoice", message=frappe.get_traceback())
-            result["errors"].append("platform_invoice_failed")
+def create_b2b_dual_invoices(trf, profile, retail, wholesale, line_items=None, discount_amount=0, wallet_txn=None):
+	"""Platform SI to the franchisee Customer at wholesale, settled from the wallet when `wallet_txn` is given.
 
-    return result
+	The patient pays the franchisee, so no patient Sales Invoice is booked in the company's books; the
+	hub prints the patient bill from the TRF. Soft-fails so wallet debit / TRF booking still succeed if
+	accounting masters are incomplete.
+	"""
+	result = {"patient_invoice": None, "platform_invoice": None, "platform_settlement": None, "errors": []}
+	rows = line_items or []
+	if not rows:
+		item_code = trf.test_required
+		if not item_code:
+			result["errors"].append("no_item")
+			return result
+		rows = [{"item_code": item_code, "retail": flt(retail), "wholesale": flt(wholesale)}]
+
+	platform_items = [
+		{"item_code": r["item_code"], "qty": 1, "rate": flt(r.get("wholesale") or 0)}
+		for r in rows
+		if flt(r.get("wholesale") or 0) > 0
+	]
+
+	platform_customer = profile.get("platform_customer") or _ensure_platform_customer(profile)
+	meta = frappe.get_meta("Customer TRF")
+	existing_platform = (
+		trf.get("platform_sales_invoice") if meta.has_field("platform_sales_invoice") else None
+	)
+	if not existing_platform and platform_customer and platform_items and flt(wholesale) > 0:
+		try:
+			psi_name = _submit_sales_invoice_items(
+				platform_customer,
+				platform_items,
+				f"B2B wholesale TRF {trf.name} — {profile.branch_code}",
+				price_list=profile.get("wholesale_price_list"),
+			)
+			if meta.has_field("platform_sales_invoice"):
+				trf.db_set("platform_sales_invoice", psi_name)
+			result["platform_invoice"] = psi_name
+		except Exception:
+			frappe.log_error(title="phase23_platform_invoice", message=frappe.get_traceback())
+			result["errors"].append("platform_invoice_failed")
+
+	platform_invoice = result["platform_invoice"] or existing_platform
+	if wallet_txn and platform_invoice:
+		from health_ecosystem_core.health_ecosystem_core.clinical_phase121_hub_receipts import (
+			settle_platform_invoice_from_wallet,
+		)
+
+		try:
+			result["platform_settlement"] = settle_platform_invoice_from_wallet(platform_invoice, wallet_txn)
+		except Exception:
+			frappe.log_error(title="phase121_platform_settlement", message=frappe.get_traceback())
+			result["errors"].append("platform_settlement_failed")
+
+	return result
+
+
+def _parse_walk_in_item_codes(item_code=None, item_codes=None):
+	codes = []
+	if item_codes is not None:
+		raw = item_codes
+		if isinstance(raw, str):
+			text = raw.strip()
+			if text.startswith("["):
+				try:
+					parsed = json.loads(text)
+					if isinstance(parsed, list):
+						codes = [cstr(c).strip() for c in parsed if cstr(c).strip()]
+				except Exception:
+					codes = []
+			if not codes:
+				codes = [part.strip() for part in text.split(",") if part.strip()]
+		elif isinstance(raw, (list, tuple)):
+			codes = [cstr(c).strip() for c in raw if cstr(c).strip()]
+	if not codes and item_code:
+		codes = [cstr(item_code).strip()]
+	# Preserve order, drop duplicates.
+	return list(dict.fromkeys([c for c in codes if c]))
 
 
 def create_b2b_walk_in_order(
-    user,
-    patient_name,
-    patient_phone,
-    age,
-    gender,
-    item_code,
-    payment_method=None,
+	user,
+	patient_name,
+	patient_phone,
+	age,
+	gender,
+	item_code,
+	payment_method=None,
+	item_codes=None,
+	discount_amount=0,
+	age_months=0,
+	age_days=0,
 ):
-    from health_ecosystem_core.health_ecosystem_core.clinical_utils import (
-        PAYMENT_METHOD_HUB,
-        normalize_payment_method,
-    )
+	from health_ecosystem_core.health_ecosystem_core.clinical_utils import (
+		PAYMENT_METHOD_HUB,
+		normalize_patient_age,
+		normalize_payment_method,
+	)
 
-    franchisee_id = resolve_franchisee_for_user(user)
-    if not franchisee_id:
-        frappe.throw(_("Franchisee access required"))
+	franchisee_id = resolve_franchisee_for_user(user)
+	if not franchisee_id:
+		frappe.throw(_("Franchisee access required"))
 
-    if not frappe.db.exists("Item", item_code):
-        frappe.throw(_("Invalid test item"))
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+		assert_can_bill_patient,
+		vector_entry,
+	)
 
-    profile = frappe.get_doc("Franchisee Profile", franchisee_id)
-    if not profile.get("retail_price_list"):
-        ensure_franchisee_b2b_setup(franchisee_id)
-        profile.reload()
+	assert_can_bill_patient(franchisee_id)
+	if vector_entry(franchisee_id):
+		frappe.throw(_("This Vector enters the partner circuit; create the bill from Walk-in bill entry."))
 
-    from health_ecosystem_core.health_ecosystem_core.clinical_phase54_franchisee_rate_model import (
-        franchisee_rate,
-        mrp_rate,
-    )
+	codes = _parse_walk_in_item_codes(item_code=item_code, item_codes=item_codes)
+	if not codes:
+		frappe.throw(_("Select at least one lab test"))
 
-    retail = mrp_rate(item_code)
-    wholesale = franchisee_rate(item_code, franchisee_id=franchisee_id)
-    if not retail:
-        frappe.throw(_("Item has no company MRP (Standard Selling Rate)"))
-    if not wholesale:
-        frappe.throw(
-            _("Item has no {0} rate in the franchisee price list").format(
-                profile.get("franchisee_type") or "Pulse"
-            )
-        )
-    wallet_balance = get_wallet_balance(franchisee_id)
-    if wallet_balance < wholesale:
-        frappe.throw(
-            _(
-                "Insufficient wallet balance. Platform fee is ₹{0} but wallet has ₹{1}. "
-                "Recharge your wallet to book this test."
-            ).format(wholesale, wallet_balance),
-            frappe.ValidationError,
-        )
+	for code in codes:
+		if not frappe.db.exists("Item", code):
+			frappe.throw(_("Invalid test item: {0}").format(code))
 
-    payment_method = normalize_payment_method(payment_method or PAYMENT_METHOD_HUB)
-    hub_address = profile.address or f"{profile.franchise_name}, {profile.branch_code}"
+	profile = frappe.get_doc("Franchisee Profile", franchisee_id)
+	if not profile.get("retail_price_list"):
+		ensure_franchisee_b2b_setup(franchisee_id)
+		profile.reload()
 
-    trf = frappe.get_doc(
-        {
-            "doctype": "Customer TRF",
-            "patient_name": patient_name,
-            "patient_phone": patient_phone,
-            "age": cint(age),
-            "gender": gender,
-            "test_required": item_code,
-            "tests": [{"item": item_code, "amount": retail}],
-            "franchisee_id": franchisee_id,
-            "collection_address": hub_address,
-            "amount": retail,
-            "wholesale_amount": wholesale,
-            "platform_billed": 0,
-            "payment_method": payment_method,
-            "razorpay_payment_status": "Paid",
-            "order_status": "Booked",
-        }
-    )
-    trf.insert(ignore_permissions=True)
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase54_franchisee_rate_model import (
+		line_settlement,
+	)
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+		partner_circuit,
+		record_circuit_bill,
+		tier_settlement,
+	)
 
-    try:
-        txn_id = debit_b2b_wallet_platform_fee(franchisee_id, wholesale, trf.name)
-    except frappe.ValidationError:
-        frappe.delete_doc("Customer TRF", trf.name, force=1, ignore_permissions=True)
-        raise
+	circuit = partner_circuit(franchisee_id)
+	tier_lines = []
+	priced_lines = []
+	total_retail = 0.0
+	total_wholesale = 0.0
+	for code in codes:
+		settled = line_settlement(code, franchisee_id=franchisee_id)
+		retail = flt(settled["rate"])
+		wholesale = flt(settled["platform_fee"])
+		tier = tier_settlement(code, franchisee_id, 1, circuit=circuit)
+		if tier:
+			tier_lines.append(tier)
+			wholesale = tier["debit_per_unit"]
+		if not retail:
+			frappe.throw(_("Item {0} has no patient selling price").format(code))
+		if not wholesale:
+			frappe.throw(
+				_("Item {0} has no platform fee rate for this franchisee").format(code)
+			)
+		item_name = frappe.db.get_value("Item", code, "item_name") or code
+		priced_lines.append(
+			{
+				"item_code": code,
+				"item_name": item_name,
+				"retail": retail,
+				"wholesale": wholesale,
+				"margin": flt(settled["commission_value"]),
+			}
+		)
+		total_retail += retail
+		total_wholesale += wholesale
 
-    trf.db_set("platform_billed", 1)
-    invoices = create_b2b_dual_invoices(trf, profile, retail, wholesale)
+	discount = min(max(flt(discount_amount or 0), 0.0), total_retail)
+	payable = round(total_retail - discount, 2)
 
-    try:
-        from health_ecosystem_core.health_ecosystem_core.clinical_iam import auto_assign_phlebotomist_for_trf
+	assert_wallet_covers_platform_fee(franchisee_id, total_wholesale, profile)
 
-        auto_assign_phlebotomist_for_trf(trf.name)
-    except Exception:
-        pass
+	payment_method = normalize_payment_method(payment_method or PAYMENT_METHOD_HUB)
+	hub_address = profile.address or f"{profile.franchise_name}, {profile.branch_code}"
+	age_y, age_m, age_d = normalize_patient_age(age, age_months, age_days)
 
-    frappe.db.commit()
-    return {
-        "trf_id": trf.name,
-        "barcode": trf.unique_barcode,
-        "retail_amount": retail,
-        "wholesale_amount": wholesale,
-        "margin": round(retail - wholesale, 2),
-        "payment_method": payment_method,
-        "wallet_balance": get_wallet_balance(franchisee_id),
-        "wallet_transaction": txn_id,
-        "patient_invoice": invoices.get("patient_invoice"),
-        "platform_invoice": invoices.get("platform_invoice"),
-        "invoice_errors": invoices.get("errors") or [],
-    }
+	trf = frappe.get_doc(
+		{
+			"doctype": "Customer TRF",
+			"patient_name": patient_name,
+			"patient_phone": patient_phone,
+			"age": age_y,
+			"age_months": age_m,
+			"age_days": age_d,
+			"gender": gender,
+			"test_required": codes[0],
+			"tests": [
+				{
+					"item": row["item_code"],
+					"qty": 1,
+					"rate": row["retail"],
+					"amount": row["retail"],
+				}
+				for row in priced_lines
+			],
+			"franchisee_id": franchisee_id,
+			"collection_address": hub_address,
+			"amount": payable,
+			"discount_amount": discount,
+			"wholesale_amount": total_wholesale,
+			"platform_billed": 0,
+			"payment_method": payment_method,
+			"razorpay_payment_status": "Paid",
+			"order_status": "Booked",
+		}
+	)
+	trf.insert(ignore_permissions=True)
+
+	try:
+		txn_id = debit_b2b_wallet_platform_fee(franchisee_id, total_wholesale, trf.name)
+	except frappe.ValidationError:
+		frappe.delete_doc("Customer TRF", trf.name, force=1, ignore_permissions=True)
+		raise
+
+	record_circuit_bill(trf.name, franchisee_id, tier_lines, txn_id)
+	trf.db_set("platform_billed", 1)
+	invoices = create_b2b_dual_invoices(
+		trf,
+		profile,
+		total_retail,
+		total_wholesale,
+		line_items=priced_lines,
+		discount_amount=discount,
+		wallet_txn=txn_id,
+	)
+
+	try:
+		from health_ecosystem_core.health_ecosystem_core.clinical_iam import auto_assign_phlebotomist_for_trf
+
+		auto_assign_phlebotomist_for_trf(trf.name)
+	except Exception:
+		pass
+
+	frappe.db.commit()
+	try:
+		from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+			accrue_fofo_foco_commission,
+		)
+
+		accrue_fofo_foco_commission(trf.name)
+		frappe.db.commit()
+	except Exception:
+		frappe.log_error(title="phase111_accrue_walkin", message=frappe.get_traceback())
+	return {
+		"trf_id": trf.name,
+		"barcode": trf.unique_barcode,
+		"item_codes": codes,
+		"line_items": [
+			{
+				"item_code": row["item_code"],
+				"item_name": row["item_name"],
+				"retail_amount": row["retail"],
+				"wholesale_amount": row["wholesale"],
+				"margin": row["margin"],
+			}
+			for row in priced_lines
+		],
+		"retail_amount": total_retail,
+		"discount_amount": discount,
+		"payable_amount": payable,
+		"wholesale_amount": total_wholesale,
+		"margin": round(total_retail - total_wholesale, 2),
+		"payment_method": payment_method,
+		"wallet_balance": get_wallet_balance(franchisee_id),
+		"wallet_transaction": txn_id,
+		"patient_invoice": invoices.get("patient_invoice"),
+		"platform_invoice": invoices.get("platform_invoice"),
+		"invoice_errors": invoices.get("errors") or [],
+	}
 
 
 def setup_phase23():
@@ -966,11 +1184,7 @@ def smoke_phase23():
             )
             trf.insert(ignore_permissions=True)
             invoices = create_b2b_dual_invoices(trf, profile, retail, wholesale)
-            check(
-                "patient_invoice",
-                bool(invoices.get("patient_invoice")),
-                invoices.get("patient_invoice") or ",".join(invoices.get("errors") or []),
-            )
+            check("no_patient_invoice", not invoices.get("patient_invoice"))
             check(
                 "platform_invoice",
                 bool(invoices.get("platform_invoice")),

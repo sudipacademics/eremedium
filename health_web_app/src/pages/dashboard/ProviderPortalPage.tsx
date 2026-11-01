@@ -25,6 +25,7 @@ export function ProviderPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [kpis, setKpis] = useState<Record<string, number> | null>(null);
 
   const load = useCallback(async () => {
     const res = await api.getMyProviderPortal();
@@ -32,6 +33,12 @@ export function ProviderPortalPage() {
     setMobile(res.data.profile?.mobile || '');
     setEmail(res.data.profile?.email || '');
     setBio(res.data.profile?.bio || '');
+    try {
+      const analytics = await api.getMyPracticeAnalytics(30);
+      setKpis(analytics.data.kpis || null);
+    } catch {
+      setKpis(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -96,6 +103,28 @@ export function ProviderPortalPage() {
 
       {error ? <div className="error">{error}</div> : null}
       {notice ? <div className="success">{notice}</div> : null}
+
+      {kpis ? (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>Practice analytics (30 days)</h2>
+          <p className="muted">
+            Visits {kpis.appointments ?? 0} · Tele {kpis.teleconsults ?? 0} · Rx {kpis.prescriptions ?? 0} ·
+            Encounters {kpis.encounters ?? 0} · Care enrollments {kpis.care_program_enrollments ?? 0} · Revenue ₹
+            {kpis.consult_revenue ?? 0}
+          </p>
+          <div className="toolbar">
+            <Link className="btn btn-sm" to="/dashboard/provider/smartsync">
+              SmartSync OCR
+            </Link>
+            <Link className="btn btn-sm secondary" to="/dashboard/provider/knowledge">
+              Knowledge
+            </Link>
+            <Link className="btn btn-sm secondary" to="/research">
+              Research
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <h2>Profile</h2>
@@ -224,6 +253,7 @@ export function ProviderPortalPage() {
                 <th>Mode</th>
                 <th>Status</th>
                 <th>Join</th>
+                <th>Prescription</th>
               </tr>
             </thead>
             <tbody>
@@ -244,6 +274,22 @@ export function ProviderPortalPage() {
                     ) : (
                       '—'
                     )}
+                  </td>
+                  <td>
+                    <Link
+                      to={`/dashboard/provider/consult/${apt.appointment_id}`}
+                      state={{ appointment: apt }}
+                      className="btn btn-sm"
+                    >
+                      Consult
+                    </Link>{' '}
+                    <Link
+                      to={`/dashboard/provider/prescription/${apt.appointment_id}`}
+                      state={{ appointment: apt }}
+                      className="btn btn-sm btn-ghost"
+                    >
+                      Write Rx
+                    </Link>
                   </td>
                 </tr>
               ))}

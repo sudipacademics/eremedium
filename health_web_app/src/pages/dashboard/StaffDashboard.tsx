@@ -25,7 +25,7 @@ export function StaffDashboard() {
       </section>
 
       <div className="grid grid-actions">
-        <Link className="card card-action" to="/bookings">
+        <Link className="card card-action" to="/dashboard/all-bookings">
           <h3>All bookings</h3>
           <p className="muted">Lab TRFs and order status.</p>
         </Link>
@@ -41,9 +41,33 @@ export function StaffDashboard() {
           <h3>Lab result entry</h3>
           <p className="muted">Enter results, finalize, and send for pathologist review.</p>
         </Link>
+        <Link className="card card-action" to="/dashboard/accession">
+          <h3>Sample accession</h3>
+          <p className="muted">Receive / reject collection tubes (NABL rejection record).</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/lab-bill-entry">
+          <h3>Mother lab bill</h3>
+          <p className="muted">Direct / online-courier samples at mother lab → Booked, then accession.</p>
+        </Link>
         <Link className="card card-action" to="/dashboard/report-lifecycle">
           <h3>Report lifecycle</h3>
           <p className="muted">Authorize, notify patient, and dispatch NABL reports.</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/critical-alerts">
+          <h3>Critical alerts</h3>
+          <p className="muted">Acknowledge critical / panic value alerts after authorize.</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/qc">
+          <h3>IQC / NABL QC</h3>
+          <p className="muted">Internal quality control and Levey–Jennings.</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/qms">
+          <h3>QMS</h3>
+          <p className="muted">Quality management indicators and CAPA.</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/reagents">
+          <h3>Reagent batches</h3>
+          <p className="muted">Open packs, track quotas, lot verification, costing consume.</p>
         </Link>
         <Link className="card card-action" to="/dashboard/pharmacy-quotes">
           <h3>Pharmacy quotes</h3>
@@ -69,6 +93,14 @@ export function StaffDashboard() {
             Upcoming online sessions
             {ops.teleconsults_upcoming ? ` · ${ops.teleconsults_upcoming} scheduled` : ''}.
           </p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/bank-reconciliation">
+          <h3>Bank reconciliation</h3>
+          <p className="muted">Import the ICICI statement and match credits to booked payments.</p>
+        </Link>
+        <Link className="card card-action" to="/dashboard/session-ops">
+          <h3>Wellness sessions</h3>
+          <p className="muted">Physio & aesthetic card punches and yoga/video rooms.</p>
         </Link>
       </div>
 

@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 
 type Props = {
-  referenceDoctype: 'Customer TRF' | 'Pharmacy Order';
+  referenceDoctype:
+    | 'Customer TRF'
+    | 'Pharmacy Order'
+    | 'Franchise Sales Lead'
+    | 'HEC Hiring Lead'
+    | 'B2B Collection Centre';
   referenceName: string;
   label?: string;
   className?: string;

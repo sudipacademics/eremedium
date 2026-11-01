@@ -59,12 +59,59 @@ def get_healthcare_departments():
     return _success({"departments": departments})
 
 
+def _resolve_clinical_department(department):
+    """Map Flutter/UI aliases (e.g. 'Allied — Aesthetics') to Clinical Department name."""
+    raw = (department or "").strip()
+    if not raw:
+        return None
+    if not frappe.db.exists("DocType", "Clinical Department"):
+        return None
+    if frappe.db.exists("Clinical Department", raw):
+        return raw
+    by_label = frappe.db.get_value("Clinical Department", {"department_name": raw}, "name")
+    if by_label:
+        return by_label
+
+    doctor_dept = frappe.db.get_value("Doctor", {"doctor_name": raw}, "primary_department")
+    if doctor_dept and frappe.db.exists("Clinical Department", doctor_dept):
+        return doctor_dept
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase31_allied_health import ALLIED_WINGS
+
+        compact = raw.replace("—", "-").replace("–", "-").lower()
+        for wing in ALLIED_WINGS:
+            title = (wing.get("title") or "").lower()
+            dept = wing.get("department_name") or ""
+            ctype = (wing.get("consultation_type") or "").lower()
+            if title and (
+                title in compact
+                or f"allied - {title}" in compact
+                or f"allied {title}" in compact
+            ):
+                if frappe.db.exists("Clinical Department", dept):
+                    return dept
+                found = frappe.db.get_value("Clinical Department", {"department_name": dept}, "name")
+                if found:
+                    return found
+            if ctype and ctype in compact:
+                if frappe.db.exists("Clinical Department", dept):
+                    return dept
+                found = frappe.db.get_value("Clinical Department", {"department_name": dept}, "name")
+                if found:
+                    return found
+    except Exception:
+        pass
+    return None
+
+
 @frappe.whitelist(allow_guest=True)
 def get_healthcare_practitioners(department=None):
     if not frappe.db.exists("DocType", "Doctor"):
         return _success({"practitioners": []})
 
     department = (_parse_request_value("department", department) or "").strip()
+    department = _resolve_clinical_department(department) or department
     if department:
         doctors = frappe.db.sql(
             """
@@ -96,6 +143,11 @@ def get_doctor_schedule_slots(doctor=None, appointment_date=None, department=Non
 
     doctor = (_parse_request_value("doctor", doctor) or "").strip()
     department = (_parse_request_value("department", department) or "").strip()
+    department = _resolve_clinical_department(department) or department
+    if doctor and not frappe.db.exists("Doctor", doctor):
+        by_name = frappe.db.get_value("Doctor", {"doctor_name": doctor}, "name")
+        if by_name:
+            doctor = by_name
     appointment_date = _parse_request_value("appointment_date", appointment_date)
     if not doctor or not appointment_date:
         return _error(_("Doctor and appointment date are required"))
@@ -207,6 +259,17 @@ def book_patient_appointment(
     payment_method = _parse_request_value("payment_method", payment_method)
     amount = _parse_request_value("amount", amount)
 
+    # Flutter sometimes sends practitioner label "Allied — Aesthetics" as department
+    department = _resolve_clinical_department(department) or department
+    if department and not frappe.db.exists("Clinical Department", department):
+        return _error(_("Could not find Department: {0}").format(department))
+
+    # Resolve practitioner by name if Flutter sends display name instead of Doctor ID
+    if practitioner and not frappe.db.exists("Doctor", practitioner):
+        by_name = frappe.db.get_value("Doctor", {"doctor_name": practitioner}, "name")
+        if by_name:
+            practitioner = by_name
+
     from health_ecosystem_core.health_ecosystem_core.clinical_utils import normalize_payment_method
 
     payment_method = normalize_payment_method(payment_method)
@@ -232,7 +295,9 @@ def book_patient_appointment(
     if not patient:
         return _error(_("Health Patient could not be created"))
 
-    company = frappe.defaults.get_global_default("company") or frappe.get_all("Company", limit=1)[0].name
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import sales_company
+
+    company = sales_company() or frappe.get_all("Company", limit=1)[0].name
     doc = {
         "doctype": "Doctor Appointment",
         "patient": patient,

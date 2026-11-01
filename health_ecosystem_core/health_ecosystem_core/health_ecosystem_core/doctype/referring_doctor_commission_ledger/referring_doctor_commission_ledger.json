@@ -1,0 +1,124 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-08-12 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "referring_doctor",
+    "customer_trf",
+    "franchisee",
+    "column_break_1",
+    "bill_date",
+    "invoice_amount",
+    "commission_percent",
+    "commission_amount",
+    "status",
+    "posting_date",
+    "patient_name",
+    "notes"
+  ],
+  "fields": [
+    {
+      "default": "RDCL-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "RDCL-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "referring_doctor",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Referring Doctor",
+      "options": "Referring Doctor",
+      "reqd": 1
+    },
+    {
+      "fieldname": "customer_trf",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Customer TRF",
+      "options": "Customer TRF",
+      "reqd": 1
+    },
+    {
+      "fieldname": "franchisee",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Franchisee",
+      "options": "Franchisee Profile"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "bill_date",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Bill Date"
+    },
+    {
+      "fieldname": "invoice_amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Invoice Amount (Net Bill)",
+      "reqd": 1
+    },
+    {
+      "fieldname": "commission_percent",
+      "fieldtype": "Percent",
+      "label": "Commission %"
+    },
+    {
+      "fieldname": "commission_amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Commission Amount",
+      "reqd": 1
+    },
+    {
+      "default": "Accrued",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Accrued\nPaid\nReversed"
+    },
+    {
+      "default": "Today",
+      "fieldname": "posting_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Posting Date",
+      "reqd": 1
+    },
+    {
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "label": "Patient Name"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Referring Doctor Commission Ledger",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Franchisee Operator", "read": 1, "report": 1},
+    {"role": "Lab Technician", "read": 1, "report": 1}
+  ],
+  "sort_field": "posting_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

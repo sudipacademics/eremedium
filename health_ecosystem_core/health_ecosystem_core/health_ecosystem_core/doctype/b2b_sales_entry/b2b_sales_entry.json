@@ -1,0 +1,48 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-08-05 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "sales_date",
+    "b2b_collection_centre",
+    "centre_name",
+    "number_of_samples",
+    "business_value",
+    "assigned_logistics_person",
+    "status",
+    "reach_user",
+    "sales_rep",
+    "rfms_sales_id",
+    "closing_report",
+    "remarks"
+  ],
+  "fields": [
+    {"default": "B2BS-.#####", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "B2BS-.#####", "reqd": 1},
+    {"fieldname": "sales_date", "fieldtype": "Date", "in_list_view": 1, "label": "Date", "reqd": 1},
+    {"fieldname": "b2b_collection_centre", "fieldtype": "Link", "in_list_view": 1, "label": "B2B Collection Centre", "options": "B2B Collection Centre", "reqd": 1},
+    {"fetch_from": "b2b_collection_centre.centre_name", "fieldname": "centre_name", "fieldtype": "Data", "label": "Centre Name", "read_only": 1},
+    {"default": "0", "fieldname": "number_of_samples", "fieldtype": "Int", "in_list_view": 1, "label": "Number of Samples", "reqd": 1},
+    {"default": "0", "fieldname": "business_value", "fieldtype": "Currency", "in_list_view": 1, "label": "Total B2B Business Value", "reqd": 1},
+    {"fieldname": "assigned_logistics_person", "fieldtype": "Data", "label": "Assigned Logistics Person"},
+    {"default": "Submitted", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "options": "Draft\nSubmitted\nVerified\nRejected"},
+    {"fieldname": "reach_user", "fieldtype": "Data", "label": "REACH User"},
+    {"fieldname": "sales_rep", "fieldtype": "Link", "label": "Sales Rep", "options": "Sales Rep Profile"},
+    {"fieldname": "rfms_sales_id", "fieldtype": "Data", "label": "RFMS Sales ID", "read_only": 1},
+    {"fieldname": "closing_report", "fieldtype": "Link", "label": "Closing Report", "options": "Sales Closing Report"},
+    {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "B2B Sales Entry",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+    {"role": "Sales Representative", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

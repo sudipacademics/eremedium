@@ -226,7 +226,8 @@
 		var d = frm.doc || {};
 		var bill_no = d.name || "(New)";
 		var barcode = d.unique_barcode || "";
-		var now = frappe.datetime.str_to_user(frappe.datetime.now_datetime());
+		var bill_dt_sys = d.hec_bill_datetime || frappe.datetime.now_datetime();
+		var bill_dt_user = frappe.datetime.str_to_user(bill_dt_sys);
 		return `
 			<div class="hec-be-head">
 				<div class="hec-be-title-row">
@@ -238,7 +239,7 @@
 				</div>
 				<div class="hec-be-grid-form">
 					<label>${__("Bill Date")}<input type="text" class="hec-bill-dt" value="${frappe.utils.escape_html(
-						d.hec_bill_datetime || now
+						bill_dt_user
 					)}"></label>
 					<label>${__("Bill No")}<input type="text" class="hec-bill-no" value="${frappe.utils.escape_html(
 						bill_no
@@ -458,6 +459,13 @@
 			</div>`;
 	}
 
+	var NATIVE_HIDE_CSS =
+		'[data-fieldname="tests"],' +
+		'[data-fieldname="hec_adjustments"],' +
+		'[data-fieldname="hec_staff_share"],' +
+		'[data-fieldname="hec_receipt_section"],' +
+		'[data-fieldname="hec_totals_section"] { display: none !important; }';
+
 	function css() {
 		return `<style>
 			.hec-bill-entry { margin: 8px 0 16px; border: 1px solid #2b6cb0; border-radius: 4px; background: #fff; font-size: 12px; }
@@ -493,26 +501,48 @@
 			.hec-be-totals .hec-hi { background:#fef9c3; padding:3px 4px; margin:2px -4px; }
 			.hec-be-bottom-mid > label { display:flex; flex-direction:column; font-size:11px; gap:2px; }
 			.hec-be-bottom-mid > label input { height:26px; border:1px solid #cbd5e1; padding:2px 6px; }
+			.hec-be-fallback { margin:8px 0; padding:10px 12px; border:1px solid #f59e0b; background:#fffbeb; border-radius:4px; color:#92400e; }
 			@media (max-width: 1100px) {
 				.hec-be-grid-form { grid-template-columns: repeat(2, 1fr); }
 				.hec-be-bottom { grid-template-columns: 1fr; }
 			}
-			/* Hide default TRF child grids while Bill Entry is primary editor */
-			[data-fieldname="tests"],
-			[data-fieldname="hec_adjustments"],
-			[data-fieldname="hec_staff_share"],
-			[data-fieldname="hec_receipt_section"],
-			[data-fieldname="hec_totals_section"] { display: none !important; }
 		</style>`;
+	}
+
+	function set_native_hidden(frm, hide) {
+		if (!frm || !frm.$wrapper) return;
+		frm.$wrapper.find("style.hec-be-hide-native").remove();
+		// Never collapse the whole Desk form — only duplicate Bill Entry child grids.
+		frm.$wrapper.find(".form-layout, .layout-main-section, .form-page").css({
+			display: "",
+			visibility: "",
+			opacity: "",
+		});
+		if (hide) {
+			$("<style class='hec-be-hide-native'></style>").text(NATIVE_HIDE_CSS).appendTo(frm.$wrapper);
+		}
+	}
+
+	function show_fallback(frm, err) {
+		if (!frm || !frm.$wrapper) return;
+		set_native_hidden(frm, false);
+		frm.$wrapper.find(".hec-be-fallback").remove();
+		var msg =
+			'<div class="hec-be-fallback">' +
+			"<b>Lab Bill Entry UI failed to load</b> — showing the standard Customer TRF form. " +
+			"Fill patient + tests below, then Save. " +
+			(err ? "<br><small>" + frappe.utils.escape_html(String(err)) + "</small>" : "") +
+			"</div>";
+		var $anchor = frm.$wrapper.find(".form-layout").first();
+		if ($anchor.length) $anchor.before(msg);
+		else frm.$wrapper.prepend(msg);
 	}
 
 	function render(frm) {
 		if (!frm || !frm.$wrapper || !frm.$wrapper.length) return;
 		var $wrap = frm.$wrapper.find(".hec-bill-entry");
 		if (!$wrap.length) {
-			$wrap = $(
-				'<div class="hec-bill-entry"></div>'
-			);
+			$wrap = $('<div class="hec-bill-entry"></div>');
 			var $anchor = frm.$wrapper.find(".form-layout").first();
 			if ($anchor.length) $anchor.before($wrap);
 			else {
@@ -521,9 +551,26 @@
 				else frm.$wrapper.prepend($wrap);
 			}
 		}
-		$wrap.html(css() + header_html(frm) + tests_html(frm) + adj_staff_totals_html(frm));
-		bind(frm);
-		paint_totals(frm);
+		try {
+			// Always keep native form available until Bill Entry chrome is proven
+			set_native_hidden(frm, false);
+			$wrap.html(css() + header_html(frm) + tests_html(frm) + adj_staff_totals_html(frm));
+			if (!$wrap.find(".hec-be-title").length || !$wrap.find(".hec-be-grid-form").length) {
+				show_fallback(frm, "Bill Entry chrome missing");
+				return;
+			}
+			bind(frm);
+			paint_totals(frm);
+			// Hide only duplicate grids (tests / adjustments) — never the whole form
+			set_native_hidden(frm, true);
+			frm.$wrapper.find(".hec-be-fallback").remove();
+		} catch (e) {
+			console.error("HEC Lab Bill Entry render:", e);
+			try {
+				$wrap.empty();
+			} catch (ignore) {}
+			show_fallback(frm, e && e.message);
+		}
 	}
 
 	function open_doctor_picker(frm, preset) {
@@ -738,11 +785,27 @@
 			hec_coll_charge: flt($w.find(".hec-coll-charge").val()),
 			hec_outside_sample: $w.find(".hec-outside").is(":checked") ? 1 : 0,
 			hec_lab_remarks: $w.find(".hec-remarks").val(),
-			hec_bill_datetime: $w.find(".hec-bill-dt").val(),
+			hec_bill_datetime: (function () {
+				var raw = ($w.find(".hec-bill-dt").val() || "").trim();
+				if (!raw) return frappe.datetime.now_datetime();
+				try {
+					return frappe.datetime.user_to_str(raw) || raw;
+				} catch (e) {
+					return raw;
+				}
+			})(),
 			hec_receipt_amount: flt($w.find(".hec-receipt-amt").val()) || t.hec_amount_paid,
 			hec_receipt_mode: $w.find(".hec-receipt-mode").val(),
 			hec_cheque_ref: $w.find(".hec-cheque-ref").val(),
-			hec_cheque_date: $w.find(".hec-cheque-dt").val(),
+			hec_cheque_date: (function () {
+				var raw = ($w.find(".hec-cheque-dt").val() || "").trim();
+				if (!raw) return "";
+				try {
+					return frappe.datetime.user_to_str(raw).split(" ")[0] || raw;
+				} catch (e) {
+					return raw;
+				}
+			})(),
 			hec_bank: $w.find(".hec-bank").val(),
 			hec_amount_paid: t.hec_amount_paid,
 			hec_received: t.hec_received || t.hec_amount_paid,
@@ -895,17 +958,34 @@
 	}
 
 	function mount(frm) {
-		safe(function () {
-			load_from_doc(frm);
-			render(frm);
-		});
+		if (!frm || !frm.$wrapper) return;
+		// Defer so Desk form-layout exists (fixes blank New Customer TRF)
+		setTimeout(function () {
+			safe(function () {
+				load_from_doc(frm);
+				render(frm);
+			});
+			try {
+				if (!frm.$wrapper.find(".hec-bill-entry .hec-be-title").length) {
+					show_fallback(frm, "mount incomplete");
+				}
+				var has_inputs =
+					frm.$wrapper.find(
+						".form-layout .control-input, .form-layout input, .hec-bill-entry input"
+					).length > 0;
+				if (!has_inputs) {
+					set_native_hidden(frm, false);
+					show_fallback(frm, "form chrome empty — native form restored");
+				}
+			} catch (e) {
+				console.error("HEC Lab Bill Entry mount check:", e);
+				set_native_hidden(frm, false);
+			}
+		}, 50);
 	}
 
 	frappe.ui.form.on("Customer TRF", {
 		onload_post_render: function (frm) {
-			mount(frm);
-		},
-		onload: function (frm) {
 			mount(frm);
 		},
 		refresh: function (frm) {
@@ -918,8 +998,10 @@
 		try {
 			var route = frappe.get_route_str() || "";
 			if (route.indexOf("Form/Customer TRF") === 0 || route.indexOf("customer-trf") >= 0) {
-				var frm = cur_frm;
-				if (frm && frm.doctype === "Customer TRF") mount(frm);
+				setTimeout(function () {
+					var frm = cur_frm;
+					if (frm && frm.doctype === "Customer TRF") mount(frm);
+				}, 80);
 			}
 		} catch (e) {}
 	});

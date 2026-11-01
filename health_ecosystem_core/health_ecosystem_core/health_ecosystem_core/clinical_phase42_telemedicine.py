@@ -157,21 +157,59 @@ def book_teleconsult_appointment(
     return result
 
 
-@frappe.whitelist()
-def get_teleconsult_session(appointment_id=None, sid=None):
-    if not _require_mobile_auth(sid):
-        return _error(_("Not authenticated"), 401)
-
+@frappe.whitelist(allow_guest=True)
+def get_teleconsult_session(appointment_id=None, sid=None, token=None):
+    """Patient/staff session payload. Guest allowed when valid join token is presented."""
     appointment_id = (_parse_request_value("appointment_id", appointment_id) or "").strip()
+    token = (_parse_request_value("token", token) or "").strip()
     if not appointment_id or not frappe.db.exists("Doctor Appointment", appointment_id):
         return _error(_("Appointment not found"), 404)
+
+    expected = hashlib.sha256(f"{appointment_id}-{frappe.local.site}".encode()).hexdigest()[:16]
+    authed = False
+    try:
+        if _require_mobile_auth(sid):
+            authed = True
+    except Exception:
+        authed = False
+    if not authed and token != expected:
+        return _error(_("Not authenticated"), 401)
 
     doc = frappe.get_doc("Doctor Appointment", appointment_id)
     mode = getattr(doc, "consultation_mode", None) or "In-person"
     if mode != "Online" and not getattr(doc, "meeting_link", None):
-        return _error(_("This is not an online consultation"), 400)
+        # Auto-upgrade if meeting was never stamped
+        link, _ = _meeting_link(appointment_id)
+        frappe.db.set_value(
+            "Doctor Appointment",
+            appointment_id,
+            {"consultation_mode": "Online", "meeting_link": link},
+            update_modified=True,
+        )
+        doc.reload()
 
     return _success({"session": _serialize_tele_session(doc)})
+
+
+@frappe.whitelist(allow_guest=True)
+def join_video_session(appointment_id=None, token=None, sid=None):
+    """Return embeddable Jitsi URL for teleconsult / yoga / online wellness."""
+    res = get_teleconsult_session(appointment_id=appointment_id, sid=sid, token=token)
+    if res.get("status") != "success":
+        return res
+    session = (res.get("data") or {}).get("session") or {}
+    return _success(
+        {
+            "appointment_id": session.get("appointment_id"),
+            "meeting_link": session.get("meeting_link"),
+            "portal_join_url": session.get("portal_join_url"),
+            "patient_name": session.get("patient_name"),
+            "doctor_name": session.get("doctor_name"),
+            "appointment_date": session.get("appointment_date"),
+            "appointment_time": session.get("appointment_time"),
+            "provider": "jitsi",
+        }
+    )
 
 
 @frappe.whitelist()

@@ -226,4 +226,123 @@ def home_content_extras():
         "radiology_services": load_radiology_services(),
         "whatsapp_cta": load_whatsapp_cta(),
         "headers": load_home_headers(),
+        "footer": build_site_footer(),
     }
+
+
+DEFAULT_FOOTER_SUBDOMAINS = [
+    {"code": "SUB-WWW", "title": "Patient Portal", "url": "https://www.remediumlabs.in", "open_in_new_tab": 0},
+    {"code": "SUB-CAREERS", "title": "Careers", "url": "https://career.e-remedium.in", "open_in_new_tab": 1},
+    {"code": "SUB-PARTNERS", "title": "Partners (B2B)", "url": "https://partners.remediumlabs.in", "open_in_new_tab": 1},
+    {"code": "SUB-REACH", "title": "Sales Reach", "url": "https://reach.e-remedium.in", "open_in_new_tab": 1},
+    {"code": "SUB-COLLECT", "title": "Home Collection", "url": "https://collect.remediumlabs.in", "open_in_new_tab": 1},
+    {"code": "SUB-ERP", "title": "ERP Desk", "url": "https://erp.e-remedium.in", "open_in_new_tab": 1},
+]
+
+DEFAULT_FOOTER_COMPANY = [
+    {"code": "CO-LABS", "title": "Lab Tests", "url": "/diagnostics", "open_in_new_tab": 0},
+    {"code": "CO-CENTRES", "title": "Centres", "url": "/centres", "open_in_new_tab": 0},
+    {"code": "CO-WELLNESS", "title": "Wellness", "url": "/wellness", "open_in_new_tab": 0},
+    {"code": "CO-BLOG", "title": "Blog", "url": "/blog", "open_in_new_tab": 0},
+    {"code": "CO-CONTACT", "title": "Contact Us", "url": "/insurance", "open_in_new_tab": 0},
+]
+
+DEFAULT_FOOTER_SOCIAL = [
+    {"code": "SOC-FACEBOOK", "title": "Facebook", "url": "https://www.facebook.com/remedium.health", "icon": "facebook", "open_in_new_tab": 1},
+    {"code": "SOC-INSTAGRAM", "title": "Instagram", "url": "https://www.instagram.com/remedium.health", "icon": "instagram", "open_in_new_tab": 1},
+    {"code": "SOC-YOUTUBE", "title": "YouTube", "url": "https://www.youtube.com/@remediumhealth", "icon": "youtube", "open_in_new_tab": 1},
+    {"code": "SOC-LINKEDIN", "title": "LinkedIn", "url": "https://www.linkedin.com/company/remedium-health", "icon": "linkedin", "open_in_new_tab": 1},
+]
+
+DEFAULT_FOOTER_LEGAL = [
+    {"title": "Privacy Policy", "url": "/legal/privacy-policy"},
+    {"title": "Disclaimer", "url": "/legal/disclaimer"},
+    {"title": "Terms & Conditions", "url": "/legal/terms-and-conditions"},
+    {"title": "Refund Policy", "url": "/legal/refund-policy"},
+    {"title": "Data Use Policy", "url": "/legal/data-use-policy"},
+]
+
+DEFAULT_HOME_COLLECTION_HELPLINE = "+91 8100149230"
+
+
+def ensure_home_collection_helpline_field():
+    """Desk-editable home collection phone for the public footer CTA."""
+    if not frappe.db.exists("DocType", "Health Ecosystem Settings"):
+        return
+    try:
+        from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+        create_custom_fields(
+            {
+                "Health Ecosystem Settings": [
+                    {
+                        "fieldname": "home_collection_helpline",
+                        "label": "Home Collection Helpline",
+                        "fieldtype": "Data",
+                        "default": DEFAULT_HOME_COLLECTION_HELPLINE,
+                        "description": "Shown on www footer as Home Collection Call. Update here without redeploying the website.",
+                        "insert_after": "whatsapp_prefill_message",
+                    },
+                    {
+                        "fieldname": "home_collection_hours",
+                        "label": "Home Collection Hours",
+                        "fieldtype": "Data",
+                        "default": "9:00 AM – 8:00 PM",
+                        "insert_after": "home_collection_helpline",
+                    },
+                ]
+            },
+            update=True,
+        )
+    except Exception:
+        frappe.log_error(title="ensure_home_collection_helpline_field", message=frappe.get_traceback())
+
+
+def load_home_collection_helpline():
+    ensure_home_collection_helpline_field()
+    value = _settings_value("home_collection_helpline", DEFAULT_HOME_COLLECTION_HELPLINE)
+    return str(value or DEFAULT_HOME_COLLECTION_HELPLINE).strip() or DEFAULT_HOME_COLLECTION_HELPLINE
+
+
+def first_tel_href(helpline):
+    """Build tel: link from the first phone number in a helpline string."""
+    digits = re.sub(r"\D", "", str(helpline or "").split("/")[0].split(",")[0])
+    if len(digits) >= 10:
+        if len(digits) == 10:
+            digits = f"91{digits}"
+        return f"tel:+{digits}"
+    return ""
+
+
+def build_site_footer():
+    """Public marketing footer payload (guest-safe)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase76_site_footer import build_footer_payload
+
+        return build_footer_payload()
+    except Exception:
+        frappe.log_error(title="build_site_footer", message=frappe.get_traceback())
+        helpline = load_home_collection_helpline()
+        hours = _settings_value("home_collection_hours", "9:00 AM – 8:00 PM")
+        brand = _settings_value("public_brand_name", "Remedium") or "Remedium"
+        tagline = _settings_value("public_brand_tagline", "a unit of Smilecure Lifestyle Pvt. Ltd") or (
+            "a unit of Smilecure Lifestyle Pvt. Ltd"
+        )
+        return {
+            "brand": brand,
+            "tagline": tagline,
+            "subdomains": list(DEFAULT_FOOTER_SUBDOMAINS),
+            "company": list(DEFAULT_FOOTER_COMPANY),
+            "resources": [
+                {"code": "RES-ACCR", "title": "Accreditations & Certifications", "url": "/accreditations", "open_in_new_tab": False},
+                {"code": "RES-POL", "title": "Policies", "url": "/policies", "open_in_new_tab": False},
+                {"code": "RES-PRESS", "title": "News & Press", "url": "/press", "open_in_new_tab": False},
+                {"code": "RES-KNOW", "title": "Knowledge Centre", "url": "/knowledge", "open_in_new_tab": False},
+            ],
+            "social": list(DEFAULT_FOOTER_SOCIAL),
+            "legal": list(DEFAULT_FOOTER_LEGAL),
+            "home_collection_helpline": helpline,
+            "home_collection_hours": hours or "",
+            "home_collection_tel": first_tel_href(helpline),
+            "home_collection_cta_label": f"Home Collection Call {helpline}",
+        }

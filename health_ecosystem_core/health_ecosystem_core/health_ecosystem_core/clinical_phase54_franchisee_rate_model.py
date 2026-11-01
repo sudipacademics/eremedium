@@ -1,14 +1,12 @@
 """Phase 54 — Shared company MRP + Vector/Pulse franchisee rate model.
 
-Rules:
-- Company MRP (Standard Selling Rate / selling price list) is singular for all franchisees.
-- Never create per-franchisee MRP Item Price rows.
-- Franchisee types:
-  - Vector → Remedium Vector Wholesale (B2B wholesale)
-  - Pulse  → Remedium FOCO Wholesale (FOCO rate)
-- Patient-facing display always uses company MRP.
-- Franchisee commission is calculated on the franchisee rate by default,
-  with an admin toggle to use MRP instead.
+Hard rules:
+- Pulse (FFMS) → patient bill = FOCO; platform fee = FOCO − commission value;
+  commission value = FOCO × commission %. MRP slashed when FOCO < MRP.
+- Vector (Reach) → patient bill = unsashed MRP; platform fee = Vector B2B wholesale
+  (mother list, overridable per franchisee via Item Price.customer or custom wholesale list);
+  commission % is calculated on that wholesale rate.
+- Vector billing stops when wallet + credit_limit cannot cover the platform fee.
 """
 
 from __future__ import annotations
@@ -30,6 +28,7 @@ VECTOR_PRICE_LIST = "Remedium Vector Wholesale"
 PULSE_PRICE_LIST = "Remedium FOCO Wholesale"
 FRANCHISEE_TYPES = ("Vector", "Pulse")
 COMMISSION_BASES = ("Franchisee Rate", "MRP")
+ONLINE_INTAKE_CHANNEL = "Online / Courier Sample"
 
 
 def company_mrp_price_list():
@@ -112,10 +111,34 @@ def franchisee_rate_price_list(franchisee_type):
     return PULSE_PRICE_LIST
 
 
-def price_from_list(item_code, price_list):
+def price_from_list(item_code, price_list, customer=None):
+    """Mother list rate, with optional per-customer (per-franchisee) override."""
     if not item_code:
         return 0
     if price_list:
+        if customer:
+            row = frappe.db.sql(
+                """
+                select price_list_rate from `tabItem Price`
+                where item_code=%s and price_list=%s and customer=%s
+                order by modified desc
+                limit 1
+                """,
+                (item_code, price_list, customer),
+            )
+            if row and flt(row[0][0]):
+                return flt(row[0][0])
+        row = frappe.db.sql(
+            """
+            select price_list_rate from `tabItem Price`
+            where item_code=%s and price_list=%s and ifnull(customer, '') = ''
+            order by modified desc
+            limit 1
+            """,
+            (item_code, price_list),
+        )
+        if row and flt(row[0][0]):
+            return flt(row[0][0])
         rate = frappe.db.get_value(
             "Item Price",
             {"item_code": item_code, "price_list": price_list},
@@ -131,12 +154,195 @@ def mrp_rate(item_code):
     return price_from_list(item_code, company_mrp_price_list())
 
 
+def _franchisee_rate_context(franchisee_id=None, franchisee_type=None):
+    ftype = (franchisee_type or "").strip()
+    wholesale_pl = None
+    customer = None
+    if franchisee_id and frappe.db.exists("Franchisee Profile", franchisee_id):
+        row = frappe.db.get_value(
+            "Franchisee Profile",
+            franchisee_id,
+            ["franchisee_type", "wholesale_price_list", "platform_customer"],
+            as_dict=True,
+        )
+        if row:
+            if not ftype:
+                ftype = (row.franchisee_type or "").strip()
+            wholesale_pl = row.wholesale_price_list
+            if (ftype or row.franchisee_type) == "Vector":
+                customer = row.platform_customer
+    if ftype not in FRANCHISEE_TYPES:
+        ftype = "Pulse"
+    return ftype, wholesale_pl, customer
+
+
 def franchisee_rate(item_code, franchisee_type=None, franchisee_id=None):
-    """Singular Vector or Pulse rate for an item."""
-    ftype = franchisee_type
+    """Pulse FOCO, or Vector wholesale (franchisee override then mother list)."""
+    ftype, wholesale_pl, customer = _franchisee_rate_context(franchisee_id, franchisee_type)
+    mother = franchisee_rate_price_list(ftype)
+    if ftype == "Vector" and wholesale_pl and wholesale_pl not in (mother, PULSE_PRICE_LIST):
+        rate = price_from_list(item_code, wholesale_pl, customer=customer)
+        if rate:
+            return rate
+    return price_from_list(item_code, mother, customer=customer if ftype == "Vector" else None)
+
+
+def foco_rate(item_code):
+    """FOCO / Pulse wholesale rate."""
+    return franchisee_rate(item_code, franchisee_type="Pulse")
+
+
+def patient_bill_pricing(item_code, franchisee_id=None, franchisee_type=None, intake_channel=None):
+    """Canonical patient bill line rate.
+
+    Pulse (FFMS) → FOCO, MRP slashed when higher.
+    Vector (Reach) → unsashed MRP. Online/courier does not override Vector.
+    """
+    ensure_shared_rate_price_lists()
+    mrp = mrp_rate(item_code)
+    foco = foco_rate(item_code)
+    vector = franchisee_rate(item_code, franchisee_type="Vector", franchisee_id=franchisee_id)
+
+    ftype = (franchisee_type or "").strip()
     if not ftype and franchisee_id:
-        ftype = frappe.db.get_value("Franchisee Profile", franchisee_id, "franchisee_type")
-    return price_from_list(item_code, franchisee_rate_price_list(ftype or "Pulse"))
+        ftype = (frappe.db.get_value("Franchisee Profile", franchisee_id, "franchisee_type") or "Pulse").strip()
+    if ftype not in FRANCHISEE_TYPES:
+        ftype = "Pulse"
+
+    channel = (intake_channel or "").strip()
+    if ftype == "Pulse":
+        bill_rate = foco or mrp
+        show_mrp_slash = bool(mrp and bill_rate and mrp > bill_rate)
+        price_basis = "foco"
+    else:
+        bill_rate = mrp or vector
+        show_mrp_slash = False
+        price_basis = "mrp"
+
+    return {
+        "rate": flt(bill_rate),
+        "mrp": flt(mrp),
+        "foco_rate": flt(foco),
+        "vector_rate": flt(vector),
+        "show_mrp_slash": show_mrp_slash,
+        "price_basis": price_basis,
+        "franchisee_type": ftype,
+        "intake_channel": channel,
+    }
+
+
+def _partner_tier_line(item_code, franchisee_id, qty):
+    """Phase 126 circuit pricing for this line, or None (not on the circuit / no tier rates / unmapped)."""
+    if not franchisee_id:
+        return None
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+            tier_settlement,
+            vector_tier_settlement,
+        )
+
+        vector = vector_tier_settlement(item_code, franchisee_id, qty)
+        if vector:
+            # Mapped Vector: patient bill stays MRP (dummy); the fee shown is the B2B amount owed to the entry partner.
+            return {"vector": True, "debit_per_unit": vector["b2b_rate"], "patient_rate": None}
+        return tier_settlement(item_code, franchisee_id, qty)
+    except frappe.ValidationError:
+        # Unmapped circuit: billing itself refuses; pricing falls back so catalogs still load.
+        return None
+    except Exception:
+        frappe.log_error(title="phase54_partner_tier_line", message=frappe.get_traceback())
+        return None
+
+
+def line_settlement(item_code, franchisee_id=None, franchisee_type=None, intake_channel=None, qty=1):
+    """Patient rate + platform fee + commission for one test line.
+
+    Pulse: patient = FOCO; commission = FOCO × %; platform fee = FOCO − commission.
+    Vector: patient = MRP; platform fee = wholesale; commission = wholesale × %.
+    """
+    pricing = patient_bill_pricing(
+        item_code,
+        franchisee_id=franchisee_id,
+        franchisee_type=franchisee_type,
+        intake_channel=intake_channel,
+    )
+    ftype = pricing["franchisee_type"]
+    qty = flt(qty) or 1
+    comm_pct = 0.0
+    if franchisee_id and frappe.db.exists("Franchisee Profile", franchisee_id):
+        comm_pct = flt(frappe.db.get_value("Franchisee Profile", franchisee_id, "commission_percentage_rate"))
+
+    if ftype == "Pulse":
+        patient = pricing["foco_rate"] or pricing["rate"]
+        commission_value = round(patient * comm_pct / 100.0, 2)
+        platform_fee = max(round(patient - commission_value, 2), 0)
+        show_slash = bool(pricing["mrp"] and patient and pricing["mrp"] > patient)
+        price_basis = "foco"
+    else:
+        patient = pricing["mrp"] or pricing["rate"]
+        wholesale = franchisee_rate(item_code, franchisee_type="Vector", franchisee_id=franchisee_id)
+        commission_value = round(wholesale * comm_pct / 100.0, 2)
+        platform_fee = wholesale
+        show_slash = False
+        price_basis = "mrp"
+
+    tier = _partner_tier_line(item_code, franchisee_id, qty)
+    if tier:
+        if tier.get("patient_rate"):
+            # FOCO module (FOCO, or Master / Orange FOCO with Phlebotomist Service) bills patients the FOCO rate.
+            patient = tier["patient_rate"]
+            show_slash = bool(pricing["mrp"] and patient and pricing["mrp"] > patient)
+            price_basis = "partner_tier"
+        if tier.get("vector"):
+            price_basis = "vector_b2b"
+        platform_fee = tier["debit_per_unit"]
+        commission_value = max(round(flt(patient) - platform_fee, 2), 0)
+
+    return {
+        **pricing,
+        "rate": flt(patient),
+        "show_mrp_slash": show_slash,
+        "price_basis": price_basis,
+        "platform_fee": flt(platform_fee),
+        "commission_value": flt(commission_value),
+        "commission_percent": flt(comm_pct),
+        "qty": qty,
+        "platform_fee_amount": round(platform_fee * qty, 2),
+        "commission_amount": round(commission_value * qty, 2),
+    }
+
+
+def apply_patient_bill_rates_to_lines(tests, franchisee_id=None, franchisee_type=None, intake_channel=None):
+    """Re-price bill test rows using Pulse/Vector settlement (ignores client-supplied rate)."""
+    out = []
+    for row in tests or []:
+        code = (row.get("item") or row.get("item_code") or row.get("code") or "").strip()
+        if not code:
+            continue
+        qty = flt(row.get("qty")) or 1
+        pricing = line_settlement(
+            code,
+            franchisee_id=franchisee_id,
+            franchisee_type=franchisee_type,
+            intake_channel=intake_channel,
+            qty=qty,
+        )
+        merged = dict(row)
+        merged["item"] = code
+        merged["item_code"] = code
+        merged["rate"] = pricing["rate"]
+        merged["mrp"] = pricing["mrp"]
+        merged["foco_rate"] = pricing["foco_rate"]
+        merged["show_mrp_slash"] = pricing["show_mrp_slash"]
+        merged["price_basis"] = pricing["price_basis"]
+        merged["platform_fee"] = pricing["platform_fee"]
+        merged["commission_value"] = pricing["commission_value"]
+        merged["commission_percent"] = pricing["commission_percent"]
+        merged["franchisee_type"] = pricing["franchisee_type"]
+        if not merged.get("item_name"):
+            merged["item_name"] = frappe.db.get_value("Item", code, "item_name") or code
+        out.append(merged)
+    return out
 
 
 def ensure_franchisee_profile_rate_fields():
@@ -167,7 +373,18 @@ def ensure_franchisee_profile_rate_fields():
                 "options": "\n".join(COMMISSION_BASES),
                 "default": "Franchisee Rate",
                 "insert_after": "franchisee_type",
-                "description": "Calculate franchisee commission on Franchisee Rate (Vector/Pulse) or company MRP",
+                "description": "Pulse commission is on FOCO; Vector commission is on wholesale. Kept for legacy reports.",
+            }
+        )
+    if not meta.has_field("credit_limit"):
+        fields.append(
+            {
+                "fieldname": "credit_limit",
+                "label": "Credit Limit",
+                "fieldtype": "Currency",
+                "default": "0",
+                "insert_after": "wallet_balance",
+                "description": "Vector only: billing stops when wallet + credit limit cannot cover the platform fee.",
             }
         )
     if fields:
@@ -190,24 +407,38 @@ def assign_shared_price_lists(profile):
         profile.db_set("commission_base", "Franchisee Rate")
 
     mrp_pl = lists["mrp_price_list"]
-    rate_pl = franchisee_rate_price_list(ftype)
+    mother_pl = franchisee_rate_price_list(ftype)
 
     # Always shared company MRP — overwrite any per-branch B2B-*-MRP leftovers
     if profile.get("retail_price_list") != mrp_pl:
         profile.db_set("retail_price_list", mrp_pl)
-    if profile.get("wholesale_price_list") != rate_pl:
-        profile.db_set("wholesale_price_list", rate_pl)
+
+    current_ws = (profile.get("wholesale_price_list") or "").strip()
+    if ftype == "Pulse":
+        rate_pl = PULSE_PRICE_LIST
+        if current_ws != rate_pl:
+            profile.db_set("wholesale_price_list", rate_pl)
+    else:
+        # Keep a dedicated Vector wholesale list if already assigned; else mother list.
+        # Per-franchisee edits also live as Item Price.customer on the mother list.
+        if current_ws and current_ws != PULSE_PRICE_LIST:
+            rate_pl = current_ws
+        else:
+            rate_pl = VECTOR_PRICE_LIST
+            if current_ws != rate_pl:
+                profile.db_set("wholesale_price_list", rate_pl)
 
     return {
         "retail_price_list": mrp_pl,
         "wholesale_price_list": rate_pl,
         "franchisee_type": ftype,
         "commission_base": profile.get("commission_base") or "Franchisee Rate",
+        "mother_wholesale_list": mother_pl,
     }
 
 
 def commission_base_amount_for_trf(trf, profile=None):
-    """Amount used for franchisee commission % — franchisee rate or MRP per toggle."""
+    """Pulse commission on FOCO; Vector commission on wholesale (not on MRP / platform fee)."""
     if isinstance(trf, str):
         trf = frappe.get_doc("Customer TRF", trf)
     franchisee_id = getattr(trf, "franchisee_id", None)
@@ -216,28 +447,29 @@ def commission_base_amount_for_trf(trf, profile=None):
     if not profile:
         return flt(trf.amount)
 
-    base = (profile.get("commission_base") or "Franchisee Rate").strip()
-    if base == "MRP":
-        return flt(trf.amount)
-
-    # Prefer stored wholesale (platform / franchisee rate) when present
-    wholesale = flt(getattr(trf, "wholesale_amount", None) or 0)
-    if wholesale > 0:
-        return wholesale
-
-    # Resolve from Vector/Pulse price list for test lines
     from health_ecosystem_core.health_ecosystem_core.clinical_utils import get_trf_test_lines
 
-    ftype = profile.get("franchisee_type") or "Pulse"
+    ftype = (profile.get("franchisee_type") or "Pulse").strip()
     total = 0.0
     lines = get_trf_test_lines(trf)
     for line in lines:
-        rate = franchisee_rate(line["item_code"], franchisee_type=ftype)
+        if ftype == "Vector":
+            rate = franchisee_rate(
+                line["item_code"],
+                franchisee_type="Vector",
+                franchisee_id=profile.name,
+            )
+        else:
+            rate = foco_rate(line["item_code"])
         qty = flt(line.get("qty")) or 1
         total += rate * qty
     if total > 0:
         return total
-    # Fallback: if franchisee list missing rates, do not use MRP unless toggle says so
+    if ftype == "Pulse":
+        return flt(trf.amount)
+    wholesale = flt(getattr(trf, "wholesale_amount", None) or 0)
+    if wholesale > 0:
+        return wholesale
     return flt(trf.amount)
 
 
@@ -278,14 +510,26 @@ def migrate_all_franchisees_to_shared_lists():
 
 
 def disable_orphan_branch_price_lists(dry_run=True):
-    """Disable legacy B2B-{branch}-MRP / Wholesale lists that were wrongly cloned."""
+    """Disable legacy B2B-{branch}-MRP lists. Keep wholesale lists still assigned to a Vector."""
+    assigned = set(
+        frappe.get_all(
+            "Franchisee Profile",
+            filters={"wholesale_price_list": ("like", "B2B-%")},
+            pluck="wholesale_price_list",
+        )
+        or []
+    )
     orphan = frappe.get_all(
         "Price List",
         filters={"name": ("like", "B2B-%")},
         fields=["name", "enabled"],
     )
     disabled = []
+    skipped = []
     for row in orphan:
+        if row.name in assigned:
+            skipped.append(row.name)
+            continue
         if dry_run:
             disabled.append(row.name)
             continue
@@ -294,7 +538,7 @@ def disable_orphan_branch_price_lists(dry_run=True):
             disabled.append(row.name)
     if not dry_run:
         frappe.db.commit()
-    return {"dry_run": dry_run, "orphans": disabled, "count": len(disabled)}
+    return {"dry_run": dry_run, "orphans": disabled, "kept_assigned": skipped, "count": len(disabled)}
 
 
 @frappe.whitelist()

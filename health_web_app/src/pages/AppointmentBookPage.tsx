@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, DoctorSlot } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { PaymentMethod, PaymentMethodPicker, isOnlinePayment } from '../components/PaymentMethodPicker';
@@ -13,7 +13,10 @@ type ConsultationType = {
 
 export function AppointmentBookPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const prefDept = (searchParams.get('department') || '').trim();
+  const prefDoctor = (searchParams.get('practitioner') || '').trim();
   const [types, setTypes] = useState<ConsultationType[]>([]);
   const [departments, setDepartments] = useState<Array<{ name: string; department_name?: string }>>([]);
   const [practitioners, setPractitioners] = useState<
@@ -50,13 +53,15 @@ export function AppointmentBookPage() {
         setTypes(typeList);
         setDepartments(deptList);
         if (typeList[0]) setAppointmentType(typeList[0].name);
-        if (deptList[0]) setDepartment(deptList[0].name);
+        const matchDept =
+          deptList.find((d) => d.name === prefDept || d.department_name === prefDept) || deptList[0];
+        if (matchDept) setDepartment(matchDept.name);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load appointment options');
       }
     }
     void loadMeta();
-  }, []);
+  }, [prefDept]);
 
   useEffect(() => {
     if (!department) return;
@@ -65,7 +70,8 @@ export function AppointmentBookPage() {
         const res = await api.getPractitioners(department);
         const list = res.data.practitioners || [];
         setPractitioners(list);
-        setPractitioner(list[0]?.name || '');
+        const matchDoc = list.find((p) => p.name === prefDoctor || p.practitioner_name === prefDoctor);
+        setPractitioner(matchDoc?.name || list[0]?.name || '');
         setSlot('');
         setSlots([]);
       } catch (e) {
@@ -73,7 +79,7 @@ export function AppointmentBookPage() {
       }
     }
     void loadDoctors();
-  }, [department]);
+  }, [department, prefDoctor]);
 
   useEffect(() => {
     if (!practitioner || !date) {

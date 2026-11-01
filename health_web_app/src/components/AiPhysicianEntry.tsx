@@ -6,6 +6,8 @@ type ChatMsg = { role: 'user' | 'assistant'; content: string };
 
 type Props = {
   placeholder?: string;
+  kicker?: string;
+  intro?: string;
 };
 
 function SuggestionCards({
@@ -25,17 +27,21 @@ function SuggestionCards({
   return (
     <div className={`ai-suggest-grid ${emergency ? 'ai-suggest-emergency' : ''}`}>
       {emergency ? (
-        <p className="ai-emergency-banner">
+        <p className="ai-emergency-banner ai-animate-in">
           Urgent care may be needed — use the options below or go to the nearest emergency facility.
         </p>
       ) : null}
 
       {workup.length ? (
-        <section className="ai-suggest-block">
+        <section className="ai-suggest-block ai-animate-in">
           <h3>{packages.length ? 'Packages & tests' : 'Diagnostic workup'}</h3>
           <div className="ai-suggest-cards">
-            {workup.map((item) => (
-              <article key={item.item_code || item.panel_id || item.item_name} className="ai-suggest-card">
+            {workup.map((item, idx) => (
+              <article
+                key={item.item_code || item.panel_id || item.item_name}
+                className="ai-suggest-card"
+                style={{ animationDelay: `${Math.min(idx, 6) * 60}ms` }}
+              >
                 <strong>{item.item_name}</strong>
                 {item.probability_label ? (
                   <span className="ai-match">{item.probability_label}</span>
@@ -54,11 +60,15 @@ function SuggestionCards({
         </section>
       ) : null}
 
-      <section className="ai-suggest-block">
+      <section className="ai-suggest-block ai-animate-in" style={{ animationDelay: '80ms' }}>
         <h3>Physician / service booking</h3>
         <div className="ai-suggest-cards">
           {(suggestions.physician_services || []).map((svc, i) => (
-            <article key={`${svc.service}-${i}`} className="ai-suggest-card">
+            <article
+              key={`${svc.service}-${i}`}
+              className="ai-suggest-card"
+              style={{ animationDelay: `${Math.min(i, 6) * 60 + 100}ms` }}
+            >
               <strong>{svc.service}</strong>
               <span className="muted">{svc.department}</span>
               <p className="muted">{svc.reason}</p>
@@ -73,11 +83,15 @@ function SuggestionCards({
         </div>
       </section>
 
-      <section className="ai-suggest-block">
+      <section className="ai-suggest-block ai-animate-in" style={{ animationDelay: '140ms' }}>
         <h3>Nearby collection centres</h3>
         <div className="ai-suggest-cards">
-          {(suggestions.nearby_centers || []).map((c) => (
-            <article key={c.franchisee_id} className="ai-suggest-card">
+          {(suggestions.nearby_centers || []).map((c, i) => (
+            <article
+              key={c.franchisee_id}
+              className="ai-suggest-card"
+              style={{ animationDelay: `${Math.min(i, 6) * 60 + 160}ms` }}
+            >
               <strong>{c.franchise_name}</strong>
               {c.distance_km != null ? <span className="muted">{c.distance_km} km away</span> : null}
               <p className="muted">{c.address || c.territory_region || c.branch_code}</p>
@@ -100,7 +114,17 @@ function SuggestionCards({
   );
 }
 
-export function AiPhysicianEntry({ placeholder }: Props) {
+function TypingDots() {
+  return (
+    <div className="ai-bubble ai-bubble-assistant ai-typing" aria-live="polite" aria-label="Assistant is typing">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
+export function AiPhysicianEntry({ placeholder, kicker = 'AI Physician', intro }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState('');
@@ -135,7 +159,16 @@ export function AiPhysicianEntry({ placeholder }: Props) {
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, suggestions, quickReplies, open]);
+  }, [messages, suggestions, quickReplies, open, busy]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeChat();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   function applyMeta(turn: AiPhysicianTurn) {
     setPhase(turn.phase);
@@ -292,38 +325,85 @@ export function AiPhysicianEntry({ placeholder }: Props) {
           ? 'Suggestions ready — ask to refine anytime'
           : openaiNote || 'Virtual care guide — not a diagnosis';
 
+  const progressPct =
+    phase === 'suggestions' || phase === 'refine' || phase === 'emergency'
+      ? 100
+      : Math.min(100, Math.round((Math.max(1, turnCount) / Math.max(1, maxTurns)) * 100));
+
+  const phaseBadge =
+    phase === 'emergency'
+      ? 'Urgent'
+      : phase === 'suggestions' || phase === 'refine'
+        ? 'Care plan'
+        : 'Listening';
+
   return (
-    <>
-      <form className="home-search ai-physician-entry" onSubmit={onHeroSubmit}>
-        <input
-          type="search"
-          placeholder={
-            placeholder || 'Describe symptoms (e.g. fever, cough) — text or voice'
-          }
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          aria-label="Describe symptoms for AI physician"
-        />
-        <button
-          className={`btn secondary ${listening ? 'ai-voice-on' : ''}`}
-          type="button"
-          onClick={toggleVoice}
-          aria-label="Voice symptoms"
-        >
-          {listening ? 'Listening…' : 'Voice'}
-        </button>
-        <button className="btn" type="submit" disabled={busy || !draft.trim()}>
-          {busy && !open ? 'Starting…' : 'Ask AI physician'}
-        </button>
-      </form>
+    <div className={`ai-physician-shell ${listening ? 'is-listening' : ''} ${open ? 'is-open' : ''}`}>
+      <div className="ai-physician-hero" aria-hidden={!open ? undefined : true}>
+        <div className="ai-hero-orbs" aria-hidden="true">
+          <span className="ai-orb ai-orb-a" />
+          <span className="ai-orb ai-orb-b" />
+          <span className="ai-orb ai-orb-c" />
+        </div>
+        <div className="ai-physician-intro">
+          <p className="ai-kicker">{kicker}</p>
+          <h2>Describe how you feel</h2>
+          <p className="muted">
+            {intro || 'Guided questions, then lab packages, doctor booking, and nearby centres — text or voice.'}
+          </p>
+        </div>
+
+        <form className="home-search ai-physician-entry" onSubmit={onHeroSubmit}>
+          <input
+            type="search"
+            placeholder={
+              placeholder || 'Describe symptoms (e.g. fever, cough) — text or voice'
+            }
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-label="Describe symptoms for AI physician"
+          />
+          <button
+            className={`btn secondary ai-voice-btn ${listening ? 'ai-voice-on' : ''}`}
+            type="button"
+            onClick={toggleVoice}
+            aria-label="Voice symptoms"
+            aria-pressed={listening}
+          >
+            <span className="ai-voice-rings" aria-hidden="true">
+              <span />
+              <span />
+            </span>
+            {listening ? 'Listening…' : 'Voice'}
+          </button>
+          <button className="btn" type="submit" disabled={busy || !draft.trim()}>
+            {busy && !open ? 'Starting…' : 'Ask AI physician'}
+          </button>
+        </form>
+      </div>
 
       {open ? (
-        <div className="ai-chat-overlay" role="dialog" aria-modal="true" aria-label="AI physician chat">
+        <div
+          className="ai-chat-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI physician chat"
+        >
+          <button type="button" className="ai-chat-backdrop" aria-label="Close chat" onClick={closeChat} />
           <div className={`ai-chat-panel card ${phase === 'emergency' ? 'ai-chat-emergency' : ''}`}>
             <header className="ai-chat-header">
-              <div>
-                <strong>AI Physician</strong>
-                <p className="muted">{progressLabel}</p>
+              <div className="ai-chat-title-row">
+                <div className="ai-avatar" aria-hidden="true">
+                  <span className="ai-avatar-pulse" />
+                  AI
+                </div>
+                <div>
+                  <div className="ai-title-line">
+                    <strong>AI Physician</strong>
+                    <span className={`ai-phase-badge ai-phase-${phase}`}>{phaseBadge}</span>
+                  </div>
+                  <p className="muted">{progressLabel}</p>
+                </div>
               </div>
               <div className="ai-chat-header-actions">
                 <button type="button" className="btn secondary btn-sm" onClick={resetChat}>
@@ -335,19 +415,41 @@ export function AiPhysicianEntry({ placeholder }: Props) {
               </div>
             </header>
 
+            <div
+              className="ai-progress-track"
+              role="progressbar"
+              aria-valuenow={progressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Consultation progress"
+            >
+              <div className="ai-progress-fill" style={{ width: `${progressPct}%` }} />
+            </div>
+
             <div className="ai-chat-messages" ref={listRef}>
               {messages.map((m, i) => (
-                <div key={`${m.role}-${i}`} className={`ai-bubble ai-bubble-${m.role}`}>
-                  {m.content}
+                <div
+                  key={`${m.role}-${i}`}
+                  className={`ai-bubble ai-bubble-${m.role}`}
+                  style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                >
+                  {m.role === 'assistant' ? (
+                    <span className="ai-bubble-mark" aria-hidden="true">
+                      AI
+                    </span>
+                  ) : null}
+                  <div className="ai-bubble-body">{m.content}</div>
                 </div>
               ))}
+              {busy ? <TypingDots /> : null}
               {quickReplies.length && !busy ? (
                 <div className="ai-quick-replies" role="group" aria-label="Quick replies">
-                  {quickReplies.map((chip) => (
+                  {quickReplies.map((chip, i) => (
                     <button
                       key={chip}
                       type="button"
                       className="ai-chip"
+                      style={{ animationDelay: `${i * 45}ms` }}
                       disabled={busy || !sessionId}
                       onClick={() => void sendMessage(chip)}
                     >
@@ -375,10 +477,15 @@ export function AiPhysicianEntry({ placeholder }: Props) {
                 disabled={busy || !sessionId}
               />
               <button
-                className={`btn secondary ${listening ? 'ai-voice-on' : ''}`}
+                className={`btn secondary ai-voice-btn ${listening ? 'ai-voice-on' : ''}`}
                 type="button"
                 onClick={toggleVoice}
+                aria-pressed={listening}
               >
+                <span className="ai-voice-rings" aria-hidden="true">
+                  <span />
+                  <span />
+                </span>
                 {listening ? '…' : 'Voice'}
               </button>
               <button className="btn" type="submit" disabled={busy || !reply.trim()}>
@@ -388,7 +495,7 @@ export function AiPhysicianEntry({ placeholder }: Props) {
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 

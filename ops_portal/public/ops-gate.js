@@ -1,0 +1,302 @@
+/* Sign-in gate for the Operations portal.
+ * Uses the HRMS logins and the Portal Access settings HR saves for each employee:
+ * only System Managers or employees given "Operations Backend" access get in, and
+ * modules set to "No access" are hidden and blocked.
+ */
+(function () {
+  var API = '/api/method/health_ecosystem_core.health_ecosystem_core.';
+  var KEY = 'ops_session';
+  var PEOPLE = 'https://people.e-remedium.in';
+  var USER_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>';
+  var root = document.documentElement;
+  root.classList.add('ops-locked');
+
+  var style = document.createElement('style');
+  style.textContent = [
+    'html.ops-locked #root{display:none!important}',
+    '.og-wrap{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#0e3c37,#14665c);font-family:"Plus Jakarta Sans","Segoe UI",sans-serif}',
+    '.og-card{width:min(400px,100%);background:#fff;border-radius:18px;padding:28px;box-shadow:0 24px 60px rgba(0,0,0,.25);display:grid;gap:14px}',
+    '.og-card h1{margin:0;font-size:1.3rem;color:#0e3c37}',
+    '.og-card p{margin:0;color:#475569;font-size:.9rem}',
+    '.og-card label{display:grid;gap:6px;font-size:.8rem;font-weight:700;color:#334155}',
+    '.og-card input{border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;font:inherit;font-weight:500}',
+    '.og-card button{border:0;border-radius:10px;padding:12px;background:#0e3c37;color:#fff;font:inherit;font-weight:800;cursor:pointer}',
+    '.og-card button:disabled{opacity:.6}',
+    '.og-card .og-alt{background:#f1f5f9;color:#0e3c37}',
+    '.og-err{color:#b91c1c!important;font-weight:600;min-height:1em}',
+    '.og-out{border:1px solid #d5e3e8;background:#fff;color:#0e3c37;border-radius:10px;padding:7px 12px;font:inherit;font-weight:700;cursor:pointer;margin-left:8px}',
+    '.main.og-hr-on .content{display:none}',
+    '.og-hr{flex:1;min-height:0;display:flex;padding:0 0 0 4px}',
+    '.og-hr iframe{flex:1;width:100%;border:0;background:#f4f8f8;border-radius:14px 0 0 0}',
+    '.app.og-hr-on .nav-link.active:not([data-og-hr]){background:transparent;color:var(--sidebar-ink)}',
+    '.og-toast{position:fixed;z-index:10000;left:50%;bottom:24px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:10px;font:600 .88rem "Plus Jakarta Sans","Segoe UI",sans-serif}',
+  ].join('\n');
+  document.head.appendChild(style);
+
+  function post(method, data) {
+    return fetch(API + method, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-Site-Name': 'health.localhost' },
+      body: new URLSearchParams(data || {}),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (json) {
+        var m = json && json.message && typeof json.message === 'object' ? json.message : json;
+        if (!r.ok || !m || m.status === 'error') {
+          var err = new Error(String((m && m.message) || 'Request failed').replace(/<[^>]+>/g, ''));
+          err.status = r.status;
+          throw err;
+        }
+        return m.data !== undefined ? m.data : m;
+      });
+    });
+  }
+
+  function saved() {
+    try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+
+  var perms = null;
+
+  function screen(html) {
+    var el = document.querySelector('.og-wrap');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'og-wrap';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '<div class="og-card">' + html + '</div>';
+    root.classList.add('ops-locked');
+    return el;
+  }
+
+  function showLogin(message) {
+    var el = screen(
+      '<h1>Operations Portal</h1><p>Sign in with your Smilecure staff login.</p>' +
+      '<form class="og-form" style="display:grid;gap:12px" autocomplete="on">' +
+      '<label>Email or username<input name="usr" autocomplete="username" required></label>' +
+      '<label>Password<input name="pwd" type="password" autocomplete="current-password" required></label>' +
+      '<p class="og-err">' + esc(message || '') + '</p>' +
+      '<button type="submit">Sign in</button></form>'
+    );
+    var form = el.querySelector('form');
+    form.usr.focus();
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button');
+      var err = form.querySelector('.og-err');
+      btn.disabled = true;
+      err.textContent = '';
+      post('api.authenticate_user', { usr: form.usr.value.trim(), pwd: form.pwd.value }).then(function (d) {
+        localStorage.setItem(KEY, JSON.stringify({ sid: d.sid, user: d.user, full_name: d.full_name, roles: d.roles || [] }));
+        check();
+      }).catch(function (ex) {
+        btn.disabled = false;
+        err.textContent = ex.message || 'Sign in failed';
+      });
+    });
+  }
+
+  function showDenied(name) {
+    var el = screen(
+      '<h1>No access</h1><p>' + esc(name || 'This login') + ' has not been given access to the Operations portal. ' +
+      'Ask HR to add "Operations Backend" in your Portal Access.</p><button type="button" class="og-alt">Sign in as someone else</button>'
+    );
+    el.querySelector('button').addEventListener('click', signOut);
+  }
+
+  function signOut() {
+    var s = saved();
+    localStorage.removeItem(KEY);
+    hrShow(false);
+    perms = null;
+    if (s && s.sid) {
+      fetch('/api/method/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-Site-Name': 'health.localhost' },
+        body: new URLSearchParams({ sid: s.sid }),
+      }).catch(function () {});
+    }
+    showLogin();
+  }
+
+  function opsModules() {
+    return (perms && perms.portal_modules && perms.portal_modules.ops) || null;
+  }
+
+  function moduleOf(path) {
+    var mods = opsModules() || {};
+    path = String(path || '/').split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+    var best = null;
+    var bestLen = -1;
+    Object.keys(mods).forEach(function (name) {
+      (mods[name].paths || []).forEach(function (p) {
+        var hit = p === '/' ? path === '/' : path === p || path.indexOf(p + '/') === 0;
+        if (hit && p.length > bestLen) { best = name; bestLen = p.length; }
+      });
+    });
+    return best;
+  }
+
+  function allowed(path) {
+    if (!perms || perms.exempt) return true;
+    var mods = opsModules();
+    var m = moduleOf(path);
+    return !m || mods[m].level !== 'none';
+  }
+
+  function toast(text) {
+    if (document.querySelector('.og-toast')) return;
+    var n = document.createElement('div');
+    n.className = 'og-toast';
+    n.textContent = text;
+    document.body.appendChild(n);
+    setTimeout(function () { n.remove(); }, 5000);
+  }
+
+  function decorate() {
+    if (!perms) return;
+    hrLink();
+    document.querySelectorAll('.sidebar a[href]:not([data-og-hr])').forEach(function (a) {
+      var hide = !allowed(a.getAttribute('href'));
+      var block = a.closest('.nav-block');
+      var target = block && block.querySelector('a[href]') === a ? block : a;
+      target.style.display = hide ? 'none' : '';
+    });
+    document.querySelectorAll('a[href]:not(.sidebar a)').forEach(function (a) {
+      var href = a.getAttribute('href');
+      if (href && href.charAt(0) === '/' && !allowed(href)) a.style.pointerEvents = 'none';
+    });
+    var name = perms.full_name || perms.user || '';
+    var user = document.querySelector('.topbar .user, a.user');
+    if (user && name) {
+      var strong = user.querySelector('strong');
+      if (strong && strong.textContent !== name) strong.textContent = name;
+      var av = user.querySelector('.avatar');
+      var initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w.charAt(0).toUpperCase(); }).join('');
+      if (av && initials && av.textContent !== initials) av.textContent = initials;
+      if (!document.querySelector('.og-out')) {
+        var out = document.createElement('button');
+        out.type = 'button';
+        out.className = 'og-out';
+        out.textContent = 'Sign out';
+        out.addEventListener('click', signOut);
+        user.parentNode.insertBefore(out, user.nextSibling);
+      }
+    }
+    if (!allowed(location.pathname)) {
+      var mods = opsModules() || {};
+      var first = Object.keys(mods).filter(function (m) { return mods[m].level !== 'none'; })[0];
+      history.replaceState(null, '', (first && mods[first].paths[0]) || '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      toast('You do not have access to that module. Ask HR to update your portal permissions.');
+    }
+  }
+
+  /* My HR Workspace: the People HRMS self-service pages, embedded and signed in with this session. */
+
+  var hrOpen = false;
+
+  function hrShow(open) {
+    hrOpen = open;
+    var app = document.querySelector('.app');
+    var main = document.querySelector('.main');
+    var link = document.querySelector('[data-og-hr]');
+    if (link) link.classList.toggle('active', open);
+    if (app) app.classList.toggle('og-hr-on', open);
+    if (!main) return;
+    main.classList.toggle('og-hr-on', open);
+    var panel = main.querySelector('.og-hr');
+    if (!open) { if (panel) panel.remove(); return; }
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'og-hr';
+      panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1"></iframe>';
+      main.appendChild(panel);
+    }
+    var sidebar = document.querySelector('.sidebar');
+    if (sidebar) sidebar.classList.remove('open');
+  }
+
+  function hrLink() {
+    var nav = document.querySelector('.sidebar nav');
+    if (!nav) return;
+    if (nav.querySelector('[data-og-hr]')) {
+      if (hrOpen && !document.querySelector('.main.og-hr-on')) hrShow(true);
+      return;
+    }
+    var link = document.createElement('a');
+    link.href = '#my-hr-workspace';
+    link.className = 'nav-link';
+    link.setAttribute('data-og-hr', '1');
+    link.innerHTML = USER_ICON + 'My HR Workspace';
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      hrShow(true);
+    });
+    var settings = nav.querySelector('a[href="/settings"]');
+    if (settings) nav.insertBefore(link, settings);
+    else nav.appendChild(link);
+    if (hrOpen) hrShow(true);
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!hrOpen || !e.target.closest) return;
+    var a = e.target.closest('.sidebar a[href], .topbar a[href]');
+    if (a && !a.hasAttribute('data-og-hr')) hrShow(false);
+  }, true);
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== PEOPLE || !e.data || e.data.type !== 'pa-embed-ready') return;
+    var frame = document.querySelector('.og-hr iframe');
+    var s = saved();
+    if (!frame || e.source !== frame.contentWindow || !s || !s.sid || !perms) return;
+    frame.contentWindow.postMessage({
+      type: 'pa-embed-session',
+      session: { sid: s.sid, user: s.user || perms.user, fullName: perms.full_name || s.full_name, roles: perms.roles || s.roles || [] },
+    }, PEOPLE);
+  });
+
+  function unlock() {
+    var el = document.querySelector('.og-wrap');
+    if (el) el.remove();
+    root.classList.remove('ops-locked');
+    decorate();
+  }
+
+  function check() {
+    var s = saved();
+    if (!s || !s.sid) { showLogin(); return; }
+    post('clinical_people_access.get_my_portal_permissions', { sid: s.sid }).then(function (d) {
+      perms = d || {};
+      perms.full_name = perms.full_name || s.full_name;
+      var mods = opsModules();
+      var open = mods && Object.keys(mods).some(function (m) { return mods[m].level !== 'none'; });
+      if (perms.exempt || open) unlock();
+      else showDenied(perms.full_name);
+    }).catch(function (ex) {
+      if (ex.status === 401 || ex.status === 403) {
+        localStorage.removeItem(KEY);
+        showLogin('Your session has ended. Please sign in again.');
+      } else {
+        screen('<h1>Operations Portal</h1><p class="og-err">Could not reach the server. Check your connection and try again.</p><button type="button">Retry</button>')
+          .querySelector('button').addEventListener('click', check);
+      }
+    });
+  }
+
+  function start() {
+    check();
+    new MutationObserver(function () { if (perms && !root.classList.contains('ops-locked')) decorate(); })
+      .observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('popstate', function () { if (perms) setTimeout(decorate, 0); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();

@@ -1,0 +1,63 @@
+{
+  "actions": [],
+  "autoname": "format:PM-{YYYY}-{#####}",
+  "creation": "2026-08-14 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "equipment",
+    "maintenance_date",
+    "due_date",
+    "maintenance_type",
+    "column_break_1",
+    "outcome",
+    "performed_by",
+    "checklist",
+    "notes"
+  ],
+  "fields": [
+    {"fieldname": "equipment", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Equipment", "options": "Lab Equipment", "reqd": 1},
+    {"fieldname": "maintenance_date", "fieldtype": "Date", "in_list_view": 1, "label": "Maintenance Date", "reqd": 1},
+    {"fieldname": "due_date", "fieldtype": "Date", "in_list_view": 1, "label": "Next PM Due"},
+    {
+      "default": "Preventive",
+      "fieldname": "maintenance_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Type",
+      "options": "Preventive\nCorrective\nDecontamination\nSoftware Update\nElectrical Safety\nOther"
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "Completed",
+      "fieldname": "outcome",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Outcome",
+      "options": "Completed\nPartial\nFailed\nDeferred"
+    },
+    {"fieldname": "performed_by", "fieldtype": "Data", "label": "Performed By"},
+    {
+      "description": "Periodic maintenance checklist (probe wash, optics, coolers, LIS, etc.)",
+      "fieldname": "checklist",
+      "fieldtype": "Small Text",
+      "label": "Checklist"
+    },
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+  ],
+  "modified": "2026-08-14 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Equipment Maintenance",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "maintenance_date",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

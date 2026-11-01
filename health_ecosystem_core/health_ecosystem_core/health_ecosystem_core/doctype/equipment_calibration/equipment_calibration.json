@@ -6,6 +6,7 @@
   "engine": "InnoDB",
   "field_order": [
     "equipment",
+    "record_type",
     "calibration_date",
     "due_date",
     "column_break_1",
@@ -19,7 +20,15 @@
   ],
   "fields": [
     {"fieldname": "equipment", "fieldtype": "Link", "in_list_view": 1, "in_standard_filter": 1, "label": "Equipment", "options": "Lab Equipment", "reqd": 1},
-    {"fieldname": "calibration_date", "fieldtype": "Date", "in_list_view": 1, "label": "Calibration Date", "reqd": 1},
+    {
+      "default": "Calibration",
+      "fieldname": "record_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Record Type",
+      "options": "Calibration\nPreventive Maintenance\nCorrective Maintenance"
+    },
+    {"fieldname": "calibration_date", "fieldtype": "Date", "in_list_view": 1, "label": "Service Date", "reqd": 1},
     {"fieldname": "due_date", "fieldtype": "Date", "in_list_view": 1, "label": "Next Due"},
     {"fieldname": "column_break_1", "fieldtype": "Column Break"},
     {

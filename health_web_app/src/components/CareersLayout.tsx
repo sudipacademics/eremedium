@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { isHrRecruiter } from '../auth/roles';
+import { StructuredData } from './StructuredData';
 
 export function CareersLayout() {
   const { isAuthenticated, user, logout } = useAuth();
@@ -8,9 +9,12 @@ export function CareersLayout() {
 
   return (
     <div className="careers-shell">
+      <StructuredData pageUrl="https://career.e-remedium.in/" />
       <header className="careers-topnav">
         <Link to="/careers" className="careers-brand">
-          <span className="careers-brand-mark" aria-hidden />
+          <span className="careers-brand-mark" aria-hidden>
+            R
+          </span>
           <span>
             <strong>REMEDIUM</strong>
             <small>a unit of smilecure lifestyle Pvt. Ltd</small>
@@ -21,22 +25,25 @@ export function CareersLayout() {
             Home
           </NavLink>
           <NavLink to="/jobs">Job Openings</NavLink>
-          <a href="#why-remedium">Why Remedium?</a>
-          {hr ? <NavLink to="/hr/applications">HR Desk</NavLink> : null}
-          {isAuthenticated && !hr ? <NavLink to="/my">My Application</NavLink> : null}
+          <a href="/careers#why-remedium">Why Remedium?</a>
+          <a href="/careers#life-at-remedium">Life at Remedium</a>
+          <a href="/careers#contact">Contact Us</a>
+          {hr ? <NavLink to="/people/recruitment">Hiring desk</NavLink> : null}
+        </nav>
+        <div className="careers-topnav-actions">
           {isAuthenticated ? (
-            <button type="button" className="btn-link" onClick={logout}>
+            <button type="button" className="careers-btn-outline" onClick={logout}>
               Logout
             </button>
           ) : (
-            <Link className="btn secondary btn-sm" to="/login" state={{ from: '/my' }}>
-              Login
+            <Link className="careers-btn-outline" to="/hr/login">
+              HR login
             </Link>
           )}
-          <Link className="btn btn-sm" to="/jobs">
+          <Link className="careers-btn-solid" to="/jobs">
             Apply Now
           </Link>
-        </nav>
+        </div>
       </header>
       <main className="careers-main">
         <Outlet />

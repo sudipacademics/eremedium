@@ -53,6 +53,22 @@ export function PrescriptionsPage() {
     }
   }
 
+  async function printPrescription(prescriptionId: string) {
+    setError(null);
+    try {
+      const html = await api.getPrescriptionPrintHtml(prescriptionId);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+      } else {
+        setError('Popup blocked — allow popups to print the prescription.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open print view');
+    }
+  }
+
   async function orderMedicines() {
     if (!active) return;
     setBusy(`rx-${active.name}`);
@@ -150,6 +166,9 @@ export function PrescriptionsPage() {
                 <td style={{ textAlign: 'right' }}>
                   <button type="button" className="btn btn-sm" onClick={() => void openPrescription(rx.name)}>
                     View
+                  </button>{' '}
+                  <button type="button" className="btn btn-sm secondary" onClick={() => void printPrescription(rx.name)}>
+                    Print
                   </button>
                 </td>
               </tr>
@@ -158,7 +177,7 @@ export function PrescriptionsPage() {
         </table>
         {!prescriptions.length ? (
           <p className="muted">
-            No prescriptions yet. Book a <Link to="/telemedicine">doctor consultation</Link> to get started.
+            No prescriptions yet. Book a <Link to="/appointments/book">doctor consultation</Link> to get started.
           </p>
         ) : null}
       </div>
@@ -310,9 +329,12 @@ export function PrescriptionsPage() {
               </>
             ) : null}
 
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="btn secondary" onClick={() => setActive(null)}>
                 Close
+              </button>
+              <button type="button" className="btn" onClick={() => void printPrescription(active.name)}>
+                Print prescription
               </button>
             </div>
           </div>

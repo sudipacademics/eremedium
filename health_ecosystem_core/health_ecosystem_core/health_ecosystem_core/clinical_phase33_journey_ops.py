@@ -122,6 +122,10 @@ def journey_transition(journey_id=None, to_status=None, phlebotomist=None, notes
 
     updates = {}
     if to_status == "Phlebotomist Assigned":
+        from health_ecosystem_core.health_ecosystem_core.clinical_iam import PF_ORDER_MESSAGE, is_pf_trf
+
+        if is_pf_trf(frappe.db.get_value("Patient Care Journey", journey_id, "customer_trf")):
+            return _error(_(PF_ORDER_MESSAGE), 409)
         if not phlebotomist:
             return _error(_("Select a phlebotomist to assign"))
         if not frappe.db.exists("User", phlebotomist):

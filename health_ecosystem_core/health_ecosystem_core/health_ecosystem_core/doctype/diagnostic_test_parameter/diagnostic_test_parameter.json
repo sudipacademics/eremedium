@@ -7,12 +7,19 @@
   "field_order": [
     "parameter_code",
     "parameter_name",
+    "result_input_type",
     "unit",
+    "choice_options",
+    "default_value",
+    "print_style",
+    "before_heading",
+    "linked_info_role",
     "normal_min",
     "normal_max",
     "critical_min",
     "critical_max",
     "method",
+    "machine_name",
     "specimen_material",
     "nabl_discipline",
     "amr_min",
@@ -31,9 +38,52 @@
   "fields": [
     {"fieldname": "parameter_code", "fieldtype": "Data", "in_list_view": 1, "label": "Code"},
     {"fieldname": "parameter_name", "fieldtype": "Data", "in_list_view": 1, "label": "Parameter", "reqd": 1},
+    {
+      "default": "Numeric",
+      "description": "How this line is entered and printed. Heading/Spacer mimic legacy Test Link style rows.",
+      "fieldname": "result_input_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Result Input Type",
+      "options": "Numeric\nDescriptive Text\nChoice List\nDate\nHeading\nSpacer\nTable Value"
+    },
     {"fieldname": "unit", "fieldtype": "Data", "in_list_view": 1, "label": "Unit"},
-    {"fieldname": "normal_min", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Min"},
-    {"fieldname": "normal_max", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Max"},
+    {
+      "depends_on": "eval:doc.result_input_type=='Choice List'",
+      "description": "One option per line (e.g. Reactive / Non Reactive, or 1:20 / 1:40 / 1:80)",
+      "fieldname": "choice_options",
+      "fieldtype": "Small Text",
+      "label": "Choice Options"
+    },
+    {
+      "fieldname": "default_value",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Default Value"
+    },
+    {
+      "default": "Normal",
+      "fieldname": "print_style",
+      "fieldtype": "Select",
+      "label": "Print Style",
+      "options": "Normal\nBold\nUnderline\nBold Underline"
+    },
+    {
+      "description": "Optional group heading printed before this row",
+      "fieldname": "before_heading",
+      "fieldtype": "Data",
+      "label": "Before Heading"
+    },
+    {
+      "default": "None",
+      "description": "Marks linked clinical info fields (Triple Marker style) for UI grouping.",
+      "fieldname": "linked_info_role",
+      "fieldtype": "Select",
+      "label": "Linked Info Role",
+      "options": "None\nClinical Detail\nPatient Age\nPatient Weight\nLMP Date\nGestational Age\nAnalyte Value\nCalculated MoM\nRisk Score\nOther"
+    },
+    {"fieldname": "normal_min", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Min (default)"},
+    {"fieldname": "normal_max", "fieldtype": "Float", "in_list_view": 1, "label": "Normal Max (default)"},
     {
       "description": "Below this value triggers a critical alert",
       "fieldname": "critical_min",
@@ -47,6 +97,13 @@
       "label": "Critical Max"
     },
     {"fieldname": "method", "fieldtype": "Data", "in_list_view": 1, "label": "Method"},
+    {
+      "description": "Analyzer model (e.g. EM200). Editable in Desk; read-only on technician result entry.",
+      "fieldname": "machine_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Machine Name"
+    },
     {
       "default": "Serum",
       "fieldname": "specimen_material",
@@ -139,7 +196,7 @@
     {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"}
   ],
   "istable": 1,
-  "modified": "2026-07-16 19:30:00.000000",
+  "modified": "2026-08-02 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Health Ecosystem Core",
   "name": "Diagnostic Test Parameter",

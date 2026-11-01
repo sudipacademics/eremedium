@@ -118,12 +118,14 @@ def sync_journey_from_trf(trf_name, order_status=None):
 
 
 def _render_lab_report_html(payload):
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import result_display_value
+
     rows = ""
     for row in payload.get("results") or []:
         flag = row.get("abnormal_flag") or ""
         rows += (
             f"<tr><td>{escape(str(row.get('analyte_test_name') or ''))}</td>"
-            f"<td>{row.get('numeric_result_value', '')}</td>"
+            f"<td>{escape(result_display_value(row))}</td>"
             f"<td>{escape(str(row.get('unit_of_measure') or ''))}</td>"
             f"<td>{escape(str(row.get('reference_range') or ''))}</td>"
             f"<td>{escape(str(flag))}</td></tr>"
@@ -155,26 +157,25 @@ th {{ background: #f5f5f5; }}
 
 
 def generate_lab_report_pdf(journey_name):
-    from frappe.utils.pdf import get_pdf
-
     from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import (
         journey_pdf_payload,
         render_nabl_lab_report_html,
     )
     from health_ecosystem_core.health_ecosystem_core.clinical_phase6 import render_branded_lab_report_html
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import html_to_lab_report_pdf
 
     payload = journey_pdf_payload(journey_name)
     if payload.get("nabl_report"):
-        html = render_nabl_lab_report_html(payload["nabl_report"])
+        html = render_nabl_lab_report_html(payload["nabl_report"], chrome_mode="nabl", for_pdf=1)
     else:
         html = render_branded_lab_report_html(payload)
-    pdf_content = get_pdf(html)
+    pdf_content = html_to_lab_report_pdf(html, chrome_mode="nabl")
     file_doc = frappe.get_doc(
         {
             "doctype": "File",
             "file_name": f"Lab_Report_{journey_name}.pdf",
             "content": pdf_content,
-            "is_private": 0,
+            "is_private": 1,
             "attached_to_doctype": "Patient Care Journey",
             "attached_to_name": journey_name,
             "folder": "Home/Attachments",
@@ -382,7 +383,19 @@ def authorize_lab_report(journey_id=None, pathologist_notes=None, report_pdf=Non
 
         lab_report = _existing_lab_report(journey.customer_trf)
         if lab_report:
-            frappe.db.set_value("Lab Report", lab_report, {"report_status": "Authorized", "printed_on": now_datetime()})
+            updates = {"report_status": "Authorized", "printed_on": now_datetime()}
+            notes = (journey.pathologist_notes or "").strip()
+            if notes:
+                updates["comments"] = notes
+            frappe.db.set_value("Lab Report", lab_report, updates)
+    if journey.customer_trf:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+            on_report_authorized,
+            on_sample_received_at_lab,
+        )
+
+        on_sample_received_at_lab(journey.customer_trf)
+        on_report_authorized(journey.customer_trf)
     frappe.db.commit()
     try:
         from health_ecosystem_core.health_ecosystem_core.clinical_notifications import notify_report_ready

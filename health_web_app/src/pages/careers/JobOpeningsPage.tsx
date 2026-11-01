@@ -1,48 +1,39 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, JobOpeningSummary } from '../../api';
+import { api, type PublicHireJob } from '../../api';
 
 export function JobOpeningsPage() {
-  const [openings, setOpenings] = useState<JobOpeningSummary[]>([]);
+  const [jobs, setJobs] = useState<PublicHireJob[]>([]);
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load(nextSearch = search, nextLocation = location) {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.listPublishedJobOpenings({
-        search: nextSearch.trim() || undefined,
-        location: nextLocation.trim() || undefined,
-        limit: 50,
-      });
-      setOpenings(res.data.openings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load jobs');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    api
+      .listPublicHireJobs()
+      .then((res) => !cancelled && setJobs(res.data.jobs || []))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Could not load jobs'))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const locations = useMemo(() => {
-    const set = new Set<string>();
-    for (const o of openings) {
-      if (o.location) set.add(o.location);
-    }
-    return Array.from(set).sort();
-  }, [openings]);
+  const locations = useMemo(
+    () => Array.from(new Set(jobs.map((j) => j.location).filter(Boolean) as string[])).sort(),
+    [jobs],
+  );
 
-  function onFilter(e: FormEvent) {
-    e.preventDefault();
-    void load();
-  }
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return jobs.filter(
+      (j) =>
+        (!location || j.location === location) &&
+        (!q || [j.title, j.department, j.skills, j.description].some((v) => (v || '').toLowerCase().includes(q))),
+    );
+  }, [jobs, search, location]);
 
   return (
     <div className="careers-jobs-page">
@@ -50,23 +41,19 @@ export function JobOpeningsPage() {
         <div>
           <p className="brand-kicker">CAREERS</p>
           <h1>Job Openings</h1>
-          <p className="muted">Find a role that fits your skills and ambition.</p>
+          <p className="muted">Find a role that fits your skills. Applying takes about two minutes.</p>
         </div>
       </header>
 
-      <form className="careers-job-filters" onSubmit={onFilter}>
+      <div className="careers-job-filters">
         <label>
           Search
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search job title or keyword"
-          />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Job title or skill" />
         </label>
         <label>
           Location
           <select value={location} onChange={(e) => setLocation(e.target.value)}>
-            <option value="">All Locations</option>
+            <option value="">All locations</option>
             {locations.map((loc) => (
               <option key={loc} value={loc}>
                 {loc}
@@ -74,30 +61,37 @@ export function JobOpeningsPage() {
             ))}
           </select>
         </label>
-        <button className="btn" type="submit" disabled={loading}>
-          {loading ? 'Searching…' : 'Search'}
-        </button>
-      </form>
+      </div>
 
       {error ? <div className="error">{error}</div> : null}
+      {loading ? <p className="muted">Loading openings…</p> : null}
 
       <div className="careers-job-grid">
-        {openings.map((job) => (
+        {visible.map((job) => (
           <article key={job.name} className="careers-job-card">
-            <h3>{job.job_title}</h3>
-            <p>{job.description || 'Join the Remedium team.'}</p>
+            <h3>{job.title}</h3>
             <p className="muted">
-              {job.location || 'India'} · {job.employment_type || 'Full Time'}
+              {job.location || 'Kolkata'} · {job.employment_type || 'Full Time'}
               {job.department ? ` · ${job.department}` : ''}
             </p>
-            {job.posted_on ? <p className="muted">Posted {job.posted_on}</p> : null}
+            <p>
+              {job.salary_text ? (
+                <>
+                  <b>{job.salary_text}</b> ·{' '}
+                </>
+              ) : null}
+              {job.experience_text}
+            </p>
+            {job.description ? <p>{job.description.length > 220 ? `${job.description.slice(0, 220)}…` : job.description}</p> : null}
             <Link className="btn" to={`/jobs/${encodeURIComponent(job.name)}/apply`}>
               Apply Now
             </Link>
           </article>
         ))}
       </div>
-      {!loading && !error && openings.length === 0 ? <p className="muted">No openings match your filters.</p> : null}
+      {!loading && !error && visible.length === 0 ? (
+        <p className="muted">No openings right now. Please check back soon.</p>
+      ) : null}
     </div>
   );
 }

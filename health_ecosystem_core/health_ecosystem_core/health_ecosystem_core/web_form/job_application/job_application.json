@@ -1,0 +1,74 @@
+{
+  "allow_comments": 0,
+  "allow_delete": 0,
+  "allow_edit": 0,
+  "allow_incomplete": 0,
+  "allow_multiple": 1,
+  "allow_print": 0,
+  "anonymous": 1,
+  "apply_document_permissions": 0,
+  "button_label": "Submit Application",
+  "creation": "2026-08-21 00:00:00.000000",
+  "doc_type": "Job Applicant",
+  "doctype": "Web Form",
+  "is_standard": 0,
+  "login_required": 0,
+  "module": "Health Ecosystem Core",
+  "name": "job-application",
+  "published": 1,
+  "route": "job-application",
+  "success_message": "Thank you. Your application has been received.",
+  "title": "Job Application",
+  "web_form_fields": [
+    {
+      "fieldname": "hec_first_name",
+      "fieldtype": "Data",
+      "label": "First Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "hec_last_name",
+      "fieldtype": "Data",
+      "label": "Last Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "email_id",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email",
+      "reqd": 1
+    },
+    {
+      "fieldname": "phone_number",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "hec_applied_for",
+      "fieldtype": "Link",
+      "label": "Applied For",
+      "options": "Job Requisition",
+      "reqd": 1
+    },
+    {
+      "fieldname": "resume_attachment",
+      "fieldtype": "Attach",
+      "label": "Resume"
+    },
+    {
+      "fieldname": "operational_route_experience",
+      "fieldtype": "Text",
+      "label": "Operational Route Experience"
+    },
+    {
+      "default": "New",
+      "fieldname": "hec_applicant_status",
+      "fieldtype": "Select",
+      "hidden": 1,
+      "label": "Applicant Status",
+      "options": "New\nScreening\nInterview 1\nInterview 2\nOffer Extended\nHired\nRejected",
+      "read_only": 1
+    }
+  ]
+}

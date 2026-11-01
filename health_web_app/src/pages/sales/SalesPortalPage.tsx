@@ -83,7 +83,10 @@ export function SalesPortalPage() {
       ) : null}
 
       <div className="toolbar" style={{ marginTop: 24 }}>
-        <Link className="btn" to="/sales/leads">
+        <Link className="btn" to="/sales/profile">
+          My profile
+        </Link>
+        <Link className="btn secondary" to="/sales/leads">
           New lead
         </Link>
         <Link className="btn secondary" to="/sales/visit">

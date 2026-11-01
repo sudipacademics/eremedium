@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Appointment, Booking, PharmacyOrder } from '../api';
+import { PayNowButton } from '../components/PayNowButton';
 import { useLiveRefresh } from '../hooks/useLiveRefresh';
 
 export function BookingsPage() {
@@ -44,6 +45,9 @@ export function BookingsPage() {
             <p className="section-sub">Lab TRFs, doctor appointments, and Rx quote requests — refresh for live status.</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <Link className="btn secondary" to="/reports">
+              Reports
+            </Link>
             <Link className="btn secondary" to="/journey">
               Care journey
             </Link>
@@ -106,10 +110,40 @@ export function BookingsPage() {
                     .join(', ')}
                 </div>
               )}
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {o.razorpay_payment_status !== 'Paid' && Number(o.order_total || 0) > 0 ? (
+                  <PayNowButton
+                    referenceDoctype="Pharmacy Order"
+                    referenceName={o.name}
+                    amount={Number(o.order_total || 0)}
+                    customerName={o.customer_name}
+                    label="Pay now"
+                    onSuccess={() => void load()}
+                  />
+                ) : null}
+                {o.razorpay_payment_status === 'Paid' || o.sales_invoice ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm secondary"
+                    onClick={() => {
+                      void api.getPharmacyOrderInvoice(o.name).then((res) => {
+                        const url = res.data.invoice_pdf_url;
+                        if (url) window.open(url, '_blank');
+                        else alert(`Invoice ${res.data.sales_invoice || 'ready'} for ${res.data.order_id}`);
+                      });
+                    }}
+                  >
+                    Invoice
+                  </button>
+                ) : null}
+              </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <span className="badge">{o.delivery_status || 'Pending'}</span>
               <div className="muted">₹{Number(o.order_total || 0).toFixed(0)}</div>
+              <div className="muted" style={{ fontSize: '0.8rem' }}>
+                {o.razorpay_payment_status || 'Unpaid'}
+              </div>
             </div>
           </div>
         ))}

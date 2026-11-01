@@ -11,9 +11,11 @@
     "owner_name",
     "category",
     "ownership",
+    "parent_foco",
     "territory_region",
     "franchisee_type",
     "commission_percentage_rate",
+    "override_upsell_commission",
     "commission_base",
     "active_status",
     "sheet_status",
@@ -34,6 +36,7 @@
     "deposit_amount",
     "franchisee_fee",
     "wallet_balance",
+    "credit_limit",
     "total_amount",
     "due_amount",
     "section_docs",
@@ -83,6 +86,14 @@
       "label": "Ownership"
     },
     {
+      "description": "Permanent FOFO \u2192 FOCO map. Set once during FOFO onboarding (Under Which FOCO).",
+      "fieldname": "parent_foco",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Under Which FOCO",
+      "options": "Franchisee Profile"
+    },
+    {
       "fieldname": "territory_region",
       "fieldtype": "Data",
       "in_list_view": 1,
@@ -92,7 +103,7 @@
     },
     {
       "default": "Pulse",
-      "description": "Vector = B2B wholesale rate list; Pulse = FOCO rate list. Company MRP is always shared.",
+      "description": "Pulse (FFMS) bills FOCO; Vector (Reach) bills unsashed MRP with wholesale platform fee.",
       "fieldname": "franchisee_type",
       "fieldtype": "Select",
       "in_list_view": 1,
@@ -109,8 +120,15 @@
       "reqd": 1
     },
     {
+      "default": "20",
+      "description": "FOCO earning % on mapped FOFO net (MRP \u2212 FOFO Margin). Dynamic override of the default 20% FOFO\u2192FOCO upsell. Read from the parent FOCO profile.",
+      "fieldname": "override_upsell_commission",
+      "fieldtype": "Percent",
+      "label": "Override Upsell Commission"
+    },
+    {
       "default": "Franchisee Rate",
-      "description": "Apply commission % on Vector/Pulse franchisee rate, or on company MRP",
+      "description": "Pulse commission is on FOCO; Vector commission is on wholesale.",
       "fieldname": "commission_base",
       "fieldtype": "Select",
       "in_list_view": 1,
@@ -225,6 +243,13 @@
       "read_only": 1
     },
     {
+      "default": "0",
+      "description": "Vector only: billing stops when wallet + credit limit cannot cover the platform fee.",
+      "fieldname": "credit_limit",
+      "fieldtype": "Currency",
+      "label": "Credit Limit"
+    },
+    {
       "fieldname": "total_amount",
       "fieldtype": "Currency",
       "label": "Total Amount"
@@ -278,7 +303,7 @@
   ],
   "index_web_pages_for_search": 1,
   "links": [],
-  "modified": "2026-07-28 12:00:00.000000",
+  "modified": "2026-08-13 12:00:00.000000",
   "modified_by": "Administrator",
   "module": "Health Ecosystem Core",
   "name": "Franchisee Profile",

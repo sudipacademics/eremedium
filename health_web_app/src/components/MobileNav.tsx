@@ -2,7 +2,14 @@ import { useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 
 export type MobileNavItem =
-  | { type: 'link'; to: string; label: string; end?: boolean }
+  | {
+      type: 'link';
+      to: string;
+      label: string;
+      end?: boolean;
+      className?: string | ((args: { isActive: boolean }) => string);
+      current?: boolean;
+    }
   | { type: 'button'; label: string; onClick: () => void };
 
 type Props = {
@@ -41,9 +48,31 @@ export function MobileNav({ open, onClose, items }: Props) {
         <nav className="mobile-nav-links">
           {items.map((item) =>
             item.type === 'link' ? (
-              <NavLink key={item.to + item.label} to={item.to} end={item.end} onClick={onClose}>
-                {item.label}
-              </NavLink>
+              item.current !== undefined ? (
+                <Link
+                  key={item.to + item.label}
+                  to={item.to}
+                  className={
+                    typeof item.className === 'function'
+                      ? item.className({ isActive: item.current })
+                      : item.className
+                  }
+                  aria-current={item.current ? 'page' : undefined}
+                  onClick={onClose}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <NavLink
+                  key={item.to + item.label}
+                  to={item.to}
+                  end={item.end}
+                  className={item.className}
+                  onClick={onClose}
+                >
+                  {item.label}
+                </NavLink>
+              )
             ) : (
               <button key={item.label} type="button" className="mobile-nav-btn" onClick={item.onClick}>
                 {item.label}

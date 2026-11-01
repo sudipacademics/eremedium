@@ -1,21 +1,24 @@
-"""Phase 24 — Lab reagent batch rotation: open pack quotas and auto-decrement on test completion."""
+"""Phase 24 — Lab reagent / consumable batch rotation, safety stock, and TRF debit."""
 
 from __future__ import annotations
 
 import os
+import re
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, today
+from frappe.utils import cint, today
 
 REAGENT_ITEM_GROUP = "Consumables"
+DEFAULT_SAFETY_STOCK = 10
 LOW_STOCK_RATIO = 0.1
-LOW_STOCK_ABSOLUTE = 5
 LAB_OPS_ROLES = ("Lab Technician", "Pathologist", "Health System Admin", "System Manager")
 
 PHASE24_DOCTYPES = (
     ("lab_reagent_batch", "Lab Reagent Batch"),
     ("lab_test_reagent_rule", "Lab Test Reagent Rule"),
+    ("lab_consumable_batch", "Lab Consumable Batch"),
+    ("lab_trf_consumable_rule", "Lab TRF Consumable Rule"),
 )
 
 DEFAULT_REAGENT_ITEMS = (
@@ -30,6 +33,16 @@ DEFAULT_RULES = (
     ("TSH-001 → TSH Reagent", "TSH-001", "REAGENT-TSH", 1),
     ("HBA1C-001 → LFT Reagent", "HBA1C-001", "REAGENT-LFT", 1),
     ("LIPID-001 → LFT Reagent", "LIPID-001", "REAGENT-LFT", 1),
+)
+
+DEFAULT_CONSUMABLE_ITEMS = (
+    ("CONSUMABLE-VIAL", "Vial"),
+    ("CONSUMABLE-PAD", "Pad"),
+    ("CONSUMABLE-ENVELOPE", "Envelope"),
+    ("CONSUMABLE-TIP", "Tip"),
+    ("CONSUMABLE-ALIQUOT", "Aliquot Tube"),
+    ("CONSUMABLE-SYRINGE", "Syringe"),
+    ("CONSUMABLE-GLOVES", "Gloves"),
 )
 
 
@@ -89,6 +102,24 @@ def ensure_phase24_custom_fields():
                     "insert_after": "platform_billed",
                     "read_only": 1,
                 },
+                {
+                    "fieldname": "consumables_consumed",
+                    "label": "Consumables Consumed",
+                    "fieldtype": "Check",
+                    "default": "0",
+                    "insert_after": "reagents_consumed",
+                    "read_only": 1,
+                },
+            ],
+            "Item": [
+                {
+                    "fieldname": "hec_safety_stock",
+                    "label": "HEC Safety Stock",
+                    "fieldtype": "Int",
+                    "default": str(DEFAULT_SAFETY_STOCK),
+                    "insert_after": "stock_uom",
+                    "description": "Reorder when open inventory remaining is at or below this level.",
+                },
             ],
         },
         update=True,
@@ -105,11 +136,28 @@ def _ensure_item_group(name):
     return name
 
 
-def _ensure_reagent_item(item_code, item_name):
+def _set_safety_stock(item_code, safety_stock=DEFAULT_SAFETY_STOCK):
+    if not frappe.db.exists("Item", item_code):
+        return
+    if not frappe.get_meta("Item").has_field("hec_safety_stock"):
+        return
+    frappe.db.set_value("Item", item_code, "hec_safety_stock", cint(safety_stock) or DEFAULT_SAFETY_STOCK)
+
+
+def _get_safety_stock(item_code):
+    if frappe.get_meta("Item").has_field("hec_safety_stock"):
+        val = frappe.db.get_value("Item", item_code, "hec_safety_stock")
+        if val is not None and str(val).strip() != "":
+            return cint(val)
+    return DEFAULT_SAFETY_STOCK
+
+
+def _ensure_reagent_item(item_code, item_name, safety_stock=DEFAULT_SAFETY_STOCK):
     if frappe.db.exists("Item", item_code):
+        _set_safety_stock(item_code, safety_stock)
         return item_code
     _ensure_item_group(REAGENT_ITEM_GROUP)
-    frappe.get_doc(
+    doc = frappe.get_doc(
         {
             "doctype": "Item",
             "item_code": item_code,
@@ -119,7 +167,10 @@ def _ensure_reagent_item(item_code, item_name):
             "is_stock_item": 1,
             "include_item_in_manufacturing": 0,
         }
-    ).insert(ignore_permissions=True)
+    )
+    if frappe.get_meta("Item").has_field("hec_safety_stock"):
+        doc.hec_safety_stock = cint(safety_stock) or DEFAULT_SAFETY_STOCK
+    doc.insert(ignore_permissions=True)
     return item_code
 
 
@@ -146,6 +197,175 @@ def seed_reagent_rules():
         ).insert(ignore_permissions=True)
         seeded.append(rule_name)
     return seeded
+
+
+def seed_consumable_catalog():
+    ensure_phase24_doctypes()
+    seeded_items = []
+    seeded_rules = []
+    for item_code, item_name in DEFAULT_CONSUMABLE_ITEMS:
+        _ensure_reagent_item(item_code, item_name)
+        seeded_items.append(item_code)
+        rule_name = f"TRF → {item_name}"
+        if frappe.db.exists("Lab TRF Consumable Rule", rule_name):
+            continue
+        frappe.get_doc(
+            {
+                "doctype": "Lab TRF Consumable Rule",
+                "rule_name": rule_name,
+                "consumable_item": item_code,
+                "qty_per_trf": 1,
+                "active": 1,
+            }
+        ).insert(ignore_permissions=True)
+        seeded_rules.append(rule_name)
+    return {"items": seeded_items, "rules": seeded_rules}
+
+
+def _slug_item_code(name, prefix="REAGENT"):
+    base = re.sub(r"[^A-Za-z0-9]+", "-", (name or "").strip().upper()).strip("-") or "ITEM"
+    code = f"{prefix}-{base}"[:120]
+    if not frappe.db.exists("Item", code):
+        return code
+    for i in range(2, 100):
+        candidate = f"{code}-{i}"[:140]
+        if not frappe.db.exists("Item", candidate):
+            return candidate
+    return f"{code}-{frappe.generate_hash(length=4)}"
+
+
+def create_mapped_reagent(
+    user,
+    reagent_name,
+    lab_test_item,
+    parameter_code,
+    tests_per_consumption=1,
+    safety_stock=DEFAULT_SAFETY_STOCK,
+    reagent_item=None,
+):
+    """Create/ensure a reagent Item and parameter-scoped Lab Test Reagent Rule."""
+    if not is_lab_ops_user(user):
+        frappe.throw(_("Lab operations access required"))
+    reagent_name = (reagent_name or "").strip()
+    lab_test_item = (lab_test_item or "").strip()
+    parameter_code = (parameter_code or "").strip()
+    if not reagent_name:
+        frappe.throw(_("Reagent name is required"))
+    if not lab_test_item or not frappe.db.exists("Item", lab_test_item):
+        frappe.throw(_("Valid lab test item is required"))
+    if not parameter_code:
+        frappe.throw(_("Parameter code is required"))
+
+    item_code = (reagent_item or "").strip() or _slug_item_code(reagent_name, "REAGENT")
+    _ensure_reagent_item(item_code, reagent_name, safety_stock=cint(safety_stock) or DEFAULT_SAFETY_STOCK)
+
+    qty = cint(tests_per_consumption) or 1
+    rule_name = f"{lab_test_item} / {parameter_code} → {item_code}"[:140]
+    existing = frappe.db.get_value(
+        "Lab Test Reagent Rule",
+        {"lab_test_item": lab_test_item, "parameter_code": parameter_code, "reagent_item": item_code},
+        "name",
+    )
+    if existing:
+        doc = frappe.get_doc("Lab Test Reagent Rule", existing)
+        doc.tests_per_consumption = qty
+        doc.active = 1
+        doc.save(ignore_permissions=True)
+        rule_name = doc.name
+    elif frappe.db.exists("Lab Test Reagent Rule", rule_name):
+        doc = frappe.get_doc("Lab Test Reagent Rule", rule_name)
+        doc.lab_test_item = lab_test_item
+        doc.parameter_code = parameter_code
+        doc.reagent_item = item_code
+        doc.tests_per_consumption = qty
+        doc.active = 1
+        doc.save(ignore_permissions=True)
+    else:
+        frappe.get_doc(
+            {
+                "doctype": "Lab Test Reagent Rule",
+                "rule_name": rule_name,
+                "lab_test_item": lab_test_item,
+                "parameter_code": parameter_code,
+                "reagent_item": item_code,
+                "tests_per_consumption": qty,
+                "active": 1,
+            }
+        ).insert(ignore_permissions=True)
+
+    return {
+        "reagent_item": item_code,
+        "reagent_name": reagent_name,
+        "lab_test_item": lab_test_item,
+        "parameter_code": parameter_code,
+        "tests_per_consumption": qty,
+        "safety_stock": _get_safety_stock(item_code),
+        "rule_name": rule_name,
+    }
+
+
+def list_mappable_lab_tests(limit=200):
+    """Lab test Items with Diagnostic Test Master parameters for the Add Reagent UI."""
+    out = []
+    if not frappe.db.exists("DocType", "Diagnostic Test Master"):
+        # Fallback: Items used in existing reagent rules
+        items = frappe.get_all(
+            "Lab Test Reagent Rule",
+            filters={"active": 1},
+            fields=["lab_test_item"],
+            distinct=True,
+            limit=limit,
+        )
+        for row in items:
+            code = row.lab_test_item
+            out.append(
+                {
+                    "item_code": code,
+                    "item_name": frappe.db.get_value("Item", code, "item_name") or code,
+                    "parameters": [],
+                }
+            )
+        return out
+
+    masters = frappe.get_all(
+        "Diagnostic Test Master",
+        fields=["name", "item", "test_name"],
+        filters={"disabled": 0} if frappe.get_meta("Diagnostic Test Master").has_field("disabled") else {},
+        limit=limit,
+    )
+    for master in masters:
+        item_code = master.get("item")
+        if not item_code:
+            continue
+        params = []
+        try:
+            doc = frappe.get_doc("Diagnostic Test Master", master.name)
+            for p in doc.get("parameters") or []:
+                code = (getattr(p, "parameter_code", None) or getattr(p, "parameter_name", None) or "").strip()
+                if not code:
+                    continue
+                kind = (getattr(p, "parameter_kind", None) or "").strip()
+                if kind.lower() == "calculated":
+                    continue
+                params.append(
+                    {
+                        "parameter_code": code,
+                        "parameter_name": getattr(p, "parameter_name", None) or code,
+                    }
+                )
+        except Exception:
+            continue
+        out.append(
+            {
+                "item_code": item_code,
+                "item_name": master.get("test_name")
+                or frappe.db.get_value("Item", item_code, "item_name")
+                or item_code,
+                "diagnostic_test": master.name,
+                "parameters": params,
+            }
+        )
+    return out
 
 
 def _trf_test_items(trf):
@@ -192,12 +412,58 @@ def _find_open_batch(reagent_item, franchisee_id=None):
     return batches[0] if batches else None
 
 
+def _open_remaining_for_item(item_code, doctype="Lab Reagent Batch"):
+    if doctype == "Lab Consumable Batch":
+        rows = frappe.get_all(
+            doctype,
+            filters={"consumable_item": item_code, "status": "Open"},
+            fields=["units_remaining"],
+        )
+        return sum(cint(r.units_remaining) for r in rows)
+    rows = frappe.get_all(
+        doctype,
+        filters={"reagent_item": item_code, "status": "Open"},
+        fields=["tests_remaining"],
+    )
+    return sum(cint(r.tests_remaining) for r in rows)
+
+
+def _item_needs_reorder(item_code, doctype="Lab Reagent Batch"):
+    remaining = _open_remaining_for_item(item_code, doctype=doctype)
+    safety = _get_safety_stock(item_code)
+    return remaining <= safety, remaining, safety
+
+
+def _build_reorder_alerts(item_codes, doctype="Lab Reagent Batch"):
+    alerts = []
+    for code in sorted(set(item_codes or [])):
+        needs, remaining, safety = _item_needs_reorder(code, doctype=doctype)
+        if not needs:
+            continue
+        alerts.append(
+            {
+                "item_code": code,
+                "item_name": frappe.db.get_value("Item", code, "item_name") or code,
+                "remaining": remaining,
+                "safety_stock": safety,
+                "message": _("Reorder {0}: {1} left (safety stock {2})").format(
+                    frappe.db.get_value("Item", code, "item_name") or code, remaining, safety
+                ),
+            }
+        )
+    return alerts
+
+
 def _batch_low_stock(batch):
-    remaining = cint(batch.get("tests_remaining"))
-    pack = cint(batch.get("tests_per_pack")) or remaining
+    """Per-batch warning (pack %); item reorder uses safety stock."""
+    remaining = cint(batch.get("tests_remaining") if hasattr(batch, "get") else getattr(batch, "tests_remaining", 0))
+    pack = cint(batch.get("tests_per_pack") if hasattr(batch, "get") else getattr(batch, "tests_per_pack", 0)) or remaining
     if remaining <= 0:
         return True
-    if remaining <= LOW_STOCK_ABSOLUTE:
+    safety = _get_safety_stock(
+        batch.get("reagent_item") if hasattr(batch, "get") else getattr(batch, "reagent_item", None)
+    )
+    if remaining <= safety:
         return True
     return remaining <= max(1, int(pack * LOW_STOCK_RATIO))
 
@@ -207,6 +473,7 @@ def serialize_batch(row):
         row = frappe.get_doc("Lab Reagent Batch", row)
     pack = cint(row.tests_per_pack)
     remaining = cint(row.tests_remaining)
+    safety = _get_safety_stock(row.reagent_item)
     return {
         "batch_id": row.name,
         "reagent_item": row.reagent_item,
@@ -220,34 +487,140 @@ def serialize_batch(row):
         "tests_remaining": remaining,
         "opened_on": str(row.opened_on) if row.opened_on else None,
         "expiry_date": str(row.expiry_date) if row.expiry_date else None,
+        "safety_stock": safety,
         "low_stock": _batch_low_stock(row),
         "usage_percent": round((1 - remaining / pack) * 100, 1) if pack else 0,
     }
+
+
+def serialize_consumable_batch(row):
+    if isinstance(row, str):
+        row = frappe.get_doc("Lab Consumable Batch", row)
+    pack = cint(row.units_per_pack)
+    remaining = cint(row.units_remaining)
+    safety = _get_safety_stock(row.consumable_item)
+    low = remaining <= 0 or remaining <= safety or remaining <= max(1, int(pack * LOW_STOCK_RATIO))
+    return {
+        "batch_id": row.name,
+        "consumable_item": row.consumable_item,
+        "consumable_name": frappe.db.get_value("Item", row.consumable_item, "item_name") or row.consumable_item,
+        "lot_number": row.lot_number,
+        "franchisee_id": row.get("franchisee_id"),
+        "status": row.status,
+        "units_per_pack": pack,
+        "units_remaining": remaining,
+        "opened_on": str(row.opened_on) if row.opened_on else None,
+        "expiry_date": str(row.expiry_date) if row.expiry_date else None,
+        "safety_stock": safety,
+        "low_stock": low,
+        "usage_percent": round((1 - remaining / pack) * 100, 1) if pack else 0,
+    }
+
+
+def _list_reagent_catalog_items():
+    codes = {code for code, _ in DEFAULT_REAGENT_ITEMS}
+    for row in frappe.get_all("Lab Test Reagent Rule", fields=["reagent_item"], filters={"active": 1}):
+        if row.reagent_item:
+            codes.add(row.reagent_item)
+    for row in frappe.get_all("Lab Reagent Batch", fields=["reagent_item"], limit=200):
+        if row.reagent_item:
+            codes.add(row.reagent_item)
+    items = []
+    for code in sorted(codes):
+        if not frappe.db.exists("Item", code):
+            continue
+        items.append(
+            {
+                "item_code": code,
+                "item_name": frappe.db.get_value("Item", code, "item_name") or code,
+                "safety_stock": _get_safety_stock(code),
+            }
+        )
+    return items
+
+
+def _list_consumable_catalog_items():
+    codes = {code for code, _ in DEFAULT_CONSUMABLE_ITEMS}
+    if frappe.db.exists("DocType", "Lab TRF Consumable Rule"):
+        for row in frappe.get_all("Lab TRF Consumable Rule", fields=["consumable_item"], filters={"active": 1}):
+            if row.consumable_item:
+                codes.add(row.consumable_item)
+    if frappe.db.exists("DocType", "Lab Consumable Batch"):
+        for row in frappe.get_all("Lab Consumable Batch", fields=["consumable_item"], limit=200):
+            if row.consumable_item:
+                codes.add(row.consumable_item)
+    items = []
+    for code in sorted(codes):
+        if not frappe.db.exists("Item", code):
+            continue
+        items.append(
+            {
+                "item_code": code,
+                "item_name": frappe.db.get_value("Item", code, "item_name") or code,
+                "safety_stock": _get_safety_stock(code),
+            }
+        )
+    return items
 
 
 def get_reagent_dashboard_payload(user=None):
     if not is_lab_ops_user(user):
         return {"available": False, "reason": "lab_ops_required"}
 
+    ensure_phase24_doctypes()
+
     batches = frappe.get_all(
         "Lab Reagent Batch",
         filters={"status": ("in", ["Open", "Sealed"])},
-        fields=["name"],
+        fields=["name", "reagent_item"],
         order_by="modified desc",
         limit=100,
     )
     serialized = [serialize_batch(row.name) for row in batches]
     low_stock = [b for b in serialized if b["low_stock"] and b["status"] == "Open"]
-    rules_count = frappe.db.count("Lab Test Reagent Rule", {"active": 1})
+    reorder_alerts = _build_reorder_alerts([b["reagent_item"] for b in serialized if b["status"] == "Open"])
+    rules_count = frappe.db.count("Lab Test Reagent Rule", {"active": 1}) if frappe.db.exists("DocType", "Lab Test Reagent Rule") else 0
+
+    consumable_batches = []
+    consumable_reorder = []
+    consumable_rules = []
+    if frappe.db.exists("DocType", "Lab Consumable Batch"):
+        crows = frappe.get_all(
+            "Lab Consumable Batch",
+            filters={"status": ("in", ["Open", "Sealed"])},
+            fields=["name", "consumable_item"],
+            order_by="modified desc",
+            limit=100,
+        )
+        consumable_batches = [serialize_consumable_batch(r.name) for r in crows]
+        consumable_reorder = _build_reorder_alerts(
+            [b["consumable_item"] for b in consumable_batches if b["status"] == "Open"],
+            doctype="Lab Consumable Batch",
+        )
+    if frappe.db.exists("DocType", "Lab TRF Consumable Rule"):
+        consumable_rules = frappe.get_all(
+            "Lab TRF Consumable Rule",
+            filters={"active": 1},
+            fields=["name", "rule_name", "consumable_item", "qty_per_trf"],
+            order_by="rule_name asc",
+        )
+        for rule in consumable_rules:
+            rule["consumable_name"] = (
+                frappe.db.get_value("Item", rule.consumable_item, "item_name") or rule.consumable_item
+            )
 
     return {
         "available": True,
         "batches": serialized,
         "low_stock_alerts": low_stock,
+        "reorder_alerts": reorder_alerts,
         "rules_count": rules_count,
-        "reagent_items": [
-            {"item_code": code, "item_name": name} for code, name in DEFAULT_REAGENT_ITEMS
-        ],
+        "reagent_items": _list_reagent_catalog_items(),
+        "lab_tests": list_mappable_lab_tests(),
+        "consumable_batches": consumable_batches,
+        "consumable_reorder_alerts": consumable_reorder,
+        "consumable_items": _list_consumable_catalog_items(),
+        "consumable_rules": consumable_rules,
     }
 
 
@@ -317,6 +690,63 @@ def open_reagent_batch(user, batch_id):
     return serialize_batch(batch)
 
 
+def register_consumable_batch(
+    user,
+    consumable_item,
+    lot_number,
+    units_per_pack,
+    expiry_date=None,
+    franchisee_id=None,
+    remarks=None,
+):
+    if not is_lab_ops_user(user):
+        frappe.throw(_("Lab operations access required"))
+    ensure_phase24_doctypes()
+    if not frappe.db.exists("Item", consumable_item):
+        frappe.throw(_("Invalid consumable item"))
+    units_per_pack = cint(units_per_pack)
+    if units_per_pack <= 0:
+        frappe.throw(_("Units per pack must be positive"))
+
+    doc = frappe.get_doc(
+        {
+            "doctype": "Lab Consumable Batch",
+            "consumable_item": consumable_item,
+            "lot_number": lot_number,
+            "units_per_pack": units_per_pack,
+            "units_remaining": 0,
+            "status": "Sealed",
+            "franchisee_id": franchisee_id,
+            "expiry_date": expiry_date,
+            "remarks": remarks,
+        }
+    )
+    doc.insert(ignore_permissions=True)
+    return serialize_consumable_batch(doc)
+
+
+def open_consumable_batch(user, batch_id):
+    if not is_lab_ops_user(user):
+        frappe.throw(_("Lab operations access required"))
+    if not frappe.db.exists("Lab Consumable Batch", batch_id):
+        frappe.throw(_("Batch not found"))
+
+    batch = frappe.get_doc("Lab Consumable Batch", batch_id)
+    if batch.status != "Sealed":
+        frappe.throw(_("Only sealed packs can be opened"))
+    if batch.expiry_date and str(batch.expiry_date) < today():
+        batch.status = "Expired"
+        batch.save(ignore_permissions=True)
+        frappe.throw(_("This pack is past expiry"))
+
+    batch.status = "Open"
+    batch.units_remaining = cint(batch.units_per_pack)
+    batch.opened_on = today()
+    batch.opened_by = user
+    batch.save(ignore_permissions=True)
+    return serialize_consumable_batch(batch)
+
+
 def _decrement_batch(batch_id, quantity):
     batch = frappe.get_doc("Lab Reagent Batch", batch_id)
     remaining = cint(batch.tests_remaining) - cint(quantity)
@@ -332,12 +762,45 @@ def _decrement_batch(batch_id, quantity):
     return batch
 
 
-def consume_reagents_for_completed_trf(trf_name):
-    """Debit open reagent batches when a TRF completes. Idempotent per TRF.
+def _find_open_consumable_batch(consumable_item, franchisee_id=None):
+    filters = {"consumable_item": consumable_item, "status": "Open", "units_remaining": (">", 0)}
+    if franchisee_id:
+        batches = frappe.get_all(
+            "Lab Consumable Batch",
+            filters={**filters, "franchisee_id": franchisee_id},
+            fields=["name", "units_remaining", "units_per_pack", "lot_number", "opened_on"],
+            order_by="opened_on asc, creation asc",
+            limit=1,
+        )
+        if batches:
+            return batches[0]
+    batches = frappe.get_all(
+        "Lab Consumable Batch",
+        filters=filters,
+        fields=["name", "units_remaining", "units_per_pack", "lot_number", "opened_on"],
+        order_by="opened_on asc, creation asc",
+        limit=1,
+    )
+    return batches[0] if batches else None
 
-    Prefer Real-parameter reagent links / parameter-scoped rules (Phase 59).
-    Calculated (derived) parameters never consume reagents.
-    """
+
+def _decrement_consumable_batch(batch_id, quantity):
+    batch = frappe.get_doc("Lab Consumable Batch", batch_id)
+    remaining = cint(batch.units_remaining) - cint(quantity)
+    if remaining < 0:
+        frappe.throw(
+            _("Insufficient units in batch {0} (lot {1})").format(batch.name, batch.lot_number),
+            frappe.ValidationError,
+        )
+    batch.units_remaining = remaining
+    if remaining == 0:
+        batch.status = "Depleted"
+    batch.save(ignore_permissions=True)
+    return batch
+
+
+def consume_reagents_for_completed_trf(trf_name):
+    """Debit open reagent batches when a TRF completes. Idempotent per TRF."""
     if not frappe.db.exists("Customer TRF", trf_name):
         return {"ok": False, "reason": "trf_not_found"}
 
@@ -361,7 +824,6 @@ def consume_reagents_for_completed_trf(trf_name):
         frappe.log_error(title="phase59_reagent_plan", message=frappe.get_traceback())
         planned, alerts = [], []
 
-    # No Lab Report / Real results yet → fall back to whole-test Lab Test Reagent Rules
     if not planned and not alerts:
         franchisee_id = trf.get("franchisee_id")
         for test_item in _trf_test_items(trf):
@@ -408,13 +870,82 @@ def consume_reagents_for_completed_trf(trf_name):
     return {"ok": True, "consumptions": consumptions, "alerts": []}
 
 
+def consume_consumables_for_completed_trf(trf_name):
+    """Debit consumable packs once per completed TRF (qty_per_trf rules). Idempotent."""
+    if not frappe.db.exists("Customer TRF", trf_name):
+        return {"ok": False, "reason": "trf_not_found"}
+    if not frappe.db.exists("DocType", "Lab TRF Consumable Rule"):
+        return {"ok": True, "skipped": True, "reason": "no_consumable_doctype"}
+
+    meta = frappe.get_meta("Customer TRF")
+    if meta.has_field("consumables_consumed") and frappe.db.get_value(
+        "Customer TRF", trf_name, "consumables_consumed"
+    ):
+        return {"ok": True, "skipped": True, "reason": "already_consumed"}
+
+    trf = frappe.get_doc("Customer TRF", trf_name)
+    if trf.order_status != "Completed":
+        return {"ok": False, "reason": "trf_not_completed", "status": trf.order_status}
+
+    rules = frappe.get_all(
+        "Lab TRF Consumable Rule",
+        filters={"active": 1},
+        fields=["name", "consumable_item", "qty_per_trf"],
+    )
+    if not rules:
+        return {"ok": True, "skipped": True, "reason": "no_consumable_rules", "consumptions": []}
+
+    franchisee_id = trf.get("franchisee_id")
+    planned = []
+    alerts = []
+    for rule in rules:
+        qty = cint(rule.qty_per_trf) or 1
+        batch = _find_open_consumable_batch(rule.consumable_item, franchisee_id=franchisee_id)
+        if not batch:
+            alerts.append(
+                {
+                    "consumable_item": rule.consumable_item,
+                    "message": _("No open consumable batch for {0}").format(rule.consumable_item),
+                }
+            )
+            continue
+        planned.append(
+            {
+                "batch_id": batch.name,
+                "lot_number": batch.lot_number,
+                "consumable_item": rule.consumable_item,
+                "quantity": qty,
+            }
+        )
+
+    # Soft: skip missing stock with alerts but still debit what we can
+    consumptions = []
+    for row in planned:
+        _decrement_consumable_batch(row["batch_id"], row["quantity"])
+        consumptions.append(row)
+
+    if meta.has_field("consumables_consumed"):
+        frappe.db.set_value("Customer TRF", trf_name, "consumables_consumed", 1)
+
+    frappe.db.commit()
+    return {"ok": True, "consumptions": consumptions, "alerts": alerts}
+
+
 def maybe_consume_reagents_on_trf_complete(trf_name):
-    """Safe entry point — call whenever a TRF may have just reached Completed."""
+    """Safe entry point — reagents + consumables when a TRF reaches Completed."""
+    reagent_result = {"ok": False, "reason": "exception"}
+    consumable_result = {"ok": False, "reason": "exception"}
     try:
-        return consume_reagents_for_completed_trf(trf_name)
+        reagent_result = consume_reagents_for_completed_trf(trf_name)
     except Exception:
         frappe.log_error(title="phase24_reagent_consume", message=frappe.get_traceback())
-        return {"ok": False, "reason": "exception"}
+        reagent_result = {"ok": False, "reason": "exception"}
+    try:
+        consumable_result = consume_consumables_for_completed_trf(trf_name)
+    except Exception:
+        frappe.log_error(title="phase24_consumable_consume", message=frappe.get_traceback())
+        consumable_result = {"ok": False, "reason": "exception"}
+    return {"reagents": reagent_result, "consumables": consumable_result}
 
 
 def repair_completed_trf_reagent_consumption(limit=100):
@@ -434,10 +965,17 @@ def repair_completed_trf_reagent_consumption(limit=100):
 def setup_phase24():
     ensure_phase24_custom_fields()
     seeded_rules = seed_reagent_rules()
+    consumables = seed_consumable_catalog()
     demo_batches = seed_demo_reagent_batches()
     frappe.db.commit()
     frappe.clear_cache()
-    return {"ok": True, "phase": 24, "rules_seeded": seeded_rules, "demo_batches": demo_batches}
+    return {
+        "ok": True,
+        "phase": 24,
+        "rules_seeded": seeded_rules,
+        "consumables": consumables,
+        "demo_batches": demo_batches,
+    }
 
 
 def seed_demo_reagent_batches():
@@ -471,13 +1009,12 @@ def seed_demo_reagent_batches():
 
 
 def smoke_phase24_reagents():
-    """Register → open → consume on Completed TRF → dashboard."""
+    """Register → open → consume on Completed TRF → dashboard (reagents + consumables)."""
     setup_phase24()
     user = "lab_tech@health.local"
     if not frappe.db.exists("User", user):
         user = frappe.session.user
 
-    # Prefer CBC rule; else any active rule + matching reagent batch
     rule = frappe.db.get_value(
         "Lab Test Reagent Rule",
         {"reagent_item": "REAGENT-CBC", "active": 1},
@@ -498,14 +1035,35 @@ def smoke_phase24_reagents():
     ) or frappe.db.get_value("Franchisee Profile", {}, "name")
 
     lot = f"SMOKE-{frappe.utils.now_datetime().strftime('%H%M%S')}"
-    registered = register_reagent_batch(
-        user, reagent_item, lot, 25, franchisee_id=franchisee_id
-    )
+    registered = register_reagent_batch(user, reagent_item, lot, 25, franchisee_id=franchisee_id)
     opened = open_reagent_batch(user, registered["batch_id"])
     before = cint(opened.get("tests_remaining"))
 
+    # Safety stock seed check
+    safety = _get_safety_stock(reagent_item)
+
+    # Consumable pack smoke
+    consumable_item = "CONSUMABLE-VIAL"
+    _ensure_reagent_item(consumable_item, "Vial")
+    clot = f"CSMOKE-{frappe.utils.now_datetime().strftime('%H%M%S')}"
+    creg = register_consumable_batch(user, consumable_item, clot, 40, franchisee_id=franchisee_id)
+    copen = open_consumable_batch(user, creg["batch_id"])
+    c_before = cint(copen.get("units_remaining"))
+
+    mapped = create_mapped_reagent(
+        user,
+        reagent_name="Smoke Mapped Reagent",
+        lab_test_item=test_item or reagent_item,
+        parameter_code="SMOKE-PARAM",
+        tests_per_consumption=1,
+        safety_stock=10,
+    )
+
     consume_result = {"ok": False, "skipped_reason": "no_rule"}
     after = before
+    c_after = c_before
+    reagent_decremented = False
+    consumable_decremented = False
     if test_item and franchisee_id:
         trf = frappe.get_doc(
             {
@@ -525,45 +1083,62 @@ def smoke_phase24_reagents():
             }
         )
         trf.insert(ignore_permissions=True)
-        # Avoid on_update auto-consume racing the explicit smoke call
         frappe.db.set_value("Customer TRF", trf.name, "order_status", "Completed")
         if frappe.get_meta("Customer TRF").has_field("reagents_consumed"):
             frappe.db.set_value("Customer TRF", trf.name, "reagents_consumed", 0)
-        consume_result = consume_reagents_for_completed_trf(trf.name)
+        if frappe.get_meta("Customer TRF").has_field("consumables_consumed"):
+            frappe.db.set_value("Customer TRF", trf.name, "consumables_consumed", 0)
+        consume_result = maybe_consume_reagents_on_trf_complete(trf.name)
         after = cint(frappe.db.get_value("Lab Reagent Batch", registered["batch_id"], "tests_remaining"))
-        consume_result["tests_remaining_after"] = after
-        consume_result["decremented"] = after < before
+        c_after = cint(frappe.db.get_value("Lab Consumable Batch", creg["batch_id"], "units_remaining"))
+        reagent_rows = ((consume_result.get("reagents") or {}).get("consumptions") or [])
+        consumable_rows = ((consume_result.get("consumables") or {}).get("consumptions") or [])
+        reagent_decremented = bool(reagent_rows)
+        consumable_decremented = bool(consumable_rows)
         try:
             frappe.delete_doc("Customer TRF", trf.name, force=1, ignore_permissions=True)
         except Exception:
             pass
         frappe.db.commit()
-    else:
-        after = before
 
     dashboard = get_reagent_dashboard_payload(user)
+    reagents_ok = (consume_result.get("reagents") or {}).get("ok") if isinstance(consume_result, dict) else False
+    consumables_ok = (consume_result.get("consumables") or {}).get("ok") if isinstance(consume_result, dict) else False
 
     passed = (
         dashboard.get("available")
         and opened.get("status") == "Open"
         and before == 25
+        and safety == 10
+        and mapped.get("parameter_code") == "SMOKE-PARAM"
+        and c_before == 40
         and len(dashboard.get("batches") or []) > 0
         and (
             not test_item
             or (
-                consume_result.get("ok")
-                and consume_result.get("decremented")
+                reagents_ok
+                and reagent_decremented
+                and consumables_ok
+                and consumable_decremented
             )
         )
     )
+    print("SMOKE_OK phase24_reagents_consumables" if passed else "SMOKE_FAIL phase24_reagents_consumables")
     return {
         "pass": passed,
         "registered": registered.get("batch_id"),
         "opened_status": opened.get("status"),
         "tests_remaining_before": before,
         "tests_remaining_after": after if test_item else before,
+        "reagent_decremented": reagent_decremented if test_item else False,
+        "consumable_decremented": consumable_decremented if test_item else False,
+        "safety_stock": safety,
+        "mapped_rule": mapped.get("rule_name"),
+        "consumable_before": c_before,
+        "consumable_after": c_after if test_item else c_before,
         "consume": consume_result,
         "batch_count": len(dashboard.get("batches") or []),
+        "consumable_batch_count": len(dashboard.get("consumable_batches") or []),
+        "reorder_alerts": len(dashboard.get("reorder_alerts") or []),
         "rules_count": dashboard.get("rules_count"),
-        "low_stock_alerts": len(dashboard.get("low_stock_alerts") or []),
     }

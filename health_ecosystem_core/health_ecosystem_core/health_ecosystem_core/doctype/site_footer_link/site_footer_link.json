@@ -1,0 +1,113 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:link_code",
+  "creation": "2026-07-25 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "link_code",
+    "title",
+    "link_group",
+    "url",
+    "column_break_1",
+    "icon",
+    "open_in_new_tab",
+    "enabled",
+    "display_order"
+  ],
+  "fields": [
+    {
+      "fieldname": "link_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Link Code",
+      "reqd": 1,
+      "unique": 1,
+      "description": "Stable key e.g. SUB-CAREERS, CO-ABOUT, SOC-INSTAGRAM"
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Title",
+      "reqd": 1
+    },
+    {
+      "default": "Company",
+      "fieldname": "link_group",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Group",
+      "options": "Subdomain\nCompany\nSocial",
+      "reqd": 1
+    },
+    {
+      "fieldname": "url",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "URL",
+      "reqd": 1,
+      "description": "Absolute URL (https://…) or site path (/about)"
+    },
+    { "fieldname": "column_break_1", "fieldtype": "Column Break" },
+    {
+      "fieldname": "icon",
+      "fieldtype": "Data",
+      "label": "Icon key",
+      "description": "Optional: facebook, instagram, linkedin, youtube, x, whatsapp"
+    },
+    {
+      "default": "1",
+      "fieldname": "open_in_new_tab",
+      "fieldtype": "Check",
+      "label": "Open in new tab"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "0",
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Display Order"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Site Footer Link",
+  "naming_rule": "By fieldname",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "print": 1,
+      "email": 1,
+      "share": 1,
+      "report": 1
+    },
+    {
+      "role": "Health System Admin",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "print": 1,
+      "report": 1
+    }
+  ],
+  "sort_field": "display_order",
+  "sort_order": "ASC",
+  "title_field": "title",
+  "track_changes": 1
+}

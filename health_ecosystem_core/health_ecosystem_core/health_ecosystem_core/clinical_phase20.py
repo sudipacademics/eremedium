@@ -44,6 +44,15 @@ def ensure_phase20_custom_fields():
                 "precision": 8,
             }
         )
+    if missing("Customer TRF", "report_delivered_on"):
+        trf_fields.append(
+            {
+                "fieldname": "report_delivered_on",
+                "label": "Report Delivered On",
+                "fieldtype": "Datetime",
+                "insert_after": "order_status",
+            }
+        )
 
     fr_fields = []
     if missing("Franchisee Profile", "hub_latitude"):
@@ -104,11 +113,78 @@ def parse_location_from_address(address):
     return None, None
 
 
+def _maps_key():
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_secrets import get_google_maps_api_key
+
+        return (get_google_maps_api_key() or "").strip()
+    except Exception:
+        return ""
+
+
+def decode_google_polyline(encoded):
+    """Decode an encoded polyline into GeoJSON [lng, lat] pairs."""
+    coords = []
+    index = lat = lng = 0
+    length = len(encoded or "")
+    while index < length:
+        result = shift = 0
+        while True:
+            byte = ord(encoded[index]) - 63
+            index += 1
+            result |= (byte & 0x1F) << shift
+            shift += 5
+            if byte < 0x20:
+                break
+        dlat = ~(result >> 1) if result & 1 else result >> 1
+        lat += dlat
+        result = shift = 0
+        while True:
+            byte = ord(encoded[index]) - 63
+            index += 1
+            result |= (byte & 0x1F) << shift
+            shift += 5
+            if byte < 0x20:
+                break
+        dlng = ~(result >> 1) if result & 1 else result >> 1
+        lng += dlng
+        coords.append([lng / 1e5, lat / 1e5])
+    return coords
+
+
+def google_geocode_address(address):
+    key = _maps_key()
+    if not key or not address:
+        return None, None
+    try:
+        import requests
+
+        response = requests.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            params={"address": str(address)[:300], "key": key},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json() or {}
+        if data.get("status") != "OK":
+            return None, None
+        loc = ((data.get("results") or [{}])[0].get("geometry") or {}).get("location") or {}
+        lat, lng = flt(loc.get("lat")), flt(loc.get("lng"))
+        if lat or lng:
+            return lat, lng
+    except Exception as exc:
+        frappe.log_error(title="phase20_google_geocode", message=str(exc)[:240])
+    return None, None
+
+
 def geocode_address(address):
-    """Forward-geocode via Nominatim (best-effort)."""
+    """Forward-geocode via Google Maps, then Nominatim as fallback."""
     if not address:
         return None, None
     lat, lng = parse_location_from_address(address)
+    if lat is not None and lng is not None:
+        return lat, lng
+    lat, lng = google_geocode_address(address)
     if lat is not None and lng is not None:
         return lat, lng
     try:
@@ -174,12 +250,15 @@ def _location_cache():
 
 
 def update_phlebotomist_location(user, latitude, longitude, on_duty=True):
+    existing = get_phlebotomist_location(user) or {}
     payload = {
         "user": user,
         "latitude": flt(latitude),
         "longitude": flt(longitude),
         "on_duty": 1 if on_duty else 0,
         "updated_at": str(now_datetime()),
+        "in_route_trf": existing.get("in_route_trf") if on_duty else None,
+        "in_route_at": existing.get("in_route_at") if on_duty else None,
     }
     _location_cache().hset(CACHE_KEY, user, json.dumps(payload))
     return payload
@@ -245,14 +324,88 @@ def osrm_route(coordinates):
             "distance_m": flt(route.get("distance")),
             "duration_s": flt(route.get("duration")),
             "geometry": (route.get("geometry") or {}).get("coordinates") or [],
+            "provider": "osrm",
         }
     except Exception:
         frappe.log_error(title="phase20_osrm", message=frappe.get_traceback())
         return None
 
 
+def google_directions_route(coordinates):
+    """Driving route via Google Directions API. coordinates: list of (lat, lng)."""
+    key = _maps_key()
+    if not key or len(coordinates) < 2:
+        return None
+    params = {
+        "origin": f"{flt(coordinates[0][0])},{flt(coordinates[0][1])}",
+        "destination": f"{flt(coordinates[-1][0])},{flt(coordinates[-1][1])}",
+        "mode": "driving",
+        "key": key,
+    }
+    if len(coordinates) > 2:
+        params["waypoints"] = "|".join(f"{flt(lat)},{flt(lng)}" for lat, lng in coordinates[1:-1])
+    try:
+        import requests
+
+        response = requests.get(
+            "https://maps.googleapis.com/maps/api/directions/json",
+            params=params,
+            timeout=12,
+        )
+        response.raise_for_status()
+        data = response.json() or {}
+        if data.get("status") != "OK":
+            return None
+        route = (data.get("routes") or [{}])[0]
+        legs = route.get("legs") or []
+        encoded = (route.get("overview_polyline") or {}).get("points") or ""
+        return {
+            "distance_m": sum(flt((leg.get("distance") or {}).get("value")) for leg in legs),
+            "duration_s": sum(flt((leg.get("duration") or {}).get("value")) for leg in legs),
+            "geometry": decode_google_polyline(encoded),
+            "provider": "google",
+        }
+    except Exception as exc:
+        frappe.log_error(title="phase20_google_directions", message=str(exc)[:240])
+        return None
+
+
+def build_driving_route(coordinates):
+    route = google_directions_route(coordinates)
+    if route:
+        return route
+    return osrm_route(coordinates)
+
+
+def mark_phlebotomist_visit_started(user, trf_id):
+    existing = get_phlebotomist_location(user) or {}
+    payload = {
+        "user": user,
+        "latitude": flt(existing.get("latitude")),
+        "longitude": flt(existing.get("longitude")),
+        "on_duty": 1,
+        "updated_at": existing.get("updated_at") or str(now_datetime()),
+        "in_route_trf": trf_id,
+        "in_route_at": str(now_datetime()),
+    }
+    _location_cache().hset(CACHE_KEY, user, json.dumps(payload))
+    return payload
+
+
+def clear_phlebotomist_visit(user, trf_id=None):
+    existing = get_phlebotomist_location(user) or {}
+    current = existing.get("in_route_trf")
+    if trf_id and current and current != trf_id:
+        return existing
+    existing["in_route_trf"] = None
+    existing["in_route_at"] = None
+    _location_cache().hset(CACHE_KEY, user, json.dumps(existing))
+    return existing
+
+
 def build_map_payload(user, roles):
     from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        exclude_pf_trfs,
         franchise_for_phlebotomist,
         is_phlebotomist,
         is_staff,
@@ -288,7 +441,7 @@ def build_map_payload(user, roles):
 
     stops = []
     if filters:
-        rows = frappe.get_all("Customer TRF", filters=filters, fields=fields, order_by="creation asc", limit=50)
+        rows = frappe.get_all("Customer TRF", filters=exclude_pf_trfs(filters), fields=fields, order_by="creation asc", limit=50)
         for row in rows:
             lat, lng = resolve_trf_coordinates(row)
             if lat is None or lng is None:
@@ -316,13 +469,16 @@ def build_map_payload(user, roles):
         waypoints = [(phlebo_loc["latitude"], phlebo_loc["longitude"])]
         waypoints.extend((s["latitude"], s["longitude"]) for s in booked)
         if len(waypoints) >= 2:
-            route = osrm_route(waypoints)
+            route = build_driving_route(waypoints)
 
+    maps_key = _maps_key()
     return {
         "hub": hub,
         "phlebotomist": phlebo_loc,
         "stops": stops,
         "route": route,
+        "google_maps_configured": bool(maps_key),
+        "google_maps_api_key": maps_key,
     }
 
 
@@ -434,6 +590,7 @@ def smoke_phase20():
     update_phlebotomist_location(user, 0, 0, on_duty=False)
 
     # Map payload callable
+    payload = {}
     try:
         roles = frappe.get_roles(user)
         payload = build_map_payload(user, roles)
@@ -463,6 +620,8 @@ def smoke_phase20():
     check("api_update_location", hasattr(api_mod, "phlebotomist_update_location"))
     check("api_hub_checkin", hasattr(api_mod, "phlebotomist_hub_checkin"))
     check("api_map", hasattr(api_mod, "get_phlebotomist_map_data"))
+    check("api_start_visit", hasattr(api_mod, "phlebotomist_start_visit"))
+    check("maps_key_flag", "google_maps_configured" in (payload if isinstance(payload, dict) else {}))
 
     return result
 

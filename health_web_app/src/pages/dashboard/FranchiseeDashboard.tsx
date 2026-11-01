@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { api } from '../../api';
 import { FranchiseeKpiResponse } from '../../types/franchiseeKpi';
-import { AppointmentsTable } from './AppointmentsTable';
 import { BookingsTable } from './BookingsTable';
 
 const PIPELINE_ORDER = ['Booked', 'Sample Collected', 'In Lab', 'Completed', 'Cancelled'];
@@ -181,8 +180,7 @@ export function FranchiseeDashboard() {
         </a>
       </div>
 
-      <BookingsTable title="TRFs at your hub" />
-      <AppointmentsTable title="Doctor appointments (offline payments)" />
+      <BookingsTable title="TRFs at your hub" showCollect />
     </>
   );
 }

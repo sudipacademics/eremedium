@@ -1,0 +1,111 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:tube_code",
+  "creation": "2026-08-04 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "tube_code",
+    "cap_color",
+    "additive",
+    "specimen_class",
+    "clsi_draw_order",
+    "column_break_1",
+    "nominal_volume_ml",
+    "min_fill_ratio",
+    "spin_lane",
+    "active",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "tube_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Tube Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "cap_color",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Cap Color",
+      "reqd": 1
+    },
+    {
+      "fieldname": "additive",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Additive"
+    },
+    {
+      "fieldname": "specimen_class",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Specimen Class",
+      "options": "Serum\nPlasma\nEDTA Whole Blood\nCitrated Plasma\nFluoride Plasma\nHeparin Plasma\nUrine\nCSF\nOther",
+      "reqd": 1
+    },
+    {
+      "default": "50",
+      "fieldname": "clsi_draw_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "CLSI Draw Order"
+    },
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {
+      "default": "0",
+      "fieldname": "nominal_volume_ml",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Nominal Volume (mL)",
+      "precision": "2"
+    },
+    {
+      "default": "1",
+      "description": "Minimum fill fraction (e.g. 1.0 for citrate 1:9 rule).",
+      "fieldname": "min_fill_ratio",
+      "fieldtype": "Float",
+      "label": "Min Fill Ratio",
+      "precision": "2"
+    },
+    {
+      "default": "Spin",
+      "fieldname": "spin_lane",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Accession Lane",
+      "options": "Spin\nNon-Spin"
+    },
+    {
+      "default": "1",
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Active"
+    },
+    {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"}
+  ],
+  "modified": "2026-08-04 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Collection Tube",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1, "print": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "export": 1, "report": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "report": 1},
+    {"role": "Pathologist", "read": 1, "report": 1},
+    {"role": "Phlebotomist", "read": 1, "report": 1}
+  ],
+  "sort_field": "clsi_draw_order",
+  "sort_order": "ASC",
+  "states": [],
+  "track_changes": 1
+}

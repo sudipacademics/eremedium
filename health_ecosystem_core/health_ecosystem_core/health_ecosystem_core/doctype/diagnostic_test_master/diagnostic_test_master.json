@@ -14,9 +14,28 @@
     "report_category",
     "nabl_discipline",
     "machine_method",
+    "section_collection",
+    "primary_tube",
+    "specimen_material",
+    "tube_requirements",
+    "section_format",
+    "result_layout",
+    "uses_age_related_ranges",
+    "has_linked_clinical_fields",
+    "is_descriptive",
+    "is_table_format",
+    "allow_graph_upload",
+    "graph_label",
+    "column_break_fmt",
+    "report_heading_1",
+    "report_heading_2",
+    "descriptive_placeholder",
     "interpretation",
     "description",
-    "parameters"
+    "section_parameters",
+    "parameters",
+    "section_ranges",
+    "reference_ranges"
   ],
   "fields": [
     {"fieldname": "test_name", "fieldtype": "Data", "in_list_view": 1, "label": "Test Name", "reqd": 1, "unique": 1},
@@ -41,12 +60,138 @@
       "label": "NABL Discipline",
       "options": "\nClinical Biochemistry\nHaematology\nClinical Pathology\nMicrobiology\nSerology and Immunology\nHistopathology\nCytopathology\nMolecular Diagnostics\nGenetics\nOther"
     },
-    {"fieldname": "machine_method", "fieldtype": "Data", "label": "Default Machine / Method"},
+    {"fieldname": "machine_method", "fieldtype": "Data", "label": "Default Method Summary", "description": "Optional section-level method line on PDF. Prefer per-parameter Method + Machine Name on the parameters table."},
+    {
+      "fieldname": "section_collection",
+      "fieldtype": "Section Break",
+      "label": "Specimen / Collection"
+    },
+    {
+      "description": "Primary vacutainer for draw-plan aggregation.",
+      "fieldname": "primary_tube",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Primary Collection Tube",
+      "options": "HEC Collection Tube"
+    },
+    {
+      "fieldname": "specimen_material",
+      "fieldtype": "Select",
+      "in_standard_filter": 1,
+      "label": "Specimen Material",
+      "options": "\nSerum\nPlasma\nEDTA Whole Blood\nCitrated Plasma\nFluoride Plasma\nHeparin Plasma\nUrine\nCSF\nOther"
+    },
+    {
+      "description": "Preferred and alternate tubes. Draw plan aggregates preferred tubes across the TRF.",
+      "fieldname": "tube_requirements",
+      "fieldtype": "Table",
+      "label": "Tube Requirements",
+      "options": "Diagnostic Test Tube Requirement"
+    },
+    {
+      "collapsible": 0,
+      "fieldname": "section_format",
+      "fieldtype": "Section Break",
+      "label": "Result Format & Layout (customizable)"
+    },
+    {
+      "default": "Numeric Profile",
+      "description": "Controls how Lab Results entry and printed reports render this test. Inspired by legacy Test Link / Description Master.",
+      "fieldname": "result_layout",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Result Layout",
+      "options": "Numeric Profile\nComposite Linked\nDescriptive\nTable Matrix\nGraph + Values"
+    },
+    {
+      "default": "0",
+      "description": "Resolve Biological Reference Interval from Age/Gender band table below (e.g. TOTAL IgE).",
+      "fieldname": "uses_age_related_ranges",
+      "fieldtype": "Check",
+      "label": "Age / Gender Related Ranges"
+    },
+    {
+      "default": "0",
+      "description": "Includes clinical / demographic linked fields (e.g. Maternal Age, LMP, Weight for Triple Marker).",
+      "fieldname": "has_linked_clinical_fields",
+      "fieldtype": "Check",
+      "label": "Linked Clinical / Info Fields"
+    },
+    {
+      "default": "0",
+      "description": "Primarily narrative / qualitative reporting (free text or choice lists).",
+      "fieldname": "is_descriptive",
+      "fieldtype": "Check",
+      "label": "Descriptive Result Mode"
+    },
+    {
+      "default": "0",
+      "description": "Present parameters as a compact table/matrix (e.g. Widal titres).",
+      "fieldname": "is_table_format",
+      "fieldtype": "Check",
+      "label": "Table / Matrix Format"
+    },
+    {
+      "default": "0",
+      "description": "Allow chromatogram / electrophoresis graph upload on the Lab Report (HPLC etc.).",
+      "fieldname": "allow_graph_upload",
+      "fieldtype": "Check",
+      "label": "Allow Graph Upload / Import"
+    },
+    {
+      "depends_on": "eval:doc.allow_graph_upload",
+      "default": "Chromatogram / Graph",
+      "fieldname": "graph_label",
+      "fieldtype": "Data",
+      "label": "Graph Label"
+    },
+    {"fieldname": "column_break_fmt", "fieldtype": "Column Break"},
+    {
+      "description": "Printed department/section heading (legacy Heading In Report line 1)",
+      "fieldname": "report_heading_1",
+      "fieldtype": "Data",
+      "label": "Report Heading Line 1"
+    },
+    {
+      "description": "Printed sub-heading (legacy Heading In Report line 2)",
+      "fieldname": "report_heading_2",
+      "fieldtype": "Data",
+      "label": "Report Heading Line 2"
+    },
+    {
+      "depends_on": "eval:doc.is_descriptive || doc.result_layout=='Descriptive'",
+      "fieldname": "descriptive_placeholder",
+      "fieldtype": "Small Text",
+      "label": "Descriptive Entry Hint"
+    },
     {"fieldname": "interpretation", "fieldtype": "Text Editor", "label": "Test Interpretation (Literature)"},
     {"fieldname": "description", "fieldtype": "Text Editor", "label": "Description"},
-    {"fieldname": "parameters", "fieldtype": "Table", "label": "Parameters & Normal Ranges", "options": "Diagnostic Test Parameter"}
+    {"fieldname": "section_parameters", "fieldtype": "Section Break", "label": "Linked Report Parameters"},
+    {
+      "description": "Analytes / linked lines (legacy Test Link). Set Result Input Type per row for Numeric, Choice, Date, Heading, etc.",
+      "fieldname": "parameters",
+      "fieldtype": "Table",
+      "label": "Parameters & Result Lines",
+      "options": "Diagnostic Test Parameter"
+    },
+    {
+      "depends_on": "eval:doc.uses_age_related_ranges",
+      "fieldname": "section_ranges",
+      "fieldtype": "Section Break",
+      "label": "Age / Gender / Cycle Normal Ranges"
+    },
+    {
+      "depends_on": "eval:doc.uses_age_related_ranges",
+      "description": "Legacy-style bands: Age From/To as Years + Months + Days (neonates use D). Prefer Male/Female; Both is fallback. For hormones set Cyc From–To or Cycle Phase and enter Menstrual Cycle Day on the TRF (or LMP Date).",
+      "fieldname": "reference_ranges",
+      "fieldtype": "Table",
+      "label": "Reference Range Bands",
+      "options": "Diagnostic Test Reference Range"
+    }
   ],
-  "modified": "2026-07-16 00:00:00.000000",
+  "modified": "2026-08-02 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Health Ecosystem Core",
   "name": "Diagnostic Test Master",

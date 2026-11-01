@@ -1,0 +1,177 @@
+{
+  "actions": [],
+  "creation": "2026-08-02 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "parameter_code",
+    "gender",
+    "age_from_years",
+    "age_from_months",
+    "age_from_days",
+    "age_to_years",
+    "age_to_months",
+    "age_to_days",
+    "normal_min",
+    "normal_max",
+    "cycle_day_from",
+    "cycle_day_to",
+    "cycle_phase",
+    "parameter_name",
+    "critical_min",
+    "critical_max",
+    "display_label",
+    "interpretation"
+  ],
+  "fields": [
+    {
+      "description": "Must match Parameter Code on the parameter row (or Parameter name if code blank)",
+      "fieldname": "parameter_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "columns": 2,
+      "label": "Parameter Code",
+      "reqd": 1
+    },
+    {
+      "default": "Both",
+      "fieldname": "gender",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "Gender",
+      "options": "Both\nMale\nFemale"
+    },
+    {
+      "default": "0",
+      "description": "Age band start — Years (legacy Age From Y)",
+      "fieldname": "age_from_years",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "From Y"
+    },
+    {
+      "default": "0",
+      "description": "Age band start — Months (neonatal / paediatric)",
+      "fieldname": "age_from_months",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "From M"
+    },
+    {
+      "default": "0",
+      "description": "Age band start — Days",
+      "fieldname": "age_from_days",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "From D"
+    },
+    {
+      "default": "120",
+      "description": "Age band end — Years (legacy Age To Y)",
+      "fieldname": "age_to_years",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "To Y"
+    },
+    {
+      "default": "0",
+      "fieldname": "age_to_months",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "To M"
+    },
+    {
+      "default": "0",
+      "fieldname": "age_to_days",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "To D"
+    },
+    {
+      "fieldname": "normal_min",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "Lower",
+      "precision": "3"
+    },
+    {
+      "fieldname": "normal_max",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "Upper",
+      "precision": "3"
+    },
+    {
+      "default": "0",
+      "description": "Menstrual cycle day From (0 = ignore). E.g. follicular 1–13.",
+      "fieldname": "cycle_day_from",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "Cyc From"
+    },
+    {
+      "default": "0",
+      "description": "Menstrual cycle day To (0 = ignore unless From set).",
+      "fieldname": "cycle_day_to",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "columns": 1,
+      "label": "Cyc To"
+    },
+    {
+      "default": "Any",
+      "description": "Optional named phase. Used when cycle day on TRF is set; presets apply when From/To are 0.",
+      "fieldname": "cycle_phase",
+      "fieldtype": "Select",
+      "label": "Cycle Phase",
+      "options": "Any\nFollicular (1-13)\nOvulatory (14)\nLuteal (15-28)\nMid-cycle (12-16)\nPost-menopausal\nPregnant"
+    },
+    {
+      "fieldname": "parameter_name",
+      "fieldtype": "Data",
+      "label": "Parameter Name"
+    },
+    {
+      "fieldname": "critical_min",
+      "fieldtype": "Float",
+      "label": "Critical Lower",
+      "precision": "3"
+    },
+    {
+      "fieldname": "critical_max",
+      "fieldtype": "Float",
+      "label": "Critical Upper",
+      "precision": "3"
+    },
+    {
+      "description": "Optional printed interval text (overrides min-max formatting)",
+      "fieldname": "display_label",
+      "fieldtype": "Data",
+      "label": "Display Label"
+    },
+    {
+      "fieldname": "interpretation",
+      "fieldtype": "Small Text",
+      "label": "Interpretation"
+    }
+  ],
+  "istable": 1,
+  "modified": "2026-08-04 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Diagnostic Test Reference Range",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

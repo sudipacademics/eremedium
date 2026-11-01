@@ -25,6 +25,7 @@ def sync_phase6_doctypes(force=False):
         "lab_test_panel_item/lab_test_panel_item.json",
         "lab_test_panel/lab_test_panel.json",
         "customer_trf/customer_trf.json",
+        "lab_report_branding/lab_report_branding.json",
     ):
         path = os.path.join(base, rel)
         if not os.path.exists(path):
@@ -74,58 +75,90 @@ def setup_phase6(seed_panels=True):
 def ensure_report_branding_fields():
     from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-    create_custom_fields(
-        {
-            "Health Ecosystem Settings": [
-                {
-                    "fieldname": "lab_brand_section",
-                    "label": "Lab Report Branding",
-                    "fieldtype": "Section Break",
-                    "insert_after": "pharmacy_catalog_title",
-                },
-                {
-                    "fieldname": "lab_name",
-                    "label": "Lab / Hospital Name",
-                    "fieldtype": "Data",
-                    "insert_after": "lab_brand_section",
-                    "default": "Health Ecosystem Diagnostics",
-                },
-                {
-                    "fieldname": "lab_tagline",
-                    "label": "Report Tagline",
-                    "fieldtype": "Data",
-                    "insert_after": "lab_name",
-                },
-                {
-                    "fieldname": "lab_logo",
-                    "label": "Report Logo",
-                    "fieldtype": "Attach Image",
-                    "insert_after": "lab_tagline",
-                },
-                {
-                    "fieldname": "report_primary_color",
-                    "label": "Report Accent Color",
-                    "fieldtype": "Color",
-                    "insert_after": "lab_logo",
-                    "default": "#0d9488",
-                },
-                {
-                    "fieldname": "report_footer",
-                    "label": "Report Footer Text",
-                    "fieldtype": "Small Text",
-                    "insert_after": "report_primary_color",
-                },
-                {
-                    "fieldname": "nabl_accreditation",
-                    "label": "NABL / Accreditation Line",
-                    "fieldtype": "Data",
-                    "insert_after": "report_footer",
-                    "default": "NABL Accredited Laboratory | ISO 15189:2022",
-                },
-            ]
-        },
-        update=True,
-    )
+    try:
+        create_custom_fields(
+            {
+                "Health Ecosystem Settings": [
+                    {
+                        "fieldname": "lab_brand_section",
+                        "label": "Lab Report Branding",
+                        "fieldtype": "Section Break",
+                        "insert_after": "pharmacy_catalog_title",
+                    },
+                    {
+                        "fieldname": "lab_name",
+                        "label": "Lab / Hospital Name",
+                        "fieldtype": "Data",
+                        "insert_after": "lab_brand_section",
+                        "default": "Health Ecosystem Diagnostics",
+                    },
+                    {
+                        "fieldname": "lab_tagline",
+                        "label": "Report Tagline",
+                        "fieldtype": "Data",
+                        "insert_after": "lab_name",
+                    },
+                    {
+                        "fieldname": "lab_logo",
+                        "label": "Report Logo",
+                        "fieldtype": "Attach Image",
+                        "insert_after": "lab_tagline",
+                    },
+                    {
+                        "fieldname": "report_primary_color",
+                        "label": "Report Accent Color",
+                        "fieldtype": "Color",
+                        "insert_after": "lab_logo",
+                        "default": "#0d9488",
+                    },
+                    {
+                        "fieldname": "report_footer",
+                        "label": "Report Footer Text",
+                        "fieldtype": "Small Text",
+                        "insert_after": "report_primary_color",
+                    },
+                    {
+                        "fieldname": "nabl_accreditation",
+                        "label": "NABL / Accreditation Line",
+                        "fieldtype": "Data",
+                        "insert_after": "report_footer",
+                        "default": "NABL Accredited Laboratory | ISO 15189:2022",
+                    },
+                    {
+                        "fieldname": "nabl_logo",
+                        "label": "NABL Logo (legacy — prefer Lab Report Branding)",
+                        "fieldtype": "Attach Image",
+                        "insert_after": "nabl_accreditation",
+                    },
+                    {
+                        "fieldname": "header_banner",
+                        "label": "Report Header Banner (legacy)",
+                        "fieldtype": "Attach Image",
+                        "insert_after": "nabl_logo",
+                    },
+                    {
+                        "fieldname": "footer_banner",
+                        "label": "Report Footer Banner (legacy)",
+                        "fieldtype": "Attach Image",
+                        "insert_after": "header_banner",
+                    },
+                ]
+            },
+            update=True,
+            ignore_validate=True,
+        )
+    except Exception:
+        frappe.log_error(title="ensure_report_branding_legacy_fields", message=frappe.get_traceback())
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.doctype.lab_report_branding.lab_report_branding import (
+            ensure_lab_report_branding,
+        )
+
+        return ensure_lab_report_branding()
+    except Exception:
+        frappe.log_error(title="ensure_lab_report_branding", message=frappe.get_traceback())
+        return {"ok": False, "error": "ensure_lab_report_branding failed"}
 
 
 def ensure_lab_result_item_field():
@@ -181,19 +214,81 @@ def seed_lab_test_panels():
 
 
 def get_report_branding():
-    if not frappe.db.exists("DocType", "Health Ecosystem Settings"):
-        return {}
-    return {
-        "lab_name": frappe.db.get_single_value("Health Ecosystem Settings", "lab_name")
-        or "Health Ecosystem Diagnostics",
-        "lab_tagline": frappe.db.get_single_value("Health Ecosystem Settings", "lab_tagline") or "",
-        "lab_logo": frappe.db.get_single_value("Health Ecosystem Settings", "lab_logo") or "",
-        "report_primary_color": frappe.db.get_single_value("Health Ecosystem Settings", "report_primary_color")
-        or "#0d9488",
-        "report_footer": frappe.db.get_single_value("Health Ecosystem Settings", "report_footer") or "",
-        "nabl_accreditation": frappe.db.get_single_value("Health Ecosystem Settings", "nabl_accreditation")
-        or "NABL Accredited Laboratory | ISO 15189:2022",
+    """Prefer Lab Report Branding Single; fall back to Health Ecosystem Settings."""
+    branding = {
+        "lab_name": "Remedium Diagnostics",
+        "lab_tagline": "",
+        "lab_address": "",
+        "lab_phone": "",
+        "lab_website": "",
+        "lab_logo": "",
+        "nabl_logo": "",
+        "header_banner": "",
+        "nabl_header_banner": "",
+        "non_nabl_header_banner": "",
+        "footer_banner": "",
+        "report_primary_color": "#0b5cab",
+        "report_footer": "",
+        "nabl_accreditation": "NABL Accredited Laboratory | ISO 15189:2022",
+        "nabl_certificate_no": "",
+        "show_authorized_badge": 1,
+        "source": "defaults",
     }
+
+    if frappe.db.exists("DocType", "Health Ecosystem Settings"):
+        for key in (
+            "lab_name",
+            "lab_tagline",
+            "lab_logo",
+            "nabl_logo",
+            "header_banner",
+            "footer_banner",
+            "report_primary_color",
+            "report_footer",
+            "nabl_accreditation",
+        ):
+            try:
+                val = frappe.db.get_single_value("Health Ecosystem Settings", key)
+            except Exception:
+                val = None
+            if val:
+                branding[key] = val
+        branding["source"] = "health_ecosystem_settings"
+
+    if frappe.db.exists("DocType", "Lab Report Branding"):
+        try:
+            from health_ecosystem_core.health_ecosystem_core.doctype.lab_report_branding.lab_report_branding import (
+                ensure_lab_report_branding,
+            )
+
+            ensure_lab_report_branding()
+            doc = frappe.get_single("Lab Report Branding")
+            for key in (
+                "lab_name",
+                "lab_tagline",
+                "lab_address",
+                "lab_phone",
+                "lab_website",
+                "lab_logo",
+                "nabl_logo",
+                "header_banner",
+                "nabl_header_banner",
+                "non_nabl_header_banner",
+                "footer_banner",
+                "report_primary_color",
+                "report_footer",
+                "nabl_accreditation",
+                "nabl_certificate_no",
+            ):
+                val = doc.get(key)
+                if val not in (None, ""):
+                    branding[key] = val
+            branding["show_authorized_badge"] = cint(doc.get("show_authorized_badge") or 0)
+            branding["source"] = "lab_report_branding"
+        except Exception:
+            frappe.log_error(title="get_report_branding", message=frappe.get_traceback())
+
+    return branding
 
 
 def parse_trf_test_items(test_required=None, test_items=None, amount=None):
@@ -238,8 +333,13 @@ def parse_trf_test_items(test_required=None, test_items=None, amount=None):
     return rows
 
 
-def render_branded_lab_report_html(payload):
+def render_branded_lab_report_html(payload, chrome_mode=None):
     from html import escape
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import result_display_value
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import (
+        normalize_report_chrome_mode,
+    )
 
     branding = get_report_branding()
     accent = escape(branding.get("report_primary_color") or "#0d9488")
@@ -248,6 +348,7 @@ def render_branded_lab_report_html(payload):
     footer = escape(branding.get("report_footer") or "")
     logo = branding.get("lab_logo") or ""
     logo_html = f'<img src="{escape(logo)}" alt="logo" style="max-height:56px;margin-right:16px;" />' if logo else ""
+    plain = normalize_report_chrome_mode(chrome_mode, 0) == "none"
 
     patient = escape(str(payload.get("patient_name") or ""))
     journey_id = escape(str(payload.get("journey_id") or ""))
@@ -267,10 +368,14 @@ def render_branded_lab_report_html(payload):
         rows = ""
         for row in section.get("parameters") or []:
             flag = row.get("abnormal_flag") or ""
-            flag_style = "color:#b91c1c;font-weight:bold;" if flag in ("H", "L", "High", "Low", "Critical") else ""
+            flag_style = (
+                "color:#b91c1c;font-weight:bold;"
+                if flag in ("H", "L", "High", "Low", "Critical", "Abnormal")
+                else ""
+            )
             rows += (
                 f"<tr><td>{escape(str(row.get('analyte_test_name') or ''))}</td>"
-                f"<td>{row.get('numeric_result_value', '')}</td>"
+                f"<td>{escape(result_display_value(row))}</td>"
                 f"<td>{escape(str(row.get('unit_of_measure') or ''))}</td>"
                 f"<td>{escape(str(row.get('reference_range') or ''))}</td>"
                 f"<td style='{flag_style}'>{escape(str(flag))}</td></tr>"
@@ -283,6 +388,13 @@ def render_branded_lab_report_html(payload):
         </table>
         """
 
+    header_html = ""
+    footer_html = ""
+    if not plain:
+        header_html = f'<div class="header">{logo_html}<div><h1>{lab_name}</h1>{f"<p>{tagline}</p>" if tagline else ""}</div></div>'
+        footer_html = f'<div class="footer">{footer or "This is a computer-generated report."}</div>'
+    content_pad = "12px 8px" if plain else "24px 28px"
+
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{lab_name} — Lab Report</title>
 <style>
@@ -290,7 +402,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; color: #1f2937; }
 .header {{ display:flex; align-items:center; padding: 24px 28px; border-bottom: 4px solid {accent}; background:#f8fafc; }}
 .header h1 {{ margin: 0; font-size: 22px; color: {accent}; }}
 .header p {{ margin: 4px 0 0; color: #64748b; font-size: 13px; }}
-.content {{ padding: 24px 28px; }}
+.content {{ padding: {content_pad}; }}
 .meta {{ display:grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-bottom: 20px; background:#f1f5f9; padding:16px; border-radius:8px; }}
 .meta p {{ margin: 0; font-size: 13px; }}
 table {{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }}
@@ -299,7 +411,7 @@ th {{ background: {accent}; color: white; }}
 .footer {{ margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align:center; }}
 .notes {{ margin-top: 16px; padding: 12px; background: #fffbeb; border-left: 4px solid #f59e0b; font-size: 13px; }}
 </style></head><body>
-<div class="header">{logo_html}<div><h1>{lab_name}</h1>{f"<p>{tagline}</p>" if tagline else ""}</div></div>
+{header_html}
 <div class="content">
 <div class="meta">
   <p><strong>Patient:</strong> {patient}</p>
@@ -311,7 +423,7 @@ th {{ background: {accent}; color: white; }}
 {sections_html}
 {f'<div class="notes"><strong>Pathologist Notes:</strong> {pathologist_notes}</div>' if pathologist_notes else ''}
 </div>
-<div class="footer">{footer or 'This is a computer-generated report.'}</div>
+{footer_html}
 </body></html>"""
 
 

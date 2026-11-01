@@ -16,6 +16,11 @@
     "manufacturer",
     "model",
     "serial_no",
+    "section_asset",
+    "item",
+    "erp_asset",
+    "machine_name_alias",
+    "lis_machine_reference",
     "section_qual",
     "iq_date",
     "oq_date",
@@ -24,6 +29,10 @@
     "last_calibration_on",
     "next_calibration_due",
     "calibration_interval_months",
+    "section_maintenance",
+    "last_maintenance_on",
+    "next_maintenance_due",
+    "maintenance_interval_months",
     "remarks"
   ],
   "fields": [
@@ -67,6 +76,36 @@
     {"fieldname": "manufacturer", "fieldtype": "Data", "label": "Manufacturer"},
     {"fieldname": "model", "fieldtype": "Data", "label": "Model"},
     {"fieldname": "serial_no", "fieldtype": "Data", "label": "Serial No"},
+    {"fieldname": "section_asset", "fieldtype": "Section Break", "label": "ERPNext Item & Asset"},
+    {
+      "description": "Fixed-asset Item in ERPNext (Lab Equipment group)",
+      "fieldname": "item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Item",
+      "options": "Item"
+    },
+    {
+      "description": "ERPNext Asset record for depreciation / location tracking",
+      "fieldname": "erp_asset",
+      "fieldtype": "Link",
+      "label": "ERP Asset",
+      "options": "Asset",
+      "read_only": 1
+    },
+    {
+      "description": "Matches Diagnostic Test Parameter machine_name (e.g. EM200)",
+      "fieldname": "machine_name_alias",
+      "fieldtype": "Data",
+      "in_standard_filter": 1,
+      "label": "Machine Name Alias"
+    },
+    {
+      "description": "LIS / Lab Test Result machine_reference token",
+      "fieldname": "lis_machine_reference",
+      "fieldtype": "Data",
+      "label": "LIS Machine Reference"
+    },
     {"fieldname": "section_qual", "fieldtype": "Section Break", "label": "IQ / OQ / PQ & Calibration"},
     {"fieldname": "iq_date", "fieldtype": "Date", "label": "IQ Date"},
     {"fieldname": "oq_date", "fieldtype": "Date", "label": "OQ Date"},
@@ -75,6 +114,10 @@
     {"fieldname": "last_calibration_on", "fieldtype": "Date", "label": "Last Calibration"},
     {"fieldname": "next_calibration_due", "fieldtype": "Date", "in_list_view": 1, "label": "Next Calibration Due"},
     {"default": "12", "fieldname": "calibration_interval_months", "fieldtype": "Int", "label": "Cal Interval (months)"},
+    {"fieldname": "section_maintenance", "fieldtype": "Section Break", "label": "Periodic Maintenance (PM)"},
+    {"fieldname": "last_maintenance_on", "fieldtype": "Date", "label": "Last PM"},
+    {"fieldname": "next_maintenance_due", "fieldtype": "Date", "in_list_view": 1, "label": "Next PM Due"},
+    {"default": "3", "fieldname": "maintenance_interval_months", "fieldtype": "Int", "label": "PM Interval (months)"},
     {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
   ],
   "modified": "2026-07-16 00:00:00.000000",

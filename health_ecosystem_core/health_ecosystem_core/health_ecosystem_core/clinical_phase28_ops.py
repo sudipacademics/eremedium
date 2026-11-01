@@ -20,6 +20,8 @@ PHASE28_DOCTYPES = (
     ("ops_rhythm_dispatch", "Ops Rhythm Dispatch"),
 )
 
+# Published demo default: never applied (new ops users get hec_seed_staff_password or a random one);
+# setup_phase132 reads it to rotate admin accounts still using it.
 DEMO_PASSWORD = "OpsDemoChangeMe@123"
 COMPANY_NAME = "Remedium Care"
 OPS_EMAIL_DOMAIN = "e-remedium.in"
@@ -209,9 +211,9 @@ def _upsert_user(email, full_name, roles=None):
         if frappe.db.exists("Role", role):
             doc.append("roles", {"role": role})
     doc.insert(ignore_permissions=True)
-    from frappe.utils.password import update_password
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase132_foundations import set_new_staff_password
 
-    update_password(email, DEMO_PASSWORD, logout_all_sessions=False)
+    set_new_staff_password(email)
     return email
 
 
@@ -477,7 +479,6 @@ def seed_phase28_demo():
         "divisions": len(divisions),
         "staff_profiles": len(staff),
         "tasks": len(tasks),
-        "demo_password": DEMO_PASSWORD,
     }
 
 
@@ -703,7 +704,7 @@ bench --site health.localhost execute health_ecosystem_core.health_ecosystem_cor
 
 <h3>Demo staff (seeded)</h3>
 <p>Officer + Clerk per division: <code>crm.officer@{OPS_EMAIL_DOMAIN}</code>,
-<code>crm.clerk@{OPS_EMAIL_DOMAIN}</code>, etc. Password: <code>OpsDemoChangeMe@123</code></p>
+<code>crm.clerk@{OPS_EMAIL_DOMAIN}</code>, etc. Password: site config <code>hec_seed_staff_password</code> when set, otherwise random (reset from Desk).</p>
 <p>Service HR profiles link phlebotomist, sales rep, franchise hub users.</p>
 
 <h3>Email behaviour</h3>

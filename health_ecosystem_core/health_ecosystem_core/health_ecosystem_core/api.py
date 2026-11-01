@@ -8,12 +8,13 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, get_datetime, now_datetime, today
+from frappe.utils import cint, cstr, flt, get_datetime, now_datetime, today
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,11 @@ ALLOWED_PUBLIC_METHODS = {
     "send_email_otp",
     "verify_email_otp",
     "ingest_onboarding_result",
+    "get_rfms_integration_config",
+    "create_rfms_razorpay_order",
+    "verify_rfms_razorpay_payment",
+    "get_wb_geo_hierarchy",
+    "resolve_wb_pincode",
 }
 
 MACHINE_METHODS = {
@@ -49,9 +55,9 @@ def _get_site_api_credentials():
 
 
 def _razorpay_test_mode():
-    from health_ecosystem_core.health_ecosystem_core.clinical_secrets import razorpay_test_mode
+    from health_ecosystem_core.health_ecosystem_core.clinical_secrets import razorpay_sandbox_active
 
-    return razorpay_test_mode()
+    return razorpay_sandbox_active()
 
 
 def _otp_test_mode():
@@ -358,22 +364,44 @@ def _enrich_catalog_items(items):
 
 
 def _company_name():
-    return frappe.defaults.get_global_default("company") or frappe.get_all("Company", limit=1)[0].name
+    """Company for new sales orders, invoices and payments (HEC Payment Settings → main company)."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import sales_company
+
+    return sales_company() or frappe.get_all("Company", limit=1)[0].name
 
 
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
 
-DEFAULT_PASSWORDS_BY_USERNAME = {
-    "system_admin": "AdminChangeMe@123",
-    "franchise_hub": "HubChangeMe@123",
-    "lab_tech_core": "TechChangeMe@123",
-    "sales_mgr": "SalesMgrChangeMe@123",
-    "sales_rep1": "SalesRepChangeMe@123",
-    "circle_test": "CircleTestChangeMe@123",
-    "patient_demo": "PatientChangeMe@123",
-}
+# sha256("hec-default-pw:" + password) of the seeded demo passwords; only digests are kept so the
+# credentials are not published here. A login with any of them is forced through the password change.
+DEFAULT_PASSWORD_DIGESTS = frozenset(
+    {
+        "6fae7f98cb01db2886a2e447ddefcba2216812810f93a0ee1f047a1cc1dba7bb",
+        "3c042705002ed60d9c99cd61680a4738cdbfb511e5f6eea51d05f73bdb233b85",
+        "691c04773b88af06aa58edebb09721cb5669e2677ee3400a37a98a28a57b317e",
+        "23cd8642807617a85b43858fb038ce2af2451f2a64d6e427a300857159f82921",
+        "96d7183f32967ef35bc927ae07532a9620a497eed38eb87824a5b4c3f544e4c9",
+        "4b4e1c726915b88e15e948a39d4f25fb4771311a3e0a37183137a2b7cd3d939a",
+        "368ba4abd7eec7c3431f568b354278f3ab22d40878ff6baef45e36338ff1a610",
+        "ba1750a12d76f0dc13f924f24ac1545b34b5fb2aef6284a487d7b9e8ad180d41",
+        "3c5eb1f200c4f5f0d4d9c2b1961833c3466c3437ff4f2727bd6742c0606805b1",
+        "c33d348e42b5ca3f5421c886e0310e6ca8a77c6967e27205d4096ebc1aab22db",
+        "fcf61429c03f9e657603c9de1565a3585d01c0cd5d2fd15a3097138895d2c628",
+        "e05ea13762a64b61231508284e327a5268bf58873a41d1c830fa21122a38a12b",
+        "babd93f34f1b928a1f055ac9ed5ce66fcf67473e85e950e841e2775677d67585",
+        "3348b91332fc09bfd7032b903645d14e952310fd3c15964bb887b4df5b6bc53e",
+        "5714f31f7a00d68d1eb978fa457dc66bd65fa8be4f009060fa8a06eb08a0155d",
+    }
+)
+
+
+def _is_default_password(pwd):
+    if not pwd:
+        return False
+    digest = hashlib.sha256(f"hec-default-pw:{pwd}".encode("utf-8")).hexdigest()
+    return digest in DEFAULT_PASSWORD_DIGESTS
 
 
 def _parse_request_value(key, explicit=None):
@@ -461,6 +489,23 @@ def _resolve_user_id(login_id):
     return by_email or login_id
 
 
+PARTNER_PORTAL_HOSTS = ("partners.remediumlabs.in", "partners.e-remedium.in", "phlebofirst.com")
+
+
+def _is_partner_portal_login():
+    """Partner portal and patient vault logins skip the patient email-verification gate."""
+    if cstr(frappe.form_dict.get("portal")).strip().lower() in ("partners", "vault"):
+        return True
+    req = getattr(frappe.local, "request", None)
+    if not req:
+        return False
+    for header in ("Origin", "Referer", "X-Forwarded-Host"):
+        value = cstr(req.headers.get(header)).lower()
+        if any(host in value for host in PARTNER_PORTAL_HOSTS):
+            return True
+    return False
+
+
 @frappe.whitelist(allow_guest=True)
 def authenticate_user(usr=None, pwd=None):
     """Validate login and return session token + role metadata."""
@@ -496,10 +541,10 @@ def authenticate_user(usr=None, pwd=None):
             return _error(_("Invalid credentials"), 401)
 
         user = frappe.get_doc("User", user_id)
-        roles = [r.role for r in user.roles]
+        roles = list(frappe.get_roles(user_id))
         from health_ecosystem_core.health_ecosystem_core.clinical_email import user_requires_email_verification
 
-        if user_requires_email_verification(user_id):
+        if not _is_partner_portal_login() and user_requires_email_verification(user_id):
             frappe.local.login_manager.logout()
             frappe.db.commit()
             return _error(
@@ -507,14 +552,23 @@ def authenticate_user(usr=None, pwd=None):
                 401,
             )
 
-        must_change_password = _user_must_change_password(user_id)
+        must_change_password = _user_must_change_password(user_id, pwd=pwd)
 
         franchisee = None
         if "Franchisee Operator" in roles:
             franchisee = frappe.db.get_value(
                 "Franchisee Profile",
                 {"linked_user": user_id, "active_status": "Active"},
-                ["name", "branch_code", "franchise_name", "commission_percentage_rate"],
+                [
+                    "name",
+                    "branch_code",
+                    "franchise_name",
+                    "territory_region",
+                    "address",
+                    "contact_phone",
+                    "contact_email",
+                    "commission_percentage_rate",
+                ],
                 as_dict=True,
             )
 
@@ -535,18 +589,9 @@ def authenticate_user(usr=None, pwd=None):
         return _error(_("Login failed. Please try again."), 500)
 
 
-def _user_must_change_password(user_id):
-    from frappe.utils.password import check_password
-
-    username = frappe.db.get_value("User", user_id, "username") or ""
-    default_password = DEFAULT_PASSWORDS_BY_USERNAME.get(username)
-
-    if default_password:
-        try:
-            if check_password(user_id, default_password):
-                return True
-        except Exception:
-            pass
+def _user_must_change_password(user_id, pwd=None):
+    if _is_default_password(pwd):
+        return True
 
     return not bool(frappe.db.get_value("User", user_id, "last_password_reset_date"))
 
@@ -752,7 +797,7 @@ def create_sales_invoice_from_trf(trf_id=None):
 
 def _create_sales_invoice_for_trf(trf):
     _ensure_healthcare_invoice_fields()
-    company = frappe.defaults.get_global_default("company") or frappe.get_all("Company", limit=1)[0].name
+    company = _company_name()
     item_rate = flt(trf.amount) or _resolve_selling_rate(trf.test_required)
 
     customer = _ensure_customer(trf.patient_name, trf.patient_phone)
@@ -820,8 +865,13 @@ def verify_razorpay_payment(
     if not all([razorpay_payment_id, razorpay_order_id, razorpay_signature, reference_doctype, reference_name]):
         return _error(_("Missing payment verification fields"))
 
-    if reference_doctype not in ("Customer TRF", "Pharmacy Order", "Doctor Appointment"):
-        return _error(_("Invalid reference doctype"))
+    if reference_doctype not in ("Customer TRF", "Pharmacy Order", "Doctor Appointment", "Health Subscription"):
+        return _error(
+            _(
+                "Invalid payment reference. Use Customer TRF, Pharmacy Order, Doctor Appointment or "
+                "Health Subscription (not Payment Gateway). Received: {0}"
+            ).format(reference_doctype or "")
+        )
 
     if not frappe.db.exists(reference_doctype, reference_name):
         return _error(_("Reference document not found"))
@@ -831,32 +881,152 @@ def verify_razorpay_payment(
     if not key_secret and not _razorpay_test_mode():
         return _error(_("Razorpay secret not configured on server"))
 
-    if not _razorpay_test_mode():
-        payload = f"{razorpay_order_id}|{razorpay_payment_id}"
-        expected = hmac.new(
-            key_secret.encode("utf-8"),
-            payload.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-
-        if not hmac.compare_digest(expected, razorpay_signature):
-            return _error(_("Payment signature verification failed"), 403)
-
     doc = frappe.get_doc(reference_doctype, reference_name)
-    amount = flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
+    if reference_doctype == "Health Subscription":
+        if not _subscription_owner_ok(doc):
+            return _error(_("Not permitted"), 403)
+        if doc.status == "Active":
+            if cstr(doc.razorpay_subscription_id) == cstr(razorpay_payment_id):
+                return _success({"reference": reference_name, "status": "Paid", "already_verified": True})
+            return _error(_("This subscription is already active"), 409)
+    if (getattr(doc, "razorpay_payment_status", None) or "") == "Paid":
+        if cstr(getattr(doc, "payment_id", None)) == cstr(razorpay_payment_id):
+            return _success(
+                {
+                    "reference": reference_name,
+                    "payment_entry": None,
+                    "sales_invoice": getattr(doc, "sales_invoice", None),
+                    "status": "Paid",
+                    "already_verified": True,
+                },
+                message="Payment already verified",
+            )
+        return _error(_("This order is already paid with a different payment"), 409)
 
+    if not _razorpay_test_mode():
+        from health_ecosystem_core.health_ecosystem_core.clinical_razorpay import confirm_payment, signature_valid
+
+        if not signature_valid(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+            return _error(_("Payment signature verification failed"), 403)
+        check = confirm_payment(
+            razorpay_order_id,
+            razorpay_payment_id,
+            expected_receipt=_razorpay_receipt(reference_doctype, reference_name),
+        )
+        payable_paise = int(round(_payable_amount(doc) * 100))
+        if check.get("ok") and check.get("checked") and payable_paise and cint(check.get("amount_paise")) < payable_paise - 100:
+            check = {"ok": False, "reason": "amount_short"}
+        if not check.get("ok"):
+            frappe.log_error(
+                title="verify_razorpay_payment rejected",
+                message=f"{reference_doctype} {reference_name} {razorpay_order_id} {razorpay_payment_id}: {check.get('reason')}",
+            )
+            return _error(_("This payment does not match the order being paid. Please contact support."), 403)
+
+    result = _finalize_checkout_payment(
+        reference_doctype, reference_name, razorpay_payment_id, order_id=razorpay_order_id, via="Checkout"
+    )
+    if result.get("already_verified") and not result.get("same_payment"):
+        return _error(_("This order is already paid with a different payment"), 409)
+    return _success(result, message="Payment already verified" if result.get("already_verified") else "Payment verified")
+
+
+def _finalize_checkout_payment(reference_doctype, reference_name, payment_id, order_id=None, via="Checkout"):
+    """Mark a checkout document paid, invoice it and post the Payment Entry. Row-locked; safe to call twice."""
+    frappe.db.get_value(reference_doctype, reference_name, "name", for_update=True)
+    doc = frappe.get_doc(reference_doctype, reference_name)
+    if reference_doctype == "Health Subscription":
+        if doc.status == "Active":
+            return {
+                "reference": reference_name,
+                "status": "Paid",
+                "already_verified": True,
+                "same_payment": cstr(doc.razorpay_subscription_id) == cstr(payment_id),
+            }
+        result = _complete_subscription_payment(doc, _payable_amount(doc), payment_id)
+        _mark_payment_intent(order_id, payment_id, via)
+        frappe.db.commit()
+        return result
+    if (getattr(doc, "razorpay_payment_status", None) or "") == "Paid":
+        return {
+            "reference": reference_name,
+            "payment_entry": None,
+            "sales_invoice": getattr(doc, "sales_invoice", None),
+            "status": "Paid",
+            "already_verified": True,
+            "same_payment": cstr(getattr(doc, "payment_id", None)) == cstr(payment_id),
+        }
+
+    amount = flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
+    razorpay_payment_id = payment_id
     previous_user = frappe.session.user
     payment_entry = None
+    sales_invoice_name = None
     try:
         frappe.set_user("Administrator")
         doc.db_set("razorpay_payment_status", "Paid")
         doc.db_set("payment_id", razorpay_payment_id)
+
+        # Ensure Sales Invoice exists at checkout for TRF / pharmacy
         try:
-            payment_entry = _create_payment_entry(doc, amount, razorpay_payment_id)
-            if reference_doctype == "Customer TRF" and doc.sales_invoice and payment_entry:
-                _allocate_payment_to_invoice(payment_entry, doc.sales_invoice, amount)
+            if reference_doctype == "Customer TRF":
+                sales_invoice_name = getattr(doc, "sales_invoice", None)
+                if not sales_invoice_name:
+                    si = None
+                    if getattr(doc, "sales_order", None) and frappe.db.exists("Sales Order", doc.sales_order):
+                        try:
+                            from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+                            si = frappe.get_doc(make_sales_invoice(doc.sales_order))
+                            si.insert(ignore_permissions=True)
+                            si.submit()
+                        except Exception:
+                            si = _create_sales_invoice_for_trf(doc)
+                    else:
+                        si = _create_sales_invoice_for_trf(doc)
+                    if si:
+                        sales_invoice_name = si.name
+                        if frappe.get_meta("Customer TRF").has_field("sales_invoice"):
+                            doc.db_set("sales_invoice", sales_invoice_name)
+                doc = frappe.get_doc(reference_doctype, reference_name)
+            elif reference_doctype == "Pharmacy Order":
+                sales_invoice_name = getattr(doc, "sales_invoice", None)
+                if not sales_invoice_name:
+                    items = getattr(doc, "items", None) or []
+                    if not items:
+                        raw = getattr(doc, "items_json", None) or "[]"
+                        if isinstance(raw, str):
+                            try:
+                                items = json.loads(raw) if raw else []
+                            except Exception:
+                                items = []
+                        elif isinstance(raw, list):
+                            items = raw
+                    si = _create_sales_invoice_for_pharmacy(doc, items)
+                    if si:
+                        sales_invoice_name = si.name
+                        if frappe.get_meta("Pharmacy Order").has_field("sales_invoice"):
+                            doc.db_set("sales_invoice", sales_invoice_name)
+                # Confirm order only after successful Online payment
+                if frappe.get_meta("Pharmacy Order").has_field("delivery_status"):
+                    current = getattr(doc, "delivery_status", None) or "Pending"
+                    if current in ("Pending", "Quote Sent", ""):
+                        doc.db_set("delivery_status", "Confirmed")
+                doc = frappe.get_doc(reference_doctype, reference_name)
+        except Exception:
+            frappe.log_error(title="checkout_sales_invoice", message=frappe.get_traceback())
+
+        try:
+            payment_entry = _create_payment_entry(
+                doc,
+                amount,
+                razorpay_payment_id,
+                sales_invoice=sales_invoice_name or getattr(doc, "sales_invoice", None),
+                mode_kind="razorpay",
+            )
         except Exception:
             frappe.log_error(title="Razorpay Payment Entry", message=frappe.get_traceback())
+        _mark_payment_intent(order_id, razorpay_payment_id, via)
         frappe.db.commit()
     finally:
         frappe.set_user(previous_user)
@@ -884,34 +1054,257 @@ def verify_razorpay_payment(
     except Exception:
         frappe.log_error(title="phase75_payment_confirmed", message=frappe.get_traceback())
 
+    return {
+        "reference": reference_name,
+        "payment_entry": payment_entry.name if payment_entry else None,
+        "sales_invoice": sales_invoice_name or getattr(doc, "sales_invoice", None),
+        "status": "Paid",
+    }
+
+
+def _mark_payment_intent(order_id, payment_id, via):
+    if not order_id:
+        return
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import mark_intent_paid
+
+        mark_intent_paid(order_id, payment_id, via)
+    except Exception:
+        frappe.log_error(title="mark_payment_intent", message=frappe.get_traceback())
+
+
+def _wallet_stash_from_intent(order_id, scope):
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import wallet_stash_from_intent
+
+        return wallet_stash_from_intent(order_id, scope)
+    except Exception:
+        frappe.log_error(title="wallet_stash_from_intent", message=frappe.get_traceback())
+        return None
+
+
+def _record_payment_intent(scope, order_id, amount, **kwargs):
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import record_intent
+
+        record_intent(scope, order_id, amount, **kwargs)
+    except Exception:
+        frappe.log_error(title="record_payment_intent", message=frappe.get_traceback())
+
+
+@frappe.whitelist(allow_guest=True)
+def get_followup_system(sid=None):
+    """Capability probe for Flutter — follow-ups live on Doctor Appointment (Phase 42/47)."""
+    frappe.flags.ignore_csrf = True
     return _success(
         {
-            "reference": reference_name,
-            "payment_entry": payment_entry.name if payment_entry else None,
-            "status": "Paid",
+            "available": True,
+            "system": "Doctor Appointment follow-up",
+            "apis": {
+                "list_queue": "list_consult_followup_queue",
+                "schedule": "schedule_consult_followup",
+                "schedule_from_tele": "schedule_appointment_followup",
+                "my_appointments": "get_my_appointments",
+            },
+            "fields": ["follow_up_date", "follow_up_notes", "consultation_mode", "meeting_link"],
         },
-        message="Payment verified",
+        message="Follow-up system ready",
     )
 
 
-def _create_payment_entry(doc, amount, payment_id):
+@frappe.whitelist(allow_guest=True)
+def list_followups(limit=50, sid=None):
+    """Alias → list_consult_followup_queue."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase47_complete_care import (
+        list_consult_followup_queue,
+    )
+
+    return list_consult_followup_queue(limit=limit, sid=sid)
+
+
+@frappe.whitelist(allow_guest=True)
+def schedule_followup(
+    appointment_id=None,
+    follow_up_date=None,
+    follow_up_notes=None,
+    book_slot=None,
+    appointment_time=None,
+    sid=None,
+):
+    """Alias → schedule_consult_followup / schedule_appointment_followup."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase47_complete_care import (
+        schedule_consult_followup,
+    )
+
+    return schedule_consult_followup(
+        appointment_id=appointment_id,
+        follow_up_date=follow_up_date,
+        follow_up_notes=follow_up_notes,
+        book_slot=book_slot,
+        appointment_time=appointment_time,
+        sid=sid,
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def get_pharmacy_order_invoice(order_id=None, sid=None):
+    """Return invoice payload for a paid Pharmacy Order (view/download from order details)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    order_id = (_parse_request_value("order_id", order_id) or "").strip()
+    if not order_id or not frappe.db.exists("Pharmacy Order", order_id):
+        return _error(_("Pharmacy order not found"), 404)
+
+    doc = frappe.get_doc("Pharmacy Order", order_id)
+    pay_status = getattr(doc, "razorpay_payment_status", None) or "Pending"
+    if pay_status != "Paid":
+        return _error(_("Invoice available only after successful payment"))
+
+    items = []
+    raw = getattr(doc, "items_json", None) or "[]"
+    if isinstance(raw, str):
+        try:
+            items = json.loads(raw) if raw else []
+        except Exception:
+            items = []
+    elif isinstance(raw, list):
+        items = raw
+
+    si = getattr(doc, "sales_invoice", None)
+    invoice_url = None
+    if si and frappe.db.exists("Sales Invoice", si):
+        invoice_url = f"/api/method/frappe.utils.print_format.download_pdf?doctype=Sales%20Invoice&name={si}&format=Standard&no_letterhead=0"
+
+    return _success(
+        {
+            "order_id": doc.name,
+            "invoice_date": str(getattr(doc, "modified", None) or today())[:10],
+            "customer_name": doc.customer_name,
+            "customer_phone": getattr(doc, "customer_phone", None),
+            "delivery_address": doc.delivery_address,
+            "items": items,
+            "order_total": flt(doc.order_total),
+            "discount_amount": flt(getattr(doc, "discount_amount", 0) or 0),
+            "payment_id": getattr(doc, "payment_id", None),
+            "payment_mode": getattr(doc, "payment_method", None) or "Online",
+            "razorpay_payment_status": pay_status,
+            "delivery_status": getattr(doc, "delivery_status", None),
+            "sales_invoice": si,
+            "invoice_pdf_url": invoice_url,
+        }
+    )
+
+
+def _complete_subscription_payment(doc, amount, payment_id):
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase43_subscription_checkout import (
+        activate_subscription_after_payment,
+    )
+
+    previous_user = frappe.session.user
+    payment_entry = None
+    try:
+        frappe.set_user("Administrator")
+        subscription = activate_subscription_after_payment(doc.name, payment_id)
+        plan = frappe.get_doc("Health Subscription Plan", doc.plan)
+        if cint(getattr(plan, "session_pack", 0)) and frappe.get_meta("Health Subscription").has_field("sessions_total"):
+            included = cint(getattr(plan, "included_sessions", 0) or 0)
+            frappe.db.set_value(
+                "Health Subscription",
+                doc.name,
+                {
+                    "sessions_total": included,
+                    "sessions_remaining": included if included > 0 else 9999,
+                    "wellness_wing": getattr(plan, "wellness_wing", None),
+                },
+            )
+        try:
+            doc.patient_name = frappe.db.get_value("User", doc.user, "full_name") or doc.user
+            payment_entry = _create_payment_entry(
+                doc, amount, payment_id, mode_kind="razorpay", remarks=f"Razorpay subscription payment {payment_id} ({doc.name})"
+            )
+        except Exception:
+            frappe.log_error(title="Subscription Payment Entry", message=frappe.get_traceback())
+        frappe.db.commit()
+    finally:
+        frappe.set_user(previous_user)
+    return {
+        "reference": doc.name,
+        "payment_entry": payment_entry.name if payment_entry else None,
+        "subscription": subscription,
+        "status": "Paid",
+    }
+
+
+def _payable_amount(doc):
+    amount = flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
+    if amount <= 0 and getattr(doc, "sales_order", None) and frappe.db.exists("Sales Order", doc.sales_order):
+        amount = flt(frappe.db.get_value("Sales Order", doc.sales_order, "grand_total"))
+    return amount
+
+
+def _razorpay_receipt(reference_doctype, reference_name):
+    return f"{reference_doctype}-{reference_name}"[:40]
+
+
+MODE_OF_PAYMENT_CANDIDATES = {
+    "razorpay": ("Razorpay", "Wire Transfer", "Bank Draft"),
+    "cash": ("Cash",),
+    "upi": ("UPI", "Wire Transfer"),
+    "card": ("Credit Card", "Debit Card", "Wire Transfer"),
+    "cheque": ("Cheque",),
+    "bank": ("Wire Transfer", "Bank Draft"),
+}
+
+
+def _mode_of_payment(kind):
+    for name in MODE_OF_PAYMENT_CANDIDATES.get(kind, ()) + ("Wire Transfer",):
+        if frappe.db.exists("Mode of Payment", name):
+            return name
+    return frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name") or "Cash"
+
+
+def _create_payment_entry(
+    doc,
+    amount,
+    payment_id,
+    sales_invoice=None,
+    mode_kind="razorpay",
+    remarks=None,
+    posting_date=None,
+    collection_ref=None,
+    collected_by=None,
+):
+    """Submitted Receive Payment Entry (one per payment id); an invoice is allocated before submit."""
     from erpnext.accounts.party import get_party_account
     from erpnext.accounts.utils import get_account_currency
 
-    company = frappe.defaults.get_global_default("company") or frappe.get_all("Company", limit=1)[0].name
-    customer_name = getattr(doc, "patient_name", None) or getattr(doc, "customer_name", None)
-    customer = _ensure_customer(customer_name)
+    payment_key = f"PAY-{payment_id}"[:140]
+    keyed = frappe.get_meta("Payment Entry").has_field("hec_payment_key")
+    existing = keyed and frappe.db.get_value("Payment Entry", {"hec_payment_key": payment_key, "docstatus": 1}, "name")
+    if existing:
+        return frappe.get_doc("Payment Entry", existing)
+
+    company = _company_name()
+    invoice = None
+    if sales_invoice and frappe.db.exists("Sales Invoice", sales_invoice):
+        invoice = frappe.db.get_value(
+            "Sales Invoice", sales_invoice, ["name", "customer", "company", "outstanding_amount", "docstatus"], as_dict=True
+        )
+        if not invoice or invoice.docstatus != 1:
+            invoice = None
+    if invoice:
+        customer = invoice.customer
+        company = invoice.company or company
+    else:
+        customer_name = getattr(doc, "patient_name", None) or getattr(doc, "customer_name", None)
+        customer = _ensure_customer(customer_name)
     amount = flt(amount)
     if amount <= 0 and getattr(doc, "sales_order", None):
         amount = flt(frappe.db.get_value("Sales Order", doc.sales_order, "grand_total"))
     if amount <= 0:
         amount = flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
 
-    mode_of_payment = (
-        frappe.db.get_value("Mode of Payment", {"name": "Wire Transfer"}, "name")
-        or frappe.db.get_value("Mode of Payment", {"enabled": 1}, "name")
-        or "Cash"
-    )
+    mode_of_payment = _mode_of_payment(mode_kind)
     paid_from = get_party_account("Customer", customer, company)
     paid_to = frappe.db.get_value(
         "Mode of Payment Account",
@@ -945,62 +1338,170 @@ def _create_payment_entry(doc, amount, payment_id):
             "received_amount": amount,
             "source_exchange_rate": 1,
             "target_exchange_rate": 1,
+            "posting_date": posting_date or today(),
             "reference_no": payment_id,
-            "reference_date": today(),
+            "reference_date": posting_date or today(),
             "mode_of_payment": mode_of_payment,
-            "remarks": f"Razorpay payment {payment_id}",
+            "remarks": remarks or f"Razorpay payment {payment_id}",
         }
     )
+    if keyed:
+        pe.hec_payment_key = payment_key
+    pe_meta = frappe.get_meta("Payment Entry")
+    if collection_ref and pe_meta.has_field("hec_collection_ref"):
+        pe.hec_collection_ref = collection_ref
+    if collected_by and pe_meta.has_field("hec_collected_by"):
+        pe.hec_collected_by = collected_by
+    if invoice and flt(invoice.outstanding_amount) > 0:
+        pe.append(
+            "references",
+            {
+                "reference_doctype": "Sales Invoice",
+                "reference_name": invoice.name,
+                "allocated_amount": min(amount, flt(invoice.outstanding_amount)),
+            },
+        )
     pe.set_missing_values()
     pe.set_amounts()
-    pe.insert(ignore_permissions=True)
-    pe.submit(ignore_permissions=True)
+    pe.flags.ignore_permissions = True
+    pe.insert()
+    pe.submit()
     return pe
-
-
-def _allocate_payment_to_invoice(payment_entry, sales_invoice, amount):
-    pe = frappe.get_doc("Payment Entry", payment_entry.name)
-    pe.append(
-        "references",
-        {
-            "reference_doctype": "Sales Invoice",
-            "reference_name": sales_invoice,
-            "allocated_amount": amount,
-            "total_amount": amount,
-        },
-    )
-    pe.set_missing_values()
-    pe.set_amounts()
-    pe.save(ignore_permissions=True)
-    pe.submit(ignore_permissions=True)
 
 
 # ---------------------------------------------------------------------------
 # LIS machine integration
 # ---------------------------------------------------------------------------
 
+LIS_BRIDGE_STATUSES = ("Unknown", "Online", "Offline", "Error")
+
+
 @frappe.whitelist(allow_guest=True)
-def get_barcode_tests(barcode=None):
-    """HTTP GET for LIS bridge: return tests assigned to a barcode."""
+def lis_bridge_heartbeat(analyzer_id=None, status=None, machine_reference=None):
+    """Record analyzer liveness reported by the LIS bridge.
+
+    Best-effort by design: the bridge must never stall on a heartbeat, so an
+    unknown analyzer is reported back as unregistered rather than raised.
+    """
+    _validate_machine_auth()
+
+    analyzer_id = _parse_request_value("analyzer_id", analyzer_id)
+    status = _parse_request_value("status", status) or "Online"
+    machine_reference = _parse_request_value("machine_reference", machine_reference)
+
+    if not analyzer_id and not machine_reference:
+        return _error(_("analyzer_id or machine_reference is required"))
+
+    status = str(status).strip().title()
+    if status not in LIS_BRIDGE_STATUSES:
+        status = "Unknown"
+
+    if not frappe.db.exists("DocType", "Lab Equipment"):
+        return _success({"recorded": False, "reason": "Lab Equipment not installed"})
+
+    meta = frappe.get_meta("Lab Equipment")
+    if not meta.has_field("lis_last_seen"):
+        return _success({"recorded": False, "reason": "Liveness fields not migrated"})
+
+    equipment = None
+    for field, value in (
+        ("lis_machine_reference", machine_reference),
+        ("lis_machine_reference", analyzer_id),
+        ("machine_name_alias", analyzer_id),
+        ("equipment_name", analyzer_id),
+    ):
+        if not value:
+            continue
+        equipment = frappe.db.get_value("Lab Equipment", {field: value}, "name")
+        if equipment:
+            break
+
+    if not equipment:
+        return _success(
+            {
+                "recorded": False,
+                "reason": "No Lab Equipment matches this analyzer",
+                "analyzer_id": analyzer_id or "",
+            }
+        )
+
+    updates = {"lis_last_seen": now_datetime()}
+    if meta.has_field("lis_bridge_status"):
+        updates["lis_bridge_status"] = status
+    frappe.db.set_value("Lab Equipment", equipment, updates, update_modified=False)
+    frappe.db.commit()
+
+    return _success({"recorded": True, "equipment": equipment, "status": status})
+
+
+def _analyzer_runs_test(item_code, machine_reference):
+    """Decide whether an analyzer should receive a given test in its worklist.
+
+    Returns (include, mapped). mapped is False when the test master carries no
+    analyzer assignment, in which case we still include the test so an
+    unconfigured site keeps working, but report it so the mapping gets finished.
+    """
+    if not machine_reference:
+        return True, True
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import find_test_master_for_item
+
+    master = find_test_master_for_item(item_code)
+    if not master:
+        return True, False
+    try:
+        if not frappe.get_meta("Diagnostic Test Master").has_field("lis_machine_reference"):
+            return True, False
+    except Exception:
+        return True, False
+    assigned = frappe.db.get_value("Diagnostic Test Master", master, "lis_machine_reference")
+    if not assigned:
+        return True, False
+    return str(assigned).strip().lower() == str(machine_reference).strip().lower(), True
+
+
+def _pf_trf_for_barcode(barcode):
+    """PhleboFirst universal (PF-) barcode or a lab LIS barcode mapped to one -> Customer TRF (phase 133)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase133_phlebofirst import resolve_trf_for_code
+    except ImportError:
+        return None
+    try:
+        return resolve_trf_for_code(barcode)
+    except Exception:
+        frappe.log_error(title="pf_trf_for_barcode", message=frappe.get_traceback())
+        return None
+
+
+@frappe.whitelist(allow_guest=True)
+def get_barcode_tests(barcode=None, analyzer_id=None, machine_reference=None):
+    """HTTP GET for LIS bridge: return tests assigned to a barcode.
+
+    When the caller identifies itself with machine_reference, the worklist is
+    filtered to tests that analyzer actually runs. Without it, every test is
+    returned, which is correct for a single-analyzer install.
+    """
     _validate_machine_auth()
 
     if not barcode:
         return _error(_("Barcode is required"))
 
-    trf = frappe.db.get_value(
-        "Customer TRF",
-        {"unique_barcode": barcode},
-        [
-            "name",
-            "patient_name",
-            "test_required",
-            "order_status",
-            "age",
-            "gender",
-            "razorpay_payment_status",
-        ],
-        as_dict=True,
-    )
+    analyzer_id = _parse_request_value("analyzer_id", analyzer_id)
+    machine_reference = _parse_request_value("machine_reference", machine_reference)
+
+    trf_fields = [
+        "name",
+        "patient_name",
+        "test_required",
+        "order_status",
+        "age",
+        "gender",
+        "razorpay_payment_status",
+    ]
+    trf = frappe.db.get_value("Customer TRF", {"unique_barcode": barcode}, trf_fields, as_dict=True)
+    if not trf:
+        pf_trf = _pf_trf_for_barcode(barcode)
+        if pf_trf:
+            trf = frappe.db.get_value("Customer TRF", pf_trf, trf_fields, as_dict=True)
 
     if not trf:
         return _error(_("Barcode not found"), 404)
@@ -1017,6 +1518,11 @@ def get_barcode_tests(barcode=None):
     if trf.order_status in ("Booked", "Sample Collected"):
         frappe.db.set_value("Customer TRF", trf.name, "order_status", "In Lab")
         trf.order_status = "In Lab"
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+            on_sample_received_at_lab,
+        )
+
+        on_sample_received_at_lab(trf.name)
         frappe.db.commit()
 
     from health_ecosystem_core.health_ecosystem_core.clinical_journey import sync_journey_from_trf
@@ -1028,8 +1534,16 @@ def get_barcode_tests(barcode=None):
 
     trf_doc = frappe.get_doc("Customer TRF", trf.name)
     test_payload = []
+    skipped = []
+    unmapped = []
     for line in get_trf_test_lines(trf_doc):
         item_name = line["item_name"]
+        include, mapped = _analyzer_runs_test(line["item_code"], machine_reference)
+        if not mapped:
+            unmapped.append(item_name)
+        if not include:
+            skipped.append(item_name)
+            continue
         machine_code = _machine_test_code(line["item_code"])
         test_payload.append(
             {
@@ -1049,8 +1563,47 @@ def get_barcode_tests(barcode=None):
             "gender": trf.gender,
             "tests": test_payload,
             "order_status": trf.order_status,
+            "analyzer_id": analyzer_id or "",
+            "machine_reference": machine_reference or "",
+            # Diagnostics for the bridge debug UI: what this analyzer will not run,
+            # and which tests still need an analyzer assigned on their master.
+            "skipped_for_analyzer": skipped,
+            "unmapped_tests": unmapped,
         }
     )
+
+
+def _normalize_machine_reference(reference):
+    """machine_reference is a Select; an unlisted analyzer must not cost us the result."""
+    fallback = "EM 200"
+    if not reference:
+        return fallback
+    raw = str(reference).strip()
+    if not raw:
+        return fallback
+    try:
+        options = [
+            opt.strip()
+            for opt in (
+                frappe.get_meta("Lab Test Result").get_field("machine_reference").options
+                or ""
+            ).split("\n")
+            if opt.strip()
+        ]
+    except Exception:
+        return raw
+    if not options:
+        return raw
+    for option in options:
+        if option.lower() == raw.lower():
+            return option
+    if "Other Analyzer" in options:
+        frappe.log_error(
+            f"Unlisted machine_reference {raw!r} stored as Other Analyzer",
+            "LIS machine reference",
+        )
+        return "Other Analyzer"
+    return fallback
 
 
 @frappe.whitelist(allow_guest=True)
@@ -1063,20 +1616,34 @@ def log_machine_result(
     reference_range=None,
     abnormal_flag=None,
     erp_item_code=None,
+    result_value_text=None,
 ):
-    """Authorized LIS endpoint to push machine results."""
+    """Authorized LIS endpoint to push machine results.
+
+    Accepts either a numeric value or a qualitative text value. CLIA analyzers
+    report Reactive / Non-Reactive, which has no numeric form.
+    """
     _validate_machine_auth()
 
-    if not all([barcode, analyte_test_name, numeric_result_value is not None]):
-        return _error(_("Missing required result fields"))
+    result_value_text = _parse_request_value("result_value_text", result_value_text)
+    if isinstance(result_value_text, str):
+        result_value_text = result_value_text.strip() or None
+    if numeric_result_value in ("", "None"):
+        numeric_result_value = None
 
-    trf_name = frappe.db.get_value("Customer TRF", {"unique_barcode": barcode}, "name")
+    if not barcode or not analyte_test_name:
+        return _error(_("Missing required result fields"))
+    if numeric_result_value is None and not result_value_text:
+        return _error(_("Result must carry either a numeric or a text value"))
+
+    trf_name = frappe.db.get_value("Customer TRF", {"unique_barcode": barcode}, "name") or _pf_trf_for_barcode(barcode)
     if not trf_name:
         return _error(_("Barcode not linked to any TRF"), 404)
 
     from health_ecosystem_core.health_ecosystem_core.clinical_utils import (
         abnormal_flag_for_value,
         find_test_master_for_trf_result,
+        normalize_abnormal_flag,
         parameter_reference_range,
     )
 
@@ -1087,8 +1654,9 @@ def log_machine_result(
     )
     if not reference_range and test_master:
         reference_range = parameter_reference_range(test_master, analyte_test_name)
-    if not abnormal_flag and test_master:
+    if not abnormal_flag and test_master and numeric_result_value is not None:
         abnormal_flag = abnormal_flag_for_value(test_master, analyte_test_name, numeric_result_value)
+    abnormal_flag = normalize_abnormal_flag(abnormal_flag)
 
     existing = frappe.db.get_value(
         "Lab Test Result",
@@ -1111,15 +1679,20 @@ def log_machine_result(
         "doctype": "Lab Test Result",
         "barcode_link": barcode,
         "analyte_test_name": analyte_test_name,
-        "numeric_result_value": flt(numeric_result_value),
+        "numeric_result_value": (
+            flt(numeric_result_value) if numeric_result_value is not None else None
+        ),
         "unit_of_measure": unit_of_measure,
-        "machine_reference": machine_reference or "EM 200",
+        "machine_reference": _normalize_machine_reference(machine_reference),
         "verification_timestamp": now_datetime(),
         "customer_trf": trf_name,
         "reference_range": reference_range,
         "abnormal_flag": abnormal_flag,
     }
-    if resolved_item and frappe.get_meta("Lab Test Result").has_field("erp_item_code"):
+    result_meta = frappe.get_meta("Lab Test Result")
+    if result_value_text and result_meta.has_field("result_value_text"):
+        result_data["result_value_text"] = result_value_text
+    if resolved_item and result_meta.has_field("erp_item_code"):
         result_data["erp_item_code"] = resolved_item
     result = frappe.get_doc(result_data)
     result.insert(ignore_permissions=True)
@@ -1232,7 +1805,7 @@ def get_franchisee_dashboard(franchisee_id=None):
             ],
             order_by="creation desc",
             limit=20,
-        )
+    )
 
     return _success(
         {
@@ -1342,7 +1915,16 @@ def validate_session(sid=None):
         franchisee = frappe.db.get_value(
             "Franchisee Profile",
             {"linked_user": user, "active_status": "Active"},
-            ["name", "branch_code", "franchise_name", "territory_region", "commission_percentage_rate"],
+            [
+                "name",
+                "branch_code",
+                "franchise_name",
+                "territory_region",
+                "address",
+                "contact_phone",
+                "contact_email",
+                "commission_percentage_rate",
+            ],
             as_dict=True,
         )
 
@@ -1394,12 +1976,47 @@ def get_app_settings():
 
 
 @frappe.whitelist(allow_guest=True)
-def create_razorpay_order(reference_doctype=None, reference_name=None, amount=None, sid=None):
-    """Create a Razorpay order for TRF or pharmacy checkout."""
+def create_subscription_checkout(plan_code=None, sid=None):
+    """Phase 43 / 121 — Pending Health Subscription for Razorpay checkout; activated only by verify_razorpay_payment."""
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
-    if reference_doctype not in ("Customer TRF", "Pharmacy Order", "Doctor Appointment"):
-        return _error(_("Invalid reference doctype"))
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase43_subscription_checkout import (
+        create_subscription_checkout as _create_checkout,
+    )
+
+    plan_code = _parse_request_value("plan_code", plan_code)
+    try:
+        subscription = _create_checkout(frappe.session.user, plan_code)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    if not subscription or flt(subscription.get("amount")) <= 0:
+        return _error(_("This plan has no payable amount"))
+    return _success(
+        {
+            "subscription": subscription,
+            "reference_doctype": "Health Subscription",
+            "reference_name": subscription["name"],
+            "amount": flt(subscription["amount"]),
+        }
+    )
+
+
+def _subscription_owner_ok(doc):
+    return doc.user == frappe.session.user or "System Manager" in _user_roles() or "Health System Admin" in _user_roles()
+
+
+@frappe.whitelist(allow_guest=True)
+def create_razorpay_order(reference_doctype=None, reference_name=None, amount=None, sid=None):
+    """Create a Razorpay order for TRF, pharmacy, appointment or subscription checkout."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    if reference_doctype not in ("Customer TRF", "Pharmacy Order", "Doctor Appointment", "Health Subscription"):
+        return _error(
+            _(
+                "Invalid payment reference DocType. Use Customer TRF, Pharmacy Order, Doctor Appointment or "
+                "Health Subscription (Payment Gateway is not used). Received: {0}"
+            ).format(reference_doctype or "")
+        )
 
     if not frappe.db.exists(reference_doctype, reference_name):
         return _error(_("Reference document not found"))
@@ -1410,16 +2027,29 @@ def create_razorpay_order(reference_doctype=None, reference_name=None, amount=No
         normalize_payment_method,
     )
 
-    payment_method = normalize_payment_method(getattr(doc, "payment_method", None))
-    if payment_method != PAYMENT_METHOD_ONLINE:
-        return _error(_("This order uses offline payment. Pay at collection or on delivery."))
+    if reference_doctype == "Health Subscription":
+        if not _subscription_owner_ok(doc):
+            return _error(_("Not permitted"), 403)
+        if doc.status != "Pending":
+            return _error(_("This subscription is not awaiting payment"))
+    else:
+        payment_method = normalize_payment_method(getattr(doc, "payment_method", None))
+        if payment_method != PAYMENT_METHOD_ONLINE:
+            return _error(_("This order uses offline payment. Pay at collection or on delivery."))
 
-    order_amount = flt(amount) or flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
+    if (getattr(doc, "razorpay_payment_status", None) or "") == "Paid":
+        return _error(_("This order is already paid"))
+    order_amount = _payable_amount(doc)
     if order_amount <= 0:
         return _error(_("Invalid payment amount"))
+    if amount is not None and abs(flt(amount) - order_amount) >= 1:
+        frappe.log_error(
+            title="create_razorpay_order amount differs",
+            message=f"{reference_doctype} {reference_name}: client {amount} vs server {order_amount}",
+        )
 
-    amount_paise = int(order_amount * 100)
-    receipt = f"{reference_doctype}-{reference_name}"
+    amount_paise = int(round(order_amount * 100))
+    receipt = _razorpay_receipt(reference_doctype, reference_name)
 
     if _razorpay_test_mode():
         creds = _get_site_api_credentials()
@@ -1439,6 +2069,8 @@ def create_razorpay_order(reference_doctype=None, reference_name=None, amount=No
     creds = _get_site_api_credentials()
     key_id = creds.get("razorpay_key_id")
     key_secret = creds.get("razorpay_key_secret")
+    if not (key_id and key_secret):
+        return _error(_("Online payment is not configured on server"))
     auth_header = base64.b64encode(f"{key_id}:{key_secret}".encode("utf-8")).decode("ascii")
     payload = json.dumps(
         {
@@ -1446,6 +2078,7 @@ def create_razorpay_order(reference_doctype=None, reference_name=None, amount=No
             "currency": "INR",
             "receipt": receipt,
             "payment_capture": 1,
+            "notes": {"reference_doctype": reference_doctype, "reference_name": reference_name},
         }
     ).encode("utf-8")
 
@@ -1467,6 +2100,13 @@ def create_razorpay_order(reference_doctype=None, reference_name=None, amount=No
         frappe.log_error(title="create_razorpay_order", message=body)
         return _error(_("Razorpay order creation failed"))
 
+    _record_payment_intent(
+        "subscriptions" if reference_doctype == "Health Subscription" else "patient_checkout",
+        order_data.get("id"),
+        order_amount,
+        reference_doctype=reference_doctype,
+        reference_name=reference_name,
+    )
     return _success(
         {
             "order_id": order_data.get("id"),
@@ -1604,19 +2244,22 @@ def get_trf_detail(trf_id=None, barcode=None):
         return _error(_("TRF not found"), 404)
 
     trf = _serialize_trf(trf_id)
+    result_fields = [
+        "name",
+        "analyte_test_name",
+        "numeric_result_value",
+        "unit_of_measure",
+        "reference_range",
+        "abnormal_flag",
+        "machine_reference",
+        "verification_timestamp",
+    ]
+    if frappe.get_meta("Lab Test Result").has_field("result_value_text"):
+        result_fields.append("result_value_text")
     results = frappe.get_all(
         "Lab Test Result",
         filters={"customer_trf": trf_id},
-        fields=[
-            "name",
-            "analyte_test_name",
-            "numeric_result_value",
-            "unit_of_measure",
-            "reference_range",
-            "abnormal_flag",
-            "machine_reference",
-            "verification_timestamp",
-        ],
+        fields=result_fields,
         order_by="creation asc",
     )
 
@@ -1665,6 +2308,12 @@ def _apply_order_status(trf_id, order_status):
     from health_ecosystem_core.health_ecosystem_core.clinical_journey import sync_journey_from_trf
 
     sync_journey_from_trf(trf_id, order_status)
+    if order_status != current_status:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+            on_trf_status_change,
+        )
+
+        on_trf_status_change(trf_id, order_status)
     frappe.db.commit()
 
     return _success(
@@ -1680,6 +2329,7 @@ def get_phlebotomist_collection_queue(limit=50, sid=None):
         return _error(_("Not authenticated"), 401)
 
     from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        exclude_pf_trfs,
         franchise_for_phlebotomist,
         is_phlebotomist,
         is_staff,
@@ -1708,22 +2358,27 @@ def get_phlebotomist_collection_queue(limit=50, sid=None):
         "franchisee_id",
         "creation",
         "modified",
+        "gender",
+        "age",
+        "age_months",
+        "age_days",
     ]
 
     hub = franchise_for_phlebotomist()
+    queue_statuses = ["Booked", "Sample Collected", "Cancelled"]
     if hub and is_phlebotomist(roles) and not is_staff(roles):
-        filters = {"franchisee_id": hub, "order_status": ("in", ["Booked", "Sample Collected"])}
+        filters = {"franchisee_id": hub, "order_status": ("in", queue_statuses)}
     elif is_phlebotomist(roles):
         trf_ids = phlebotomist_trf_ids()
         if not trf_ids:
-            return _success({"orders": [], "franchisee": None})
-        filters = {"name": ("in", trf_ids), "order_status": ("in", ["Booked", "Sample Collected"])}
+            return _success({"orders": [], "franchisee": None, "in_route_trf": None})
+        filters = {"name": ("in", trf_ids), "order_status": ("in", queue_statuses)}
     else:
-        filters = {"order_status": ("in", ["Booked", "Sample Collected"])}
+        filters = {"order_status": ("in", queue_statuses)}
 
     trfs = frappe.get_all(
         "Customer TRF",
-        filters=filters,
+        filters=exclude_pf_trfs(filters),
         fields=fields,
         order_by="creation desc",
         limit=limit,
@@ -1734,7 +2389,16 @@ def get_phlebotomist_collection_queue(limit=50, sid=None):
         franchisee = frappe.db.get_value(
             "Franchisee Profile",
             hub,
-            ["name", "franchise_name", "branch_code", "address", "contact_phone"],
+            [
+                "name",
+                "franchise_name",
+                "branch_code",
+                "address",
+                "contact_phone",
+                "hub_latitude",
+                "hub_longitude",
+                "geofence_radius_m",
+            ],
             as_dict=True,
         )
 
@@ -1743,9 +2407,217 @@ def get_phlebotomist_collection_queue(limit=50, sid=None):
         item = _serialize_trf(row)
         item["barcode"] = row.get("unique_barcode")
         item["collection_address"] = row.get("collection_address")
+        item["gender"] = row.get("gender")
+        item["age"] = row.get("age")
+        item["age_months"] = row.get("age_months")
+        item["age_days"] = row.get("age_days")
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_utils import format_patient_age
+
+            item["age_label"] = format_patient_age(row.get("age"), row.get("age_months"), row.get("age_days"))
+        except Exception:
+            item["age_label"] = ""
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase89_vial_accession import (
+                get_trf_draw_plan_payload,
+            )
+
+            item["collection_tubes"] = get_trf_draw_plan_payload(row.get("name"))
+        except Exception:
+            item["collection_tubes"] = []
         orders.append(item)
 
-    return _success({"orders": orders, "franchisee": franchisee})
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import get_phlebotomist_location
+
+    loc = get_phlebotomist_location(frappe.session.user) or {}
+    return _success(
+        {
+            "orders": orders,
+            "franchisee": franchisee,
+            "in_route_trf": loc.get("in_route_trf"),
+        }
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def get_phlebotomist_my_collections(limit=100, sid=None):
+    """Collected samples plus live report / delivery status for the collector hub."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        exclude_pf_trfs,
+        franchise_for_phlebotomist,
+        is_phlebotomist,
+        is_staff,
+        phlebotomist_trf_ids,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import ensure_phase20_custom_fields
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import format_patient_age
+
+    roles = _user_roles()
+    if not is_phlebotomist(roles) and not is_staff(roles):
+        return _error(_("Not permitted"), 403)
+
+    ensure_phase20_custom_fields()
+    limit = cint(limit) or 100
+    collected_statuses = ["Sample Collected", "In Lab", "Completed"]
+    fields = [
+        "name",
+        "patient_name",
+        "patient_phone",
+        "collection_address",
+        "collection_latitude",
+        "collection_longitude",
+        "collection_slot",
+        "unique_barcode",
+        "test_required",
+        "order_status",
+        "franchisee_id",
+        "creation",
+        "modified",
+        "gender",
+        "age",
+        "age_months",
+        "age_days",
+        "report_delivered_on",
+    ]
+
+    hub = franchise_for_phlebotomist()
+    if hub and is_phlebotomist(roles) and not is_staff(roles):
+        filters = {"franchisee_id": hub, "order_status": ("in", collected_statuses)}
+    elif is_phlebotomist(roles):
+        trf_ids = phlebotomist_trf_ids()
+        extra = frappe.get_all(
+            "Customer TRF",
+            filters={"name": ("in", trf_ids or ["__none__"]), "order_status": ("in", collected_statuses)},
+            pluck="name",
+        ) if trf_ids else []
+        if hub:
+            extra.extend(
+                frappe.get_all(
+                    "Customer TRF",
+                    filters={"franchisee_id": hub, "order_status": ("in", collected_statuses)},
+                    pluck="name",
+                )
+            )
+        extra = list(dict.fromkeys(extra))
+        if not extra:
+            return _success({"orders": []})
+        filters = {"name": ("in", extra)}
+    else:
+        filters = {"order_status": ("in", collected_statuses)}
+    exclude_pf_trfs(filters)
+
+    try:
+        rows = frappe.get_all(
+            "Customer TRF",
+            filters=filters,
+            fields=fields,
+            order_by="modified desc",
+            limit=limit,
+        )
+    except Exception:
+        fields = [f for f in fields if f != "report_delivered_on"]
+        rows = frappe.get_all(
+            "Customer TRF",
+            filters=filters,
+            fields=fields,
+            order_by="modified desc",
+            limit=limit,
+        )
+        for row in rows:
+            row["report_delivered_on"] = None
+    names = [row.name for row in rows]
+    journeys = {}
+    if names:
+        for j in frappe.get_all(
+            "Patient Care Journey",
+            filters={"customer_trf": ("in", names)},
+            fields=["name", "customer_trf", "status", "report_pdf", "authorized_on"],
+        ):
+            journeys[j.customer_trf] = j
+
+    orders = []
+    for row in rows:
+        item = _serialize_trf(row)
+        item["barcode"] = row.get("unique_barcode")
+        item["collection_address"] = row.get("collection_address")
+        item["gender"] = row.get("gender")
+        item["age"] = row.get("age")
+        item["age_months"] = row.get("age_months")
+        item["age_days"] = row.get("age_days")
+        item["age_label"] = format_patient_age(row.get("age"), row.get("age_months"), row.get("age_days"))
+        delivered = row.get("report_delivered_on")
+        item["report_delivered_on"] = str(delivered) if delivered else None
+        journey = journeys.get(row.name)
+        item["journey_id"] = journey.name if journey else None
+        item["journey_status"] = journey.status if journey else None
+        item["report_pdf"] = bool(journey.report_pdf) if journey else False
+        item["authorized_on"] = str(journey.authorized_on) if journey and journey.authorized_on else None
+        ready = bool(journey and journey.report_pdf and journey.status in ("Authorized", "Dispatched"))
+        item["report_ready"] = ready
+        if delivered:
+            item["delivery_status"] = "delivered"
+        elif ready:
+            item["delivery_status"] = "pending_delivery"
+        else:
+            item["delivery_status"] = "pending_report"
+        orders.append(item)
+
+    return _success({"orders": orders})
+
+
+@frappe.whitelist(allow_guest=True)
+def phlebotomist_deliver_report(trf_id=None, sid=None):
+    """Mark an authorized report as delivered to the patient by the collector."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        is_phlebotomist,
+        is_staff,
+        phlebotomist_trf_ids,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import ensure_phase20_custom_fields
+    from frappe.utils import now_datetime
+
+    roles = _user_roles()
+    if not is_phlebotomist(roles) and not is_staff(roles):
+        return _error(_("Not permitted"), 403)
+
+    trf_id = _parse_request_value("trf_id", trf_id)
+    if not trf_id:
+        return _error(_("TRF ID is required"))
+    if not frappe.db.exists("Customer TRF", trf_id):
+        return _error(_("Order not found"))
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import franchise_for_phlebotomist
+
+    hub = franchise_for_phlebotomist()
+    if is_phlebotomist(roles) and not is_staff(roles):
+        if hub:
+            if frappe.db.get_value("Customer TRF", trf_id, "franchisee_id") != hub:
+                return _error(_("This order is not in your collection queue"), 403)
+        elif trf_id not in (phlebotomist_trf_ids() or []):
+            return _error(_("This order is not in your collection queue"), 403)
+
+    journey = frappe.db.get_value(
+        "Patient Care Journey",
+        {"customer_trf": trf_id},
+        ["name", "status", "report_pdf"],
+        as_dict=True,
+    )
+    if not journey or not journey.report_pdf or journey.status not in ("Authorized", "Dispatched"):
+        return _error(_("Report is not ready to deliver"))
+
+    ensure_phase20_custom_fields()
+    stamp = now_datetime()
+    frappe.db.set_value("Customer TRF", trf_id, "report_delivered_on", stamp)
+    frappe.db.commit()
+    return _success(
+        {"trf_id": trf_id, "report_delivered_on": str(stamp), "journey_id": journey.name},
+        message=_("Report marked as delivered"),
+    )
 
 
 @frappe.whitelist(allow_guest=True)
@@ -1787,8 +2659,44 @@ def phlebotomist_update_location(latitude=None, longitude=None, on_duty=1, sid=N
 
 
 @frappe.whitelist(allow_guest=True)
+def phlebotomist_start_visit(trf_id=None, sid=None):
+    """Mark a booked collection as in-route and keep it on the live map."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        PF_ORDER_MESSAGE,
+        is_pf_trf,
+        is_phlebotomist,
+        is_staff,
+        phlebotomist_trf_ids,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import mark_phlebotomist_visit_started
+
+    roles = _user_roles()
+    if not is_phlebotomist(roles) and not is_staff(roles):
+        return _error(_("Not permitted"), 403)
+
+    trf_id = _parse_request_value("trf_id", trf_id)
+    if not trf_id:
+        return _error(_("TRF ID is required"))
+    if not frappe.db.exists("Customer TRF", trf_id):
+        return _error(_("Order not found"))
+    if is_pf_trf(trf_id):
+        return _error(_(PF_ORDER_MESSAGE), 409)
+    if is_phlebotomist(roles) and not is_staff(roles):
+        if trf_id not in phlebotomist_trf_ids():
+            return _error(_("This order is not in your collection queue"), 403)
+    if frappe.db.get_value("Customer TRF", trf_id, "order_status") != "Booked":
+        return _error(_("Only booked collections can be started"))
+
+    payload = mark_phlebotomist_visit_started(frappe.session.user, trf_id)
+    return _success({"in_route_trf": payload.get("in_route_trf"), "location": payload}, message=_("Visit started"))
+
+
+@frappe.whitelist(allow_guest=True)
 def get_phlebotomist_map_data(sid=None):
-    """Phase 20 — hub, collection stops, live phlebo location, OSRM route."""
+    """Phase 20 — hub, collection stops, live collector location, Google/OSRM route."""
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
 
@@ -1862,6 +2770,1810 @@ def get_hr_self_service(sid=None):
     from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import get_hr_self_service_payload
 
     return _success(get_hr_self_service_payload(frappe.session.user))
+
+
+def _require_people_hrms_access(sid=None):
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_eligible
+
+    roles = _user_roles()
+    if not is_people_eligible(roles):
+        return _error(_("Not permitted for People HRMS"), 403)
+    return None
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_hrms_dashboard(sid=None):
+    """Phase 90 — People HRMS home KPIs, attendance, leave, payslips, org monitor."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_hrms_dashboard as _dashboard,
+    )
+
+    return _success(_dashboard(frappe.session.user, _user_roles()))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_my_employee_profile(sid=None):
+    """Phase 90 — employee can update their own contact fields from My Profile."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    payload = {}
+    for key in (
+        "phone",
+        "personal_email",
+        "current_address",
+        "permanent_address",
+        "blood_group",
+        "emergency_phone",
+    ):
+        value = _parse_request_value(key)
+        if value is None and key in (frappe.form_dict or {}):
+            value = cstr(frappe.form_dict.get(key) or "")
+        if value is not None:
+            payload[key] = value
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_my_employee_profile as _update,
+    )
+
+    try:
+        return _success(_update(frappe.session.user, payload))
+    except Exception as exc:
+        return _error(cstr(exc) or _("Could not update profile"))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_my_employee_photo(file_name=None, file_data=None, sid=None):
+    """Attach a photo to the signed-in employee's live HRMS Employee.image field."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    file_name = _parse_request_value("file_name", file_name)
+    file_data = _parse_request_value("file_data", file_data)
+    if not file_name or not file_data:
+        return _error(_("File name and file data are required"))
+
+    raw = str(file_data)
+    if raw.startswith("data:") and "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        content = base64.b64decode(raw)
+    except Exception:
+        return _error(_("Invalid file data"))
+    if len(content) > 2 * 1024 * 1024:
+        return _error(_("Photo must be 2 MB or less"))
+
+    ext = (str(file_name).rsplit(".", 1)[-1] or "").lower()
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        return _error(_("Use a JPG or PNG photo"))
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import ensure_employee_for_user
+
+    employee = ensure_employee_for_user(frappe.session.user)
+    if not employee:
+        return _error(_("No employee profile is linked to this login"))
+    if not frappe.get_meta("Employee").has_field("image"):
+        return _error(_("Employee photo field is not available"))
+
+    file_doc = frappe.get_doc(
+        {
+            "doctype": "File",
+            "file_name": f"emp-photo-{employee}.{ext}",
+            "content": content,
+            "is_private": 0,
+            "attached_to_doctype": "Employee",
+            "attached_to_name": employee,
+            "attached_to_field": "image",
+        }
+    )
+    file_doc.insert(ignore_permissions=True)
+    frappe.db.set_value("Employee", employee, "image", file_doc.file_url)
+    frappe.db.commit()
+    return _success(
+        {"photo": file_doc.file_url, "employee": employee},
+        message=_("Photo updated"),
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_employee_checkin(log_type=None, latitude=None, longitude=None, sid=None):
+    """Phase 90 — mark attendance IN/OUT via Employee Checkin (geofenced)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        submit_employee_checkin as _checkin,
+    )
+
+    log_type = _parse_request_value("log_type", log_type) or "IN"
+    latitude = _parse_request_value("latitude", latitude)
+    longitude = _parse_request_value("longitude", longitude)
+    try:
+        row = _checkin(
+            frappe.session.user,
+            log_type,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        return _success({"checkin": row}, message=_("Attendance recorded"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_people_employees(limit=None, department=None, q=None, sid=None):
+    """Phase 90 — manager employee directory (supports q search)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        list_people_employees as _list,
+    )
+
+    limit = _parse_request_value("limit", limit) or 100
+    department = _parse_request_value("department", department)
+    q = _parse_request_value("q", q)
+    try:
+        return _success(_list(_user_roles(), limit=limit, department=department, q=q))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def list_employee_geofences(limit=None, sid=None):
+    """Phase 90 — manager view of employee work geofences."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        list_employee_geofences as _list,
+    )
+
+    limit = _parse_request_value("limit", limit) or 200
+    try:
+        return _success(_list(_user_roles(), limit=limit))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def seed_employee_geofences(force=None, radius_m=None, sid=None):
+    """Phase 90 — assign HQ geofence to all active employees."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        is_people_manager,
+        seed_employee_geofences as _seed,
+    )
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    force = cint(_parse_request_value("force", force) or 0)
+    radius_m = _parse_request_value("radius_m", radius_m)
+    try:
+        return _success(_seed(force=bool(force), radius_m=radius_m), message=_("Geofences seeded"))
+    except Exception as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_geofences(sid=None):
+    """Phase 90 — geofence locations + employee assignment board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_geofences as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_geofence(geofence=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_geofence as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("geofence", geofence))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Geofence saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_people_geofence(geofence=None, employees=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        assign_people_geofence as _asg,
+    )
+
+    emps = _parse_request_value("employees", employees)
+    try:
+        return _success(
+            _asg(_user_roles(), _parse_request_value("geofence", geofence), employees=emps),
+            message=_("Employees assigned"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_employee_geofence(employee=None, settings=None, sid=None):
+    """HR-only — set one employee's geofence site, address, point and radius."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_employee_geofence as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("settings", settings))
+    try:
+        return _success(
+            _save(_user_roles(), _parse_request_value("employee", employee), data),
+            message=_("Employee geofence saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def set_employee_geofence_override(employee=None, enabled=None, reason=None, until=None, sid=None):
+    """HR-only — temporarily allow punches outside the employee's geofence."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        set_employee_geofence_override as _set,
+    )
+
+    on = cint(_parse_request_value("enabled", enabled) or 0)
+    try:
+        return _success(
+            _set(
+                _user_roles(),
+                _parse_request_value("employee", employee),
+                enabled=on,
+                reason=_parse_request_value("reason", reason),
+                until=_parse_request_value("until", until) or None,
+            ),
+            message=_("Geofencing temporarily disabled") if on else _("Geofencing re-enabled"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def geocode_people_geofence_address(address=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        geocode_people_geofence_address as _geo,
+    )
+
+    try:
+        return _success(_geo(_user_roles(), _parse_request_value("address", address)))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_roles(sid=None):
+    """Phase 90 — role catalog, users, portals, and access audit."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_roles as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_role(role=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_role as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("role", role))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Role saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_people_access(access=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        assign_people_access as _asg,
+    )
+
+    data = _people_json_arg(_parse_request_value("access", access))
+    try:
+        return _success(_asg(_user_roles(), data), message=_("Access assigned"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def export_people_roles(kind=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        export_people_roles as _exp,
+    )
+
+    try:
+        return _success(_exp(_user_roles(), kind=_parse_request_value("kind", kind)))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_payroll_workflow(sid=None):
+    """Phase 72/90 — HR Manager payroll workflow status + steps."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        get_people_payroll_workflow as _wf,
+    )
+
+    try:
+        return _success(_wf(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def ensure_people_payroll_assignments(base=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        ensure_people_payroll_assignments as _fn,
+    )
+
+    base = _parse_request_value("base", base) or 35000
+    try:
+        return _success(_fn(_user_roles(), base=base), message=_("Salary structure assignments ensured"))
+    except (frappe.PermissionError, frappe.ValidationError) as exc:
+        return _error(str(exc), 403 if isinstance(exc, frappe.PermissionError) else 400)
+
+
+@frappe.whitelist(allow_guest=True)
+def create_people_payroll_entry(start_date=None, end_date=None, payroll_frequency=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        create_people_payroll_entry as _fn,
+    )
+
+    try:
+        return _success(
+            _fn(
+                _user_roles(),
+                start_date=_parse_request_value("start_date", start_date),
+                end_date=_parse_request_value("end_date", end_date),
+                payroll_frequency=_parse_request_value("payroll_frequency", payroll_frequency)
+                or "Monthly",
+            ),
+            message=_("Payroll Entry created"),
+        )
+    except (frappe.PermissionError, frappe.ValidationError) as exc:
+        return _error(str(exc), 403 if isinstance(exc, frappe.PermissionError) else 400)
+
+
+@frappe.whitelist(allow_guest=True)
+def generate_people_salary_slips(payroll_entry=None, employee=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        generate_people_salary_slips as _fn,
+    )
+
+    try:
+        return _success(
+            _fn(
+                _user_roles(),
+                payroll_entry=_parse_request_value("payroll_entry", payroll_entry),
+                employee=_parse_request_value("employee", employee),
+            ),
+            message=_("Salary slips generated"),
+        )
+    except (frappe.PermissionError, frappe.ValidationError) as exc:
+        return _error(str(exc), 403 if isinstance(exc, frappe.PermissionError) else 400)
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_people_payroll(payroll_entry=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        submit_people_payroll as _fn,
+    )
+
+    try:
+        return _success(
+            _fn(_user_roles(), payroll_entry=_parse_request_value("payroll_entry", payroll_entry)),
+            message=_("Payroll submitted"),
+        )
+    except (frappe.PermissionError, frappe.ValidationError) as exc:
+        return _error(str(exc), 403 if isinstance(exc, frappe.PermissionError) else 400)
+
+
+@frappe.whitelist(allow_guest=True)
+def list_org_salary_slips(limit=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        list_org_salary_slips as _fn,
+    )
+
+    try:
+        return _success(_fn(_user_roles(), limit=_parse_request_value("limit", limit) or 50))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def run_people_payroll_full(start_date=None, end_date=None, sid=None):
+    """One-click HR Manager payroll: assign → entry → slips → submit."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase72_payroll import (
+        run_people_payroll_full as _fn,
+    )
+
+    try:
+        return _success(
+            _fn(
+                _user_roles(),
+                start_date=_parse_request_value("start_date", start_date),
+                end_date=_parse_request_value("end_date", end_date),
+            ),
+            message=_("Payroll run completed"),
+        )
+    except (frappe.PermissionError, frappe.ValidationError) as exc:
+        return _error(str(exc), 403 if isinstance(exc, frappe.PermissionError) else 400)
+
+
+@frappe.whitelist(allow_guest=True)
+def create_people_employee(
+    application=None,
+    full_name=None,
+    email=None,
+    mobile=None,
+    dob=None,
+    gender=None,
+    department=None,
+    designation=None,
+    joining_date=None,
+    salary_offered=None,
+    franchisee=None,
+    sid=None,
+):
+    """Phase 90 — create employee from manual hire or finalize hired Job Applicant."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        create_people_employee as _create,
+    )
+
+    try:
+        row = _create(
+            _user_roles(),
+            application=_parse_request_value("application", application),
+            full_name=_parse_request_value("full_name", full_name),
+            email=_parse_request_value("email", email),
+            mobile=_parse_request_value("mobile", mobile),
+            dob=_parse_request_value("dob", dob),
+            gender=_parse_request_value("gender", gender),
+            department=_parse_request_value("department", department),
+            designation=_parse_request_value("designation", designation),
+            joining_date=_parse_request_value("joining_date", joining_date),
+            salary_offered=_parse_request_value("salary_offered", salary_offered),
+            franchisee=_parse_request_value("franchisee", franchisee),
+        )
+        return _success(row, message=_("Employee record created"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def list_people_departments(sid=None):
+    """Phase 90 — manager department headcounts."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        list_people_departments as _list,
+    )
+
+    try:
+        return _success(_list(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_attendance_register(from_date=None, to_date=None, sid=None):
+    """Phase 90 — manager attendance register (daily status, hours, leave) for a date range."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_attendance_register as _register,
+    )
+
+    try:
+        return _success(_register(_user_roles(), from_date=from_date, to_date=to_date))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def list_people_leave(from_date=None, to_date=None, sid=None):
+    """Phase 90 — manager leave register (applications, review stages, balances) for a date range."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        list_people_leave as _list,
+    )
+
+    try:
+        return _success(_list(_user_roles(), from_date=from_date, to_date=to_date))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def act_people_leave(name=None, action=None, remark=None, sid=None):
+    """Phase 90 — forward / return / approve / reject a leave application."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        act_people_leave as _act,
+    )
+
+    try:
+        return _success(_act(_user_roles(), name, action, remark=remark))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_people_leave_request(
+    employee=None,
+    leave_type=None,
+    from_date=None,
+    to_date=None,
+    half_day=0,
+    half_day_date=None,
+    reason=None,
+    sid=None,
+):
+    """Phase 90 — HR raises a leave application on behalf of an employee."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        create_people_leave_request as _create,
+    )
+
+    try:
+        row = _create(
+            _user_roles(),
+            employee,
+            leave_type,
+            from_date,
+            to_date,
+            half_day=half_day,
+            half_day_date=half_day_date,
+            reason=reason,
+        )
+        return _success(row, message=_("Leave request created"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_payroll_register(month=None, sid=None):
+    """Phase 90 — manager payroll register for one month (slips, KPIs, steps, statutory)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_payroll_register as _register,
+    )
+
+    try:
+        return _success(_register(_user_roles(), month=month))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def process_people_payroll(month=None, employees=None, sid=None):
+    """Phase 90 — calculate draft salary slips for a batch of employees."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        process_people_payroll as _process,
+    )
+
+    try:
+        return _success(_process(_user_roles(), month=month, employees=employees))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def approve_people_payroll(month=None, slips=None, sid=None):
+    """Phase 90 — approve (submit) a batch of draft salary slips."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        approve_people_payroll as _approve,
+    )
+
+    try:
+        return _success(_approve(_user_roles(), month=month, slips=slips))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_performance(from_date=None, to_date=None, sid=None):
+    """Phase 90 — manager performance board (hours, attendance, manager rating)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_performance as _performance,
+    )
+
+    try:
+        return _success(_performance(_user_roles(), from_date=from_date, to_date=to_date))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_performance_review(employee=None, period=None, rating=None, remarks=None, sid=None):
+    """Phase 90 — save the monthly manager rating for an employee."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_performance_review as _save,
+    )
+
+    try:
+        row = _save(_user_roles(), employee, period=period, rating=rating, remarks=remarks)
+        return _success(row, message=_("Rating saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_onboarding(from_date=None, to_date=None, sid=None):
+    """Phase 90 — manager new-hire onboarding board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_onboarding as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles(), from_date=from_date, to_date=to_date))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+def _people_json_arg(value):
+    if value in (None, ""):
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, (dict, list)) else {}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_training(sid=None):
+    """Phase 90 — manager training & development board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_training as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_training_material(material=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_training_material as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("material", material))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Training material saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_training_plan(plan=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_training_plan as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("plan", plan))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Learning plan saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_training_category(title=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_training_category as _save,
+    )
+
+    try:
+        return _success(_save(_user_roles(), title), message=_("Category saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_people_training(material=None, plan=None, scope=None, department=None, designation=None, employees=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        assign_people_training as _assign,
+    )
+
+    emps = _parse_request_value("employees", employees)
+    try:
+        result = _assign(
+            _user_roles(),
+            material=_parse_request_value("material", material),
+            plan=_parse_request_value("plan", plan),
+            scope=_parse_request_value("scope", scope) or "employees",
+            department=_parse_request_value("department", department),
+            designation=_parse_request_value("designation", designation),
+            employees=emps,
+        )
+        return _success(result, message=_("Training assigned"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_career(sid=None):
+    """Phase 90 — manager career & growth board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_career as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_manpower_request(manpower=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_manpower_request as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("manpower", manpower))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Manpower request saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_manpower_request(manpower=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_manpower_request as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(_user_roles(), _parse_request_value("manpower", manpower), _parse_request_value("status", status)),
+            message=_("Request updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_documents(sid=None):
+    """Phase 90 — manager documents vault."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_documents as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_document(document=None, file_name=None, file_data=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_document as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("document", document))
+    try:
+        return _success(
+            _save(
+                _user_roles(),
+                data,
+                file_name=_parse_request_value("file_name", file_name),
+                file_data=_parse_request_value("file_data", file_data),
+            ),
+            message=_("Document saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_document(document=None, status=None, touch=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_document as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(
+                _user_roles(),
+                _parse_request_value("document", document),
+                status=_parse_request_value("status", status),
+                touch=_parse_request_value("touch", touch),
+            ),
+            message=_("Document updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_document_folder(folder=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_document_folder as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("folder", folder))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Folder created"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def generate_people_letter(template=None, employee=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        generate_people_letter as _gen,
+    )
+
+    try:
+        return _success(
+            _gen(_user_roles(), _parse_request_value("template", template), _parse_request_value("employee", employee)),
+            message=_("Letter generated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_document_request(doc_request=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_document_request as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("doc_request", doc_request))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Request submitted"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_document_request(doc_request=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_document_request as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(_user_roles(), _parse_request_value("doc_request", doc_request), _parse_request_value("status", status)),
+            message=_("Request updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_policies(sid=None):
+    """Phase 90 — HR policies handbook."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_policies as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_policy(policy=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_policy as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("policy", policy))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Policy saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_policy(policy=None, status=None, touch=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_policy as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(
+                _user_roles(),
+                _parse_request_value("policy", policy),
+                status=_parse_request_value("status", status),
+                touch=_parse_request_value("touch", touch),
+            ),
+            message=_("Policy updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_policy_category(category=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_policy_category as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("category", category))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Category created"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_assets(sid=None):
+    """Phase 90 — employee assets desk."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_assets as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_asset(asset=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_asset as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("asset", asset))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Asset saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_asset(asset=None, status=None, action=None, employee=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_asset as _upd,
+    )
+
+    emp = _people_json_arg(_parse_request_value("employee", employee)) if employee else {}
+    try:
+        return _success(
+            _upd(
+                _user_roles(),
+                _parse_request_value("asset", asset),
+                status=_parse_request_value("status", status),
+                action=_parse_request_value("action", action),
+                employee=emp,
+            ),
+            message=_("Asset updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_asset_category(category=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_asset_category as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("category", category))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Category created"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_asset_request(asset_request=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_asset_request as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("asset_request", asset_request))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Request submitted"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_asset_request(asset_request=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_asset_request as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(
+                _user_roles(),
+                _parse_request_value("asset_request", asset_request),
+                _parse_request_value("status", status),
+            ),
+            message=_("Request updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_announcements(sid=None):
+    """Phase 90 — HR announcements board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_announcements as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_announcement(announcement=None, file_name=None, file_data=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_announcement as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("announcement", announcement))
+    try:
+        return _success(
+            _save(
+                _user_roles(),
+                data,
+                file_name=_parse_request_value("file_name", file_name),
+                file_data=_parse_request_value("file_data", file_data),
+            ),
+            message=_("Announcement saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_announcement(announcement=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_announcement as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(_user_roles(), _parse_request_value("announcement", announcement), _parse_request_value("status", status)),
+            message=_("Announcement updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_calendar(sid=None):
+    """Phase 90 — HR calendar board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_calendar as _board,
+    )
+
+    try:
+        return _success(_board(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_people_calendar_event(event=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        save_people_calendar_event as _save,
+    )
+
+    data = _people_json_arg(_parse_request_value("event", event))
+    try:
+        return _success(_save(_user_roles(), data), message=_("Event saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_calendar_event(event=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_calendar_event as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(_user_roles(), _parse_request_value("event", event), _parse_request_value("status", status)),
+            message=_("Event updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_reports(from_date=None, to_date=None, department=None, sid=None):
+    """Phase 90 — HR reports board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_reports as _board,
+    )
+
+    try:
+        return _success(
+            _board(
+                _user_roles(),
+                from_date=_parse_request_value("from_date", from_date),
+                to_date=_parse_request_value("to_date", to_date),
+                department=_parse_request_value("department", department),
+            )
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def export_people_report(report=None, from_date=None, to_date=None, department=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        export_people_report as _exp,
+    )
+
+    try:
+        return _success(
+            _exp(
+                _user_roles(),
+                _parse_request_value("report", report),
+                from_date=_parse_request_value("from_date", from_date),
+                to_date=_parse_request_value("to_date", to_date),
+                department=_parse_request_value("department", department),
+            ),
+            message=_("Report ready"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_people_analytics(from_date=None, to_date=None, department=None, sid=None):
+    """Phase 90 — HR analytics board."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        get_people_analytics as _board,
+    )
+
+    try:
+        return _success(
+            _board(
+                _user_roles(),
+                from_date=_parse_request_value("from_date", from_date),
+                to_date=_parse_request_value("to_date", to_date),
+                department=_parse_request_value("department", department),
+            )
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def export_people_analytics(kind=None, from_date=None, to_date=None, department=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        export_people_analytics as _exp,
+    )
+
+    try:
+        return _success(
+            _exp(
+                _user_roles(),
+                _parse_request_value("kind", kind),
+                from_date=_parse_request_value("from_date", from_date),
+                to_date=_parse_request_value("to_date", to_date),
+                department=_parse_request_value("department", department),
+            ),
+            message=_("Analytics ready"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_people_training_assignment(assignment=None, status=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        update_people_training_assignment as _upd,
+    )
+
+    try:
+        return _success(
+            _upd(_user_roles(), _parse_request_value("assignment", assignment), _parse_request_value("status", status)),
+            message=_("Progress updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_people_designations(sid=None):
+    """Phase 90 — manager designation headcounts."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        list_people_designations as _list,
+    )
+
+    try:
+        return _success(_list(_user_roles()))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def setup_phase92_hr_policy_masters(sid=None):
+    """Phase 92 — grades, components, structures, print formats (admin)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        setup_phase92,
+    )
+
+    return _success(setup_phase92())
+
+
+@frappe.whitelist(allow_guest=True)
+def list_hr_policy_snippets(sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        list_hr_policies,
+    )
+
+    return _success({"policies": list_hr_policies()})
+
+
+@frappe.whitelist(allow_guest=True)
+def list_hr_grades_master(sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        list_hr_grades,
+    )
+
+    return _success(list_hr_grades())
+
+
+@frappe.whitelist(allow_guest=True)
+def list_hr_designations_master(sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        list_hr_designations_master as _list,
+    )
+
+    return _success(_list())
+
+
+@frappe.whitelist(allow_guest=True)
+def get_appointment_letter_html(employee=None, letter_type=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        get_appointment_letter_html as _html,
+    )
+
+    employee = _parse_request_value("employee", employee)
+    letter_type = _parse_request_value("letter_type", letter_type) or "field"
+    try:
+        return _success(_html(employee, letter_type))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_employee_checklists(employee=None, kind=None, limit=None, sid=None):
+    """Phase 73 — list HEC Onboarding / Offboarding ToDos."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+        is_people_manager,
+        _employee_for_user,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import (
+        list_employee_checklists as _list,
+    )
+
+    employee = _parse_request_value("employee", employee)
+    kind = _parse_request_value("kind", kind)
+    limit = _parse_request_value("limit", limit) or 100
+    roles = _user_roles()
+    if not is_people_manager(roles):
+        mine = _employee_for_user(frappe.session.user, create=False)
+        if not mine:
+            return _success({"todos": [], "count": 0})
+        employee = mine
+    try:
+        return _success(_list(employee=employee or None, kind=kind or None, limit=limit))
+    except Exception as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def start_employee_checklist(employee=None, kind=None, sid=None):
+    """Phase 73 — seed onboarding or offboarding checklist ToDos."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import (
+        api_start_employee_checklist as _start,
+    )
+
+    employee = _parse_request_value("employee", employee)
+    kind = _parse_request_value("kind", kind) or "onboarding"
+    try:
+        return _success(_start(employee=employee, kind=kind))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def start_employee_separation(employee=None, relieving_date=None, mark_left=None, sid=None):
+    """Phase 73 — set relieving date + offboarding checklist (optional Left)."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import (
+        start_employee_separation as _sep,
+    )
+
+    employee = _parse_request_value("employee", employee)
+    relieving_date = _parse_request_value("relieving_date", relieving_date)
+    mark_left_raw = _parse_request_value("mark_left", mark_left)
+    mark_left_flag = str(mark_left_raw or "0").lower() in ("1", "true", "yes")
+    try:
+        return _success(
+            _sep(
+                employee,
+                relieving_date=relieving_date,
+                disable_user=mark_left_flag,
+                mark_left=mark_left_flag,
+            )
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def complete_checklist_todo(todo_name=None, sid=None):
+    """Phase 73 — close an onboarding/offboarding ToDo."""
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import (
+        complete_checklist_todo as _close,
+    )
+
+    todo_name = _parse_request_value("todo_name", todo_name)
+    try:
+        return _success(_close(todo_name))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_franchise_team_attendance(sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        get_franchise_team_attendance as _fn,
+    )
+
+    try:
+        return _success(_fn(frappe.session.user))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_franchise_team_leave(sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        get_franchise_team_leave as _fn,
+    )
+
+    try:
+        return _success(_fn(frappe.session.user))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_employee_hr_band(employee=None, designation=None, grade=None, franchisee=None, sid=None):
+    denied = _require_people_hrms_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import is_people_manager
+
+    if not is_people_manager(_user_roles()):
+        return _error(_("HR manager access required"), 403)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+        assign_employee_band,
+    )
+
+    employee = _parse_request_value("employee", employee)
+    designation = _parse_request_value("designation", designation)
+    grade = _parse_request_value("grade", grade)
+    franchisee = _parse_request_value("franchisee", franchisee)
+    return _success(
+        assign_employee_band(employee, designation=designation, grade=grade, franchisee=franchisee)
+    )
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2162,6 +4874,339 @@ def get_b2b_statements(sid=None, limit=None):
 
 
 @frappe.whitelist(allow_guest=True)
+def get_b2b_foco_centres(sid=None):
+    """Phase 111 — mapped FOFO centres for the logged-in FOCO partner."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+        foco_centre_tab,
+    )
+
+    franchisee_id = resolve_franchisee_for_user(frappe.session.user)
+    return _success(foco_centre_tab(franchisee_id))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_b2b_fofo_commission(sid=None, limit=None):
+    """Phase 111 — FOFO commission statement for the logged-in FOCO partner."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+        foco_fofo_commission_statement,
+    )
+
+    franchisee_id = resolve_franchisee_for_user(frappe.session.user)
+    return _success(foco_fofo_commission_statement(franchisee_id, limit=limit or 200))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_partner_circuit(sid=None):
+    """Phase 126 — my partner tier, mapped Master FOCO / lab and services."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        partner_circuit,
+        vector_bill_to_options,
+        vector_entry_public,
+    )
+
+    fid = resolve_franchisee_for_user(frappe.session.user)
+    payload = partner_circuit(fid)
+    payload["vector_entry"] = vector_entry_public(fid)
+    payload["bill_to_vectors"] = vector_bill_to_options(fid)
+    return _success(payload)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_partner_vector_bills(sid=None):
+    """Phase 126 — Vector B2B bills: receivable (as entry partner) and payable (as Vector), settled offline."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        partner_vector_bills_payload,
+    )
+
+    return _success(partner_vector_bills_payload(resolve_franchisee_for_user(frappe.session.user)))
+
+
+@frappe.whitelist(allow_guest=True)
+def settle_partner_vector_bill(bill=None, remarks=None, sid=None):
+    """Phase 126 — entry partner marks a Vector B2B bill settled (paid offline)."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        settle_partner_vector_bill as _settle,
+    )
+
+    try:
+        return _success(
+            _settle(
+                resolve_franchisee_for_user(frappe.session.user),
+                _parse_request_value("bill", bill),
+                roles=_user_roles(),
+                remarks=_parse_request_value("remarks", remarks),
+            ),
+            message=_("Vector bill settled"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_mapped_vectors(sid=None):
+    """Phase 126 — Vectors that enter the circuit through the logged-in FOCO (Bill to Vector choices)."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import vector_bill_to_options
+
+    return _success({"vectors": vector_bill_to_options(resolve_franchisee_for_user(frappe.session.user))})
+
+
+@frappe.whitelist(allow_guest=True)
+def map_vector_entry(vector=None, entry_partner=None, sid=None):
+    """Phase 126 — admin: map a Vector to its FOCO / Master FOCO / lab entry partner (empty clears)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        map_vector_entry as _map,
+    )
+
+    try:
+        return _success(
+            _map(_user_roles(), _parse_request_value("vector", vector), _parse_request_value("entry_partner", entry_partner)),
+            message=_("Vector mapping saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_partner_earnings(sid=None, limit=None):
+    """Phase 126 — business earnings: deposit debits and pending / posted MF and lab shares."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        partner_earnings_payload,
+    )
+
+    franchisee_id = resolve_franchisee_for_user(frappe.session.user)
+    return _success(partner_earnings_payload(franchisee_id, limit=cint(limit) or 200))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_partner_shipments(sid=None):
+    """Phase 126 — samples awaiting accession, outgoing icebox shipments and incoming shipments to my lab."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        partner_shipments_payload,
+    )
+
+    return _success(partner_shipments_payload(resolve_franchisee_for_user(frappe.session.user)))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_partner_shipment(shipment=None, sid=None):
+    """Phase 126 — Master / Orange FOCO accessions circuit samples and records the icebox shipment."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        create_partner_shipment as _create,
+    )
+
+    data = _parse_request_value("shipment", shipment)
+    if isinstance(data, str):
+        data = json.loads(data or "{}")
+    try:
+        return _success(
+            _create(resolve_franchisee_for_user(frappe.session.user), data or {}),
+            message=_("Shipment recorded"),
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def receive_partner_shipment(shipment=None, sid=None):
+    """Phase 126 — receiving lab confirms the icebox arrived (credits the Master FOCO share)."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import resolve_franchisee_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        receive_partner_shipment as _receive,
+    )
+
+    try:
+        return _success(
+            _receive(
+                resolve_franchisee_for_user(frappe.session.user),
+                _parse_request_value("shipment", shipment),
+                roles=_user_roles(),
+            ),
+            message=_("Shipment received"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def map_partner_circuit(circuit=None, sid=None):
+    """Phase 126 — admin / onboarding: set tier, mapping, own-lab and service flags."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        map_partner_circuit as _map,
+    )
+
+    data = _parse_request_value("circuit", circuit)
+    if isinstance(data, str):
+        data = json.loads(data or "{}")
+    try:
+        return _success(_map(_user_roles(), data or {}), message=_("Partner circuit saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+def _pricing_chart_call(fn, *args, **kwargs):
+    try:
+        return _success(fn(_user_roles(), *args, **kwargs))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_partner_pricing_chart(configured_only=None, q=None, sid=None):
+    """Phase 127 — master pricing chart: tests × (FOCO / Master FOCO / Orange FOCO billing + fee) + MRP."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase127_pricing_chart import pricing_chart
+
+    return _pricing_chart_call(
+        pricing_chart,
+        configured_only=cint(_parse_request_value("configured_only", configured_only) or 0),
+        q=_parse_request_value("q", q),
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def save_partner_pricing_rows(rows=None, sid=None):
+    """Phase 127 — save edited chart rows (all six tier values or none, plus MRP)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase127_pricing_chart import apply_pricing_rows
+
+    data = _parse_request_value("rows", rows)
+    if isinstance(data, str):
+        data = json.loads(data or "[]")
+    return _pricing_chart_call(apply_pricing_rows, data or [], dry_run=0)
+
+
+@frappe.whitelist(allow_guest=True)
+def export_partner_pricing(fmt=None, configured_only=None, sid=None):
+    """Phase 127 — download the chart as Excel (xlsx) or PDF (base64 payload)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase127_pricing_chart import export_pricing
+
+    return _pricing_chart_call(
+        export_pricing,
+        fmt=_parse_request_value("fmt", fmt) or "xlsx",
+        configured_only=cint(_parse_request_value("configured_only", configured_only) or 0),
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def import_partner_pricing(filename=None, content=None, dry_run=None, sid=None):
+    """Phase 127 — import the chart from an Excel / CSV file in the export layout (dry_run=1 validates only)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase127_pricing_chart import import_pricing
+
+    return _pricing_chart_call(
+        import_pricing,
+        _parse_request_value("filename", filename),
+        _parse_request_value("content", content),
+        dry_run=cint(_parse_request_value("dry_run", dry_run) or 0),
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def save_partner_tier_rate(rate=None, sid=None):
+    """Phase 126 — admin: upsert a per-test tier billing rate / platform fee."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        save_partner_tier_rate as _save,
+    )
+
+    data = _parse_request_value("rate", rate)
+    if isinstance(data, str):
+        data = json.loads(data or "{}")
+    try:
+        return _success(_save(_user_roles(), data or {}), message=_("Tier rate saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_partner_tier_rates(item_code=None, sid=None):
+    """Phase 126 — tier rates (all partners may read)."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
+        list_partner_tier_rates as _list,
+    )
+
+    return _success({"rates": _list(_parse_request_value("item_code", item_code) or None)})
+
+
+@frappe.whitelist(allow_guest=True)
+def list_active_foco_centres(sid=None):
+    """Active FOCO centres for FOFO onboarding (Under Which FOCO)."""
+    denied = _require_b2b_access(sid)
+    if denied:
+        # Desk / System Manager may also list FOCOs without a hub login.
+        if "System Manager" not in frappe.get_roles() and "Health System Admin" not in frappe.get_roles():
+            return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+        list_active_foco_centres as _list,
+    )
+
+    return _success({"centres": _list()})
+
+
+@frappe.whitelist(allow_guest=True)
 def get_b2b_wallet(sid=None, limit=None):
     """Phase 23 — franchisee prepaid wallet balance and ledger."""
     denied = _require_b2b_access(sid)
@@ -2173,37 +5218,88 @@ def get_b2b_wallet(sid=None, limit=None):
     )
 
     franchisee_id = resolve_franchisee_for_user(frappe.session.user)
-    return _success(get_b2b_wallet_payload(franchisee_id, limit=limit or 30))
+    payload = get_b2b_wallet_payload(franchisee_id, limit=limit or 30)
+    payload["topup_requests"] = _wallet_topup_requests(franchisee_id)
+    return _success(payload)
+
+
+def _wallet_topup_requests(franchisee_id, limit=10):
+    if not franchisee_id or not frappe.db.exists("DocType", "Franchisee Wallet Topup Request"):
+        return []
+    return frappe.get_all(
+        "Franchisee Wallet Topup Request",
+        filters={"franchisee": franchisee_id},
+        fields=["name", "amount", "payment_reference", "payment_mode", "status", "creation", "review_remarks"],
+        order_by="creation desc",
+        limit_page_length=limit,
+    )
 
 
 @frappe.whitelist(allow_guest=True)
-def recharge_b2b_wallet(sid=None, amount=None, payment_reference=None):
-    """Phase 23 — credit franchisee wallet (Razorpay hook can gate this later)."""
+def recharge_b2b_wallet(sid=None, amount=None, payment_reference=None, payment_mode=None, remarks=None):
+    """Phase 23 / 121 — offline bank/UPI top-up: files a request that finance approves before the wallet is credited."""
     denied = _require_b2b_access(sid)
     if denied:
         return denied
     from health_ecosystem_core.health_ecosystem_core.clinical_phase23 import (
-        credit_b2b_wallet,
+        MIN_WALLET_RECHARGE,
         resolve_franchisee_for_user,
     )
 
     amount = _parse_request_value("amount", amount)
-    payment_reference = _parse_request_value("payment_reference", payment_reference)
+    payment_reference = (_parse_request_value("payment_reference", payment_reference) or "").strip()
+    payment_mode = (_parse_request_value("payment_mode", payment_mode) or "Bank Transfer").strip()
+    remarks = (_parse_request_value("remarks", remarks) or "").strip()
     try:
         amount_f = float(amount)
     except (TypeError, ValueError):
         return _error(_("Valid recharge amount is required"))
+    if amount_f < MIN_WALLET_RECHARGE:
+        return _error(_("Minimum wallet recharge is ₹{0}").format(MIN_WALLET_RECHARGE))
+    if len(payment_reference) < 6:
+        return _error(_("Enter the bank / UPI transaction reference (UTR) of your transfer"))
+    if payment_mode not in ("Bank Transfer", "UPI", "Cheque", "Cash"):
+        payment_mode = "Bank Transfer"
 
     franchisee_id = resolve_franchisee_for_user(frappe.session.user)
+    if not franchisee_id:
+        return _error(_("No franchisee profile linked to this account"), 403)
+    if frappe.db.exists(
+        "Franchisee Wallet Topup Request",
+        {"payment_reference": payment_reference, "status": ("in", ("Pending", "Approved"))},
+    ) or frappe.db.exists(
+        "Franchisee Wallet Transaction",
+        {"payment_reference": payment_reference, "transaction_type": "Recharge"},
+    ):
+        return _error(_("This transaction reference has already been submitted"))
+
+    previous_user = frappe.session.user
     try:
-        row = credit_b2b_wallet(
-            franchisee_id,
-            amount_f,
-            payment_reference=payment_reference,
-        )
-        return _success(row, message=_("Wallet recharged"))
-    except frappe.ValidationError as exc:
-        return _error(str(exc))
+        frappe.set_user("Administrator")
+        request_doc = frappe.get_doc(
+            {
+                "doctype": "Franchisee Wallet Topup Request",
+                "franchisee": franchisee_id,
+                "amount": amount_f,
+                "payment_reference": payment_reference,
+                "payment_mode": payment_mode,
+                "requested_by": previous_user,
+                "remarks": remarks,
+            }
+        ).insert(ignore_permissions=True)
+        frappe.db.commit()
+    finally:
+        frappe.set_user(previous_user)
+
+    return _success(
+        {
+            "request_id": request_doc.name,
+            "status": "Pending",
+            "amount": amount_f,
+            "pending_review": True,
+        },
+        message=_("Top-up request submitted. Your wallet is credited once finance confirms the transfer."),
+    )
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2282,6 +5378,7 @@ def create_b2b_wallet_razorpay_order(sid=None, amount=None):
 
     order_id = order_data.get("id")
     stash_wallet_razorpay_order(order_id, franchisee_id, amount_value)
+    _record_payment_intent("b2b_wallet", order_id, amount_value, party_type="Franchisee Profile", party=franchisee_id)
     return _success(
         {
             "order_id": order_id,
@@ -2293,6 +5390,30 @@ def create_b2b_wallet_razorpay_order(sid=None, amount=None):
         },
         message="Razorpay wallet order created",
     )
+
+
+def _confirm_wallet_razorpay_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature, amount):
+    """Signature + Razorpay lookup for server-created wallet orders. Returns an error response or None."""
+    if _razorpay_test_mode():
+        return None
+    from health_ecosystem_core.health_ecosystem_core.clinical_razorpay import confirm_payment, signature_valid
+
+    if not razorpay_signature:
+        return _error(_("Missing payment signature"))
+    if not signature_valid(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+        return _error(_("Payment signature verification failed"), 403)
+    check = confirm_payment(
+        razorpay_order_id,
+        razorpay_payment_id,
+        expected_amount_paise=int(round(flt(amount) * 100)),
+    )
+    if not check.get("ok"):
+        frappe.log_error(
+            title="wallet razorpay verify rejected",
+            message=f"{razorpay_order_id} {razorpay_payment_id}: {check.get('reason')}",
+        )
+        return _error(_("This payment does not match the wallet top-up. Please contact support."), 403)
+    return None
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2319,7 +5440,7 @@ def verify_b2b_wallet_razorpay_payment(
     if not razorpay_order_id or not razorpay_payment_id:
         return _error(_("Missing payment verification fields"))
 
-    stashed = load_wallet_razorpay_order(razorpay_order_id)
+    stashed = load_wallet_razorpay_order(razorpay_order_id) or _wallet_stash_from_intent(razorpay_order_id, "b2b_wallet")
     if not stashed:
         return _error(_("Wallet order expired or not found"))
 
@@ -2330,20 +5451,9 @@ def verify_b2b_wallet_razorpay_payment(
     if franchisee_id != resolve_franchisee_for_user(frappe.session.user):
         return _error(_("This wallet order does not belong to you"), 403)
 
-    creds = _get_site_api_credentials()
-    key_secret = creds.get("razorpay_key_secret")
-    if not _razorpay_test_mode():
-        if not key_secret:
-            return _error(_("Razorpay secret not configured on server"))
-        if not razorpay_signature:
-            return _error(_("Missing payment signature"))
-        expected = hmac.new(
-            key_secret.encode("utf-8"),
-            f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(expected, razorpay_signature):
-            return _error(_("Payment signature verification failed"), 403)
+    denied = _confirm_wallet_razorpay_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature, amount)
+    if denied:
+        return denied
 
     previous_user = frappe.session.user
     try:
@@ -2351,6 +5461,7 @@ def verify_b2b_wallet_razorpay_payment(
         row = complete_wallet_razorpay_credit(
             franchisee_id, amount, razorpay_payment_id, order_id=razorpay_order_id
         )
+        _mark_payment_intent(razorpay_order_id, razorpay_payment_id, "Checkout")
         frappe.db.commit()
     finally:
         frappe.set_user(previous_user)
@@ -2363,12 +5474,16 @@ def create_b2b_walk_in_order(
     patient_name=None,
     patient_phone=None,
     age=None,
+    age_months=None,
+    age_days=None,
     gender=None,
     item_code=None,
+    item_codes=None,
+    discount_amount=None,
     payment_method=None,
     sid=None,
 ):
-    """Phase 23 — franchisee walk-in lab order (patient pays MRP at hub)."""
+    """Phase 23 — franchisee walk-in lab order (patient pays MRP at hub). Supports multi-test bills."""
     denied = _require_b2b_access(sid)
     if denied:
         return denied
@@ -2378,12 +5493,17 @@ def create_b2b_walk_in_order(
     patient_name = _parse_request_value("patient_name", patient_name)
     patient_phone = _parse_request_value("patient_phone", patient_phone)
     age = _parse_request_value("age", age)
+    age_months = _parse_request_value("age_months", age_months)
+    age_days = _parse_request_value("age_days", age_days)
     gender = _parse_request_value("gender", gender)
     item_code = _parse_request_value("item_code", item_code)
+    item_codes = _parse_request_value("item_codes", item_codes)
+    discount_amount = _parse_request_value("discount_amount", discount_amount)
     payment_method = _parse_request_value("payment_method", payment_method)
 
-    if not all([patient_name, patient_phone, age, gender, item_code]):
-        return _error(_("patient_name, patient_phone, age, gender, and item_code are required"))
+    has_items = bool(item_codes or item_code)
+    if not all([patient_name, patient_phone, gender, has_items]):
+        return _error(_("patient_name, patient_phone, gender, and at least one lab test are required"))
 
     try:
         row = _create(
@@ -2394,6 +5514,10 @@ def create_b2b_walk_in_order(
             gender,
             item_code,
             payment_method=payment_method,
+            item_codes=item_codes,
+            discount_amount=discount_amount,
+            age_months=age_months,
+            age_days=age_days,
         )
         return _success(row, message=_("Walk-in order created"))
     except frappe.ValidationError as exc:
@@ -2412,13 +5536,44 @@ def _require_lab_ops_access(sid=None):
 
 @frappe.whitelist(allow_guest=True)
 def get_lab_reagent_dashboard(sid=None):
-    """Phase 24 — open batches, low-stock alerts, reagent rules."""
+    """Phase 24 — open batches, reorder alerts, reagent + consumable inventory."""
     denied = _require_lab_ops_access(sid)
     if denied:
         return denied
     from health_ecosystem_core.health_ecosystem_core.clinical_phase24 import get_reagent_dashboard_payload
 
     return _success(get_reagent_dashboard_payload(frappe.session.user))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_mapped_reagent(
+    sid=None,
+    reagent_name=None,
+    lab_test_item=None,
+    parameter_code=None,
+    tests_per_consumption=None,
+    safety_stock=None,
+    reagent_item=None,
+):
+    """Create a reagent Item mapped to a test parameter (Lab Test Reagent Rule)."""
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase24 import create_mapped_reagent as _create
+
+    try:
+        row = _create(
+            frappe.session.user,
+            _parse_request_value("reagent_name", reagent_name),
+            _parse_request_value("lab_test_item", lab_test_item),
+            _parse_request_value("parameter_code", parameter_code),
+            tests_per_consumption=_parse_request_value("tests_per_consumption", tests_per_consumption) or 1,
+            safety_stock=_parse_request_value("safety_stock", safety_stock) or 10,
+            reagent_item=_parse_request_value("reagent_item", reagent_item),
+        )
+        return _success(row, message=_("Reagent mapped to parameter"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2481,6 +5636,66 @@ def open_lab_reagent_batch(sid=None, batch_id=None):
         return _error(str(exc))
 
 
+@frappe.whitelist(allow_guest=True)
+def register_lab_consumable_batch(
+    sid=None,
+    consumable_item=None,
+    lot_number=None,
+    units_per_pack=None,
+    expiry_date=None,
+    franchisee_id=None,
+    remarks=None,
+):
+    """Register a sealed consumable pack (vials, pads, gloves, …)."""
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase24 import register_consumable_batch
+
+    consumable_item = _parse_request_value("consumable_item", consumable_item)
+    lot_number = _parse_request_value("lot_number", lot_number)
+    units_per_pack = _parse_request_value("units_per_pack", units_per_pack)
+    expiry_date = _parse_request_value("expiry_date", expiry_date)
+    franchisee_id = _parse_request_value("franchisee_id", franchisee_id)
+    remarks = _parse_request_value("remarks", remarks)
+
+    if not all([consumable_item, lot_number, units_per_pack]):
+        return _error(_("consumable_item, lot_number, and units_per_pack are required"))
+
+    try:
+        row = register_consumable_batch(
+            frappe.session.user,
+            consumable_item,
+            lot_number,
+            units_per_pack,
+            expiry_date=expiry_date,
+            franchisee_id=franchisee_id,
+            remarks=remarks,
+        )
+        return _success(row, message=_("Consumable batch registered"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def open_lab_consumable_batch(sid=None, batch_id=None):
+    """Open a sealed consumable pack."""
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase24 import open_consumable_batch
+
+    batch_id = _parse_request_value("batch_id", batch_id)
+    if not batch_id:
+        return _error(_("batch_id is required"))
+
+    try:
+        row = open_consumable_batch(frappe.session.user, batch_id)
+        return _success(row, message=_("Consumable pack opened"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
 def _require_sales_access(sid=None):
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
@@ -2496,9 +5711,57 @@ def get_sales_portal(sid=None):
     denied = _require_sales_access(sid)
     if denied:
         return denied
-    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import get_sales_portal_payload
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import (
+            ensure_hec_module_def,
+            get_sales_portal_payload,
+        )
 
-    return _success(get_sales_portal_payload(frappe.session.user))
+        ensure_hec_module_def()
+        return _success(get_sales_portal_payload(frappe.session.user))
+    except Exception as exc:
+        frappe.log_error(title="get_sales_portal", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load sales portal"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_profile_dashboard(sid=None, seed_if_missing=1):
+    """REACH user Profile dashboard — KPIs, ERP employee, CTC/target/expenses."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ensure_hec_module_def
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25_sales_profile import (
+            get_sales_profile_dashboard as _dashboard,
+        )
+
+        ensure_hec_module_def()
+        seed = str(seed_if_missing or "1").lower() not in ("0", "false", "no")
+        return _success(_dashboard(frappe.session.user, seed_if_missing=seed))
+    except Exception as exc:
+        frappe.log_error(title="get_sales_profile_dashboard", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load sales profile dashboard"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ensure_reach_sales_profiles_seed(sid=None):
+    """Admin/HMAC-friendly seed for all active REACH sales profiles."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25_sales_profile import (
+            ensure_reach_profiles_seed_all,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import is_sales_manager
+
+        if not is_sales_manager(frappe.session.user) and "System Manager" not in frappe.get_roles(frappe.session.user):
+            return _error(_("Only sales managers can seed all REACH profiles"), 403)
+        return _success(ensure_reach_profiles_seed_all(), message=_("REACH profiles seeded"))
+    except Exception as exc:
+        frappe.log_error(title="ensure_reach_sales_profiles_seed", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to seed REACH profiles"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2520,7 +5783,8 @@ def create_sales_lead(sid=None, **kwargs):
 
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "lead_name", "company_name", "contact_person", "phone", "email",
-        "address", "city", "state", "latitude", "longitude", "status", "notes",
+        "address", "city", "district", "subdivision", "pincode", "state",
+        "latitude", "longitude", "status", "notes", "lead_source",
     )}
     if not data.get("lead_name") or not data.get("phone"):
         return _error(_("lead_name and phone are required"))
@@ -2529,6 +5793,32 @@ def create_sales_lead(sid=None, **kwargs):
         return _success({"lead_id": lead_id}, message=_("Lead created"))
     except frappe.ValidationError as exc:
         return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def update_sales_lead(sid=None, lead_id=None, **kwargs):
+    """REACH Flutter / web: update lead status and contact fields."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import update_sales_lead as _update
+
+    lead_id = _parse_request_value("lead_id", lead_id) or _parse_request_value("name", kwargs.get("name"))
+    data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
+        "lead_name", "company_name", "contact_person", "phone", "email",
+        "address", "city", "district", "subdivision", "pincode", "state",
+        "latitude", "longitude", "status", "notes", "lead_source",
+    )}
+    try:
+        row = _update(frappe.session.user, lead_id, data)
+        return _success(row, message=_("Lead updated"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="update_sales_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update lead"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2541,6 +5831,7 @@ def log_sales_visit(sid=None, **kwargs):
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "lead_id", "franchisee_id", "visit_date", "visit_time", "latitude", "longitude",
         "purpose", "outcome", "duration_minutes", "notes", "lead_status",
+        "visit_id", "photo_base64", "photo_filename",
     )}
     try:
         visit_id = log_field_visit(frappe.session.user, data)
@@ -2550,13 +5841,458 @@ def log_sales_visit(sid=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_sales_visits(sid=None, limit=None):
+def get_sales_visits(sid=None, limit=None, all_team=None):
     denied = _require_sales_access(sid)
     if denied:
         return denied
     from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_field_visits
 
-    return _success({"visits": list_field_visits(frappe.session.user, limit=limit or 50)})
+    team = str(_parse_request_value("all_team", all_team) or "").lower() in ("1", "true", "yes")
+    return _success({"visits": list_field_visits(frappe.session.user, limit=limit or 50, all_team=team)})
+
+
+@frappe.whitelist(allow_guest=True)
+def list_reach_sales_reps(sid=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_sales_reps_for_manager
+
+    try:
+        return _success({"reps": list_sales_reps_for_manager(frappe.session.user)})
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_reach_sales_lead(sid=None, lead_id=None, sales_rep_id=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import assign_sales_lead_rep
+
+    lead_id = _parse_request_value("lead_id", lead_id)
+    sales_rep_id = _parse_request_value("sales_rep_id", sales_rep_id)
+    if not lead_id or not sales_rep_id:
+        return _error(_("lead_id and sales_rep_id are required"))
+    try:
+        row = assign_sales_lead_rep(frappe.session.user, lead_id, sales_rep_id)
+        return _success(row, message=_("REACH user assigned"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_list_reach_reps(**kwargs):
+    """FFMS HMAC bridge — list active REACH / Sales Rep Profiles."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_list_reach_reps as _list
+
+        _check_webhook_secret()
+        return _success({"reps": _list()})
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_list_reach_reps", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list REACH users"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_assign_reach_lead(**kwargs):
+    """FFMS HMAC bridge — assign lead to REACH user (creates pending Log Visit)."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_assign_reach_lead as _assign
+        import json as _json
+
+        _check_webhook_secret()
+        create_visit_raw = _parse_request_value("create_visit", kwargs.get("create_visit"))
+        create_visit = str(create_visit_raw or "1").lower() not in ("0", "false", "no")
+
+        lead_payload = {}
+        lead_json = _parse_request_value("lead_json", kwargs.get("lead_json"))
+        if lead_json:
+            try:
+                parsed = _json.loads(lead_json) if isinstance(lead_json, str) else lead_json
+                if isinstance(parsed, dict):
+                    lead_payload = parsed
+            except Exception:
+                lead_payload = {}
+        for key in (
+            "name", "lead_name", "email", "phone", "mobile", "territory_query", "address",
+            "notes", "stage", "source", "campaign_name", "franchise_model", "city", "district", "pincode",
+        ):
+            value = _parse_request_value(f"lead_{key}", kwargs.get(f"lead_{key}"))
+            if value is not None and str(value).strip() != "":
+                lead_payload[key] = value
+
+        row = _assign(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            sales_rep_id=_parse_request_value("sales_rep_id", kwargs.get("sales_rep_id")),
+            assigned_to_name=_parse_request_value("assigned_to_name", kwargs.get("assigned_to_name")),
+            assignee_role=_parse_request_value("assignee_role", kwargs.get("assignee_role")) or "reach",
+            create_visit=create_visit,
+            assigned_from=_parse_request_value("assigned_from", kwargs.get("assigned_from")) or "FFMS Admin",
+            lead=lead_payload,
+        )
+        return _success(row, message=_("Lead assignment synced to REACH"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ffms_assign_reach_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to assign REACH lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_lead_status(**kwargs):
+    """FFMS HMAC bridge — push CRM stage back to REACH Franchise Sales Lead."""
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_update_lead_status as _update
+
+        _check_webhook_secret()
+        row = _update(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            stage=_parse_request_value("stage", kwargs.get("stage")),
+            status=_parse_request_value("status", kwargs.get("status")),
+        )
+        return _success(row, message=_("Lead status synced to REACH"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_lead_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to sync lead status"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_archive_reach_lead(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_archive_reach_lead as _archive
+
+        _check_webhook_secret()
+        row = _archive(
+            hec_lead_id=_parse_request_value("hec_lead_id", kwargs.get("hec_lead_id")),
+            rfms_lead_id=_parse_request_value("rfms_lead_id", kwargs.get("rfms_lead_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("REACH lead archived"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_archive_reach_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to archive REACH lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_archive_field_visit(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_archive_field_visit as _archive
+
+        _check_webhook_secret()
+        row = _archive(
+            hec_visit_id=_parse_request_value("hec_visit_id", kwargs.get("hec_visit_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Field visit archived"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_archive_field_visit", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to archive field visit"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_disable_partner_portal(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_disable_partner_portal as _disable
+
+        _check_webhook_secret()
+        row = _disable(
+            franchisee_profile=_parse_request_value("franchisee_profile", kwargs.get("franchisee_profile")),
+            user_id=_parse_request_value("user_id", kwargs.get("user_id")),
+            franchisee_id=_parse_request_value("franchisee_id", kwargs.get("franchisee_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Partner portal disabled"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_disable_partner_portal", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to disable partner portal"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_deboard_franchisee(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ffms_deboard_franchisee as _deboard
+
+        _check_webhook_secret()
+        row = _deboard(
+            franchisee_profile=_parse_request_value("franchisee_profile", kwargs.get("franchisee_profile")),
+            franchisee_id=_parse_request_value("franchisee_id", kwargs.get("franchisee_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("Franchisee deboarded on ERP"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_deboard_franchisee", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to deboard franchisee"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_b2b_collection_centres(sid=None, limit=100):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import list_b2b_collection_centres as _list
+
+        centres = _list(frappe.session.user, limit=limit)
+        return _success(
+            {"centres": centres, "b2b_centres": centres, "count": len(centres)},
+            message=_("B2B collection centres"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_b2b_collection_centres", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list B2B collection centres"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_b2b_centre(sid=None, limit=100):
+    """REACH Flutter alias for list_b2b_collection_centres (was HTTP 417 with wrong name)."""
+    return list_b2b_collection_centres(sid=sid, limit=limit)
+
+
+@frappe.whitelist(allow_guest=True)
+def create_b2b_collection_centre(sid=None, **kwargs):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import create_b2b_collection_centre as _create
+
+        data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
+            "centre_name", "wallet_amount", "total_deposit", "contact_number", "manual_address",
+            "google_map_location", "trade_licence", "approved_rate_chart", "remarks", "status",
+            "logistics_assignments", "logistics",
+        )}
+        row = _create(frappe.session.user, **data)
+        return _success(row, message=_("B2B collection centre registered"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_b2b_collection_centre", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create B2B collection centre"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_b2b_sales_entries(sid=None, limit=100, sales_date=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import list_b2b_sales_entries as _list
+
+        entries = _list(frappe.session.user, limit=limit, sales_date=sales_date)
+        return _success(
+            {
+                "entries": entries,
+                "sales": entries,
+                "daily_sales": entries,
+                "count": len(entries),
+            },
+            message=_("B2B sales entries"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_b2b_sales_entries", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list B2B sales entries"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_daily_sales_entry(sid=None, limit=100, sales_date=None):
+    """REACH Flutter alias for list_b2b_sales_entries (was HTTP 417 with wrong name)."""
+    return list_b2b_sales_entries(sid=sid, limit=limit, sales_date=sales_date)
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_b2b_sales_entry(sid=None, **kwargs):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import submit_b2b_sales_entry as _submit
+
+        data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
+            "b2b_collection_centre", "centre_id", "number_of_samples", "samples", "business_value",
+            "total_b2b_business_value", "assigned_logistics_person", "sales_date", "date", "remarks",
+        )}
+        row = _submit(frappe.session.user, **data)
+        return _success(row, message=_("B2B sales entry submitted"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="submit_b2b_sales_entry", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to submit B2B sales entry"))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_daily_sales(sid=None, **kwargs):
+    """REACH Flutter alias for submit_b2b_sales_entry (was HTTP 417 with wrong name)."""
+    return submit_b2b_sales_entry(sid=sid, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_b2b_closing_summary(sid=None, period_date=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import b2b_closing_summary_for_draft
+
+        return _success(
+            b2b_closing_summary_for_draft(frappe.session.user, period_date=period_date),
+            message=_("B2B closing summary"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_b2b_closing_summary", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load B2B closing summary"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_b2b_sales_status(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_update_b2b_sales_status as _update,
+        )
+
+        _check_webhook_secret()
+        row = _update(
+            hec_sales_id=_parse_request_value("hec_sales_id", kwargs.get("hec_sales_id")),
+            status=_parse_request_value("status", kwargs.get("status")),
+            assigned_logistics_person=_parse_request_value(
+                "assigned_logistics_person", kwargs.get("assigned_logistics_person")
+            ),
+            remarks=_parse_request_value("remarks", kwargs.get("remarks")),
+        )
+        return _success(row, message=_("B2B sales updated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_b2b_sales_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update B2B sales"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_update_b2b_centre(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_update_b2b_centre as _update,
+        )
+
+        _check_webhook_secret()
+        row = _update(
+            hec_centre_id=_parse_request_value("hec_centre_id", kwargs.get("hec_centre_id")),
+            status=_parse_request_value("status", kwargs.get("status")),
+            logistics_assignments=_parse_request_value(
+                "logistics_assignments", kwargs.get("logistics_assignments")
+            ),
+        )
+        return _success(row, message=_("B2B centre updated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_update_b2b_centre", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update B2B centre"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_delete_b2b_sales_entry(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_delete_b2b_sales_entry as _delete,
+        )
+
+        _check_webhook_secret()
+        row = _delete(
+            hec_sales_id=_parse_request_value("hec_sales_id", kwargs.get("hec_sales_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+        )
+        return _success(row, message=_("B2B sales deleted"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_delete_b2b_sales_entry", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to delete B2B sales"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ffms_delete_b2b_centre(**kwargs):
+    frappe.flags.ignore_csrf = True
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            _check_webhook_secret,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_b2b_sales import (
+            ffms_delete_b2b_centre as _delete,
+        )
+
+        _check_webhook_secret()
+        row = _delete(
+            hec_centre_id=_parse_request_value("hec_centre_id", kwargs.get("hec_centre_id")),
+            reason=_parse_request_value("reason", kwargs.get("reason")),
+            cascade_sales=_parse_request_value("cascade_sales", kwargs.get("cascade_sales")),
+        )
+        return _success(row, message=_("B2B centre deleted"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="ffms_delete_b2b_centre", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to delete B2B centre"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2577,6 +6313,44 @@ def submit_sales_onboarding(sid=None, **kwargs):
         return _success(row, message=_("Franchisee onboarded"))
     except frappe.ValidationError as exc:
         return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_onboarding(sid=None, limit=None):
+    """REACH Flutter alias: list franchise onboarding requests for the signed-in rep."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_sales_onboarding
+
+    rows = list_sales_onboarding(frappe.session.user, limit=limit or 50)
+    return _success(
+        {
+            "onboardings": rows,
+            "applications": rows,
+            "count": len(rows),
+        },
+        message=_("Sales onboarding list"),
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_franchisee_list(sid=None, period=None):
+    """REACH Flutter alias: franchisee list + onboarding rows."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_sales_franchisees
+
+    period = _parse_request_value("period", period) or "month"
+    stats = list_sales_franchisees(frappe.session.user, period=period)
+    return _success(
+        {
+            **stats,
+            "franchisee_list": stats.get("franchisees") or [],
+        },
+        message=_("Sales franchisee list"),
+    )
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2630,6 +6404,335 @@ def ingest_onboarding_result(hec_payload=None, **kwargs):
     except Exception as exc:
         frappe.log_error(title="ingest_onboarding_result", message=frappe.get_traceback())
         return _error(str(exc) or _("Unable to ingest onboarding result"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_rfms_integration_config(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: public Razorpay key_id, OTP flags, Google Maps browser key."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            get_rfms_integration_config_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = get_rfms_integration_config_payload(payload)
+        return _success(row, message=_("RFMS integration config"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="get_rfms_integration_config", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load RFMS integration config"))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_rfms_razorpay_order(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: create Razorpay order for franchise payment (secret stays on ERP)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            create_rfms_razorpay_order_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = create_rfms_razorpay_order_payload(payload)
+        return _success(row, message=_("RFMS Razorpay order created"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_rfms_razorpay_order", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create RFMS Razorpay order"))
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_rfms_razorpay_payment(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge: verify Razorpay checkout signature using ERP secret."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import (
+            _parse_hec_payload,
+            verify_rfms_razorpay_payment_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = verify_rfms_razorpay_payment_payload(payload)
+        return _success(row, message=_("RFMS Razorpay payment verified"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="verify_rfms_razorpay_payment", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to verify RFMS Razorpay payment"))
+
+
+@frappe.whitelist(allow_guest=True)
+def activate_rfms_paid_franchisee(hec_payload=None, **kwargs):
+    """Phase 85c: RFMS HMAC bridge — create/update Franchisee Profile + opening wallet after paid milestone."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            activate_rfms_paid_franchisee_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = activate_rfms_paid_franchisee_payload(payload)
+        return _success(row, message=_("RFMS franchisee hub activated"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="activate_rfms_paid_franchisee", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to activate RFMS franchisee hub"))
+
+
+@frappe.whitelist(allow_guest=True)
+def map_fofo_parent_foco(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge — permanently map a FOFO hub under a FOCO."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+            map_fofo_parent_foco_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = map_fofo_parent_foco_payload(payload)
+        return _success(row, message=_("FOFO mapped under FOCO"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="map_fofo_parent_foco", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to map FOFO under FOCO"))
+
+
+@frappe.whitelist()
+def setup_phase111_foco_fofo_upsell():
+    """Install ledger + Franchisee Profile mapping / override-upsell fields."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_foco_fofo_upsell import (
+        ensure_phase111_fields,
+    )
+
+    return _success(ensure_phase111_fields())
+
+
+@frappe.whitelist(allow_guest=True)
+def provision_partner_portal_credentials(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge — create Partner Portal user + password when manager marks Onboarded."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            provision_partner_portal_credentials_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = provision_partner_portal_credentials_payload(payload)
+        return _success(row, message=_("Partner Portal credentials provisioned"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="provision_partner_portal_credentials", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to provision Partner Portal credentials"))
+
+
+@frappe.whitelist(allow_guest=True)
+def sync_rfms_hub_from_directory(hec_payload=None, **kwargs):
+    """RFMS HMAC bridge — refresh Franchisee Profile hub name/branch details from Franchise Directory."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase85_rfms_activation import (
+            sync_rfms_hub_from_directory_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = sync_rfms_hub_from_directory_payload(payload)
+        return _success(row, message=_("Franchise hub synced from directory"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="sync_rfms_hub_from_directory", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to sync franchise hub from directory"))
+
+
+@frappe.whitelist(allow_guest=True)
+def schedule_franchise_onboard_campaigns(hec_payload=None, **kwargs):
+    """Phase 93: RFMS HMAC — schedule Meta/WA hiring + booking campaigns on franchise onboard."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase93_franchise_go_live import (
+            schedule_franchise_onboard_campaigns_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = schedule_franchise_onboard_campaigns_payload(payload)
+        return _success(row, message=_("Franchise onboard campaigns scheduled"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="schedule_franchise_onboard_campaigns", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to schedule franchise campaigns"))
+
+
+@frappe.whitelist(allow_guest=True)
+def create_reach_foco_b2b_on_phase1(hec_payload=None, **kwargs):
+    """Phase 93: RFMS HMAC — create Reach B2B FOCO code when Phase-1 payment is done."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase83_rfms_bridge import _parse_hec_payload
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase93_franchise_go_live import (
+            create_reach_foco_b2b_on_phase1_payload,
+        )
+
+        payload = _parse_hec_payload(hec_payload=hec_payload, **kwargs)
+        row = create_reach_foco_b2b_on_phase1_payload(payload)
+        return _success(row, message=_("Reach FOCO B2B code created"))
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="create_reach_foco_b2b_on_phase1", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to create Reach FOCO B2B code"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ingest_franchise_ad_lead(**kwargs):
+    """Phase 86: Meta/Google franchise lead webhook → Reach + RFMS dual-write."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            ingest_franchise_ad_lead as _ingest,
+        )
+
+        return _ingest(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ingest_franchise_ad_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to ingest franchise ad lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def franchise_ads_status(**kwargs):
+    """Phase 86: lightweight franchise ads webhook status (secret-gated)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase86_franchise_ads import (
+            franchise_ads_status as _status,
+        )
+
+        return _status(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="franchise_ads_status", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to read franchise ads status"))
+
+
+@frappe.whitelist(allow_guest=True)
+def ingest_whatsapp_cloud_webhook(**kwargs):
+    """Phase 87: Meta WhatsApp Cloud webhook (verify + inbound messages)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            ingest_whatsapp_cloud_webhook as _ingest,
+        )
+
+        return _ingest(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="ingest_whatsapp_cloud_webhook", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to ingest WhatsApp Cloud webhook"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_franchise_whatsapp_thread(**kwargs):
+    """Phase 87: RFMS proxy — conversation thread."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            get_franchise_whatsapp_thread as _get,
+        )
+
+        return _get(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except Exception as exc:
+        frappe.log_error(title="get_franchise_whatsapp_thread", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WhatsApp thread"))
+
+
+@frappe.whitelist(allow_guest=True)
+def send_franchise_whatsapp_reply(**kwargs):
+    """Phase 87: RFMS proxy — officer reply via Meta/Gupshup adapter."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            send_franchise_whatsapp_reply as _send,
+        )
+
+        return _send(**kwargs)
+    except frappe.AuthenticationError as exc:
+        return _error(str(exc), 401)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="send_franchise_whatsapp_reply", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to send WhatsApp reply"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_wb_geo_hierarchy():
+    """West Bengal district → subdivision → block/PIN hierarchy (Phase 84)."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import get_wb_geo_hierarchy_payload
+
+        return _success(get_wb_geo_hierarchy_payload(), message=_("WB geo hierarchy"))
+    except Exception as exc:
+        frappe.log_error(title="get_wb_geo_hierarchy", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WB geo hierarchy"))
+
+
+@frappe.whitelist(allow_guest=True)
+def resolve_wb_pincode(pincode=None):
+    """Resolve a PIN code to WB postal localities."""
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import resolve_wb_pincode_payload
+
+        return _success(resolve_wb_pincode_payload(pincode or frappe.form_dict.get("pincode")), message=_("WB pincode resolved"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="resolve_wb_pincode", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to resolve pincode"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_territorial_sales_summary(sid=None, period=None):
+    """Reach: leads/visits/franchisees rolled up by district."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase84_wb_geo import (
+            get_territorial_sales_summary_payload,
+        )
+
+        return _success(
+            get_territorial_sales_summary_payload(frappe.session.user, period or "month"),
+            message=_("Territorial sales summary"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_territorial_sales_summary", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load territorial sales summary"))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2690,7 +6793,14 @@ def get_sales_closing_reports(sid=None, limit=None):
         return denied
     from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_closing_reports
 
-    return _success({"reports": list_closing_reports(frappe.session.user, limit=limit or 30)})
+    reports = list_closing_reports(frappe.session.user, limit=limit or 30)
+    return _success({"reports": reports, "closings": reports})
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_closing(sid=None, limit=None):
+    """REACH Flutter alias for get_sales_closing_reports."""
+    return get_sales_closing_reports(sid=sid, limit=limit)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2715,12 +6825,19 @@ def submit_sales_closing_report(sid=None, **kwargs):
     data = {k: _parse_request_value(k, kwargs.get(k)) for k in (
         "report_type", "period_date", "visits_count", "new_leads", "qualified_leads",
         "onboardings", "franchise_revenue", "km_traveled", "notes",
+        "other_expenses", "total_expenses", "expenses_json", "attachments_json",
     )}
     try:
         report_id = submit_closing_report(frappe.session.user, data)
         return _success({"report_id": report_id}, message=_("Closing report submitted"))
     except frappe.ValidationError as exc:
         return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_sales_closing(sid=None, **kwargs):
+    """REACH Flutter alias for submit_sales_closing_report."""
+    return submit_sales_closing_report(sid=sid, **kwargs)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -2759,6 +6876,8 @@ def phlebotomist_mark_sample_collected(trf_id=None, sid=None):
         return _error(_("Not authenticated"), 401)
 
     from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        PF_ORDER_MESSAGE,
+        is_pf_trf,
         is_phlebotomist,
         is_staff,
         phlebotomist_trf_ids,
@@ -2771,6 +6890,8 @@ def phlebotomist_mark_sample_collected(trf_id=None, sid=None):
     trf_id = _parse_request_value("trf_id", trf_id)
     if not trf_id:
         return _error(_("TRF ID is required"))
+    if is_pf_trf(trf_id):
+        return _error(_(PF_ORDER_MESSAGE), 409)
 
     if is_phlebotomist(roles) and not is_staff(roles):
         if trf_id not in phlebotomist_trf_ids():
@@ -2780,6 +6901,22 @@ def phlebotomist_mark_sample_collected(trf_id=None, sid=None):
     if current != "Booked":
         return _error(_(f"Cannot collect sample — order is already {current}"))
 
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase89_vial_accession import (
+            mark_trf_tubes_drawn,
+        )
+
+        mark_trf_tubes_drawn(trf_id)
+    except Exception:
+        frappe.log_error(title="phase89_mark_drawn", message=frappe.get_traceback())
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import clear_phlebotomist_visit
+
+        clear_phlebotomist_visit(frappe.session.user, trf_id)
+    except Exception:
+        pass
+
     return _apply_order_status(trf_id, "Sample Collected")
 
 
@@ -2787,11 +6924,24 @@ def phlebotomist_mark_sample_collected(trf_id=None, sid=None):
 def mark_offline_payment_collected(
     reference_doctype=None,
     reference_name=None,
+    collection_mode=None,
+    collection_reference=None,
     sid=None,
 ):
-    """Record cash/hub payment for COD or Pay at Hub orders."""
+    """Record cash/hub payment for COD or Pay at Hub orders (collection_mode: cash | upi | card | cheque).
+
+    collection_reference: UPI UTR / card approval code / cheque number, used to reconcile collection reports.
+    """
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
+    collection_mode = (_parse_request_value("collection_mode", collection_mode) or "cash").strip().lower()
+    if collection_mode not in ("cash", "upi", "card", "cheque"):
+        collection_mode = "cash"
+    collection_reference = re.sub(
+        r"\s+", "", cstr(_parse_request_value("collection_reference", collection_reference) or "")
+    )[:140]
+    if collection_mode == "cheque" and not collection_reference:
+        return _error(_("Enter the cheque number"))
 
     reference_doctype = _parse_request_value("reference_doctype", reference_doctype)
     reference_name = _parse_request_value("reference_name", reference_name)
@@ -2826,39 +6976,64 @@ def mark_offline_payment_collected(
     if not allowed and reference_doctype == "Customer TRF":
         if payment_method == PAYMENT_METHOD_COD and is_phlebotomist(roles):
             allowed = reference_name in phlebotomist_trf_ids()
-        elif payment_method == PAYMENT_METHOD_HUB and FRANCHISEE_ROLE in roles:
+        if not allowed and payment_method in (PAYMENT_METHOD_HUB, PAYMENT_METHOD_COD) and FRANCHISEE_ROLE in roles:
             hub = frappe.db.get_value(
                 "Franchisee Profile",
                 {"linked_user": frappe.session.user, "active_status": "Active"},
                 "name",
             )
-            allowed = hub and hub == franchisee_id
-    if not allowed and reference_doctype == "Pharmacy Order" and FRANCHISEE_ROLE in roles:
-        allowed = True
+            allowed = bool(hub) and hub == franchisee_id
+    if not allowed and reference_doctype == "Pharmacy Order":
+        allowed = bool(getattr(doc, "delivery_user", None)) and doc.delivery_user == frappe.session.user
     if not allowed and reference_doctype == "Doctor Appointment":
-        clinic_roles = {FRANCHISEE_ROLE, "Physician", "Nurse", "Health System Admin"}
-        if payment_method == PAYMENT_METHOD_COD and clinic_roles.intersection(roles):
+        if "Nurse" in roles:
             allowed = True
-        elif payment_method == PAYMENT_METHOD_HUB and (FRANCHISEE_ROLE in roles or is_staff(roles)):
-            allowed = True
+        elif "Physician" in roles and getattr(doc, "doctor", None):
+            allowed = frappe.db.get_value("Doctor", doc.doctor, "user") == frappe.session.user
     if not allowed:
         return _error(_("Not permitted to record this payment"), 403)
 
     amount = flt(getattr(doc, "amount", None) or getattr(doc, "order_total", None))
     payment_id = f"offline-{reference_name}-{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}"
 
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase121_hub_receipts import (
+        bill_hub_collection,
+        hub_owns_collection,
+    )
+
     previous_user = frappe.session.user
     payment_entry = None
+    hub_billing = None
     try:
         frappe.set_user("Administrator")
         doc.db_set("razorpay_payment_status", "Paid")
         doc.db_set("payment_id", payment_id)
-        try:
-            payment_entry = _create_payment_entry(doc, amount, payment_id)
-            if reference_doctype == "Customer TRF" and doc.sales_invoice and payment_entry:
-                _allocate_payment_to_invoice(payment_entry, doc.sales_invoice, amount)
-        except Exception:
-            frappe.log_error(title="Offline Payment Entry", message=frappe.get_traceback())
+        if hub_owns_collection(doc):
+            frappe.db.commit()
+            try:
+                hub_billing = bill_hub_collection(reference_name)
+            except Exception:
+                frappe.db.rollback()
+                frappe.log_error(title="Hub collection platform billing", message=frappe.get_traceback())
+                hub_billing = {"status": "pending", "reason": "error"}
+        else:
+            try:
+                payment_entry = _create_payment_entry(
+                    doc,
+                    amount,
+                    payment_id,
+                    sales_invoice=getattr(doc, "sales_invoice", None),
+                    mode_kind=collection_mode,
+                    remarks=(
+                        f"Offline {collection_mode} collection {payment_id}"
+                        + (f" ref {collection_reference}" if collection_reference else "")
+                        + f" by {previous_user}"
+                    ),
+                    collection_ref=collection_reference,
+                    collected_by=previous_user,
+                )
+            except Exception:
+                frappe.log_error(title="Offline Payment Entry", message=frappe.get_traceback())
         frappe.db.commit()
     finally:
         frappe.set_user(previous_user)
@@ -2882,6 +7057,7 @@ def mark_offline_payment_collected(
             "reference": reference_name,
             "reference_doctype": reference_doctype,
             "payment_entry": payment_entry.name if payment_entry else None,
+            "hub_billing": hub_billing,
             "status": "Paid",
             "payment_method": payment_method,
         },
@@ -2890,61 +7066,141 @@ def mark_offline_payment_collected(
 
 
 @frappe.whitelist(allow_guest=True)
-def get_phlebotomist_reports(limit=50, sid=None):
-    """Authorized NABL PDF reports for samples collected at the phlebotomist's hub."""
+def get_phlebotomist_reports(limit=200, sid=None):
+    """Collected-sample reports for the collector: processing, ready, delivered, failed."""
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
 
     from health_ecosystem_core.health_ecosystem_core.clinical_iam import (
+        exclude_pf_trfs,
+        franchise_for_phlebotomist,
         is_phlebotomist,
         is_staff,
         phlebotomist_trf_ids,
     )
-    from health_ecosystem_core.health_ecosystem_core.clinical_utils import journey_report_payload
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase20 import ensure_phase20_custom_fields
+    from health_ecosystem_core.health_ecosystem_core.clinical_utils import format_patient_age
 
     roles = _user_roles()
     if not is_phlebotomist(roles) and not is_staff(roles):
         return _error(_("Not permitted"), 403)
 
-    limit = cint(limit) or 50
-    trf_ids = phlebotomist_trf_ids()
-    if not trf_ids:
-        return _success({"reports": []})
+    ensure_phase20_custom_fields()
+    limit = cint(limit) or 200
+    collected_statuses = ["Sample Collected", "In Lab", "Completed", "Cancelled"]
+    fields = [
+        "name",
+        "patient_name",
+        "patient_phone",
+        "unique_barcode",
+        "test_required",
+        "order_status",
+        "collection_slot",
+        "creation",
+        "modified",
+        "gender",
+        "age",
+        "age_months",
+        "age_days",
+        "report_delivered_on",
+        "franchisee_id",
+    ]
 
-    journeys = frappe.get_all(
-        "Patient Care Journey",
-        filters={
-            "customer_trf": ("in", trf_ids),
-            "status": ("in", ["Authorized", "Dispatched"]),
-            "report_pdf": ("is", "set"),
-        },
-        fields=["name"],
-        order_by="modified desc",
-        limit=limit,
-    )
-
-    reports = []
-    for row in journeys:
-        payload = journey_report_payload(row.name)
-        trf_id = payload.get("trf_id")
-        trf_row = frappe.db.get_value(
+    hub = franchise_for_phlebotomist()
+    if hub and is_phlebotomist(roles) and not is_staff(roles):
+        filters = {"franchisee_id": hub, "order_status": ("in", collected_statuses)}
+    elif is_phlebotomist(roles):
+        trf_ids = phlebotomist_trf_ids()
+        extra = frappe.get_all(
             "Customer TRF",
-            trf_id,
-            ["test_required", "patient_phone"],
-            as_dict=True,
-        ) if trf_id else None
-        item = _serialize_trf({"name": trf_id, **(trf_row or {})}) if trf_id else {}
+            filters={"name": ("in", trf_ids or ["__none__"]), "order_status": ("in", collected_statuses)},
+            pluck="name",
+        ) if trf_ids else []
+        if hub:
+            extra.extend(
+                frappe.get_all(
+                    "Customer TRF",
+                    filters={"franchisee_id": hub, "order_status": ("in", collected_statuses)},
+                    pluck="name",
+                )
+            )
+        extra = list(dict.fromkeys(extra))
+        if not extra:
+            return _success({"reports": []})
+        filters = {"name": ("in", extra)}
+    else:
+        filters = {"order_status": ("in", collected_statuses)}
+    exclude_pf_trfs(filters)
+
+    try:
+        rows = frappe.get_all(
+            "Customer TRF",
+            filters=filters,
+            fields=fields,
+            order_by="modified desc",
+            limit=limit,
+        )
+    except Exception:
+        fields = [f for f in fields if f != "report_delivered_on"]
+        rows = frappe.get_all(
+            "Customer TRF",
+            filters=filters,
+            fields=fields,
+            order_by="modified desc",
+            limit=limit,
+        )
+        for row in rows:
+            row["report_delivered_on"] = None
+
+    names = [row.name for row in rows]
+    journeys = {}
+    if names:
+        for journey in frappe.get_all(
+            "Patient Care Journey",
+            filters={"customer_trf": ("in", names)},
+            fields=["name", "customer_trf", "status", "report_pdf", "authorized_on"],
+        ):
+            journeys[journey.customer_trf] = journey
+
+    failed_journey = {"Cancelled", "Rejected", "Failed"}
+    reports = []
+    for row in rows:
+        item = _serialize_trf(row) or {}
+        journey = journeys.get(row.name)
+        delivered = row.get("report_delivered_on")
+        ready = bool(journey and journey.report_pdf and journey.status in ("Authorized", "Dispatched"))
+        jstatus = journey.status if journey else None
+        ostatus = row.get("order_status") or ""
+        if delivered:
+            ui_status = "delivered"
+        elif ostatus == "Cancelled" or (jstatus in failed_journey):
+            ui_status = "failed"
+        elif ready:
+            ui_status = "ready"
+        else:
+            ui_status = "processing"
         reports.append(
             {
-                "journey_id": payload.get("journey_id"),
-                "trf_id": trf_id,
-                "patient_name": payload.get("patient_name"),
-                "patient_phone": trf_row.get("patient_phone") if trf_row else None,
-                "status": payload.get("status"),
-                "report_pdf": payload.get("report_pdf"),
-                "authorized_on": payload.get("authorized_on"),
+                "journey_id": journey.name if journey else None,
+                "trf_id": row.name,
+                "patient_name": row.get("patient_name") or item.get("patient_name"),
+                "patient_phone": row.get("patient_phone") or item.get("patient_phone"),
+                "gender": row.get("gender"),
+                "age": row.get("age"),
+                "age_months": row.get("age_months"),
+                "age_days": row.get("age_days"),
+                "age_label": format_patient_age(row.get("age"), row.get("age_months"), row.get("age_days")),
+                "barcode": row.get("unique_barcode") or item.get("barcode"),
+                "status": jstatus or ostatus,
+                "report_ui_status": ui_status,
+                "report_pdf": journey.report_pdf if journey else None,
+                "authorized_on": str(journey.authorized_on) if journey and journey.authorized_on else None,
+                "report_delivered_on": str(delivered) if delivered else None,
+                "collection_slot": str(row.collection_slot) if row.get("collection_slot") else None,
+                "creation": str(row.creation) if row.get("creation") else None,
                 "test_name": item.get("test_name"),
-                "test_labels": item.get("test_labels"),
+                "test_labels": item.get("test_labels") or [],
+                "report_no": row.get("unique_barcode") or row.name,
             }
         )
 
@@ -2988,8 +7244,6 @@ def _can_download_journey_report(journey_id, roles):
     )
     if not journey or journey.status not in ("Authorized", "Dispatched"):
         return False, journey
-    if not journey.report_pdf:
-        return False, journey
 
     if is_staff(roles):
         return True, journey
@@ -3019,9 +7273,18 @@ def download_journey_report_pdf(journey_id=None, sid=None):
     if not allowed:
         frappe.throw(_("Not permitted to download this report"), frappe.PermissionError)
 
-    file_doc = _resolve_file_doc(journey.report_pdf)
+    file_doc = _resolve_file_doc(journey.report_pdf) if journey.report_pdf else None
     if not file_doc:
-        frappe.throw(_("Report file not found on server"))
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase125_report_share import (
+            build_authorized_report_pdf,
+        )
+
+        pdf_content, fname, _, _ = build_authorized_report_pdf(journey_id, chrome_mode="nabl")
+        frappe.local.response.filename = fname
+        frappe.local.response.filecontent = pdf_content
+        frappe.local.response.type = "download"
+        frappe.local.response["content_type"] = "application/pdf"
+        return
 
     frappe.local.response.filename = file_doc.file_name
     frappe.local.response.filecontent = file_doc.get_content()
@@ -3031,7 +7294,7 @@ def download_journey_report_pdf(journey_id=None, sid=None):
 
 @frappe.whitelist()
 def upload_prescription(file_name=None, file_data=None):
-    """Upload prescription image from mobile app and return a public file URL."""
+    """Upload prescription image from mobile app and return its file URL (private when hec_private_rx_uploads=1)."""
     if frappe.session.user == "Guest":
         return _error(_("Not authenticated"), 401)
 
@@ -3051,7 +7314,7 @@ def upload_prescription(file_name=None, file_data=None):
             "doctype": "File",
             "file_name": file_name,
             "content": content,
-            "is_private": 0,
+            "is_private": 1 if cint(frappe.conf.get("hec_private_rx_uploads")) else 0,
             "folder": "Home/Attachments",
         }
     )
@@ -3349,8 +7612,11 @@ def create_pharmacy_order(
             "payment_method": payment_method,
             "sales_order": order.sales_order,
             "patient": patient_id,
+            "razorpay_payment_status": "Pending",
+            "delivery_status": "Pending",
+            "requires_payment": payment_method == "Online",
         },
-        message="Pharmacy order created",
+        message="Pharmacy order created — complete payment to confirm",
     )
 
 
@@ -3409,9 +7675,7 @@ def _create_sales_invoice_for_pharmacy(order, items):
     """Create ERP Sales Invoice for pharmacy order line items."""
     try:
         _ensure_healthcare_invoice_fields()
-        company = frappe.defaults.get_global_default("company") or frappe.get_all(
-            "Company", limit=1
-        )[0].name
+        company = _company_name()
         customer = _ensure_customer(order.customer_name, order.customer_phone)
 
         si_items = []
@@ -3756,6 +8020,161 @@ def get_patient_wallet(sid=None, limit=None):
 
 
 @frappe.whitelist(allow_guest=True)
+def create_patient_wallet_razorpay_order(sid=None, amount=None):
+    """Phase 75 — create a Razorpay order for patient wallet top-up."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        prepare_patient_wallet_topup,
+        setup_phase75,
+        stash_patient_wallet_razorpay_order,
+    )
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _error(_("No patient profile linked to this account"))
+
+    amount = _parse_request_value("amount", amount)
+    try:
+        topup = prepare_patient_wallet_topup(patient_id, amount)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+    amount_value = topup["amount"]
+    amount_paise = topup["amount_paise"]
+
+    if _razorpay_test_mode():
+        creds = _get_site_api_credentials()
+        order_id = f"order_pwallet_{frappe.generate_hash(length=10)}"
+        stash_patient_wallet_razorpay_order(order_id, patient_id, amount_value)
+        return _success(
+            {
+                "order_id": order_id,
+                "amount": amount_value,
+                "amount_paise": amount_paise,
+                "currency": "INR",
+                "razorpay_key_id": creds.get("razorpay_key_id"),
+                "test_mode": True,
+            },
+            message="Test patient wallet top-up order created",
+        )
+
+    creds = _get_site_api_credentials()
+    key_id = creds.get("razorpay_key_id")
+    key_secret = creds.get("razorpay_key_secret")
+    if not (key_id and key_secret):
+        return _error(_("Razorpay is not configured on server"))
+
+    auth_header = base64.b64encode(f"{key_id}:{key_secret}".encode("utf-8")).decode("ascii")
+    payload = json.dumps(
+        {
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": f"pwallet-{patient_id}-{frappe.generate_hash(length=6)}",
+            "payment_capture": 1,
+        }
+    ).encode("utf-8")
+    req = Request(
+        "https://api.razorpay.com/v1/orders",
+        data=payload,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=20) as resp:
+            order_data = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        frappe.log_error(
+            title="create_patient_wallet_razorpay_order",
+            message=exc.read().decode("utf-8", errors="replace"),
+        )
+        return _error(_("Razorpay order creation failed"))
+    except URLError as exc:
+        frappe.log_error(title="create_patient_wallet_razorpay_order", message=str(exc))
+        return _error(_("Razorpay is unreachable"))
+
+    order_id = order_data.get("id")
+    stash_patient_wallet_razorpay_order(order_id, patient_id, amount_value)
+    _record_payment_intent("patient_wallet", order_id, amount_value, party_type="Health Patient", party=patient_id)
+    return _success(
+        {
+            "order_id": order_id,
+            "amount": amount_value,
+            "amount_paise": amount_paise,
+            "currency": order_data.get("currency", "INR"),
+            "razorpay_key_id": key_id,
+            "test_mode": False,
+        },
+        message="Razorpay patient wallet order created",
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_patient_wallet_razorpay_payment(
+    sid=None,
+    razorpay_payment_id=None,
+    razorpay_order_id=None,
+    razorpay_signature=None,
+):
+    """Phase 75 — verify Razorpay patient wallet top-up and credit the wallet."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+        complete_patient_wallet_razorpay_credit,
+        load_patient_wallet_razorpay_order,
+        setup_phase75,
+    )
+
+    setup_phase75()
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        return _error(_("No patient profile linked to this account"))
+
+    razorpay_payment_id = _parse_request_value("razorpay_payment_id", razorpay_payment_id)
+    razorpay_order_id = _parse_request_value("razorpay_order_id", razorpay_order_id)
+    razorpay_signature = _parse_request_value("razorpay_signature", razorpay_signature)
+
+    if not razorpay_order_id or not razorpay_payment_id:
+        return _error(_("Missing payment verification fields"))
+
+    stashed = load_patient_wallet_razorpay_order(razorpay_order_id) or _wallet_stash_from_intent(
+        razorpay_order_id, "patient_wallet"
+    )
+    if not stashed:
+        return _error(_("Wallet order expired or not found"))
+
+    stash_patient_id = stashed.get("patient_id")
+    amount = stashed.get("amount")
+    if stash_patient_id != patient_id:
+        return _error(_("This wallet order does not belong to you"), 403)
+
+    denied = _confirm_wallet_razorpay_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature, amount)
+    if denied:
+        return denied
+
+    previous_user = frappe.session.user
+    try:
+        frappe.set_user("Administrator")
+        row = complete_patient_wallet_razorpay_credit(
+            patient_id, amount, razorpay_payment_id, order_id=razorpay_order_id
+        )
+        _mark_payment_intent(razorpay_order_id, razorpay_payment_id, "Checkout")
+        frappe.db.commit()
+    finally:
+        frappe.set_user(previous_user)
+
+    return _success(row, message=_("Wallet topped up"))
+
+
+@frappe.whitelist(allow_guest=True)
 def get_my_referral(sid=None):
     """Compact referral summary for home / account chips."""
     if not _require_mobile_auth(sid):
@@ -3794,14 +8213,23 @@ def update_patient_profile(
     email=None,
     dob=None,
     gender=None,
+    city=None,
     profile_image=None,
     profile_image_filename=None,
     new_password=None,
 ):
-    """Phase 75 — update Health Patient + linked User profile fields."""
+    """Phase 75 — update Health Patient + linked User profile fields.
+
+    Auto-creates and links a Health Patient when the account was never linked
+    (common after Google / email signup).
+    """
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
-    from health_ecosystem_core.health_ecosystem_core.patient_bridge import patient_profile_for_user
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import (
+        ensure_healthcare_patient_fields,
+        ensure_patient_for_user,
+        patient_profile_for_user,
+    )
     from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
         setup_phase75,
         update_patient_profile_fields,
@@ -3809,19 +8237,30 @@ def update_patient_profile(
     from frappe.utils.password import update_password
 
     setup_phase75()
-    profile = patient_profile_for_user() or {}
-    patient_id = profile.get("patient_id") or profile.get("name")
-    if not patient_id:
-        return _error(_("No patient profile linked to this account"))
+    ensure_healthcare_patient_fields()
 
     patient_name = _parse_request_value("patient_name", patient_name)
     mobile = _parse_request_value("mobile", mobile)
     email = _parse_request_value("email", email)
     dob = _parse_request_value("dob", dob)
     gender = _parse_request_value("gender", gender)
+    city = _parse_request_value("city", city)
     profile_image = _parse_request_value("profile_image", profile_image)
     profile_image_filename = _parse_request_value("profile_image_filename", profile_image_filename)
     new_password = _parse_request_value("new_password", new_password)
+
+    profile = patient_profile_for_user() or {}
+    patient_id = profile.get("patient_id") or profile.get("name")
+    if not patient_id:
+        patient_id = ensure_patient_for_user(
+            user=frappe.session.user,
+            patient_name=patient_name,
+            phone=mobile,
+            email=email,
+            gender=gender,
+        )
+    if not patient_id:
+        return _error(_("Could not create patient profile. Provide name and mobile or email."))
 
     try:
         data = update_patient_profile_fields(
@@ -3831,6 +8270,7 @@ def update_patient_profile(
             email=email,
             dob=dob,
             gender=gender,
+            city=city,
             profile_image_b64=profile_image,
             profile_image_filename=profile_image_filename,
         )
@@ -3932,6 +8372,14 @@ def _home_content_sections():
     from health_ecosystem_core.health_ecosystem_core.clinical_homepage import home_content_extras
 
     return home_content_extras()
+
+
+@frappe.whitelist(allow_guest=True)
+def get_site_footer():
+    """Public www footer — social links + ERP-managed home collection helpline."""
+    from health_ecosystem_core.health_ecosystem_core.clinical_homepage import build_site_footer
+
+    return _success(build_site_footer())
 
 
 @frappe.whitelist(allow_guest=True)
@@ -4277,6 +8725,12 @@ _LAZY_REEXPORTS = {
     "complete_oauth_login": "clinical_phase18b",
     "get_masked_call_context": "clinical_phase65_number_masking",
     "start_masked_call": "clinical_phase65_number_masking",
+    # Follow-up aliases for Flutter / older clients (not a separate DocType)
+    "list_consult_followup_queue": "clinical_phase47_complete_care",
+    "schedule_consult_followup": "clinical_phase47_complete_care",
+    "schedule_appointment_followup": "clinical_phase42_telemedicine",
+    "get_teleconsult_session": "clinical_phase42_telemedicine",
+    "join_video_session": "clinical_phase42_telemedicine",
 }
 
 

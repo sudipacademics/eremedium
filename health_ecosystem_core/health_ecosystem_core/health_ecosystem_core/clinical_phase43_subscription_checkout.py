@@ -32,13 +32,21 @@ def create_subscription_checkout(user, plan_code):
     if get_active_subscription(user):
         frappe.throw(_("You already have an active subscription"))
 
-    pending = get_pending_subscription(user)
-    if pending:
-        return pending
-
     start = today()
     end = _plan_end_date(start, plan.billing_interval)
     amount = flt(plan.monthly_price)
+
+    pending = get_pending_subscription(user)
+    if pending:
+        if pending.get("name") and frappe.db.get_value("Health Subscription", pending["name"], "plan") != plan.name:
+            frappe.db.set_value(
+                "Health Subscription",
+                pending["name"],
+                {"plan": plan.name, "amount": amount, "start_date": start, "end_date": end},
+            )
+            frappe.db.commit()
+            return serialize_subscription(pending["name"])
+        return pending
 
     doc = frappe.get_doc(
         {

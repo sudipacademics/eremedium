@@ -1,0 +1,108 @@
+{
+  "actions": [],
+  "creation": "2026-08-04 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "tube",
+    "tube_code",
+    "cap_color",
+    "clsi_draw_order",
+    "aggregated_volume_ml",
+    "accession_id",
+    "status",
+    "destination_department",
+    "spin_lane",
+    "linked_tests",
+    "drawn_at",
+    "received_at",
+    "rejected_reason"
+  ],
+  "fields": [
+    {
+      "fieldname": "tube",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Tube",
+      "options": "HEC Collection Tube",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "tube.tube_code",
+      "fieldname": "tube_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Tube Code",
+      "read_only": 1
+    },
+    {
+      "fetch_from": "tube.cap_color",
+      "fieldname": "cap_color",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Cap Color",
+      "read_only": 1
+    },
+    {
+      "fetch_from": "tube.clsi_draw_order",
+      "fieldname": "clsi_draw_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Draw Order",
+      "read_only": 1
+    },
+    {
+      "fieldname": "aggregated_volume_ml",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Volume (mL)",
+      "precision": "2"
+    },
+    {
+      "fieldname": "accession_id",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Accession ID",
+      "read_only": 1
+    },
+    {
+      "default": "Planned",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Planned\nDrawn\nReceived\nRejected"
+    },
+    {
+      "fieldname": "destination_department",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Destination"
+    },
+    {
+      "fetch_from": "tube.spin_lane",
+      "fieldname": "spin_lane",
+      "fieldtype": "Data",
+      "label": "Lane",
+      "read_only": 1
+    },
+    {
+      "description": "Comma-separated item codes / test names covered by this tube.",
+      "fieldname": "linked_tests",
+      "fieldtype": "Small Text",
+      "label": "Linked Tests"
+    },
+    {"fieldname": "drawn_at", "fieldtype": "Datetime", "label": "Drawn At"},
+    {"fieldname": "received_at", "fieldtype": "Datetime", "label": "Received At"},
+    {"fieldname": "rejected_reason", "fieldtype": "Data", "label": "Rejected Reason"}
+  ],
+  "istable": 1,
+  "modified": "2026-08-04 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "TRF Collection Tube",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

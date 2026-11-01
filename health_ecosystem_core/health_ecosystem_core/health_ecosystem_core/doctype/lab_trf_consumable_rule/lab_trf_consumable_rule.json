@@ -1,0 +1,62 @@
+{
+  "actions": [],
+  "autoname": "field:rule_name",
+  "creation": "2026-08-14 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "rule_name",
+    "consumable_item",
+    "qty_per_trf",
+    "active"
+  ],
+  "fields": [
+    {
+      "fieldname": "rule_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Rule Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "consumable_item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Consumable Item",
+      "options": "Item",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "qty_per_trf",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Qty Per TRF",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Active"
+    }
+  ],
+  "modified": "2026-08-14 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab TRF Consumable Rule",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1},
+    {"role": "Pathologist", "read": 1}
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

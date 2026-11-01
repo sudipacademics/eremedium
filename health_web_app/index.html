@@ -9,12 +9,47 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>Remedium Health</title>
+    <script>
+      (function () {
+        var gone = /^\/(?:aesthetic|aesthetics|wellness\/aesthetics)\/?$/;
+        function leave() {
+          var host = location.hostname;
+          var path = location.pathname;
+          if ((host === 'www.remediumlabs.in' || host === 'remediumlabs.in') &&
+              (path === '/aesthetic-admin' || path.indexOf('/aesthetic-admin/') === 0)) {
+            var rest = path === '/aesthetic-admin' || path === '/aesthetic-admin/' ? '/' : path.replace(/^\/aesthetic-admin/, '');
+            location.replace('https://aesthetics.e-remedium.in' + rest + location.search + location.hash);
+            return;
+          }
+          if (gone.test(path)) location.replace('https://remediumaesthetics.in/');
+        }
+        leave();
+        var push = history.pushState;
+        history.pushState = function () {
+          var result = push.apply(this, arguments);
+          leave();
+          return result;
+        };
+        addEventListener('popstate', leave);
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
+    <link rel="stylesheet" href="/people-profile-align.css?v=3" />
+    <link rel="stylesheet" href="/people-user-menu.css" />
+    <link rel="stylesheet" href="/employee-id-card.css?v=5" />
+    <link rel="stylesheet" href="/people-org.css?v=18" />
+    <script src="/qrcode-generator.js"></script>
+    <script src="/people-user-menu.js" defer></script>
+    <script src="/employee-id-card.js?v=11" defer></script>
+    <link rel="stylesheet" href="/people-access.css?v=8" />
+    <script src="/people-access.js?v=12" defer></script>
+    <script src="/people-org.js?v=30" defer></script>
+    <script src="/people-geofence.js?v=2" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

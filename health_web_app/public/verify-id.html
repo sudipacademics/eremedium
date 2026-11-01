@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Employee Verification · Smilecure Lifestyle Pvt Ltd</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: #eef4f6; font-family: "DM Sans", "Segoe UI", system-ui, sans-serif; color: #0f172a; }
+      .card { width: min(380px, 100%); background: #fff; border-radius: 22px; overflow: hidden; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); }
+      .head { background: linear-gradient(90deg, #0f766e, #0e8a8a 46%, #0b6fc2); color: #fff; text-align: center; padding: 22px 16px 58px; }
+      .head small { display: block; font-size: 0.86rem; opacity: 0.95; }
+      .head b { display: block; margin-top: 4px; letter-spacing: 0.04em; font-size: 1.05rem; }
+      .photo { width: 104px; height: 104px; margin: -52px auto 0; border-radius: 50%; border: 5px solid #fff; background: #e7f6f3; color: #0f766e; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 2rem; overflow: hidden; position: relative; }
+      .photo img { width: 100%; height: 100%; object-fit: cover; }
+      .body { padding: 12px 22px 22px; text-align: center; }
+      h1 { margin: 10px 0 6px; font-size: 1.35rem; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-weight: 800; font-size: 0.82rem; }
+      .ok { background: #dcfce7; color: #15803d; }
+      .bad { background: #fee2e2; color: #b91c1c; }
+      dl { margin: 16px 0 0; display: grid; gap: 8px; text-align: left; }
+      dl div { background: #f4fbfb; border-radius: 12px; padding: 9px 12px; }
+      dt { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
+      dd { margin: 2px 0 0; font-weight: 700; }
+      .foot { margin-top: 16px; font-size: 0.74rem; color: #64748b; }
+      .msg { padding: 24px 6px 6px; color: #475569; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="head"><small>Smilecure Lifestyle Pvt Ltd</small><b>EMPLOYEE VERIFICATION</b></div>
+      <div class="photo" id="photo">ID</div>
+      <div class="body" id="body"><p class="msg">Checking this ID card…</p></div>
+    </main>
+    <script>
+      (function () {
+        function esc(v) {
+          return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+          });
+        }
+        var body = document.getElementById('body');
+        var photo = document.getElementById('photo');
+        var token = new URLSearchParams(location.search).get('t') || '';
+        function fail(text) {
+          body.innerHTML = '<span class="badge bad">✕ Not verified</span><p class="msg">' + esc(text) + '</p>' +
+            '<p class="foot">If you were shown this card, do not accept it as proof of employment.</p>';
+        }
+        if (!token) return fail('This QR code does not contain a valid verification link.');
+        fetch('/api/method/health_ecosystem_core.health_ecosystem_core.clinical_people_id_verify.verify_people_id?t=' + encodeURIComponent(token), {
+          headers: { Accept: 'application/json', 'X-Frappe-Site-Name': 'health.localhost' },
+          credentials: 'omit',
+        }).then(function (r) { return r.json(); }).then(function (json) {
+          var d = json && json.message;
+          if (!d || !d.valid) return fail('This ID card is not valid or the holder is no longer an active employee.');
+          var initials = String(d.name || 'ID').split(/\s+/).filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
+          photo.innerHTML = d.photo ? '<img alt="" src="' + esc(d.photo) + '" />' : esc(initials);
+          var rows = [['Employee ID', d.employee_id], ['Wing', d.wing], ['Division', d.division], ['Department', d.department], ['Position', d.position], ['Unit / Centre', d.unit]]
+            .filter(function (r) { return String(r[1] || '').trim(); })
+            .map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('');
+          body.innerHTML = '<h1>' + esc(d.name) + '</h1>' +
+            (d.valid ? '<span class="badge ok">✓ Verified · Active employee</span>' : '<span class="badge bad">✕ Not an active employee</span>') +
+            '<dl>' + rows + '</dl>' +
+            '<p class="foot">Verified by ' + esc(d.company) + ' · ' + esc(d.checked_at) + '</p>';
+        }).catch(function () { fail('Verification service is not reachable right now. Please try again.'); });
+      })();
+    </script>
+  </body>
+</html>

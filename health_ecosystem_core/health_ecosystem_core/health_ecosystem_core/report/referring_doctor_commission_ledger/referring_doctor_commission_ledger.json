@@ -1,0 +1,72 @@
+{
+  "add_total_row": 1,
+  "columns": [
+    {"fieldname": "posting_date", "fieldtype": "Date", "label": "Posting Date", "width": 100},
+    {"fieldname": "bill_date", "fieldtype": "Datetime", "label": "Bill Date", "width": 140},
+    {"fieldname": "customer_trf", "fieldtype": "Link", "label": "Bill / TRF", "options": "Customer TRF", "width": 130},
+    {"fieldname": "patient_name", "fieldtype": "Data", "label": "Patient", "width": 140},
+    {"fieldname": "franchisee", "fieldtype": "Link", "label": "Franchisee", "options": "Franchisee Profile", "width": 120},
+    {"fieldname": "invoice_amount", "fieldtype": "Currency", "label": "Invoice Amount", "width": 120},
+    {"fieldname": "commission_percent", "fieldtype": "Percent", "label": "Commission %", "width": 90},
+    {"fieldname": "commission_amount", "fieldtype": "Currency", "label": "Commission Amount", "width": 130},
+    {"fieldname": "status", "fieldtype": "Data", "label": "Status", "width": 80}
+  ],
+  "creation": "2026-08-12 00:00:00.000000",
+  "disabled": 0,
+  "doctype": "Report",
+  "filters": [
+    {
+      "fieldname": "from_date",
+      "fieldtype": "Date",
+      "label": "From Date",
+      "mandatory": 1,
+      "wildcard_filter": 0
+    },
+    {
+      "fieldname": "to_date",
+      "fieldtype": "Date",
+      "label": "To Date",
+      "mandatory": 1,
+      "wildcard_filter": 0
+    },
+    {
+      "fieldname": "referring_doctor",
+      "fieldtype": "Link",
+      "label": "Referring Doctor",
+      "options": "Referring Doctor",
+      "wildcard_filter": 0
+    },
+    {
+      "fieldname": "franchisee",
+      "fieldtype": "Link",
+      "label": "Franchisee",
+      "options": "Franchisee Profile",
+      "wildcard_filter": 0
+    },
+    {
+      "default": "Accrued",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "\nAccrued\nPaid\nReversed",
+      "wildcard_filter": 0
+    }
+  ],
+  "idx": 0,
+  "is_standard": "Yes",
+  "modified": "2026-08-12 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Referring Doctor Commission Ledger",
+  "owner": "Administrator",
+  "prepared_report": 0,
+  "ref_doctype": "Referring Doctor Commission Ledger",
+  "report_name": "Referring Doctor Commission Ledger",
+  "report_type": "Script Report",
+  "roles": [
+    {"role": "System Manager"},
+    {"role": "Health System Admin"},
+    {"role": "Franchisee Operator"},
+    {"role": "Lab Technician"}
+  ]
+}

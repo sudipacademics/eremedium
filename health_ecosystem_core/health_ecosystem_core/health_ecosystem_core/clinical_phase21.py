@@ -16,6 +16,11 @@ HR_ELIGIBLE_ROLES = frozenset(
         "Pathologist",
         "Sales Representative",
         "Sales Manager",
+        "HR Manager",
+        "HR User",
+        "Employee",
+        "Accounts User",
+        "Accounts Manager",
     }
 )
 

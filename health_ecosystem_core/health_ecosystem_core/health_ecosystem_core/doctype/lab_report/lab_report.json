@@ -33,6 +33,11 @@
     "printed_on",
     "section_results",
     "parameters",
+    "section_graphs",
+    "allow_graph_upload",
+    "graph_label",
+    "graph_attachment",
+    "graph_notes",
     "section_signoff",
     "investigator_1",
     "investigator_2",
@@ -91,6 +96,33 @@
     {"fieldname": "printed_on", "fieldtype": "Datetime", "label": "Authorized / Printed", "read_only": 1},
     {"fieldname": "section_results", "fieldtype": "Section Break", "label": "Test Results"},
     {"fieldname": "parameters", "fieldtype": "Table", "label": "Parameters", "options": "Lab Report Parameter", "reqd": 1},
+    {
+      "collapsible": 1,
+      "depends_on": "eval:doc.allow_graph_upload",
+      "fieldname": "section_graphs",
+      "fieldtype": "Section Break",
+      "label": "Graph / Chromatogram (HPLC etc.)"
+    },
+    {
+      "default": "0",
+      "fieldname": "allow_graph_upload",
+      "fieldtype": "Check",
+      "label": "Graph Upload Enabled",
+      "read_only": 1
+    },
+    {"fieldname": "graph_label", "fieldtype": "Data", "label": "Graph Label", "read_only": 1},
+    {
+      "depends_on": "eval:doc.allow_graph_upload",
+      "fieldname": "graph_attachment",
+      "fieldtype": "Attach Image",
+      "label": "Upload Graph / Import Image"
+    },
+    {
+      "depends_on": "eval:doc.allow_graph_upload",
+      "fieldname": "graph_notes",
+      "fieldtype": "Small Text",
+      "label": "Graph Notes"
+    },
     {"collapsible": 1, "fieldname": "section_signoff", "fieldtype": "Section Break", "label": "Sign-off & Notes"},
     {"fieldname": "investigator_1", "fieldtype": "Link", "label": "Pathologist", "options": "User"},
     {"fieldname": "investigator_2", "fieldtype": "Link", "label": "2nd Signatory", "options": "User"},

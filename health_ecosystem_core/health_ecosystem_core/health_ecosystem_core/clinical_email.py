@@ -205,8 +205,40 @@ def mark_user_email_verified(user):
     frappe.db.set_value("User", user, "hec_email_verified", 1, update_modified=False)
 
 
+# ERPNext-backed staff / portal operators — password is set in Desk; no patient email OTP gate.
+EMAIL_VERIFICATION_EXEMPT_ROLES = frozenset(
+    {
+        "System Manager",
+        "Health System Admin",
+        "Sales Manager",
+        "Sales Representative",
+        "Franchisee Operator",
+        "Phlebotomist",
+        "Lab Technician",
+        "Pathologist",
+        "Physician",
+        "Nurse",
+        "HR Manager",
+        "Employee",
+    }
+)
+
+
+def user_is_email_verification_exempt(user):
+    """Official users provisioned in ERPNext Desk skip portal email verification."""
+    if not user or user in ("Guest", "Administrator"):
+        return True
+    roles = set(frappe.get_roles(user))
+    return bool(roles & EMAIL_VERIFICATION_EXEMPT_ROLES)
+
+
 def user_requires_email_verification(user):
     ensure_user_email_fields()
+    if user_is_email_verification_exempt(user):
+        # Keep flag in sync so Desk-created staff never trip the patient verify gate again.
+        if not frappe.db.get_value("User", user, "hec_email_verified"):
+            mark_user_email_verified(user)
+        return False
     email = (frappe.db.get_value("User", user, "email") or "").lower()
     if not is_real_email(email):
         return False

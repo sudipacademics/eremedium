@@ -1,8 +1,8 @@
-"""Phase 60 — Customer health packages (1mg / Apollo247 style).
+"""Phase 60 — Customer health packages.
 
 Seeds bookable Lab Test Panels that bundle existing Lab Test Items
 (from the FOCO price list). Package panel_rate is a discounted sell price
-vs sum of individual MRPs — same commercial pattern as 1mg/Apollo packs.
+vs sum of individual MRPs.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ import frappe
 from frappe.utils import cint, flt
 
 # ---------------------------------------------------------------------------
-# Packages curated from 1mg Comprehensive Silver/Gold/Platinum and
-# Apollo Full Body Essential / Diabetes / Women / Men / Fever patterns.
+# Curated Silver/Gold/Platinum full-body tiers plus Diabetes / Heart /
+# Women / Men / Fever panels.
 # Each "tests" entry is a list of match hints resolved against Item.item_name.
 # ---------------------------------------------------------------------------
 
@@ -20,7 +20,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Essential Full Body Checkup",
         "description": (
-            "Apollo-style essential full body screen — blood count, diabetes, heart (lipid), "
+            "Essential full body screen — blood count, diabetes, heart (lipid), "
             "liver, kidney with electrolytes, thyroid, and urine routine. Ideal annual checkup."
         ),
         "panel_rate": 2499,
@@ -53,7 +53,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Comprehensive Silver Full Body Checkup",
         "description": (
-            "1mg Silver-style package — essential organs plus vitamins (D & B12), calcium, "
+            "Silver package — essential organs plus vitamins (D & B12), calcium, "
             "ESR and iron profile for nutrition & inflammation screening."
         ),
         "panel_rate": 4499,
@@ -91,7 +91,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Comprehensive Gold Full Body Checkup",
         "description": (
-            "1mg Gold-style checkup — Silver coverage plus CRP, ferritin, complete haemogram "
+            "Gold checkup — Silver coverage plus CRP, ferritin, complete haemogram "
             "with ESR, and free thyroid (FT3/FT4/TSH) for deeper metabolic insight."
         ),
         "panel_rate": 5999,
@@ -131,7 +131,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Comprehensive Platinum Full Body Checkup",
         "description": (
-            "1mg Platinum-style premium package — Gold base plus cardiac (hs-CRP, Troponin I), "
+            "Platinum premium package — Gold base plus cardiac (hs-CRP, Troponin I), "
             "digestive enzymes, and urine microalbumin for advanced risk screening."
         ),
         "panel_rate": 7999,
@@ -174,7 +174,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Diabetes Care Package",
         "description": (
-            "Apollo / 1mg diabetes panel — fasting & PP sugar, HbA1c, lipid, kidney basics, "
+            "Diabetes panel — fasting & PP sugar, HbA1c, lipid, kidney basics, "
             "and urine microalbumin for complication screening."
         ),
         "panel_rate": 1499,
@@ -205,7 +205,7 @@ CUSTOMER_PACKAGES = (
         "panel_name": "Heart Health Package",
         "description": (
             "Cardiac risk package — lipid profile, diabetes markers, hs-CRP and Troponin I "
-            "aligned with Apollo heart screening bundles."
+            "for a comprehensive heart screening."
         ),
         "panel_rate": 1999,
         "tests": [
@@ -253,7 +253,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Women Wellness Package",
         "description": (
-            "1mg Women Wellness style — CBC, thyroid, diabetes, vitamins, iron, "
+            "Women wellness screen — CBC, thyroid, diabetes, vitamins, iron, "
             "CA-125 ovarian marker and urine routine."
         ),
         "panel_rate": 3999,
@@ -287,7 +287,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Men Health Package",
         "description": (
-            "1mg Men Health style — full metabolic screen plus PSA (prostate) and vitamins."
+            "Men health screen — full metabolic screen plus PSA (prostate) and vitamins."
         ),
         "panel_rate": 4499,
         "tests": [
@@ -358,7 +358,7 @@ CUSTOMER_PACKAGES = (
         "panel_name": "Fever Panel",
         "description": (
             "Acute fever workup — CBC, ESR, CRP, Dengue profile, Malaria dual antigen, "
-            "Widal and Typhoid IgG/IgM (Apollo/1mg fever packs)."
+            "Widal and Typhoid IgG/IgM."
         ),
         "panel_rate": 2499,
         "tests": [
@@ -402,7 +402,7 @@ CUSTOMER_PACKAGES = (
     },
     {
         "panel_name": "Vitamin Check Package",
-        "description": "Apollo Vitamin Check style — Vitamin D3, B12 and serum calcium.",
+        "description": "Vitamin check — Vitamin D3, B12 and serum calcium.",
         "panel_rate": 2499,
         "tests": [
             "VITAMIN D3 (25 OH)",
@@ -422,7 +422,7 @@ CUSTOMER_PACKAGES = (
     {
         "panel_name": "Basic Health Screening",
         "description": (
-            "Entry-level 1mg Good Health style screen — CBC, fasting sugar, lipid and thyroid."
+            "Entry-level good-health screen — CBC, fasting sugar, lipid and thyroid."
         ),
         "panel_rate": 999,
         "tests": [
@@ -643,7 +643,7 @@ def _score_code_hint(hint_norm: str, item_name: str, item_code: str) -> int:
 
 
 def resolve_lab_item(hint: str):
-    """Resolve a FOCO / Apollo-style test label to an Item code."""
+    """Resolve a FOCO test label to an Item code."""
     hint = (hint or "").strip()
     if not hint:
         return None

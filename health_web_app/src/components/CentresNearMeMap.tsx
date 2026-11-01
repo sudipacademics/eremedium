@@ -85,7 +85,7 @@ export function CentresNearMeMap({
         .bindPopup(
           `<strong>${c.franchise_name}</strong>${
             c.distance_km != null ? `<br/>${c.distance_km} km` : ''
-          }${c.address ? `<br/>${c.address}` : ''}`,
+          }${c.address ? `<br/>${c.address}` : ''}<br/><span style="color:#0f766e;font-weight:700">Lab Tests · Home Collection</span>`,
         );
       marker.on('click', () => onSelect?.(c.franchisee_id));
       markersRef.current.set(c.franchisee_id, marker);

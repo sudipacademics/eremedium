@@ -23,6 +23,8 @@ from frappe.utils import cint, flt, validate_email_address
 FRANCHISEE_FEE = 80000.0
 OPENING_REF = "OPENING-RECHARGE"
 ROLE_FRANCHISEE = "Franchisee Operator"
+# Published demo default: never applied (new franchise logins get hec_seed_staff_password or a random one);
+# setup_phase132 reads it to rotate admin accounts still using it.
 DEFAULT_PASSWORD = "HubChangeMe@123"
 
 _BAD_LOCATIONS = {
@@ -152,8 +154,6 @@ def _ensure_user(email: str, mobile: str, full_name: str) -> str | None:
 		return None
 
 	_ensure_role()
-	from frappe.utils.password import update_password
-
 	if frappe.db.exists("User", email):
 		user = frappe.get_doc("User", email)
 		roles = {r.role for r in user.roles}
@@ -176,7 +176,9 @@ def _ensure_user(email: str, mobile: str, full_name: str) -> str | None:
 	)
 	user.insert(ignore_permissions=True)
 	user.add_roles(ROLE_FRANCHISEE)
-	update_password(email, DEFAULT_PASSWORD, logout_all_sessions=False)
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase132_foundations import set_new_staff_password
+
+	set_new_staff_password(email)
 	return email
 
 
@@ -315,6 +317,9 @@ def upsert_franchisee_from_row(row: dict, used_codes: set[str], geocode: bool = 
 		action = "created"
 
 	wallet_entry = _credit_opening_wallet(doc.name, recharge, deposit, fee)
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase121_wallet_books import book_wallet_credit
+
+	book_wallet_credit(wallet_entry, "import")
 
 	return {
 		"action": action,

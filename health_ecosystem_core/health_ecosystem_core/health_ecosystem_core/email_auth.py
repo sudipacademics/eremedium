@@ -41,6 +41,9 @@ def register_patient(
     full_name=None,
     mobile=None,
     referral_code=None,
+    dob=None,
+    gender=None,
+    city=None,
 ):
     """Create a Website User patient account and send email verification."""
     frappe.flags.ignore_csrf = True
@@ -52,6 +55,9 @@ def register_patient(
     full_name = (_parse_request_value("full_name", full_name) or "").strip()
     mobile = _parse_request_value("mobile", mobile)
     referral_code = (_parse_request_value("referral_code", referral_code) or "").strip()
+    dob = (_parse_request_value("dob", dob) or "").strip() or None
+    gender = (_parse_request_value("gender", gender) or "").strip() or None
+    city = (_parse_request_value("city", city) or "").strip() or None
 
     if not is_real_email(email):
         return _error(_("Enter a valid email address"))
@@ -67,32 +73,67 @@ def register_patient(
     mobile_norm = normalize_mobile(mobile) if mobile else None
 
     from health_ecosystem_core.health_ecosystem_core.clinical_email import ensure_user_email_fields
+    from health_ecosystem_core.health_ecosystem_core.patient_bridge import (
+        ensure_healthcare_patient_fields,
+    )
 
     ensure_user_email_fields()
+    ensure_healthcare_patient_fields()
     parts = full_name.split(None, 1)
     first_name = parts[0]
     last_name = parts[1] if len(parts) > 1 else ""
 
-    user = frappe.get_doc(
-        {
-            "doctype": "User",
-            "email": email,
-            "first_name": first_name,
-            "last_name": last_name,
-            "mobile_no": mobile_norm,
-            "user_type": "Website User",
-            "send_welcome_email": 0,
-            "enabled": 1,
-            "hec_email_verified": 0,
-        }
-    )
-    user.append("roles", {"role": PATIENT_ROLE})
-    user.insert(ignore_permissions=True)
-    update_password(email, password, logout_all_sessions=False)
+    # Elevate so User insert does not trip Guest → Notification Settings
+    previous_user = frappe.session.user
+    try:
+        frappe.set_user("Administrator")
+        user = frappe.get_doc(
+            {
+                "doctype": "User",
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "mobile_no": mobile_norm,
+                "user_type": "Website User",
+                "send_welcome_email": 0,
+                "enabled": 1,
+                "hec_email_verified": 0,
+            }
+        )
+        user.append("roles", {"role": PATIENT_ROLE})
+        user.insert(ignore_permissions=True)
+        update_password(email, password, logout_all_sessions=False)
 
-    link_user_to_health_patient(
-        email, patient_name=full_name, phone=mobile_norm, referral_code=referral_code or None
-    )
+        patient_id = link_user_to_health_patient(
+            email,
+            patient_name=full_name,
+            phone=mobile_norm,
+            referral_code=referral_code or None,
+            email=email,
+        )
+    finally:
+        try:
+            frappe.set_user(previous_user or "Guest")
+        except Exception:
+            frappe.set_user("Guest")
+
+    if patient_id and (dob or gender or city):
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase75_patient_referral import (
+                update_patient_profile_fields,
+            )
+
+            update_patient_profile_fields(
+                patient_id,
+                patient_name=full_name,
+                mobile=mobile_norm,
+                email=email,
+                dob=dob,
+                gender=gender,
+                city=city,
+            )
+        except Exception:
+            frappe.log_error(title="register_patient_details", message=frappe.get_traceback())
 
     sent, err = send_verification_email(email, full_name=full_name)
     if not sent:
@@ -102,7 +143,7 @@ def register_patient(
 
     frappe.db.commit()
     return _success(
-        {"email": email, "verification_sent": True},
+        {"email": email, "verification_sent": True, "patient_id": patient_id},
         message=_("Account created. Check your email to verify before signing in."),
     )
 

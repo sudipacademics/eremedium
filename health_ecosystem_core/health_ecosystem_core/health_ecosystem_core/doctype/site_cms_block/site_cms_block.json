@@ -1,0 +1,84 @@
+{
+  "actions": [],
+  "creation": "2026-07-26 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "block_type",
+    "enabled",
+    "display_order",
+    "heading",
+    "content",
+    "image",
+    "link_label",
+    "link_url",
+    "columns"
+  ],
+  "fields": [
+    {
+      "default": "Rich Text",
+      "fieldname": "block_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Block Type",
+      "options": "Rich Text\nImage\nImage + Text\nCards\nSteps\nFAQ\nCTA\nRaw HTML",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    {
+      "default": "0",
+      "fieldname": "display_order",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Display Order"
+    },
+    {
+      "fieldname": "heading",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Heading"
+    },
+    {
+      "fieldname": "content",
+      "fieldtype": "Text Editor",
+      "label": "Content"
+    },
+    {
+      "fieldname": "image",
+      "fieldtype": "Attach Image",
+      "label": "Image"
+    },
+    {
+      "fieldname": "link_label",
+      "fieldtype": "Data",
+      "label": "Link Label"
+    },
+    {
+      "fieldname": "link_url",
+      "fieldtype": "Data",
+      "label": "Link URL"
+    },
+    {
+      "default": "1",
+      "fieldname": "columns",
+      "fieldtype": "Int",
+      "label": "Columns",
+      "description": "For Cards / Steps layouts (1–4)"
+    }
+  ],
+  "istable": 1,
+  "modified": "2026-07-26 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Site CMS Block",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

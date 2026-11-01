@@ -126,6 +126,19 @@ export async function payWithRazorpay(input: PayOrderInput): Promise<void> {
   });
 }
 
+/** Paid health / Circle / yoga plan: pending subscription → Razorpay → activated by server verify. */
+export async function paySubscription(input: { planCode: string; customerName?: string; email?: string }) {
+  const checkout = await api.createSubscriptionCheckout(input.planCode);
+  await payWithRazorpay({
+    referenceDoctype: 'Health Subscription',
+    referenceName: checkout.data.reference_name,
+    amount: checkout.data.amount,
+    customerName: input.customerName,
+    email: input.email,
+  });
+  return { ...checkout.data.subscription, status: 'Active' };
+}
+
 /** B2B wallet recharge via Razorpay (Phase 23 — dedicated wallet order/verify). */
 export async function payB2bWalletRecharge(input: {
   amount: number;
@@ -176,5 +189,58 @@ export async function payB2bWalletRecharge(input: {
     rzp.open();
   });
   const wallet = await api.getB2bWallet();
+  return { amount: input.amount, wallet_balance: Number(wallet.data?.wallet_balance || 0) };
+}
+
+/** Patient wallet top-up via Razorpay (Phase 75 — Refer & Earn wallet). */
+export async function payPatientWalletTopup(input: {
+  amount: number;
+}): Promise<{ amount: number; wallet_balance: number }> {
+  const order = await api.createPatientWalletRazorpayOrder({ amount: input.amount });
+
+  if (order.data.test_mode) {
+    const verified = await api.verifyPatientWalletRazorpayPayment({
+      razorpay_payment_id: `pay_test_${order.data.order_id}`,
+      razorpay_order_id: order.data.order_id,
+      razorpay_signature: 'test_mode',
+    });
+    return { amount: input.amount, wallet_balance: Number(verified.data?.wallet_balance || 0) };
+  }
+
+  if (!order.data.razorpay_key_id || !order.data.order_id) {
+    throw new Error('Payment is not configured on the server');
+  }
+
+  await loadRazorpayScript();
+  if (!window.Razorpay) {
+    throw new Error('Razorpay checkout unavailable');
+  }
+  await new Promise<void>((resolve, reject) => {
+    const rzp = new window.Razorpay!({
+      key: order.data.razorpay_key_id!,
+      amount: order.data.amount_paise,
+      currency: order.data.currency || 'INR',
+      name: 'Remedium',
+      description: 'Wallet top-up',
+      order_id: order.data.order_id,
+      theme: { color: '#0d9488' },
+      handler: async (response) => {
+        try {
+          await api.verifyPatientWalletRazorpayPayment({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+          });
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      },
+      modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
+    });
+    rzp.on('payment.failed', () => reject(new Error('Payment failed')));
+    rzp.open();
+  });
+  const wallet = await api.getPatientWallet();
   return { amount: input.amount, wallet_balance: Number(wallet.data?.wallet_balance || 0) };
 }

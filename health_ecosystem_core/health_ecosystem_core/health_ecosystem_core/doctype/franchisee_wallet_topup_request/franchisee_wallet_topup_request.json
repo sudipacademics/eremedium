@@ -1,0 +1,149 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-09-29 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "franchisee",
+    "amount",
+    "payment_reference",
+    "payment_mode",
+    "status",
+    "column_break_1",
+    "requested_by",
+    "reviewed_by",
+    "reviewed_at",
+    "wallet_transaction",
+    "remarks",
+    "review_remarks"
+  ],
+  "fields": [
+    {
+      "default": "FWR-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "FWR-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "franchisee",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Franchisee",
+      "options": "Franchisee Profile",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Amount",
+      "reqd": 1
+    },
+    {
+      "fieldname": "payment_reference",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Bank / UPI Reference (UTR)",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "default": "Bank Transfer",
+      "fieldname": "payment_mode",
+      "fieldtype": "Select",
+      "label": "Payment Mode",
+      "options": "Bank Transfer\nUPI\nCheque\nCash"
+    },
+    {
+      "default": "Pending",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Pending\nApproved\nRejected",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "requested_by",
+      "fieldtype": "Link",
+      "label": "Requested By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reviewed_by",
+      "fieldtype": "Link",
+      "label": "Reviewed By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reviewed_at",
+      "fieldtype": "Datetime",
+      "label": "Reviewed At",
+      "read_only": 1
+    },
+    {
+      "fieldname": "wallet_transaction",
+      "fieldtype": "Link",
+      "label": "Wallet Transaction",
+      "options": "Franchisee Wallet Transaction",
+      "read_only": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Franchisee Remarks"
+    },
+    {
+      "fieldname": "review_remarks",
+      "fieldtype": "Small Text",
+      "label": "Review Remarks"
+    }
+  ],
+  "links": [],
+  "modified": "2026-09-29 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Franchisee Wallet Topup Request",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Accounts Manager",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Franchisee Operator"
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

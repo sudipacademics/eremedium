@@ -9,6 +9,7 @@ type ProfileForm = {
   email: string;
   dob: string;
   gender: string;
+  city: string;
   profile_image?: string;
 };
 
@@ -25,6 +26,7 @@ export function UpdateProfilePage() {
     email: user?.user || '',
     dob: '',
     gender: '',
+    city: '',
   });
   const [preview, setPreview] = useState<string | null>(null);
   const [imageB64, setImageB64] = useState<string | null>(null);
@@ -51,10 +53,18 @@ export function UpdateProfilePage() {
             email: String(p.email || user?.user || ''),
             dob: String(p.dob || ''),
             gender: String(p.gender || ''),
+            city: String(p.city || ''),
             profile_image: p.profile_image ? String(p.profile_image) : undefined,
           });
           if (p.profile_image) setPreview(String(p.profile_image));
           setVerified(Boolean(p.mobile));
+        } else {
+          setForm((prev) => ({
+            ...prev,
+            patient_name: String(p.patient_name || user?.fullName || prev.patient_name),
+            mobile: String(p.mobile_no || p.mobile || prev.mobile),
+            email: String(p.email || user?.user || prev.email),
+          }));
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Unable to load profile');
@@ -91,6 +101,7 @@ export function UpdateProfilePage() {
         email: form.email,
         dob: form.dob || undefined,
         gender: form.gender || undefined,
+        city: form.city || undefined,
         ...(imageB64
           ? { profile_image: imageB64, profile_image_filename: imageName || 'profile.jpg' }
           : {}),
@@ -222,6 +233,18 @@ export function UpdateProfilePage() {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 required
                 autoComplete="email"
+              />
+            </label>
+          </div>
+
+          <div className="profile-field-row">
+            <FieldIcon kind="user" />
+            <label>
+              City
+              <input
+                value={form.city}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                autoComplete="address-level2"
               />
             </label>
           </div>

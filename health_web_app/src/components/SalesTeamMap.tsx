@@ -16,6 +16,15 @@ L.Icon.Default.mergeOptions({
 
 const HQ_RADIUS_M = 5000;
 
+const DISTRICT_COLOURS = ['#0aa6a6', '#2563eb', '#ea580c', '#7c3aed', '#059669', '#db2777', '#0891b2', '#ca8a04'];
+
+function districtColour(district: string): string {
+  const key = String(district || 'Unspecified');
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return DISTRICT_COLOURS[hash % DISTRICT_COLOURS.length];
+}
+
 type Props = {
   data: SalesTeamMapData | null;
   height?: number;
@@ -103,15 +112,31 @@ export function SalesTeamMap({ data, height = 420 }: Props) {
     for (const lead of data.leads) {
       if (!lead.latitude || !lead.longitude) continue;
       points.push([lead.latitude, lead.longitude]);
+      const district = lead.district || lead.city || '';
+      const colour = districtColour(district);
       L.circleMarker([lead.latitude, lead.longitude], {
         radius: 7,
-        color: '#ea580c',
-        fillColor: '#fb923c',
+        color: colour,
+        fillColor: colour,
         fillOpacity: 0.9,
         weight: 2,
       })
         .addTo(layer)
-        .bindPopup(`<strong>${lead.lead_name}</strong><br/>${lead.city || ''} · ${lead.status || ''}`);
+        .bindPopup(
+          `<strong>${lead.lead_name}</strong><br/>${district || 'Unspecified'}${
+            lead.pincode ? ` · PIN ${lead.pincode}` : ''
+          } · ${lead.status || ''}`,
+        );
+      if (district) {
+        L.marker([lead.latitude, lead.longitude], {
+          icon: L.divIcon({
+            className: 'sales-district-label',
+            html: `<span style="background:#fff;border:1px solid ${colour};border-radius:4px;padding:1px 4px;font:11px sans-serif;color:#163d61;white-space:nowrap">${district}</span>`,
+            iconSize: [80, 18],
+            iconAnchor: [40, -8],
+          }),
+        }).addTo(layer);
+      }
     }
 
     fitBounds(map, points);

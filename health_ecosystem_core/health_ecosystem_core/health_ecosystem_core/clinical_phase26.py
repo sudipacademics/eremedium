@@ -1,4 +1,4 @@
-"""Phase 26 — Health Circle membership: checkout entitlements + Apollo-style benefits."""
+"""Phase 26 — Health Circle membership: checkout entitlements + member benefits."""
 
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ def persist_membership_on_doc(doc_data, pricing, meta_doctype):
 
 
 def seed_circle_plans():
-    """Apollo Circle–style plan names and benefit tiers."""
+    """Health Circle plan names and benefit tiers."""
     if not subscriptions_ready():
         return []
     specs = [
@@ -194,7 +194,7 @@ def circle_landing_payload():
     plans = list_subscription_plans()
     return {
         "brand": "Health Circle",
-        "tagline": "Premium care membership — like Apollo 24|7 Circle",
+        "tagline": "Premium care membership for you and your family",
         "hero_points": [
             "Up to 20% off lab tests & health packages",
             "Up to 12% off pharmacy orders",
@@ -236,12 +236,13 @@ def circle_landing_payload():
 
 
 def setup_phase26():
-    from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import setup_phase19, repair_pending_subscriptions
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import setup_phase19
 
     setup_phase19()
     ensure_phase26_custom_fields()
     circle = seed_circle_plans()
-    repaired = repair_pending_subscriptions()
+    # Pending subscriptions are unpaid checkouts; they must not be auto-activated on setup.
+    repaired = {"activated": 0, "skipped": "payment_gate"}
     frappe.db.commit()
     frappe.clear_cache()
     return {

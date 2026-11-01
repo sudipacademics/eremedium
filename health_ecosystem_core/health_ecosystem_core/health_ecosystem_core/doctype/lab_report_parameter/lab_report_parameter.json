@@ -11,10 +11,17 @@
     "unit",
     "lower_range",
     "upper_range",
+    "reference_range_label",
     "abnormal_flag",
+    "result_input_type",
+    "choice_options",
+    "print_style",
+    "before_heading",
+    "linked_info_role",
     "test_name",
     "parameter_code",
     "method",
+    "machine_name",
     "parameter_kind",
     "is_calculated",
     "formula",
@@ -22,19 +29,59 @@
     "reagent_qty",
     "interpretation",
     "diagnostic_test",
-    "erp_item_code"
+    "erp_item_code",
+    "result_layout"
   ],
   "fields": [
     {"default": "1", "fieldname": "include_in_report", "fieldtype": "Check", "in_list_view": 1, "label": "Print"},
     {"fieldname": "description", "fieldtype": "Data", "in_list_view": 1, "label": "Parameter", "reqd": 1, "width": "180px"},
     {"fieldname": "result_value", "fieldtype": "Data", "in_list_view": 1, "label": "Result", "width": "90px"},
-    {"fieldname": "unit", "fieldtype": "Data", "in_list_view": 1, "label": "Unit", "width": "70px"},
+    {"fieldname": "unit", "fieldtype": "Data", "in_list_view": 1, "label": "Unit", "read_only": 1, "width": "70px"},
     {"fieldname": "lower_range", "fieldtype": "Float", "in_list_view": 1, "label": "Low", "width": "60px"},
     {"fieldname": "upper_range", "fieldtype": "Float", "in_list_view": 1, "label": "High", "width": "60px"},
+    {
+      "description": "Resolved printed interval (age/gender aware)",
+      "fieldname": "reference_range_label",
+      "fieldtype": "Data",
+      "label": "Ref. Label"
+    },
     {"fieldname": "abnormal_flag", "fieldtype": "Select", "in_list_view": 1, "label": "Flag", "options": "\nN\nH\nL\nCritical", "read_only": 1, "width": "50px"},
+    {
+      "default": "Numeric",
+      "fieldname": "result_input_type",
+      "fieldtype": "Select",
+      "label": "Input Type",
+      "options": "Numeric\nDescriptive Text\nChoice List\nDate\nHeading\nSpacer\nTable Value",
+      "read_only": 1
+    },
+    {"fieldname": "choice_options", "fieldtype": "Small Text", "label": "Choices", "read_only": 1},
+    {
+      "default": "Normal",
+      "fieldname": "print_style",
+      "fieldtype": "Select",
+      "label": "Style",
+      "options": "Normal\nBold\nUnderline\nBold Underline",
+      "read_only": 1
+    },
+    {"fieldname": "before_heading", "fieldtype": "Data", "label": "Before Heading", "read_only": 1},
+    {
+      "default": "None",
+      "fieldname": "linked_info_role",
+      "fieldtype": "Select",
+      "label": "Linked Role",
+      "options": "None\nClinical Detail\nPatient Age\nPatient Weight\nLMP Date\nGestational Age\nAnalyte Value\nCalculated MoM\nRisk Score\nOther",
+      "read_only": 1
+    },
     {"fieldname": "test_name", "fieldtype": "Data", "label": "Test Group", "read_only": 1},
     {"fieldname": "parameter_code", "fieldtype": "Data", "label": "Code"},
-    {"fieldname": "method", "fieldtype": "Data", "label": "Method"},
+    {"fieldname": "method", "fieldtype": "Data", "label": "Method", "read_only": 1},
+    {
+      "description": "Analyzer model from Diagnostic Test Master (e.g. EM200)",
+      "fieldname": "machine_name",
+      "fieldtype": "Data",
+      "label": "Machine Name",
+      "read_only": 1
+    },
     {
       "default": "Real",
       "fieldname": "parameter_kind",
@@ -66,10 +113,16 @@
     },
     {"fieldname": "interpretation", "fieldtype": "Small Text", "label": "Interpretation"},
     {"fieldname": "diagnostic_test", "fieldtype": "Link", "label": "Test Master", "options": "Diagnostic Test Master"},
-    {"fieldname": "erp_item_code", "fieldtype": "Link", "label": "ERP Item", "options": "Item"}
+    {"fieldname": "erp_item_code", "fieldtype": "Link", "label": "ERP Item", "options": "Item"},
+    {
+      "fieldname": "result_layout",
+      "fieldtype": "Data",
+      "label": "Layout Snapshot",
+      "read_only": 1
+    }
   ],
   "istable": 1,
-  "modified": "2026-07-16 00:00:00.000000",
+  "modified": "2026-08-02 00:00:00.000000",
   "modified_by": "Administrator",
   "module": "Health Ecosystem Core",
   "name": "Lab Report Parameter",

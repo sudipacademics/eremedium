@@ -8,6 +8,9 @@ export type FranchiseeProfile = {
   franchise_name?: string;
   territory_region?: string;
   commission_percentage_rate?: number;
+  address?: string;
+  contact_phone?: string;
+  contact_email?: string;
 };
 
 export type StoredSession = {

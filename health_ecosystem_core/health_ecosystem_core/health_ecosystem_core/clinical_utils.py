@@ -56,12 +56,28 @@ def machine_test_code(item_code):
     return item_code
 
 
-def parameter_reference_range(test_master, parameter_name):
+def parameter_reference_range(test_master, parameter_name, age_years=None, gender=None, parameter_code=None):
     if not test_master or not parameter_name:
         return None
     if not frappe.db.exists("DocType", "Diagnostic Test Master"):
         return None
     doc = frappe.get_doc("Diagnostic Test Master", test_master)
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase88_diagnostic_formats import (
+            format_range_label,
+            resolve_parameter_bounds,
+        )
+
+        for row in doc.parameters or []:
+            if (row.parameter_name or "").lower() != parameter_name.lower():
+                continue
+            if parameter_code and (row.parameter_code or "") and row.parameter_code != parameter_code:
+                continue
+            bounds = resolve_parameter_bounds(doc, row, age_years=age_years, gender=gender)
+            label = format_range_label(bounds, row.unit)
+            return label or None
+    except Exception:
+        pass
     for row in doc.parameters or []:
         if (row.parameter_name or "").lower() == parameter_name.lower():
             low = row.normal_min
@@ -76,13 +92,26 @@ def parameter_reference_range(test_master, parameter_name):
     return None
 
 
-def get_master_parameter_bounds(test_master, parameter_name):
-    """Return normal/critical bounds from Diagnostic Test Master child row."""
+def get_master_parameter_bounds(test_master, parameter_name, age_years=None, gender=None, parameter_code=None):
+    """Return normal/critical bounds from Diagnostic Test Master (age/gender aware when configured)."""
     if not test_master or not parameter_name:
         return {}
     if not frappe.db.exists("DocType", "Diagnostic Test Master"):
         return {}
     doc = frappe.get_doc("Diagnostic Test Master", test_master)
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase88_diagnostic_formats import (
+            resolve_parameter_bounds,
+        )
+
+        for row in doc.parameters or []:
+            if (row.parameter_name or "").lower() != parameter_name.lower():
+                continue
+            if parameter_code and (row.parameter_code or "") and row.parameter_code != parameter_code:
+                continue
+            return resolve_parameter_bounds(doc, row, age_years=age_years, gender=gender)
+    except Exception:
+        pass
     for row in doc.parameters or []:
         if (row.parameter_name or "").lower() != parameter_name.lower():
             continue
@@ -96,7 +125,7 @@ def get_master_parameter_bounds(test_master, parameter_name):
     return {}
 
 
-def abnormal_flag_for_value(test_master, parameter_name, value, lower=None, upper=None):
+def abnormal_flag_for_value(test_master, parameter_name, value, lower=None, upper=None, age_years=None, gender=None):
     if value is None or value == "":
         return None
     try:
@@ -104,11 +133,45 @@ def abnormal_flag_for_value(test_master, parameter_name, value, lower=None, uppe
     except (TypeError, ValueError):
         return None
 
-    bounds = get_master_parameter_bounds(test_master, parameter_name) if test_master else {}
+    if test_master and frappe.db.exists("Diagnostic Test Master", test_master):
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase88_diagnostic_formats import (
+                classify_parameter_result,
+                reference_range_mode,
+            )
+
+            master_doc = frappe.get_doc("Diagnostic Test Master", test_master)
+            if reference_range_mode(master_doc) == "Interpretation Bands":
+                for row in master_doc.parameters or []:
+                    if (row.parameter_name or "").lower() != (parameter_name or "").lower():
+                        continue
+                    result = classify_parameter_result(master_doc, row, value)
+                    if result and result.get("abnormal_flag"):
+                        return result["abnormal_flag"]
+                    return result.get("abnormal_flag") if result else None
+        except Exception:
+            pass
+
+    bounds = (
+        get_master_parameter_bounds(test_master, parameter_name, age_years=age_years, gender=gender)
+        if test_master
+        else {}
+    )
     low = lower if lower is not None else bounds.get("normal_min")
     high = upper if upper is not None else bounds.get("normal_max")
+    # Float child-table defaults often store 0.0 for blank criticals — treat 0 as unset.
     crit_low = bounds.get("critical_min")
     crit_high = bounds.get("critical_max")
+    try:
+        if crit_low is not None and float(crit_low) == 0:
+            crit_low = None
+    except (TypeError, ValueError):
+        crit_low = None
+    try:
+        if crit_high is not None and float(crit_high) == 0:
+            crit_high = None
+    except (TypeError, ValueError):
+        crit_high = None
 
     if crit_low is not None and numeric < float(crit_low):
         return "Critical"
@@ -123,6 +186,72 @@ def abnormal_flag_for_value(test_master, parameter_name, value, lower=None, uppe
     return None
 
 
+ABNORMAL_FLAG_ALIASES = {
+    "N": "Normal",
+    "NORM": "Normal",
+    "NORMAL": "Normal",
+    "H": "High",
+    "HIGH": "High",
+    "L": "Low",
+    "LOW": "Low",
+    "HH": "Critical",
+    "LL": "Critical",
+    "AA": "Critical",
+    "C": "Critical",
+    "CRIT": "Critical",
+    "CRITICAL": "Critical",
+    "A": "Abnormal",
+    "ABN": "Abnormal",
+    "ABNORMAL": "Abnormal",
+    "R": "Abnormal",
+    "REACTIVE": "Abnormal",
+    "POS": "Abnormal",
+    "POSITIVE": "Abnormal",
+}
+
+
+def result_display_value(row):
+    """The value to show a human: qualitative text wins, numeric is the fallback."""
+    if hasattr(row, "get"):
+        getter = row.get
+    else:
+        def getter(key, default=None):
+            return getattr(row, key, default)
+
+    for key in ("display_value", "result_value_text"):
+        value = getter(key, None)
+        if value not in (None, ""):
+            return str(value)
+    numeric = getter("numeric_result_value", None)
+    if numeric in (None, ""):
+        return ""
+    return str(numeric)
+
+
+def normalize_abnormal_flag(flag):
+    """Map ASTM codes (N/H/L/HH) onto the Lab Test Result Select vocabulary.
+
+    Analyzers and internal helpers both emit single-letter codes, but the field
+    stores words. An unrecognised code is dropped rather than raised, so a stray
+    flag never costs us the result value itself.
+    """
+    if flag is None:
+        return None
+    raw = str(flag).strip()
+    if not raw:
+        return None
+    mapped = ABNORMAL_FLAG_ALIASES.get(raw.upper())
+    if mapped:
+        return mapped
+    try:
+        frappe.log_error(
+            f"Unrecognised abnormal flag: {raw!r}", "LIS abnormal flag"
+        )
+    except Exception:
+        pass
+    return None
+
+
 def abnormal_flag_for_lab_row(row):
     """Compute H/L/Critical/N for a Lab Report Parameter row."""
     test_master = getattr(row, "diagnostic_test", None) or (row.get("diagnostic_test") if isinstance(row, dict) else None)
@@ -130,6 +259,21 @@ def abnormal_flag_for_lab_row(row):
     value = getattr(row, "result_value", None) if not isinstance(row, dict) else row.get("result_value")
     lower = getattr(row, "lower_range", None) if not isinstance(row, dict) else row.get("lower_range")
     upper = getattr(row, "upper_range", None) if not isinstance(row, dict) else row.get("upper_range")
+    if test_master and value not in (None, ""):
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase88_diagnostic_formats import (
+                apply_interpretation_to_lab_row,
+                reference_range_mode,
+            )
+
+            if frappe.db.exists("Diagnostic Test Master", test_master):
+                master_doc = frappe.get_doc("Diagnostic Test Master", test_master)
+                if reference_range_mode(master_doc) == "Interpretation Bands":
+                    classification = apply_interpretation_to_lab_row(row, master_doc=master_doc)
+                    if classification and classification.get("abnormal_flag"):
+                        return classification["abnormal_flag"]
+        except Exception:
+            pass
     return abnormal_flag_for_value(test_master, name, value, lower=lower, upper=upper)
 
 
@@ -243,20 +387,34 @@ def find_test_master_for_trf_result(trf, erp_item_code=None, analyte_test_name=N
 
 def build_lab_report_json(trf_name):
     trf = frappe.get_doc("Customer TRF", trf_name)
+    result_meta = frappe.get_meta("Lab Test Result")
+    result_fields = [
+        "analyte_test_name",
+        "numeric_result_value",
+        "unit_of_measure",
+        "reference_range",
+        "abnormal_flag",
+        "erp_item_code",
+    ]
+    has_text_field = result_meta.has_field("result_value_text")
+    if has_text_field:
+        result_fields.append("result_value_text")
     all_results = frappe.get_all(
         "Lab Test Result",
         filters={"customer_trf": trf_name},
-        fields=[
-            "analyte_test_name",
-            "numeric_result_value",
-            "unit_of_measure",
-            "reference_range",
-            "abnormal_flag",
-            "erp_item_code",
-        ],
+        fields=result_fields,
         order_by="creation asc",
     )
-    has_item_field = frappe.get_meta("Lab Test Result").has_field("erp_item_code")
+    # Qualitative results have no numeric value, so give renderers one field to trust.
+    for row in all_results:
+        text_value = row.get("result_value_text") if has_text_field else None
+        if text_value:
+            row["display_value"] = text_value
+        elif row.get("numeric_result_value") is not None:
+            row["display_value"] = row["numeric_result_value"]
+        else:
+            row["display_value"] = ""
+    has_item_field = result_meta.has_field("erp_item_code")
     lines = get_trf_test_lines(trf)
     tests = []
     for line in lines:
@@ -496,18 +654,21 @@ def journey_report_payload(journey_name):
     trf = journey.customer_trf
     results = []
     if trf:
+        journey_fields = [
+            "analyte_test_name",
+            "numeric_result_value",
+            "unit_of_measure",
+            "reference_range",
+            "abnormal_flag",
+            "machine_reference",
+            "verification_timestamp",
+        ]
+        if frappe.get_meta("Lab Test Result").has_field("result_value_text"):
+            journey_fields.append("result_value_text")
         results = frappe.get_all(
             "Lab Test Result",
             filters={"customer_trf": trf},
-            fields=[
-                "analyte_test_name",
-                "numeric_result_value",
-                "unit_of_measure",
-                "reference_range",
-                "abnormal_flag",
-                "machine_reference",
-                "verification_timestamp",
-            ],
+            fields=journey_fields,
             order_by="creation asc",
         )
     report = {
@@ -530,3 +691,41 @@ def journey_report_payload(journey_name):
     elif trf:
         report["structured"] = build_lab_report_json(trf)
     return report
+
+
+def normalize_patient_age(years=None, months=None, days=None):
+    """Return non-negative integer years/months/days. Missing values become 0."""
+    from frappe.utils import cint
+
+    def _part(raw):
+        try:
+            value = cint(raw or 0)
+        except Exception:
+            value = 0
+        return value if value > 0 else 0
+
+    return _part(years), _part(months), _part(days)
+
+
+def format_patient_age(years=None, months=None, days=None):
+    """Human age: '22 Years 2 Months 22 Days', or only the parts that are set."""
+    y, m, d = normalize_patient_age(years, months, days)
+    parts = []
+    if y:
+        parts.append(f"{y} Year{'s' if y != 1 else ''}")
+    if m:
+        parts.append(f"{m} Month{'s' if m != 1 else ''}")
+    if d:
+        parts.append(f"{d} Day{'s' if d != 1 else ''}")
+    return " ".join(parts)
+
+
+def smoke_walkin_age_parts():
+    assert normalize_patient_age(22, 2, 22) == (22, 2, 22)
+    assert normalize_patient_age(-3, "x", None) == (0, 0, 0)
+    assert format_patient_age(22, 2, 22) == "22 Years 2 Months 22 Days"
+    assert format_patient_age(0, 0, 2) == "2 Days"
+    assert format_patient_age(0, 2, 5) == "2 Months 5 Days"
+    assert format_patient_age(1, 0, 0) == "1 Year"
+    print("SMOKE_OK walkin_age_parts")
+    return {"ok": True}

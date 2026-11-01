@@ -275,7 +275,8 @@ def _plan_end_date(start, billing_interval):
     return add_months(start, 1) - timedelta(days=1)
 
 
-def subscribe_user(user, plan_code):
+def subscribe_user(user, plan_code, allow_unpaid=False):
+    """Direct activation — free plans only; paid plans go through create_subscription_checkout + Razorpay."""
     if not subscriptions_ready():
         frappe.throw(_("Subscriptions are not available yet"))
 
@@ -286,6 +287,8 @@ def subscribe_user(user, plan_code):
     plan = frappe.get_doc("Health Subscription Plan", plan_code)
     if not plan.enabled:
         frappe.throw(_("This plan is not available"))
+    if flt(plan.monthly_price) > 0 and not allow_unpaid:
+        frappe.throw(_("PAYMENT_REQUIRED: This plan needs online payment to activate."))
 
     existing = get_active_subscription(user)
     if existing:

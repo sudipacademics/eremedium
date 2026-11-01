@@ -525,12 +525,55 @@ def serialize_appraisal(docname):
     return row
 
 
-def serialize_training_event(name):
+def _training_file_kind(file_name, file_url, file_type=None):
+    text = " ".join(str(v or "") for v in (file_name, file_url, file_type)).lower()
+    if any(token in text for token in (".mp4", ".webm", ".mov", ".m4v", "video/")):
+        return "video"
+    if any(token in text for token in (".pdf", ".doc", ".docx", ".ppt", ".pptx", "application/pdf")):
+        return "document"
+    return "file"
+
+
+def _attached_files(doctype, name):
+    if not doctype or not name or not frappe.db.exists("DocType", "File"):
+        return []
+    fields = ["file_name", "file_url", "file_size"]
+    if frappe.get_meta("File").has_field("file_type"):
+        fields.append("file_type")
+    rows = frappe.get_all(
+        "File",
+        filters={"attached_to_doctype": doctype, "attached_to_name": name, "is_folder": 0},
+        fields=fields,
+        limit=20,
+    )
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["kind"] = _training_file_kind(item.get("file_name"), item.get("file_url"), item.get("file_type"))
+        out.append(item)
+    return out
+
+
+def serialize_training_event(name, employee=None):
     if not name or not frappe.db.exists("Training Event", name):
         return None
     fields = ["event_name", "training_program", "event_status", "start_time", "end_time", "type", "introduction"]
     row = frappe.db.get_value("Training Event", name, fields, as_dict=True) or {}
     row["name"] = name
+    row["files"] = _attached_files("Training Event", name)
+    if employee and frappe.db.exists("DocType", "Training Event Employee"):
+        child_meta = frappe.get_meta("Training Event Employee")
+        child_fields = [field for field in ("attendance", "status") if child_meta.has_field(field)]
+        if child_fields:
+            child = frappe.db.get_value(
+                "Training Event Employee",
+                {"parent": name, "employee": employee},
+                child_fields,
+                as_dict=True,
+            )
+            if child:
+                row["attendance"] = child.get("attendance")
+                row["participant_status"] = child.get("status")
     return row
 
 
@@ -541,8 +584,9 @@ def serialize_training_program(name):
         fields = ["training_program", "status", "description"] if frappe.get_meta("Training Program").has_field("description") else ["training_program"]
         row = frappe.db.get_value("Training Program", name, fields, as_dict=True) or {}
         row["name"] = name
+        row["files"] = _attached_files("Training Program", name)
         return row
-    return {"name": name, "training_program": name}
+    return {"name": name, "training_program": name, "files": []}
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +606,7 @@ def get_performance_hub_payload(user):
         "training_programs": [],
         "training_events": [],
         "feedback_criteria": [],
+        "policies": [],
     }
     if not ready or not employee:
         return out
@@ -623,9 +668,12 @@ def get_performance_hub_payload(user):
     ):
         event_names.add(ev)
 
-    out["training_events"] = [
-        serialize_training_event(n) for n in sorted(event_names) if serialize_training_event(n)
-    ]
+    events = []
+    for name in sorted(event_names):
+        row = serialize_training_event(name, employee)
+        if row:
+            events.append(row)
+    out["training_events"] = events
 
     if frappe.db.exists("DocType", "Employee Feedback Criteria"):
         out["feedback_criteria"] = frappe.get_all(
@@ -633,6 +681,15 @@ def get_performance_hub_payload(user):
             fields=["name", "criteria"],
             limit=20,
         )
+
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import (
+            list_hr_policies,
+        )
+
+        out["policies"] = list_hr_policies()
+    except Exception:
+        out["policies"] = []
 
     return out
 

@@ -1,0 +1,118 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-08-14 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "consumable_item",
+    "lot_number",
+    "column_break_1",
+    "franchisee_id",
+    "status",
+    "units_per_pack",
+    "units_remaining",
+    "opened_on",
+    "expiry_date",
+    "opened_by",
+    "remarks"
+  ],
+  "fields": [
+    {
+      "default": "LCB-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "LCB-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "consumable_item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Consumable Item",
+      "options": "Item",
+      "reqd": 1
+    },
+    {
+      "fieldname": "lot_number",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Lot Number",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "franchisee_id",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Hub / Franchisee",
+      "options": "Franchisee Profile"
+    },
+    {
+      "default": "Sealed",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Sealed\nOpen\nDepleted\nExpired"
+    },
+    {
+      "fieldname": "units_per_pack",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Units Per Pack",
+      "reqd": 1
+    },
+    {
+      "fieldname": "units_remaining",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Units Remaining",
+      "read_only": 1
+    },
+    {
+      "fieldname": "opened_on",
+      "fieldtype": "Date",
+      "label": "Opened On"
+    },
+    {
+      "fieldname": "expiry_date",
+      "fieldtype": "Date",
+      "label": "Expiry Date"
+    },
+    {
+      "fieldname": "opened_by",
+      "fieldtype": "Link",
+      "label": "Opened By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    }
+  ],
+  "modified": "2026-08-14 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Consumable Batch",
+  "naming_rule": "By \"Naming Series\" field",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1},
+    {"role": "Lab Technician", "read": 1, "write": 1, "create": 1},
+    {"role": "Pathologist", "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

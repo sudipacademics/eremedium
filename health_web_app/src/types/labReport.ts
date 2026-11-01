@@ -10,12 +10,21 @@ export type LabReportParam = {
   lower_range: number | null;
   upper_range: number | null;
   method: string;
+  machine_name?: string;
   is_calculated: number;
   formula: string;
   abnormal_flag: string;
   interpretation: string;
   diagnostic_test: string;
   erp_item_code: string;
+  result_input_type?: string;
+  choice_options?: string;
+  result_layout?: string;
+  before_heading?: string;
+  print_style?: string;
+  reference_range_label?: string;
+  clinical_category?: string;
+  uses_interpretation_bands?: number;
 };
 
 export type LabReportDetail = {
@@ -28,6 +37,21 @@ export type LabReportDetail = {
   report_title_2?: string;
   patient_name?: string;
   specimen?: string;
+  collection_center?: string;
+  age?: number | string | null;
+  age_months?: number | string | null;
+  age_days?: number | string | null;
+  gender?: string | null;
+  unique_barcode?: string | null;
+  appointment_no?: string | null;
+  bill_no?: string | null;
+  sample_date?: string | null;
+  lab_receipt_date?: string | null;
+  collection_slot?: string | null;
+  referral_doctor?: string | null;
+  test_required?: string | null;
+  comments?: string | null;
+  report_note?: string | null;
   parameters: LabReportParam[];
   changed?: number;
 };
@@ -64,11 +88,21 @@ export type LabReportQueue = {
 export type LabReportParamEdit = {
   name: string;
   result_value?: string;
-  unit?: string;
-  method?: string;
   abnormal_flag?: string;
   interpretation?: string;
   include_in_report?: number;
+};
+
+export type CommentPresetRow = {
+  id: string;
+  name?: string;
+  title?: string;
+  category: string;
+  text: string;
+  plain?: string;
+  is_starter?: number;
+  owner?: string;
+  can_edit?: number;
 };
 
 export const ABNORMAL_FLAGS = ['', 'N', 'H', 'L', 'Critical'] as const;

@@ -47,11 +47,19 @@ export function SubscriptionsPage() {
     setError(null);
     setMessage(null);
     try {
-      const res = await api.subscribeHealthPlan(planCode);
-      setCurrent(res.data.subscription);
-      setMessage(res.message || 'Subscription activated');
+      const plan = plans.find((p) => p.plan_code === planCode);
+      if (plan && plan.monthly_price > 0) {
+        const { paySubscription } = await import('../payments/razorpayCheckout');
+        setCurrent(await paySubscription({ planCode, customerName: user.fullName || user.user, email: user.user }));
+        setMessage('Payment received — subscription activated');
+      } else {
+        const res = await api.subscribeHealthPlan(planCode);
+        setCurrent(res.data.subscription);
+        setMessage(res.message || 'Subscription activated');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not subscribe');
+      const msg = e instanceof Error ? e.message : 'Could not subscribe';
+      if (msg !== 'Payment cancelled') setError(msg);
     } finally {
       setBusy('');
     }

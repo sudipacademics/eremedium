@@ -228,29 +228,40 @@ def get_my_yoga_subscription(sid=None):
 
     from health_ecosystem_core.health_ecosystem_core.clinical_phase19 import serialize_subscription
 
-    name = frappe.db.get_value(
+    # Prefer yoga-winged active subscription
+    names = frappe.get_all(
         "Health Subscription",
-        {
-            "user": frappe.session.user,
-            "status": "Active",
-        },
-        "name",
+        filters={"user": frappe.session.user, "status": "Active"},
+        pluck="name",
         order_by="end_date desc",
+        limit_page_length=20,
     )
-    if not name:
-        return _success({"subscription": None})
+    chosen = None
+    for name in names:
+        sub = serialize_subscription(name)
+        if not sub:
+            continue
+        plan = sub.get("plan") or {}
+        plan_code = plan.get("plan_code") or plan.get("name")
+        category = (
+            frappe.db.get_value("Health Subscription Plan", plan_code, "plan_category") if plan_code else None
+        )
+        wing = frappe.db.get_value("Health Subscription Plan", plan_code, "wellness_wing") if plan_code else None
+        if category == "Yoga" or wing == "yoga":
+            sub["plan"] = serialize_yoga_plan(plan_code) or plan
+            try:
+                from health_ecosystem_core.health_ecosystem_core.clinical_phase110_wellness_sessions import (
+                    _ensure_yoga_session_counters,
+                    _serialize_card,
+                )
 
-    plan = sub.get("plan") if sub else None
-    if not plan:
-        return _success({"subscription": None})
-    plan_code = plan.get("plan_code")
-    category = (
-        frappe.db.get_value("Health Subscription Plan", plan_code, "plan_category") if plan_code else None
-    )
-    if category != "Yoga":
-        return _success({"subscription": None})
-    sub["plan"] = serialize_yoga_plan(plan_code)
-    return _success({"subscription": sub})
+                _ensure_yoga_session_counters(name)
+                sub["session_card"] = _serialize_card(name)
+            except Exception:
+                pass
+            chosen = sub
+            break
+    return _success({"subscription": chosen})
 
 
 def setup_yoga_subscriptions():

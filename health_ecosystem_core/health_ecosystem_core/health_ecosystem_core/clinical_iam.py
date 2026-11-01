@@ -11,6 +11,10 @@ STAFF_ROLES = frozenset(
 FRANCHISEE_ROLE = "Franchisee Operator"
 PHLEBOTOMIST_ROLE = "Phlebotomist"
 PATIENT_ROLE = "Patient"
+SAMPLE_COLLECTOR_EMAIL = "phlebotomist@health.local"
+SAMPLE_COLLECTOR_NAME = "Sample Collector"
+# Published demo default: never applied to staff (see _upsert_iam_user); setup_phase132 reads it for admin rotation.
+SAMPLE_COLLECTOR_DEFAULT_PASSWORD = "PhlebChangeMe@123"
 
 
 def user_roles(user=None):
@@ -89,16 +93,40 @@ def trf_list_filters_for_user(user=None):
     return None
 
 
+PF_REQUEST_FIELD = "pf_request"
+PF_ORDER_MESSAGE = "This is a PhleboFirst order — collect it from the PhleboFirst job board"
+
+
+def _pf_field_ready():
+    try:
+        return frappe.get_meta("Customer TRF").has_field(PF_REQUEST_FIELD)
+    except Exception:
+        return False
+
+
+def exclude_pf_trfs(filters):
+    """Legacy collector queues skip PhleboFirst orders; only the PhleboFirst rider flow collects them."""
+    if filters is not None and _pf_field_ready():
+        filters[PF_REQUEST_FIELD] = ("is", "not set")
+    return filters
+
+
+def is_pf_trf(trf_name):
+    return bool(trf_name) and _pf_field_ready() and bool(frappe.db.get_value("Customer TRF", trf_name, PF_REQUEST_FIELD))
+
+
 def phlebotomist_trf_ids(user=None):
     user = user or frappe.session.user
     hub = franchise_for_phlebotomist(user)
     if hub:
         return frappe.get_all(
             "Customer TRF",
-            filters={
-                "franchisee_id": hub,
-                "order_status": ("in", ["Booked", "Sample Collected"]),
-            },
+            filters=exclude_pf_trfs(
+                {
+                    "franchisee_id": hub,
+                    "order_status": ("in", ["Booked", "Sample Collected"]),
+                }
+            ),
             pluck="name",
         )
     journeys = frappe.get_all(
@@ -106,7 +134,10 @@ def phlebotomist_trf_ids(user=None):
         filters={"phlebotomist": user},
         pluck="customer_trf",
     )
-    return [t for t in journeys if t]
+    trfs = [t for t in journeys if t]
+    if trfs and _pf_field_ready():
+        trfs = frappe.get_all("Customer TRF", filters=exclude_pf_trfs({"name": ("in", trfs)}), pluck="name")
+    return trfs
 
 
 def franchise_for_phlebotomist(user=None):
@@ -118,14 +149,58 @@ def franchise_for_phlebotomist(user=None):
     return None
 
 
+def resolve_sample_collector_user(create=False):
+    """User who collects blood at the mother lab — Sample Collector / phlebotomist@health.local."""
+    if frappe.db.exists("User", SAMPLE_COLLECTOR_EMAIL):
+        if not frappe.db.get_value("User", SAMPLE_COLLECTOR_EMAIL, "enabled") and create:
+            frappe.db.set_value("User", SAMPLE_COLLECTOR_EMAIL, "enabled", 1, update_modified=False)
+        return SAMPLE_COLLECTOR_EMAIL
+    for filters in (
+        {"full_name": SAMPLE_COLLECTOR_NAME, "enabled": 1},
+        {"first_name": "Sample", "last_name": "Collector", "enabled": 1},
+    ):
+        name = frappe.db.get_value("User", filters, "name")
+        if name:
+            return name
+    for user in frappe.get_all(
+        "Has Role",
+        filters={"role": PHLEBOTOMIST_ROLE, "parenttype": "User"},
+        pluck="parent",
+    ):
+        info = frappe.db.get_value("User", user, ["full_name", "enabled"], as_dict=True)
+        if info and info.enabled and "collector" in (info.full_name or "").lower():
+            return user
+    if create:
+        _upsert_iam_user(
+            {
+                "email": SAMPLE_COLLECTOR_EMAIL,
+                "username": "phlebotomist",
+                "first_name": "Sample",
+                "last_name": "Collector",
+                "password": SAMPLE_COLLECTOR_DEFAULT_PASSWORD,
+                "roles": [PHLEBOTOMIST_ROLE],
+            }
+        )
+        return SAMPLE_COLLECTOR_EMAIL
+    return None
+
+
 def auto_assign_phlebotomist_for_trf(trf_name):
     """Link hub phlebotomist to journey when a customer books diagnostics."""
+    if is_pf_trf(trf_name):
+        return None
     trf = frappe.get_doc("Customer TRF", trf_name)
     if not trf.franchisee_id:
         return None
-    phlebotomist = frappe.db.get_value(
-        "Franchisee Profile", trf.franchisee_id, "default_phlebotomist"
-    )
+    phlebotomist = None
+    if frappe.get_meta("Franchisee Profile").has_field("default_phlebotomist"):
+        phlebotomist = frappe.db.get_value(
+            "Franchisee Profile", trf.franchisee_id, "default_phlebotomist"
+        )
+    if not phlebotomist:
+        channel = (getattr(trf, "sample_intake_channel", None) or "").strip()
+        if channel in ("Direct to Mother Lab", "Online / Courier Sample"):
+            phlebotomist = resolve_sample_collector_user()
     if not phlebotomist:
         return None
     journey_name = trf.get("care_journey")
@@ -196,12 +271,13 @@ def _ensure_role_perm(doctype, role, perm_map):
     doc.save(ignore_permissions=True)
 
 
-def link_user_to_health_patient(user, patient_name=None, phone=None, referral_code=None):
+def link_user_to_health_patient(user, patient_name=None, phone=None, referral_code=None, email=None):
     from health_ecosystem_core.health_ecosystem_core.patient_bridge import ensure_patient
 
     patient_id = ensure_patient(
         patient_name=patient_name or frappe.db.get_value("User", user, "full_name"),
         phone=phone or frappe.db.get_value("User", user, "mobile_no"),
+        email=email or frappe.db.get_value("User", user, "email"),
         user=user,
     )
     try:
@@ -236,7 +312,7 @@ def setup_iam(seed_users=True):
             "username": "phlebotomist",
             "first_name": "Sample",
             "last_name": "Collector",
-            "password": "PhlebChangeMe@123",
+            "password": SAMPLE_COLLECTOR_DEFAULT_PASSWORD,
             "roles": [PHLEBOTOMIST_ROLE],
         },
         {
@@ -266,10 +342,13 @@ def setup_iam(seed_users=True):
 
 
 def _upsert_iam_user(spec):
+    """Patient demo logins keep their demo password; staff get a password only when first created."""
     user_type = spec.get("user_type", "System User")
+    created = False
     if frappe.db.exists("User", spec["email"]):
         user = frappe.get_doc("User", spec["email"])
     else:
+        created = True
         user = frappe.get_doc(
             {
                 "doctype": "User",
@@ -291,9 +370,14 @@ def _upsert_iam_user(spec):
             user.append("roles", {"role": role})
     user.save(ignore_permissions=True)
 
-    from frappe.utils.password import update_password
+    if PATIENT_ROLE in spec["roles"]:
+        from frappe.utils.password import update_password
 
-    update_password(spec["email"], spec["password"], logout_all_sessions=False)
+        update_password(spec["email"], spec["password"], logout_all_sessions=False)
+    elif created:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase132_foundations import set_new_staff_password
+
+        set_new_staff_password(spec["email"])
 
     if PATIENT_ROLE in spec["roles"]:
         link_user_to_health_patient(

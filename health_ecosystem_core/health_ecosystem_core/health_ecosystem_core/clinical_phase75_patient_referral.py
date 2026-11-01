@@ -13,6 +13,7 @@ from frappe.utils import cint, flt, today
 
 SIGNUP_CREDIT = 50.0
 FIRST_ORDER_REFERRER_BONUS = 100.0
+MIN_PATIENT_WALLET_TOPUP = 100
 MAX_WALLET_APPLY_FRACTION = 1.0  # full balance may apply, capped by payable total
 
 
@@ -182,6 +183,17 @@ def credit_patient_wallet(patient_id, amount, remarks=None, reference_doctype=No
 	return {"transaction_id": txn, "amount": amount, "wallet_balance": new_balance}
 
 
+def credit_promotional_wallet(patient_id, amount, remarks=None, reference_doctype=None, reference_name=None):
+	"""Company-funded wallet credit (referral / reward); booked as promotional expense."""
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase121_wallet_books import book_patient_promo_credit
+
+	row = credit_patient_wallet(
+		patient_id, amount, remarks=remarks, reference_doctype=reference_doctype, reference_name=reference_name
+	)
+	row["journal_entry"] = book_patient_promo_credit(row.get("transaction_id"))
+	return row
+
+
 def debit_patient_wallet(patient_id, amount, remarks=None, reference_doctype=None, reference_name=None):
 	amount = flt(amount)
 	if amount <= 0:
@@ -241,14 +253,14 @@ def attribute_referral(new_patient_id, referral_code):
 	doc.signup_referral_credited = 1
 	doc.save(ignore_permissions=True)
 
-	credit_patient_wallet(
+	credit_promotional_wallet(
 		new_patient_id,
 		SIGNUP_CREDIT,
 		remarks=_("Welcome credit for joining with referral {0}").format(code),
 		reference_doctype="Health Patient",
 		reference_name=referrer,
 	)
-	credit_patient_wallet(
+	credit_promotional_wallet(
 		referrer,
 		SIGNUP_CREDIT,
 		remarks=_("Referral signup bonus for inviting {0}").format(new_patient_id),
@@ -271,7 +283,7 @@ def on_first_paid_order(patient_id, reference_doctype=None, reference_name=None)
 
 	doc.referral_bonus_paid = 1
 	doc.save(ignore_permissions=True)
-	credit_patient_wallet(
+	credit_promotional_wallet(
 		referrer,
 		FIRST_ORDER_REFERRER_BONUS,
 		remarks=_("First-order referral bonus from {0}").format(patient_id),
@@ -372,7 +384,7 @@ def credit_purchase_wallet_points(patient_id, reference_doctype, reference_name,
 	earn = round(paid * earn_pct, 2)
 	if earn <= 0:
 		return None
-	return credit_patient_wallet(
+	return credit_promotional_wallet(
 		patient_id,
 		earn,
 		remarks=_("Purchase reward 10% on {0} {1} (₹{2})").format(
@@ -414,13 +426,17 @@ def debit_wallet_for_order(patient_id, amount, reference_doctype, reference_name
 	amount = flt(amount)
 	if amount <= 0:
 		return None
-	return debit_patient_wallet(
+	from health_ecosystem_core.health_ecosystem_core.clinical_phase121_wallet_books import book_patient_wallet_spend
+
+	row = debit_patient_wallet(
 		patient_id,
 		amount,
 		remarks=_("Applied to {0} {1}").format(reference_doctype, reference_name),
 		reference_doctype=reference_doctype,
 		reference_name=reference_name,
 	)
+	row["journal_entry"] = book_patient_wallet_spend(row.get("transaction_id"))
+	return row
 
 
 def get_patient_wallet_payload(patient_id, limit=30):
@@ -460,11 +476,76 @@ def get_patient_wallet_payload(patient_id, limit=30):
 		"referred_count": referred_count,
 		"signup_credit": SIGNUP_CREDIT,
 		"first_order_bonus": FIRST_ORDER_REFERRER_BONUS,
+		"min_topup": MIN_PATIENT_WALLET_TOPUP,
 		"share_text": share,
 		"share_url": f"https://www.e-remedium.in/signup?ref={code}",
 		"transactions": txns,
 		"profile_image": getattr(doc, "profile_image", None),
 	}
+
+
+def prepare_patient_wallet_topup(patient_id, amount):
+	amount = flt(amount)
+	if amount < MIN_PATIENT_WALLET_TOPUP:
+		frappe.throw(
+			_("Minimum wallet top-up is ₹{0}").format(MIN_PATIENT_WALLET_TOPUP),
+			frappe.ValidationError,
+		)
+	ensure_patient_wallet_and_code(patient_id)
+	return {
+		"patient_id": patient_id,
+		"amount": amount,
+		"amount_paise": int(round(amount * 100)),
+	}
+
+
+def stash_patient_wallet_razorpay_order(order_id, patient_id, amount):
+	frappe.cache().set_value(
+		f"patient_wallet_order:{order_id}",
+		{"patient_id": patient_id, "amount": flt(amount)},
+		expires_in_sec=86400,
+	)
+
+
+def load_patient_wallet_razorpay_order(order_id):
+	return frappe.cache().get_value(f"patient_wallet_order:{order_id}")
+
+
+def clear_patient_wallet_razorpay_order(order_id):
+	try:
+		frappe.cache().delete_value(f"patient_wallet_order:{order_id}")
+	except Exception:
+		pass
+
+
+def complete_patient_wallet_razorpay_credit(patient_id, amount, payment_id, order_id=None):
+	"""Credit patient wallet after verified Razorpay top-up (idempotent by payment_id)."""
+	remarks = _("Wallet top-up via Razorpay {0}").format(payment_id or "")
+	frappe.db.get_value("Health Patient", patient_id, "name", for_update=True)
+	if payment_id and frappe.db.exists("DocType", "Patient Wallet Transaction"):
+		# Remarks-based idempotency (no Razorpay Payment DocType for Dynamic Link).
+		existing = frappe.get_all(
+			"Patient Wallet Transaction",
+			filters={"patient": patient_id, "remarks": ["like", f"%{payment_id}%"]},
+			fields=["name", "amount", "balance_after"],
+			limit=1,
+		)
+		if existing:
+			return {
+				"transaction_id": existing[0].name,
+				"amount": flt(existing[0].amount),
+				"wallet_balance": get_wallet_balance(patient_id),
+				"already_credited": True,
+			}
+	row = credit_patient_wallet(patient_id, amount, remarks=remarks)
+	if payment_id:
+		from health_ecosystem_core.health_ecosystem_core.clinical_phase121_payment_core import book_wallet_topup
+
+		row["journal_entry"] = book_wallet_topup("patient", patient_id, amount, payment_id, source="razorpay")
+	if order_id:
+		clear_patient_wallet_razorpay_order(order_id)
+	row["already_credited"] = False
+	return row
 
 
 def update_patient_profile_fields(
@@ -475,6 +556,7 @@ def update_patient_profile_fields(
 	email=None,
 	dob=None,
 	gender=None,
+	city=None,
 	profile_image_b64=None,
 	profile_image_filename=None,
 ):
@@ -492,6 +574,8 @@ def update_patient_profile_fields(
 		doc.dob = dob
 	if gender and gender in ("Male", "Female", "Other"):
 		doc.gender = gender
+	if city is not None and hasattr(doc, "city"):
+		doc.city = (city or "").strip()
 
 	if profile_image_b64:
 		raw = profile_image_b64
@@ -519,8 +603,8 @@ def update_patient_profile_fields(
 	doc.save(ignore_permissions=True)
 
 	# Sync User display fields
-	user = getattr(doc, "linked_user", None)
-	if user and frappe.db.exists("User", user):
+	user = getattr(doc, "linked_user", None) or frappe.session.user
+	if user and user != "Guest" and frappe.db.exists("User", user):
 		updates = {}
 		if patient_name:
 			parts = patient_name.strip().split(None, 1)
@@ -530,6 +614,13 @@ def update_patient_profile_fields(
 			updates["mobile_no"] = doc.mobile
 		if updates:
 			frappe.db.set_value("User", user, updates, update_modified=False)
+		# Keep bidirectional link
+		try:
+			from health_ecosystem_core.health_ecosystem_core.patient_bridge import _link_user_to_patient
+
+			_link_user_to_patient(user, patient_id)
+		except Exception:
+			pass
 
 	return get_patient_wallet_payload(patient_id, limit=5)
 

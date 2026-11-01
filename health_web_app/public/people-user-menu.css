@@ -1,0 +1,60 @@
+.hrms-user {
+  position: relative;
+}
+
+.hrms-user-chip {
+  position: relative;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+button.hrms-user-chip {
+  appearance: none;
+}
+
+.hrms-user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 210px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #d7e0e8;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 42, 61, 0.12);
+}
+
+.hrms-user-menu-name {
+  margin: 0;
+  padding: 8px 12px 6px;
+  color: #5c6b78;
+  font-size: 0.75rem;
+}
+
+.hrms-user-menu a,
+.hrms-user-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0f2a3d;
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.hrms-user-menu a:hover,
+.hrms-user-menu button:hover,
+.hrms-user-menu a:focus-visible,
+.hrms-user-menu button:focus-visible {
+  background: #f4f7f8;
+  outline: none;
+}

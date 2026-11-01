@@ -16,7 +16,10 @@
     "purpose",
     "outcome",
     "duration_minutes",
-    "notes"
+    "notes",
+    "visit_status",
+    "photo",
+    "assigned_from"
   ],
   "fields": [
     {"default": "FSV-.#####", "fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "options": "FSV-.#####", "reqd": 1},
@@ -30,7 +33,10 @@
     {"fieldname": "purpose", "fieldtype": "Select", "in_list_view": 1, "label": "Purpose", "options": "Meet Lead\nFollow-up\nOnboarding\nFranchise Support\nHQ Check-in", "reqd": 1},
     {"fieldname": "outcome", "fieldtype": "Select", "label": "Outcome", "options": "Positive\nNeutral\nNegative\nRescheduled"},
     {"fieldname": "duration_minutes", "fieldtype": "Int", "label": "Duration (min)"},
-    {"fieldname": "notes", "fieldtype": "Text", "label": "Meeting Notes"}
+    {"fieldname": "notes", "fieldtype": "Text", "label": "Meeting Notes"},
+    {"default": "Completed", "fieldname": "visit_status", "fieldtype": "Select", "in_list_view": 1, "label": "Visit Status", "options": "Assigned\nIn Progress\nCompleted\nCancelled"},
+    {"fieldname": "photo", "fieldtype": "Attach Image", "label": "Visit Photo"},
+    {"fieldname": "assigned_from", "fieldtype": "Data", "label": "Assigned From"}
   ],
   "module": "Health Ecosystem Core",
   "name": "Field Sales Visit",

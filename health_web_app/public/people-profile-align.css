@@ -1,0 +1,190 @@
+/* Keep the profile row on one aligned grid. The ID column was 270px,
+   so its two buttons spilled past the card. */
+
+.me-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 320px) minmax(240px, 280px);
+  align-items: start;
+  gap: 16px;
+}
+
+.me-col,
+.me-col-id {
+  min-width: 0;
+  grid-column: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: auto;
+}
+
+.me-card,
+.me-id-card {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.me-profile-top {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  column-gap: 20px;
+  align-items: start;
+}
+
+.me-photo {
+  position: relative;
+  width: 104px;
+  margin: 0;
+  text-align: center;
+}
+
+.me-photo-circle {
+  margin: 0 auto;
+}
+
+.me-photo-btn {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: 64px;
+  z-index: 1;
+}
+
+.me-photo-hint {
+  margin: 28px 0 0;
+  width: 104px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: center;
+  color: #64748b;
+}
+
+.me-profile-top .me-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.me-profile-top .me-fields > div {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  column-gap: 16px;
+  align-items: start;
+}
+
+.me-profile-top .me-fields dt,
+.me-profile-top .me-fields dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.35;
+}
+
+.me-profile-top .me-fields dd {
+  font-weight: 700;
+}
+
+.me-id-card {
+  align-items: stretch;
+  height: 100%;
+}
+
+.me-id-card .eidc-card {
+  width: 100%;
+  max-width: none;
+}
+
+.me-id-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.me-id-actions .emp-btn {
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+  padding: 8px 10px;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.me-actions {
+  align-items: stretch;
+}
+
+.me-action {
+  box-sizing: border-box;
+  min-height: 104px;
+  height: 100%;
+}
+
+.me-secure-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.me-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.me-table th:nth-child(1),
+.me-table td:nth-child(1) {
+  width: 42%;
+}
+
+.me-table th:nth-child(2),
+.me-table td:nth-child(2) {
+  width: 18%;
+}
+
+.me-table th,
+.me-table td {
+  overflow-wrap: break-word;
+  word-break: normal;
+  vertical-align: top;
+}
+
+@container emp-page (max-width: 1000px) {
+  .me-col-id {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+  }
+
+  .me-id-card {
+    width: min(380px, 100%);
+  }
+}
+
+@container emp-page (max-width: 780px) {
+  .me-grid,
+  .me-actions,
+  .me-col-id {
+    grid-template-columns: 1fr;
+  }
+
+  .me-profile-top {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .me-profile-top .me-fields > div {
+    grid-template-columns: 118px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  .me-col-id,
+  .me-id-actions {
+    display: flex;
+    flex-direction: column;
+  }
+}

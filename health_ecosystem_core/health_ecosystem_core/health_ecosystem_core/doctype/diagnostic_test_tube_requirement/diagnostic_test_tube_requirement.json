@@ -1,0 +1,55 @@
+{
+  "actions": [],
+  "creation": "2026-08-04 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "tube",
+    "min_volume_ml",
+    "preferred",
+    "alternate_ok",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "tube",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Collection Tube",
+      "options": "HEC Collection Tube",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "min_volume_ml",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Min Volume (mL)",
+      "precision": "2"
+    },
+    {
+      "default": "1",
+      "fieldname": "preferred",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Preferred"
+    },
+    {
+      "default": "0",
+      "fieldname": "alternate_ok",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Alternate OK"
+    },
+    {"fieldname": "notes", "fieldtype": "Data", "in_list_view": 1, "label": "Notes"}
+  ],
+  "istable": 1,
+  "modified": "2026-08-04 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Diagnostic Test Tube Requirement",
+  "owner": "Administrator",
+  "permissions": [],
+  "states": []
+}

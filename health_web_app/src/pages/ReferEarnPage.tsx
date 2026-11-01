@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 
@@ -18,23 +18,41 @@ type WalletPayload = {
   referred_count: number;
   signup_credit: number;
   first_order_bonus: number;
+  min_topup?: number;
   share_text: string;
   share_url: string;
   transactions: Txn[];
 };
 
+const QUICK_AMOUNTS = [100, 200, 500, 1000];
+
+async function payPatientWalletTopup(input: { amount: number }) {
+  const { payPatientWalletTopup: pay } = await import('../payments/razorpayCheckout');
+  return pay(input);
+}
+
 export function ReferEarnPage() {
   const [data, setData] = useState<WalletPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [topupError, setTopupError] = useState<string | null>(null);
+  const [topupSuccess, setTopupSuccess] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [amount, setAmount] = useState('100');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.getPatientWallet();
-      setData(res.data as WalletPayload);
+      const payload = res.data as WalletPayload;
+      setData(payload);
+      const min = Number(payload.min_topup || 100);
+      setAmount((prev) => {
+        const n = Number(prev);
+        return !n || n < min ? String(min) : prev;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load wallet');
     } finally {
@@ -70,6 +88,31 @@ export function ReferEarnPage() {
     await copyCode();
   }
 
+  async function onTopup(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setTopupError(null);
+    setTopupSuccess(null);
+    try {
+      const amt = Number(amount);
+      const min = Number(data?.min_topup || 100);
+      if (!Number.isFinite(amt) || amt < min) {
+        throw new Error(`Minimum top-up is ₹${min}`);
+      }
+      const result = await payPatientWalletTopup({ amount: amt });
+      setTopupSuccess(
+        `Wallet credited ₹${result.amount.toFixed(0)}. New balance ₹${result.wallet_balance.toFixed(0)}`,
+      );
+      await load();
+    } catch (err) {
+      setTopupError(err instanceof Error ? err.message : 'Top-up failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const minTopup = Number(data?.min_topup || 100);
+
   return (
     <div className="profile-page">
       <header className="profile-page-header">
@@ -89,6 +132,43 @@ export function ReferEarnPage() {
             <h2 style={{ margin: 0 }}>₹{Number(data.wallet_balance || 0).toFixed(0)}</h2>
             <p className="muted">{data.referred_count || 0} friends joined with your code</p>
           </div>
+
+          <section className="card card-wide">
+            <h2 className="section-title">Top up wallet</h2>
+            <p className="muted">Add money with UPI / card / netbanking. Minimum ₹{minTopup}.</p>
+            <form className="form-stack" onSubmit={(e) => void onTopup(e)}>
+              <div className="refer-quick-amounts" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {QUICK_AMOUNTS.filter((q) => q >= minTopup).map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    className={`btn secondary btn-sm${Number(amount) === q ? ' active' : ''}`}
+                    onClick={() => setAmount(String(q))}
+                    disabled={busy}
+                  >
+                    ₹{q}
+                  </button>
+                ))}
+              </div>
+              <label>
+                Amount (₹)
+                <input
+                  type="number"
+                  min={minTopup}
+                  step="1"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                  disabled={busy}
+                />
+              </label>
+              {topupError ? <div className="error">{topupError}</div> : null}
+              {topupSuccess ? <div className="success">{topupSuccess}</div> : null}
+              <button className="btn" type="submit" disabled={busy}>
+                {busy ? 'Processing…' : 'Pay with Razorpay'}
+              </button>
+            </form>
+          </section>
 
           <div className="refer-code-box">
             <div>

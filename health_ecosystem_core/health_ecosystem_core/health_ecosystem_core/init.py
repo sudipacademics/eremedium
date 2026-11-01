@@ -13,6 +13,12 @@ APP_NAME = "health_ecosystem_core"
 def ensure_module_def():
     """Register desk module (required before Franchisee Profile etc. load)."""
     if frappe.db.exists("Module Def", MODULE_NAME):
+        try:
+            current = frappe.db.get_value("Module Def", MODULE_NAME, "app_name")
+            if current != APP_NAME:
+                frappe.db.set_value("Module Def", MODULE_NAME, "app_name", APP_NAME, update_modified=False)
+        except Exception:
+            pass
         return
     frappe.get_doc(
         {
@@ -25,6 +31,8 @@ def ensure_module_def():
     frappe.db.commit()
 
 
+# "password" is the published demo default; it is never applied (new users get hec_seed_staff_password or a random
+# one) and is only read by setup_phase132 to rotate admin accounts still using it.
 DEFAULT_USERS = [
     {
         "email": "system_admin@health.local",
@@ -94,6 +102,16 @@ def setup_system():
         setup_clinical_module(seed_demo=False)
     except Exception:
         frappe.log_error(title="setup_system clinical module", message=frappe.get_traceback())
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase93_blog import (
+            ensure_blog_doctype,
+            ensure_portal_seo_settings_fields,
+        )
+
+        ensure_blog_doctype()
+        ensure_portal_seo_settings_fields()
+    except Exception:
+        frappe.log_error(title="setup_system blog", message=frappe.get_traceback())
     frappe.db.commit()
 
 
@@ -241,9 +259,11 @@ def _create_settings():
 
 def _create_users():
     for spec in DEFAULT_USERS:
+        created = False
         if frappe.db.exists("User", spec["email"]):
             user = frappe.get_doc("User", spec["email"])
         else:
+            created = True
             user = frappe.get_doc(
                 {
                     "doctype": "User",
@@ -273,9 +293,11 @@ def _create_users():
             user.add_roles(*spec["roles"])
             frappe.db.commit()
 
-        from frappe.utils.password import update_password
+        if created:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase132_foundations import set_new_staff_password
 
-        update_password(spec["email"], spec["password"], logout_all_sessions=False)
+            set_new_staff_password(spec["email"])
+            frappe.db.commit()
 
 
 def _create_sample_franchisee():
@@ -613,6 +635,20 @@ def run_phase72_smoke():
     return smoke_phase72()
 
 
+def run_phase92_setup():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase92_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import setup_phase92
+
+    return setup_phase92()
+
+
+def run_phase92_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase92_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase92_hr_policy_masters import smoke_phase92
+
+    return smoke_phase92()
+
+
 def run_phase73_setup():
     """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase73_setup"""
     from health_ecosystem_core.health_ecosystem_core.clinical_phase73_talent import setup_phase73
@@ -730,7 +766,7 @@ def run_phase26_smoke_test(email="circle_test@health.local", password="CircleTes
 
     if not get_active_subscription(email):
         try:
-            subscribe_user(email, "CIRCLE_12M")
+            subscribe_user(email, "CIRCLE_12M", allow_unpaid=True)
         except Exception as exc:
             if "already have" not in str(exc).lower():
                 raise
@@ -861,3 +897,19 @@ def run_phase29_smoke_test():
     from health_ecosystem_core.health_ecosystem_core.clinical_phase29_lab_import import smoke_phase29_lab_import
 
     return smoke_phase29_lab_import(limit=10)
+
+
+def run_phase111_setup(force=1):
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase111_setup"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_interpretation_bands import setup_phase111
+
+    return setup_phase111(force=force)
+
+
+def run_phase111_smoke():
+    """bench --site SITE execute health_ecosystem_core.health_ecosystem_core.init.run_phase111_smoke"""
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase111_interpretation_bands import (
+        smoke_hba1c_interpretation_bands,
+    )
+
+    return smoke_hba1c_interpretation_bands()

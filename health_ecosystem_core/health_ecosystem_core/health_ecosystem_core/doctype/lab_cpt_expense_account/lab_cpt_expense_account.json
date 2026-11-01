@@ -1,0 +1,37 @@
+{
+  "actions": [],
+  "creation": "2026-08-15 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["account", "category"],
+  "fields": [
+    {
+      "fieldname": "account",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Account",
+      "options": "Account",
+      "reqd": 1
+    },
+    {
+      "default": "Fixed",
+      "fieldname": "category",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Category",
+      "options": "Fixed\nLogistics",
+      "reqd": 1
+    }
+  ],
+  "istable": 1,
+  "modified": "2026-08-15 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Lab CPT Expense Account",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 0
+}

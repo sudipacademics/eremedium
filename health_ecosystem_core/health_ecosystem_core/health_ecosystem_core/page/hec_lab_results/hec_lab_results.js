@@ -198,6 +198,7 @@ function render_grid(page) {
 				<th style="width:70px">${__("Unit")}</th>
 				<th style="width:60px">${__("Low")}</th>
 				<th style="width:60px">${__("High")}</th>
+				<th style="min-width:100px">${__("Ref.")}</th>
 				<th style="width:70px">${__("Flag")}</th>
 				<th style="min-width:100px">${__("Method")}</th>
 				<th style="width:50px">${__("Print")}</th>
@@ -209,19 +210,56 @@ function render_grid(page) {
 	rows.forEach(function (r, i) {
 		var group = r.test_name || "";
 		if (group && group !== last_group) {
-			html += `<tr class="hec-group-row"><td colspan="9">${frappe.utils.escape_html(group)}</td></tr>`;
+			html += `<tr class="hec-group-row"><td colspan="10">${frappe.utils.escape_html(group)}</td></tr>`;
 			last_group = group;
 		}
 		var calc = cint(r.is_calculated) || (r.parameter_kind || "") === "Calculated";
 		var abn = r.abnormal_flag && r.abnormal_flag !== "N" ? "hec-abn" : "";
+		var rtype = (r.result_input_type || "Numeric").trim();
+		if (rtype === "Spacer") {
+			html += `<tr data-idx="${i}" class="hec-spacer"><td colspan="10">&nbsp;</td></tr>`;
+			return;
+		}
+		if (rtype === "Heading") {
+			html += `<tr data-idx="${i}" class="hec-heading-row"><td colspan="10"><strong>${frappe.utils.escape_html(r.description || "")}</strong></td></tr>`;
+			return;
+		}
+		var result_cell = "";
+		if (rtype === "Choice List" && (r.choice_options || "").trim()) {
+			var opts = (r.choice_options || "")
+				.split(/[\n,]/)
+				.map(function (x) {
+					return x.trim();
+				})
+				.filter(Boolean);
+			result_cell = `<select class="hec-result" data-f="result_value" ${calc ? "disabled" : ""}><option value=""></option>`;
+			opts.forEach(function (o) {
+				result_cell += `<option value="${frappe.utils.escape_html(o)}" ${
+					(r.result_value || "") === o ? "selected" : ""
+				}>${frappe.utils.escape_html(o)}</option>`;
+			});
+			result_cell += `</select>`;
+		} else if (rtype === "Date") {
+			result_cell = `<input type="date" class="hec-result" data-f="result_value" value="${frappe.utils.escape_html(
+				r.result_value || ""
+			)}" ${calc ? "readonly" : ""}>`;
+		} else {
+			result_cell = `<input type="text" class="hec-result" data-f="result_value" value="${frappe.utils.escape_html(
+				r.result_value || ""
+			)}" ${calc ? "readonly" : ""}>`;
+		}
+		var refLabel = r.reference_range_label || "";
 		html += `
 		<tr class="${calc ? "hec-calc" : ""} ${abn}" data-idx="${i}">
 			<td class="text-center">${i + 1}</td>
-			<td title="${frappe.utils.escape_html(r.parameter_code || "")}">${frappe.utils.escape_html(r.description || "")}${calc ? ' <span class="text-muted">(calc)</span>' : ""}</td>
-			<td><input type="text" class="hec-result" data-f="result_value" value="${frappe.utils.escape_html(r.result_value || "")}" ${calc ? "readonly" : ""}></td>
+			<td title="${frappe.utils.escape_html((r.parameter_code || "") + " · " + rtype)}">${frappe.utils.escape_html(r.description || "")}${
+			calc ? ' <span class="text-muted">(calc)</span>' : ""
+		}${r.linked_info_role && r.linked_info_role !== "None" ? ' <span class="text-muted">[' + frappe.utils.escape_html(r.linked_info_role) + "]</span>" : ""}</td>
+			<td>${result_cell}</td>
 			<td><input type="text" data-f="unit" value="${frappe.utils.escape_html(r.unit || "")}"></td>
 			<td class="text-center text-muted">${r.lower_range != null ? r.lower_range : ""}</td>
 			<td class="text-center text-muted">${r.upper_range != null ? r.upper_range : ""}</td>
+			<td class="text-muted" style="font-size:11px">${frappe.utils.escape_html(refLabel)}</td>
 			<td class="text-center hec-flag-${frappe.utils.escape_html(r.abnormal_flag || "")}">${frappe.utils.escape_html(r.abnormal_flag || "")}</td>
 			<td><input type="text" data-f="method" value="${frappe.utils.escape_html(r.method || "")}"></td>
 			<td class="text-center"><input type="checkbox" data-f="include_in_report" ${cint(r.include_in_report) ? "checked" : ""}></td>
@@ -233,19 +271,20 @@ function render_grid(page) {
 	page.main.find(".hec-lab-grid tbody tr[data-idx]").each(function () {
 		var idx = cint($(this).data("idx"));
 		$(this)
-			.find("input")
+			.find("input, select")
 			.on("change", function () {
 				var f = $(this).data("f");
+				if (!f) return;
 				var val = $(this).attr("type") === "checkbox" ? ($(this).is(":checked") ? 1 : 0) : $(this).val();
 				page.hec.rows[idx][f] = val;
 			});
 		$(this)
-			.find("input.hec-result")
+			.find("input.hec-result, select.hec-result")
 			.on("keydown", function (e) {
 				if (e.which === 13) {
 					e.preventDefault();
-					var next = page.main.find("input.hec-result:not([readonly])").eq(
-						page.main.find("input.hec-result:not([readonly])").index(this) + 1
+					var next = page.main.find("input.hec-result:not([readonly]), select.hec-result:not([disabled])").eq(
+						page.main.find("input.hec-result:not([readonly]), select.hec-result:not([disabled])").index(this) + 1
 					);
 					if (next.length) next.focus().select();
 					else save_results(page);
@@ -258,7 +297,7 @@ function collect_rows(page) {
 	page.main.find(".hec-lab-grid tbody tr[data-idx]").each(function () {
 		var idx = cint($(this).data("idx"));
 		$(this)
-			.find("input")
+			.find("input, select")
 			.each(function () {
 				var f = $(this).data("f");
 				if (!f) return;
@@ -355,28 +394,76 @@ function finalize_report(page) {
 		frappe.msgprint(__("Open a report first"));
 		return;
 	}
-	frappe.confirm(__("Save and finalize this report for review?"), function () {
-		collect_rows(page);
-		frappe.call({
-			method: "health_ecosystem_core.health_ecosystem_core.clinical_phase70_lab_result_entry.api_save_lab_entry",
-			args: { lab_report: page.hec.detail.lab_report, parameters: page.hec.rows },
-			callback: function () {
-				frappe.call({
-					method: "health_ecosystem_core.health_ecosystem_core.clinical_phase70_lab_result_entry.api_finalize_lab_entry",
-					args: { lab_report: page.hec.detail.lab_report },
-					freeze: true,
-					callback: function (r) {
-						var msg = r.message || {};
-						if (!msg.ok) {
-							frappe.msgprint(msg.message || __("Finalize failed"));
-							return;
-						}
-						frappe.show_alert({ message: __("Report finalized"), indicator: "green" });
-						open_entry(page, page.hec.detail.customer_trf, page.hec.detail.lab_report);
-						load_queue(page);
-					},
-				});
-			},
-		});
+	collect_rows(page);
+	var abnormal = [];
+	(page.hec.rows || []).forEach(function (r) {
+		var flag = (r.abnormal_flag || "").toString().trim().toUpperCase();
+		var val = (r.result_value || "").toString().trim();
+		if (!val) return;
+		var rtype = (r.result_input_type || "Numeric").toString().trim();
+		if (rtype === "Heading" || rtype === "Spacer") return;
+		if (rtype === "Numeric" || !rtype) {
+			var num = Number(val);
+			if (!Number.isNaN(num)) {
+				if (r.lower_range != null && r.lower_range !== "" && num < Number(r.lower_range)) flag = "L";
+				else if (r.upper_range != null && r.upper_range !== "" && num > Number(r.upper_range)) flag = "H";
+				else if (r.lower_range != null || r.upper_range != null) flag = "N";
+				r.abnormal_flag = flag;
+			}
+		}
+		if (flag && flag !== "N" && flag !== "NORMAL") {
+			abnormal.push(r);
+		}
 	});
+	var proceed = function () {
+		frappe.confirm(__("Save and finalize this report for review?"), function () {
+			frappe.call({
+				method: "health_ecosystem_core.health_ecosystem_core.clinical_phase70_lab_result_entry.api_save_lab_entry",
+				args: { lab_report: page.hec.detail.lab_report, parameters: page.hec.rows },
+				callback: function () {
+					frappe.call({
+						method: "health_ecosystem_core.health_ecosystem_core.clinical_phase70_lab_result_entry.api_finalize_lab_entry",
+						args: { lab_report: page.hec.detail.lab_report },
+						freeze: true,
+						callback: function (r) {
+							var msg = r.message || {};
+							if (!msg.ok) {
+								frappe.msgprint(msg.message || __("Finalize failed"));
+								return;
+							}
+							frappe.show_alert({ message: __("Report finalized"), indicator: "green" });
+							open_entry(page, page.hec.detail.customer_trf, page.hec.detail.lab_report);
+							load_queue(page);
+						},
+					});
+				},
+			});
+		});
+	};
+	if (!abnormal.length) {
+		proceed();
+		return;
+	}
+	var lines = abnormal
+		.slice(0, 12)
+		.map(function (a) {
+			return (
+				"• " +
+				frappe.utils.escape_html(a.description || "") +
+				" = " +
+				frappe.utils.escape_html(String(a.result_value)) +
+				" (" +
+				frappe.utils.escape_html(a.abnormal_flag || "") +
+				")"
+			);
+		})
+		.join("<br>");
+	var more = abnormal.length > 12 ? "<br>" + __("{0} more…", [abnormal.length - 12]) : "";
+	frappe.confirm(
+		__(
+			"<b>Abnormal result(s) found ({0}).</b><br><br>{1}{2}<br><br>This is abnormal — confirm finalize?",
+			[abnormal.length, lines, more]
+		),
+		proceed
+	);
 }

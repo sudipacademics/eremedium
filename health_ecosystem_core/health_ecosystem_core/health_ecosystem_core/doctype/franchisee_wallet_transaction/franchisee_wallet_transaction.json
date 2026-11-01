@@ -41,7 +41,7 @@
       "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Transaction Type",
-      "options": "Recharge\nPlatform Fee\nRefund\nAdjustment",
+            "options": "Recharge\nPlatform Fee\nRefund\nAdjustment\nFOFO Commission",
       "reqd": 1
     },
     {

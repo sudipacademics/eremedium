@@ -1,0 +1,232 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:page_key",
+  "creation": "2026-07-25 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "page_key",
+    "route",
+    "title",
+    "subtitle",
+    "status",
+    "published_on",
+    "enabled",
+    "column_break_meta",
+    "nav_group",
+    "nav_order",
+    "hero_image",
+    "section_seo",
+    "seo_title",
+    "meta_description",
+    "og_image",
+    "noindex",
+    "section_body",
+    "body",
+    "section_blocks",
+    "blocks",
+    "section_contact",
+    "contact_email",
+    "contact_phone",
+    "contact_whatsapp",
+    "contact_address",
+    "column_break_contact",
+    "support_hours"
+  ],
+  "fields": [
+    {
+      "fieldname": "page_key",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Page Key",
+      "reqd": 1,
+      "unique": 1,
+      "description": "Stable key used by the website, e.g. about or contact"
+    },
+    {
+      "fieldname": "route",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Route",
+      "description": "Public path without leading slash, e.g. about or blog/why-hba1c or legal/privacy-policy"
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Title",
+      "reqd": 1
+    },
+    {
+      "fieldname": "subtitle",
+      "fieldtype": "Small Text",
+      "label": "Subtitle"
+    },
+    {
+      "default": "Published",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Draft\nPublished"
+    },
+    {
+      "fieldname": "published_on",
+      "fieldtype": "Datetime",
+      "label": "Published On"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Enabled"
+    },
+    { "fieldname": "column_break_meta", "fieldtype": "Column Break" },
+    {
+      "fieldname": "nav_group",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Nav Group",
+      "options": "\nCompany\nLegal\nBlog\nNone",
+      "description": "When set, page appears in footer / menus for that group"
+    },
+    {
+      "default": "0",
+      "fieldname": "nav_order",
+      "fieldtype": "Int",
+      "label": "Nav Order"
+    },
+    {
+      "fieldname": "hero_image",
+      "fieldtype": "Attach Image",
+      "label": "Hero Image"
+    },
+    {
+      "fieldname": "section_seo",
+      "fieldtype": "Section Break",
+      "label": "SEO"
+    },
+    {
+      "fieldname": "seo_title",
+      "fieldtype": "Data",
+      "label": "SEO Title"
+    },
+    {
+      "fieldname": "meta_description",
+      "fieldtype": "Small Text",
+      "label": "Meta Description"
+    },
+    {
+      "fieldname": "og_image",
+      "fieldtype": "Attach Image",
+      "label": "OG Image"
+    },
+    {
+      "default": "0",
+      "fieldname": "noindex",
+      "fieldtype": "Check",
+      "label": "No Index"
+    },
+    {
+      "fieldname": "section_body",
+      "fieldtype": "Section Break",
+      "label": "Legacy Body"
+    },
+    {
+      "fieldname": "body",
+      "fieldtype": "Text Editor",
+      "label": "Body",
+      "description": "Fallback rich text when no blocks are defined"
+    },
+    {
+      "fieldname": "section_blocks",
+      "fieldtype": "Section Break",
+      "label": "Content Blocks"
+    },
+    {
+      "fieldname": "blocks",
+      "fieldtype": "Table",
+      "label": "Blocks",
+      "options": "Site CMS Block"
+    },
+    {
+      "fieldname": "section_contact",
+      "fieldtype": "Section Break",
+      "label": "Contact Details",
+      "depends_on": "eval:doc.page_key=='contact' || doc.route=='contact'"
+    },
+    {
+      "fieldname": "contact_email",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "contact_phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "contact_whatsapp",
+      "fieldtype": "Data",
+      "label": "WhatsApp"
+    },
+    {
+      "fieldname": "contact_address",
+      "fieldtype": "Small Text",
+      "label": "Address"
+    },
+    { "fieldname": "column_break_contact", "fieldtype": "Column Break" },
+    {
+      "fieldname": "support_hours",
+      "fieldtype": "Small Text",
+      "label": "Support Hours"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Site CMS Page",
+  "naming_rule": "By fieldname",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "print": 1,
+      "email": 1,
+      "share": 1,
+      "report": 1
+    },
+    {
+      "role": "Health System Admin",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "print": 1,
+      "report": 1
+    },
+    {
+      "role": "Website Content Editor",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "export": 1,
+      "print": 1,
+      "report": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "title",
+  "track_changes": 1
+}

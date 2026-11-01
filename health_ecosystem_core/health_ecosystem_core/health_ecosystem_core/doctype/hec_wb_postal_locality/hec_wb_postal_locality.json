@@ -1,0 +1,133 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "allow_rename": 0,
+  "autoname": "hash",
+  "creation": "2026-07-29 12:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "state",
+    "district",
+    "subdivision",
+    "block_area",
+    "column_break_1",
+    "pincode",
+    "post_office",
+    "is_active",
+    "geo_key"
+  ],
+  "fields": [
+    {
+      "default": "West Bengal",
+      "fieldname": "state",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "State",
+      "reqd": 1
+    },
+    {
+      "fieldname": "district",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "District",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "subdivision",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Subdivision",
+      "reqd": 1
+    },
+    {
+      "fieldname": "block_area",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Block / Administrative Area",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "pincode",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "PIN Code",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "post_office",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Primary Post Office"
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "label": "Active"
+    },
+    {
+      "fieldname": "geo_key",
+      "fieldtype": "Data",
+      "hidden": 1,
+      "label": "Geo Key",
+      "read_only": 1,
+      "unique": 1
+    }
+  ],
+  "links": [],
+  "modified": "2026-07-29 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "HEC WB Postal Locality",
+  "naming_rule": "Random",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Sales Manager"
+    },
+    {
+      "export": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Sales Representative"
+    }
+  ],
+  "sort_field": "district",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

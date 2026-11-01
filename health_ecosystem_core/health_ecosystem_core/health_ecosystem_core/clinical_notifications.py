@@ -37,7 +37,7 @@ EVENT_TEMPLATES = {
             "Hi {patient_name},\n\n"
             "Your lab report for {trf_id} is authorized and ready.\n"
             "{report_link_line}"
-            "Open My orders → Care journey to view and download your NABL PDF."
+            "Open Patient Portal → Reports after signing in with your registered mobile number to view your authorized report."
         ),
         "whatsapp": (
             "Your lab report for {trf_id} is ready."
@@ -266,12 +266,9 @@ def _send_sms(phone, message):
 def _send_whatsapp(phone, message):
     if not phone:
         return False
-    if whatsapp_test_mode():
-        frappe.logger("hec_notify").info(f"WhatsApp [{phone}]: {message}")
-        return True
-    from health_ecosystem_core.health_ecosystem_core.clinical_msg91 import send_gupshup_whatsapp
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import send_whatsapp
 
-    return send_gupshup_whatsapp(phone, message)
+    return send_whatsapp(phone, message)
 
 
 def _log_notification(event, phone, email, channels, preview):
@@ -366,25 +363,28 @@ def notify_report_ready(journey_id):
     trf_id = payload.get("trf_id")
     phone = _resolve_patient_phone(trf_id=trf_id, patient=payload.get("patient"))
 
-    report_pdf_url = ""
-    if payload.get("report_pdf"):
-        try:
-            report_pdf_url = frappe.utils.get_url(payload["report_pdf"])
-        except Exception:
-            report_pdf_url = payload["report_pdf"]
-
-    journey_url = ""
+    portal_url = "https://www.remediumlabs.in/reports"
     try:
-        from health_ecosystem_core.health_ecosystem_core.clinical_email import portal_base_url
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase125_report_share import (
+            patient_portal_reports_url,
+        )
 
-        base = (portal_base_url() or "").rstrip("/")
-        if base:
-            journey_url = f"{base}/journey/{journey_id}"
+        portal_url = patient_portal_reports_url()
     except Exception:
         pass
 
-    report_link_line = f"Download PDF: {report_pdf_url}\n" if report_pdf_url else ""
-    whatsapp_link_suffix = f" PDF: {report_pdf_url}" if report_pdf_url else " Open My orders in the app."
+    if phone:
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_otp import ensure_patient_user_for_mobile
+
+            ensure_patient_user_for_mobile(phone)
+        except Exception:
+            frappe.log_error(title="notify_report_ready_portal_user", message=frappe.get_traceback())
+
+    report_link_line = (
+        f"Sign in at {portal_url} with your registered mobile number to view the report in Reports.\n"
+    )
+    whatsapp_link_suffix = f" Sign in at {portal_url} with your registered mobile to view it in Reports."
 
     queue_patient_notification(
         "report_ready",
@@ -392,34 +392,49 @@ def notify_report_ready(journey_id):
         phone=phone,
         journey_id=journey_id,
         trf_id=trf_id,
-        report_pdf_url=report_pdf_url,
-        journey_url=journey_url,
+        report_pdf_url="",
+        journey_url=portal_url,
         report_link_line=report_link_line,
         whatsapp_link_suffix=whatsapp_link_suffix,
     )
+
+
+def _existing_fields(doctype, fields):
+    try:
+        if not frappe.db.exists("DocType", doctype):
+            return []
+        meta = frappe.get_meta(doctype)
+    except Exception:
+        return []
+    return [f for f in fields if meta.has_field(f)]
 
 
 def _resolve_patient_phone(trf_id=None, patient=None, phone=None):
     """Best-effort mobile for SMS/WhatsApp from TRF, Health Patient, or explicit phone."""
     if phone:
         return phone
-    if trf_id:
-        trf = frappe.db.get_value(
+    if trf_id and frappe.db.exists("DocType", "Customer TRF") and frappe.db.exists("Customer TRF", trf_id):
+        fields = _existing_fields(
             "Customer TRF",
-            trf_id,
-            ["patient_phone", "patient", "customer_phone"],
-            as_dict=True,
+            ("patient_phone", "mobile", "phone", "customer_phone", "patient"),
         )
-        if trf:
-            for field in ("patient_phone", "customer_phone"):
-                if trf.get(field):
-                    return trf[field]
-            if trf.patient:
-                patient = trf.patient
-    if patient:
-        mobile = frappe.db.get_value("Health Patient", patient, "mobile")
-        if mobile:
-            return mobile
+        if fields:
+            trf = frappe.db.get_value("Customer TRF", trf_id, fields, as_dict=True)
+            if trf:
+                for field in ("patient_phone", "mobile", "phone", "customer_phone"):
+                    val = trf.get(field)
+                    if val:
+                        return val
+                if trf.get("patient"):
+                    patient = trf.get("patient")
+    if patient and frappe.db.exists("DocType", "Health Patient") and frappe.db.exists("Health Patient", patient):
+        fields = _existing_fields("Health Patient", ("mobile", "phone", "mobile_no"))
+        if fields:
+            row = frappe.db.get_value("Health Patient", patient, fields, as_dict=True)
+            if row:
+                for field in fields:
+                    if row.get(field):
+                        return row.get(field)
     return None
 
 

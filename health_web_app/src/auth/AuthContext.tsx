@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { api, clearSession, SessionUser } from '../api';
+import { consumeHandoffFromUrl } from './portalHandoff';
 import { getDefaultDashboardRoute } from './roles';
 import { clearStoredSession, loadSession, saveSession, StoredSession } from './session';
 
@@ -81,6 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
+      const handed = await consumeHandoffFromUrl();
+      if (handed) saveSession({ ...handed, roles: normalizeRoles(handed.roles) });
       if (!loadSession()?.sid) {
         if (active) setLoading(false);
         return;

@@ -175,6 +175,10 @@ def get_critical_alerts_queue(status="Open", limit=50, sid=None):
     if status and status != "All":
         filters["alert_status"] = status
 
+    try:
+        limit = max(1, min(int(_parse_request_value("limit", limit) or 50), 500))
+    except (TypeError, ValueError):
+        limit = 50
     rows = frappe.get_all(
         "Lab Critical Value Alert",
         filters=filters,
@@ -194,9 +198,144 @@ def get_critical_alerts_queue(status="Open", limit=50, sid=None):
             "creation",
         ],
         order_by="creation desc",
-        limit=int(limit or 50),
+        limit=limit,
     )
-    return _success({"alerts": rows, "count": len(rows)})
+    _enrich_alert_rows(rows)
+    return _success({"alerts": rows, "count": len(rows), "counts": _alert_counts(), "policy": _alert_policy()})
+
+
+def _enrich_alert_rows(rows):
+    """Attach Lab Report department and patient mobile for desk filters/search."""
+    reports = list({r.get("lab_report") for r in rows if r.get("lab_report")})
+    trfs = list({r.get("customer_trf") for r in rows if r.get("customer_trf")})
+    departments = {}
+    if reports and frappe.get_meta("Lab Report").has_field("department"):
+        departments = dict(
+            frappe.get_all("Lab Report", filters={"name": ["in", reports]}, fields=["name", "department"], as_list=True)
+        )
+    phones = {}
+    if trfs:
+        phones = dict(
+            frappe.get_all(
+                "Customer TRF", filters={"name": ["in", trfs]}, fields=["name", "patient_phone"], as_list=True
+            )
+        )
+    for r in rows:
+        r["department"] = departments.get(r.get("lab_report"))
+        r["patient_phone"] = phones.get(r.get("customer_trf"))
+
+
+def _alert_counts():
+    by_status = dict(
+        frappe.db.sql(
+            "select alert_status, count(*) from `tabLab Critical Value Alert` group by alert_status"
+        )
+    )
+    open_flags = dict(
+        frappe.db.sql(
+            "select abnormal_flag, count(*) from `tabLab Critical Value Alert` where alert_status='Open' group by abnormal_flag"
+        )
+    )
+    return {
+        "open": by_status.get("Open", 0),
+        "acknowledged": by_status.get("Acknowledged", 0),
+        "closed": by_status.get("Closed", 0),
+        "all": sum(by_status.values()),
+        "open_critical": open_flags.get("Critical", 0),
+        "open_high": open_flags.get("H", 0),
+        "open_low": open_flags.get("L", 0),
+    }
+
+
+def _alert_policy():
+    return {"enabled": critical_alerts_enabled(), "level": alert_level_filter()}
+
+
+def _alert_names_arg(alert_names):
+    import json
+
+    if isinstance(alert_names, str):
+        try:
+            alert_names = json.loads(alert_names)
+        except ValueError:
+            alert_names = [alert_names]
+    names = [n for n in (alert_names or []) if n and frappe.db.exists("Lab Critical Value Alert", n)]
+    return names[:200]
+
+
+@frappe.whitelist()
+def update_critical_alerts_status(alert_names=None, status=None, notes=None, sid=None):
+    """Bulk Acknowledge / Close (mark reviewed) alerts."""
+    from health_ecosystem_core.health_ecosystem_core.api import (
+        _error,
+        _parse_request_value,
+        _require_mobile_auth,
+        _success,
+        _user_roles,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import is_staff
+
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    roles = _user_roles()
+    if not (is_staff(roles) or "Pathologist" in roles or "Lab Technician" in roles):
+        return _error(_("Not authorized"), 403)
+
+    status = (_parse_request_value("status", status) or "").strip()
+    if status not in ("Acknowledged", "Closed"):
+        return _error(_("Status must be Acknowledged or Closed"), 400)
+    names = _alert_names_arg(_parse_request_value("alert_names", alert_names))
+    if not names:
+        return _error(_("Select at least one alert"), 400)
+    notes = (_parse_request_value("notes", notes) or "").strip()
+    stamp = f"{frappe.session.user} · {frappe.utils.now_datetime():%d-%m-%Y %H:%M}"
+    for name in names:
+        values = {"alert_status": status}
+        if notes:
+            prev = frappe.db.get_value("Lab Critical Value Alert", name, "notes") or ""
+            values["notes"] = (prev + "\n" if prev else "") + f"[{status} · {stamp}] {notes}"
+        frappe.db.set_value("Lab Critical Value Alert", name, values)
+    frappe.db.commit()
+    return _success({"updated": names, "alert_status": status})
+
+
+@frappe.whitelist()
+def resend_critical_alert_notifications(alert_names=None, sid=None):
+    """Re-send SMS / WhatsApp / email for the selected alerts, grouped by lab report."""
+    from health_ecosystem_core.health_ecosystem_core.api import (
+        _error,
+        _parse_request_value,
+        _require_mobile_auth,
+        _success,
+        _user_roles,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_iam import is_staff
+    from health_ecosystem_core.health_ecosystem_core.clinical_notifications import notify_critical_lab_values
+
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    roles = _user_roles()
+    if not (is_staff(roles) or "Pathologist" in roles or "Lab Technician" in roles):
+        return _error(_("Not authorized"), 403)
+
+    names = _alert_names_arg(_parse_request_value("alert_names", alert_names))
+    if not names:
+        return _error(_("Select at least one alert"), 400)
+    by_report = {}
+    for name in names:
+        report = frappe.db.get_value("Lab Critical Value Alert", name, "lab_report")
+        if report:
+            by_report.setdefault(report, []).append(name)
+    sent, failed = [], []
+    for report, group in by_report.items():
+        try:
+            notify_critical_lab_values(report, alert_names=group)
+            sent.extend(group)
+        except Exception:
+            frappe.log_error(title="critical_value_resend", message=frappe.get_traceback())
+            failed.extend(group)
+    frappe.db.commit()
+    return _success({"sent": sent, "failed": failed})
 
 
 @frappe.whitelist()

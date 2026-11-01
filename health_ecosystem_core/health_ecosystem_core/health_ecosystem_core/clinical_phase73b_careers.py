@@ -13,7 +13,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, cstr, now_datetime
 
 from health_ecosystem_core.health_ecosystem_core.api import (
 	_error,
@@ -82,8 +82,36 @@ def _default_company():
 
 
 def _require_hrms():
+	if "hrms" not in frappe.get_installed_apps():
+		try:
+			from health_ecosystem_core.health_ecosystem_core.clinical_hrms_repair import (
+				ensure_hrms_installed_app,
+			)
+
+			ensure_hrms_installed_app()
+		except Exception:
+			frappe.log_error(title="careers_require_hrms_repair", message=frappe.get_traceback())
 	if not frappe.db.exists("DocType", "Job Opening") or not frappe.db.exists("DocType", "Job Applicant"):
 		frappe.throw(_("HRMS Job Opening / Job Applicant is not installed"), frappe.ValidationError)
+	# Module map is built from sites/apps.txt — repair if HR is missing from module_app.
+	if frappe.local.module_app.get("hr") is None:
+		try:
+			from health_ecosystem_core.health_ecosystem_core.clinical_hrms_repair import (
+				ensure_hrms_installed_app,
+				ensure_hrms_modules,
+			)
+
+			ensure_hrms_installed_app()
+			ensure_hrms_modules()
+			frappe.local.module_app["hr"] = "hrms"
+			frappe.local.module_app["payroll"] = "hrms"
+		except Exception:
+			frappe.log_error(title="careers_require_hrms_module_map", message=frappe.get_traceback())
+	if frappe.local.module_app.get("hr") is None:
+		frappe.throw(
+			_("HRMS is installed but Module HR is not registered. Add hrms to sites/apps.txt and clear cache."),
+			frappe.ValidationError,
+		)
 
 
 def _is_hr_user(user=None):
@@ -99,6 +127,8 @@ def _require_hr():
 		frappe.throw(_("HR login required"), frappe.PermissionError)
 
 
+# Portal password for the dedicated HR login. Restored when a site update has replaced it.
+# This user is kept off System Manager so setup_phase132 does not rotate the password.
 DEMO_HR_MANAGER = {
 	"email": "hr_manager@health.local",
 	"username": "hr_manager",
@@ -109,10 +139,19 @@ DEMO_HR_MANAGER = {
 }
 
 
-def seed_demo_hr_manager():
-	"""Upsert demo HR Manager for careers / marketing / pipeline portals."""
-	from frappe.utils.password import update_password
+def _keep_demo_hr_password(email, password):
+	"""Restore the portal password only when a site update has replaced it. Does not end a valid session."""
+	from frappe.utils.password import check_password, update_password
 
+	try:
+		check_password(email, password, delete_tracker_cache=False)
+		return
+	except frappe.AuthenticationError:
+		update_password(email, password, logout_all_sessions=False)
+
+
+def seed_demo_hr_manager():
+	"""Upsert demo HR Manager for careers / marketing / pipeline portals (password set only when first created)."""
 	spec = DEMO_HR_MANAGER
 	email = spec["email"]
 	for role in spec["roles"]:
@@ -121,7 +160,8 @@ def seed_demo_hr_manager():
 				ignore_permissions=True
 			)
 
-	if not frappe.db.exists("User", email):
+	created = not frappe.db.exists("User", email)
+	if created:
 		frappe.get_doc(
 			{
 				"doctype": "User",
@@ -138,36 +178,51 @@ def seed_demo_hr_manager():
 	user.username = spec["username"]
 	user.enabled = 1
 	user.user_type = "System User"
+	# Admin roles make setup_phase132 replace this portal password. Keep the dedicated HR login off them.
+	blocked = {"Agency Agent", "Agency Manager", "System Manager", "Health System Admin", "Administrator"}
+	user.roles = [r for r in user.roles if r.role not in blocked]
 	existing = {r.role for r in user.roles}
 	for role in spec["roles"]:
 		if role not in existing:
 			user.append("roles", {"role": role})
 	user.save(ignore_permissions=True)
-	update_password(email, spec["password"], logout_all_sessions=False)
+	_keep_demo_hr_password(email, spec["password"])
 
 	try:
 		from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import (
 			ensure_employee_for_user,
+			ensure_hr_settings,
 		)
 
-		ensure_employee_for_user(email)
+		ensure_hr_settings()
+		employee_id = ensure_employee_for_user(email)
 	except Exception:
+		employee_id = None
 		frappe.log_error(title="seed_demo_hr_manager employee")
 
 	frappe.db.commit()
+	password_matches = True
+	try:
+		from frappe.utils.password import check_password
+
+		check_password(email, spec["password"], delete_tracker_cache=False)
+	except frappe.AuthenticationError:
+		password_matches = False
 	return {
 		"email": email,
-		"password": spec["password"],
+		"created": created,
 		"roles": list(spec["roles"]),
+		"employee_id": employee_id,
+		"login_url": "/hr/login",
+		"password_matches": password_matches,
 	}
 
 
 def setup_phase73b():
 	_require_hrms()
 	_ensure_custom_fields()
-	seeded = ensure_published_sample_openings()
 	hr = seed_demo_hr_manager()
-	return {"ok": True, "phase": "73b", "seeded_openings": seeded, "demo_hr_manager": hr}
+	return {"ok": True, "phase": "73b", "demo_hr_manager": hr}
 
 
 def _ensure_custom_fields():
@@ -252,6 +307,13 @@ def _ensure_custom_fields():
 				"fieldtype": "Link",
 				"options": "User",
 				"insert_after": "hec_declaration_accepted",
+			},
+			{
+				"fieldname": "hec_employee",
+				"label": "Hired Employee",
+				"fieldtype": "Link",
+				"options": "Employee",
+				"insert_after": "hec_user",
 			},
 		],
 		"User": [
@@ -571,6 +633,8 @@ def submit_job_application(
 		doc.status = "Open"
 	if meta.has_field("hec_pipeline_stage"):
 		doc.hec_pipeline_stage = "Received"
+	if meta.has_field("hec_applicant_status"):
+		doc.hec_applicant_status = "New"
 	if meta.has_field("hec_source"):
 		# Prefer UTM / ad source when present; default career site
 		if utm_source:
@@ -581,6 +645,10 @@ def submit_job_application(
 				"ig": "Instagram Ads",
 				"google": "Google Ads",
 				"linkedin": "LinkedIn Ads",
+				"apna": "Apna",
+				"workindia": "WorkIndia",
+				"indeed": "Indeed",
+				"whatsapp": "WhatsApp",
 			}
 			key = utm_source.lower().replace(" ", "")
 			doc.hec_source = mapped.get(key) or (
@@ -594,6 +662,23 @@ def submit_job_application(
 		doc.hec_declaration_accepted = 1
 	if meta.has_field("hec_application_json"):
 		doc.hec_application_json = json.dumps(payload, ensure_ascii=False)
+
+	# Link Job Requisition when opening was published from ATS
+	if meta.has_field("hec_applied_for"):
+		try:
+			from health_ecosystem_core.health_ecosystem_core.clinical_phase112_wb_hiring import (
+				is_volume_role_title,
+				resolve_requisition_for_opening,
+			)
+
+			req = resolve_requisition_for_opening(job_opening)
+			if req:
+				doc.hec_applied_for = req
+			opening_title = getattr(opening, "job_title", None) or job_opening
+			if meta.has_field("hec_volume_role") and is_volume_role_title(cstr(opening_title)):
+				doc.hec_volume_role = 1
+		except Exception:
+			pass
 
 	session_user = frappe.session.user
 	if session_user and session_user not in ("Guest",) and meta.has_field("hec_user"):
@@ -649,6 +734,7 @@ def _applicant_summary(r):
 		"pipeline_stage": r.get("hec_pipeline_stage") or "Received",
 		"source": r.get("hec_source") or "",
 		"applied_on": str(r.creation.date()) if r.get("creation") else None,
+		"hec_employee": r.get("hec_employee"),
 	}
 
 
@@ -683,6 +769,7 @@ def list_job_applications(job_opening=None, stage=None, source=None, limit=100):
 		"hec_pipeline_stage",
 		"hec_source",
 		"hec_mobile",
+		"hec_employee",
 	):
 		if meta.has_field(f):
 			fields.append(f)

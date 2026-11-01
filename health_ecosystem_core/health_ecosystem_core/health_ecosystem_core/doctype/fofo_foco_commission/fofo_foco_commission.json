@@ -1,0 +1,160 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-08-17 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "foco",
+    "fofo",
+    "customer_trf",
+    "column_break_1",
+    "bill_date",
+    "mrp_amount",
+    "fofo_margin",
+    "net_amount",
+    "commission_percent",
+    "foco_earning",
+    "status",
+    "settlement_date",
+    "wallet_transaction",
+    "section_meta",
+    "fofo_name",
+    "patient_name",
+    "notes"
+  ],
+  "fields": [
+    {
+      "default": "FFC-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "FFC-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "foco",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "FOCO Centre",
+      "options": "Franchisee Profile",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "fofo",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "FOFO Centre",
+      "options": "Franchisee Profile",
+      "reqd": 1,
+      "search_index": 1
+    },
+    {
+      "fieldname": "customer_trf",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Bill / TRF ID",
+      "options": "Customer TRF",
+      "reqd": 1,
+      "search_index": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "bill_date",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Bill Date"
+    },
+    {
+      "fieldname": "mrp_amount",
+      "fieldtype": "Currency",
+      "label": "MRP",
+      "reqd": 1
+    },
+    {
+      "fieldname": "fofo_margin",
+      "fieldtype": "Currency",
+      "label": "FOFO Margin"
+    },
+    {
+      "fieldname": "net_amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Net Amount",
+      "reqd": 1
+    },
+    {
+      "fieldname": "commission_percent",
+      "fieldtype": "Percent",
+      "label": "FOCO Commission %"
+    },
+    {
+      "fieldname": "foco_earning",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "FOCO Earning",
+      "reqd": 1
+    },
+    {
+      "default": "Pending",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Pending\nCredited\nReversed"
+    },
+    {
+      "fieldname": "settlement_date",
+      "fieldtype": "Date",
+      "label": "Settlement Date"
+    },
+    {
+      "fieldname": "wallet_transaction",
+      "fieldtype": "Link",
+      "label": "Wallet Transaction",
+      "options": "Franchisee Wallet Transaction",
+      "read_only": 1
+    },
+    {
+      "fieldname": "section_meta",
+      "fieldtype": "Section Break",
+      "label": "Centre"
+    },
+    {
+      "fieldname": "fofo_name",
+      "fieldtype": "Data",
+      "label": "FOFO Centre Name"
+    },
+    {
+      "fieldname": "patient_name",
+      "fieldtype": "Data",
+      "label": "Patient Name"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "FOFO FOCO Commission",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1},
+    {"role": "Health System Admin", "read": 1, "write": 1, "create": 1, "report": 1},
+    {"role": "Franchisee Operator", "read": 1, "report": 1}
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "customer_trf",
+  "track_changes": 1
+}

@@ -8,10 +8,16 @@
   "field_order": [
     "patient_name",
     "age",
+    "age_months",
+    "age_days",
     "gender",
+    "lmp_date",
+    "menstrual_cycle_day",
     "referred_doctor",
     "test_required",
     "tests",
+    "section_draw_plan",
+    "collection_tubes",
     "unique_barcode",
     "razorpay_payment_status",
     "franchisee_id",
@@ -40,8 +46,22 @@
       "fieldname": "age",
       "fieldtype": "Int",
       "in_list_view": 1,
-      "label": "Age",
+      "label": "Age (Years)",
       "reqd": 1
+    },
+    {
+      "default": "0",
+      "description": "Extra months beyond Age (Years) — paediatric / neonatal banding",
+      "fieldname": "age_months",
+      "fieldtype": "Int",
+      "label": "Age (Months)"
+    },
+    {
+      "default": "0",
+      "description": "Extra days beyond Years+Months — neonatal banding (0–28 D)",
+      "fieldname": "age_days",
+      "fieldtype": "Int",
+      "label": "Age (Days)"
     },
     {
       "fieldname": "gender",
@@ -50,6 +70,18 @@
       "label": "Gender",
       "options": "Male\nFemale\nOther",
       "reqd": 1
+    },
+    {
+      "description": "Last menstrual period start date (used to derive cycle day when Cycle Day blank)",
+      "fieldname": "lmp_date",
+      "fieldtype": "Date",
+      "label": "LMP Date"
+    },
+    {
+      "description": "Day of menstrual cycle (1–35). Required for hormone bands with Cyc From/To or Cycle Phase.",
+      "fieldname": "menstrual_cycle_day",
+      "fieldtype": "Int",
+      "label": "Menstrual Cycle Day"
     },
     {
       "default": "Self",
@@ -72,6 +104,18 @@
       "fieldtype": "Table",
       "label": "Tests Ordered",
       "options": "TRF Test Item"
+    },
+    {
+      "fieldname": "section_draw_plan",
+      "fieldtype": "Section Break",
+      "label": "Collection Draw Plan"
+    },
+    {
+      "description": "Aggregated tubes by CLSI order. Accession ID = {barcode}-{TUBE_CODE}.",
+      "fieldname": "collection_tubes",
+      "fieldtype": "Table",
+      "label": "Collection Tubes",
+      "options": "TRF Collection Tube"
     },
     {
       "fieldname": "unique_barcode",

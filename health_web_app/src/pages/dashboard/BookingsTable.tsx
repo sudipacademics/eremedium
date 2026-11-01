@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Booking } from '../../api';
+import { MarkOfflinePaymentButton, type OfflinePaymentResult } from '../../components/MarkOfflinePaymentButton';
+import { isOnlinePayment, paymentMethodLabel } from '../../components/PaymentMethodPicker';
 import { useLiveRefresh } from '../../hooks/useLiveRefresh';
 
-export function BookingsTable({ title }: { title?: string }) {
+export function BookingsTable({ title, showCollect = false }: { title?: string; showCollect?: boolean }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -27,6 +30,21 @@ export function BookingsTable({ title }: { title?: string }) {
 
   useLiveRefresh(load);
 
+  function onCollected(trfId: string, result: OfflinePaymentResult) {
+    const billing = result?.hub_billing;
+    if (billing?.status === 'pending') {
+      setNotice(
+        `${trfId}: payment recorded. Your wallet did not cover the platform fee yet; it will be charged automatically after you recharge the wallet.`,
+      );
+    } else if (billing?.status === 'billed') {
+      const fee = Number(billing.wholesale_amount || 0);
+      setNotice(`${trfId}: payment recorded.${fee > 0 ? ` Platform fee ₹${fee.toFixed(0)} taken from your wallet.` : ''}`);
+    } else {
+      setNotice(`${trfId}: payment recorded.`);
+    }
+    void load();
+  }
+
   return (
     <section className="card card-wide">
       <div className="toolbar">
@@ -36,6 +54,7 @@ export function BookingsTable({ title }: { title?: string }) {
         </button>
       </div>
       {error && <div className="error">{error}</div>}
+      {notice && <p className="alert">{notice}</p>}
       {loading && <p className="muted">Loading…</p>}
       {!loading && bookings.length === 0 && <p className="muted">No bookings in your scope yet.</p>}
       {bookings.length > 0 && (
@@ -48,6 +67,7 @@ export function BookingsTable({ title }: { title?: string }) {
                 <th>Test</th>
                 <th>Status</th>
                 <th>Amount</th>
+                {showCollect && <th>Payment</th>}
               </tr>
             </thead>
             <tbody>
@@ -62,6 +82,23 @@ export function BookingsTable({ title }: { title?: string }) {
                     <span className="badge">{b.order_status}</span>
                   </td>
                   <td>₹{Number(b.amount || 0).toFixed(0)}</td>
+                  {showCollect && (
+                    <td>
+                      {paymentMethodLabel(b.payment_method)}
+                      {b.razorpay_payment_status ? ` · ${b.razorpay_payment_status}` : ''}
+                      {!isOnlinePayment(b.payment_method) &&
+                        b.razorpay_payment_status !== 'Paid' &&
+                        b.order_status !== 'Cancelled' &&
+                        Number(b.amount || 0) > 0 && (
+                          <MarkOfflinePaymentButton
+                            referenceDoctype="Customer TRF"
+                            referenceName={b.trf_id}
+                            label="Payment received"
+                            onSuccess={(result) => onCollected(b.trf_id, result)}
+                          />
+                        )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -63,8 +63,9 @@ APOLLO_LIPID_PARAMS = [
     ("HDL Cholesterol - Serum", "mg/dL", 40.0, None, 0),
     ("Non-HDL Cholesterol", "mg/dL", None, 130.0, 1),
     ("LDL Cholesterol", "mg/dL", None, 100.0, 0),
-    ("VLDL Cholesterol", "mg/dL", None, 30.0, 0),
+    ("VLDL Cholesterol", "mg/dL", None, 30.0, 1),
     ("CHOL / HDL Ratio", "", None, 3.5, 1),
+    ("LDL / HDL Ratio", "", None, 3.0, 1),
     ("Atherogenic Index Plasma (AIP)", "", None, None, 1),
 ]
 
@@ -72,13 +73,14 @@ APOLLO_LFT_PARAMS = [
     ("Bilirubin, Total - Serum", "mg/dL", 0.1, 1.2, 0),
     ("Bilirubin Conjugated (Direct) - Serum", "mg/dL", None, 0.3, 0),
     ("Bilirubin (Indirect)", "mg/dL", 0.2, 1.1, 1),
-    ("Alanine Aminotransferase (ALT/SGPT)", "U/L", 21.0, 72.0, 0),
-    ("Aspartate Aminotransferase (AST/SGOT)", "U/L", 17.0, 59.0, 0),
-    ("Alkaline Phosphatase (ALP)", "IU/L", 38.0, 126.0, 0),
-    ("Protein, Total - Serum", "g/dL", 6.3, 8.2, 0),
-    ("Albumin, Serum", "g/dL", 3.5, 5.5, 0),
-    ("Globulin", "g/dL", 2.0, 3.5, 0),
-    ("A/G Ratio", "", 0.9, 2.2, 1),
+    ("Alanine Aminotransferase (ALT/SGPT)", "U/L", 7.0, 55.0, 0),
+    ("Aspartate Aminotransferase (AST/SGOT)", "U/L", 8.0, 48.0, 0),
+    ("AST/ALT Ratio", "", None, 2.0, 1),
+    ("Alkaline Phosphatase (ALP)", "IU/L", 40.0, 129.0, 0),
+    ("Protein, Total - Serum", "g/dL", 6.3, 7.9, 0),
+    ("Albumin, Serum", "g/dL", 3.5, 5.0, 0),
+    ("Globulin", "g/dL", 2.0, 3.5, 1),
+    ("A/G Ratio", "", 1.1, 2.5, 1),
     ("Gamma Glutamyl Transferase (GGT)", "U/L", 5.0, 40.0, 0),
 ]
 
@@ -91,9 +93,12 @@ APOLLO_KFT_BASIC_PARAMS = [
     ("Urea", "mg/dL", 15.0, 40.0, 0),
     ("Creatinine", "mg/dL", 0.6, 1.2, 0),
     ("Uric Acid", "mg/dL", 3.5, 7.2, 0),
-    ("Protein, Total", "g/dL", 6.3, 8.2, 0),
-    ("Albumin", "g/dL", 3.5, 5.5, 0),
-    ("BUN (Blood Urea Nitrogen)", "mg/dL", 7.0, 20.0, 0),
+    ("Protein, Total", "g/dL", 6.3, 7.9, 0),
+    ("Albumin", "g/dL", 3.5, 5.0, 0),
+    ("Globulin", "g/dL", 2.0, 3.5, 1),
+    ("A/G Ratio", "", 1.1, 2.5, 1),
+    ("BUN (Blood Urea Nitrogen)", "mg/dL", 7.0, 20.0, 1),
+    ("BUN/Creatinine Ratio", "", 10.0, 20.0, 1),
 ]
 
 APOLLO_KFT_ELECTROLYTES_PARAMS = APOLLO_KFT_BASIC_PARAMS + [
@@ -101,8 +106,10 @@ APOLLO_KFT_ELECTROLYTES_PARAMS = APOLLO_KFT_BASIC_PARAMS + [
     ("Potassium (K)", "mEq/L", 3.5, 5.1, 0),
     ("Chloride (Cl)", "mEq/L", 98.0, 107.0, 0),
     ("Calcium", "mg/dL", 8.6, 10.2, 0),
+    ("Corrected Calcium", "mg/dL", 8.6, 10.2, 1),
     ("Phosphorus", "mg/dL", 2.5, 4.5, 0),
     ("Bicarbonate (HCO3)", "mEq/L", 22.0, 29.0, 0),
+    ("Anion Gap", "mEq/L", 8.0, 16.0, 1),
 ]
 
 APOLLO_THYROID_PARAMS = [
@@ -148,11 +155,13 @@ APOLLO_ELECTROLYTES_COMPREHENSIVE = APOLLO_ELECTROLYTES_PARAMS + [
     ("Calcium", "mg/dL", 8.6, 10.2, 0),
     ("Phosphorus", "mg/dL", 2.5, 4.5, 0),
     ("Bicarbonate (HCO3)", "mEq/L", 22.0, 29.0, 0),
+    ("Anion Gap", "mEq/L", 8.0, 16.0, 1),
 ]
 
 APOLLO_IRON_PROFILE_PARAMS = [
     ("Iron, Serum", "µg/dL", 60.0, 170.0, 0),
     ("TIBC (Total Iron Binding Capacity)", "µg/dL", 250.0, 450.0, 0),
+    ("UIBC (Unsaturated Iron Binding Capacity)", "µg/dL", 110.0, 370.0, 1),
     ("Transferrin Saturation", "%", 20.0, 50.0, 1),
     ("Ferritin", "ng/mL", 30.0, 400.0, 0),
 ]
@@ -201,6 +210,17 @@ def _rows_from_catalog(catalog):
                 formula = formula_for_parameter(code, name)
             except Exception:
                 formula = ""
+        method = "Enzymatic"
+        machine_name = "EM200"
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_phase96_method_machine import (
+                resolve_method_and_machine,
+            )
+
+            method, machine_name = resolve_method_and_machine(code, name, is_calc)
+        except Exception:
+            if is_calc:
+                method = "Calculated"
         rows.append(
             {
                 "parameter_code": code,
@@ -211,7 +231,8 @@ def _rows_from_catalog(catalog):
                 "parameter_kind": "Calculated" if is_calc else "Real",
                 "is_calculated": is_calc,
                 "formula": formula,
-                "method": "Apollo-aligned",
+                "method": method,
+                "machine_name": machine_name,
             }
         )
     return rows
@@ -281,11 +302,25 @@ def ensure_item_parameter_field():
 
 
 def ensure_diagnostic_master_disabled_field():
-    """Add Disable toggle on Diagnostic Test Master (and sync DocType JSON)."""
+    """Add Disable toggle on Diagnostic Test Master (and sync DocType JSON).
+
+    Phase 56 originally created Custom Field `disabled`. The field later landed on
+    the DocType JSON, so both rows can exist together. Duplicate `in_list_view`
+    columns crash Frappe DataTable and leave the Desk list blank.
+    """
     if not frappe.db.exists("DocType", "Diagnostic Test Master"):
         return False
 
-    meta = frappe.get_meta("Diagnostic Test Master")
+    cf_name = "Diagnostic Test Master-disabled"
+    has_std = frappe.db.exists(
+        "DocField", {"parent": "Diagnostic Test Master", "fieldname": "disabled"}
+    )
+    if has_std and frappe.db.exists("Custom Field", cf_name):
+        frappe.delete_doc("Custom Field", cf_name, force=1, ignore_permissions=True)
+        frappe.clear_cache(doctype="Diagnostic Test Master")
+        return True
+
+    meta = frappe.get_meta("Diagnostic Test Master", cached=False)
     if meta.has_field("disabled"):
         return True
 

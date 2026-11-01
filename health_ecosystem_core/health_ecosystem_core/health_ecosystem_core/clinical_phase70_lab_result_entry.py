@@ -285,10 +285,10 @@ def api_import_machine_lab_entry(lab_report=None):
 
 
 @frappe.whitelist()
-def api_finalize_lab_entry(lab_report=None):
+def api_finalize_lab_entry(lab_report=None, confirm_password=None):
     from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import finalize_lab_report
 
-    return _unwrap(finalize_lab_report(lab_report=lab_report))
+    return _unwrap(finalize_lab_report(lab_report=lab_report, confirm_password=confirm_password))
 
 
 @frappe.whitelist()

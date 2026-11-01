@@ -226,20 +226,119 @@ def ensure_hrms_modules():
                 frappe.db.set_value("Module Def", mod_name, "app_name", app, update_modified=False)
             except Exception:
                 pass
-            continue
+        else:
+            try:
+                frappe.get_doc(
+                    {
+                        "doctype": "Module Def",
+                        "module_name": mod_name,
+                        "app_name": app,
+                    }
+                ).insert(ignore_permissions=True)
+                created.append(mod_name)
+            except Exception:
+                frappe.log_error(title="ensure_hrms_modules", message=frappe.get_traceback())
+        # Runtime bind — Frappe looks up scrubbed keys (hr, payroll), not display names.
         try:
-            frappe.get_doc(
-                {
-                    "doctype": "Module Def",
-                    "module_name": mod_name,
-                    "app_name": app,
-                }
-            ).insert(ignore_permissions=True)
-            created.append(mod_name)
+            if not getattr(frappe.local, "module_app", None):
+                frappe.local.module_app = frappe._dict()
+            scrubbed = frappe.scrub(mod_name)
+            frappe.local.module_app[scrubbed] = app
+            frappe.local.module_app[mod_name] = app
+            frappe.local.module_app[mod_name.lower()] = app
         except Exception:
-            frappe.log_error(title="ensure_hrms_modules", message=frappe.get_traceback())
+            pass
     frappe.db.commit()
     return {"ok": True, "created": created, "installed_apps": frappe.get_installed_apps()}
+
+
+def bind_hrms_module_app():
+    """Per-request bind so Desk never throws Module HR not found when hrms is installed."""
+    try:
+        installed = set(frappe.get_installed_apps() or [])
+        if "hrms" not in installed and not frappe.db.exists("Module Def", "HR"):
+            return
+        if not getattr(frappe.local, "module_app", None):
+            frappe.local.module_app = frappe._dict()
+        for key in ("hr", "HR", "hrms", "HRMS", "payroll", "Payroll"):
+            frappe.local.module_app[key] = "hrms"
+    except Exception:
+        pass
+
+
+@frappe.whitelist()
+def provision_hr_manager_identity(email=None, password=None, full_name=None):
+    """Create / repair HR Manager User + Employee ID (HR-EMP-#####). System Manager only."""
+    frappe.only_for(("System Manager", "Administrator"))
+    ensure_hrms_installed_app()
+    ensure_hrms_modules()
+    bind_hrms_module_app()
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase73b_careers import (
+        DEMO_HR_MANAGER,
+        seed_demo_hr_manager,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import (
+        ensure_employee_for_user,
+        ensure_hr_settings,
+    )
+
+    ensure_hr_settings()
+    if email:
+        from frappe.utils.password import update_password
+
+        email = str(email).strip().lower()
+        first = (full_name or "HR").split(None, 1)[0]
+        last = " ".join((full_name or "Manager").split(None, 1)[1:] or ["Manager"])
+        for role in ("HR Manager", "HR User", "Employee"):
+            if not frappe.db.exists("Role", role):
+                frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert(
+                    ignore_permissions=True
+                )
+        if not frappe.db.exists("User", email):
+            frappe.get_doc(
+                {
+                    "doctype": "User",
+                    "email": email,
+                    "first_name": first,
+                    "last_name": last,
+                    "user_type": "System User",
+                    "send_welcome_email": 0,
+                    "enabled": 1,
+                }
+            ).insert(ignore_permissions=True)
+        user = frappe.get_doc("User", email)
+        user.enabled = 1
+        user.user_type = "System User"
+        # Strip Agency Agent roles so HR never lands on Agents portal by role mix-up.
+        user.roles = [r for r in user.roles if r.role not in ("Agency Agent", "Agency Manager")]
+        existing = {r.role for r in user.roles}
+        for role in ("HR Manager", "HR User", "Employee"):
+            if role not in existing:
+                user.append("roles", {"role": role})
+        user.save(ignore_permissions=True)
+        if password:
+            update_password(email, password, logout_all_sessions=False)
+        employee = ensure_employee_for_user(email)
+        frappe.db.commit()
+        return {
+            "ok": True,
+            "email": email,
+            "employee_id": employee,
+            "roles": [r.role for r in user.roles],
+            "login_url": "/hr/login",
+        }
+
+    seeded = seed_demo_hr_manager()
+    employee = ensure_employee_for_user(seeded["email"])
+    frappe.db.commit()
+    return {
+        "ok": True,
+        "email": seeded["email"],
+        "employee_id": employee,
+        "roles": seeded.get("roles") or list(DEMO_HR_MANAGER["roles"]),
+        "login_url": "/hr/login",
+    }
 
 
 def ensure_hrms_installed_app():

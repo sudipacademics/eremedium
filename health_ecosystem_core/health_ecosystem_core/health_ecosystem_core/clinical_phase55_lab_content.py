@@ -1,4 +1,4 @@
-"""Phase 55 — Lab test display names, Apollo-style content, and FAQs."""
+"""Phase 55 — Lab test display names, content, and FAQs."""
 
 from __future__ import annotations
 

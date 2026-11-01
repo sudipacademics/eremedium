@@ -7,7 +7,7 @@ from statistics import mean, pstdev
 
 import frappe
 from frappe import _
-from frappe.utils import add_months, cint, flt, getdate, now_datetime, today
+from frappe.utils import add_days, add_months, cint, flt, getdate, now_datetime, today
 
 PHASE62_DOCTYPES = (
 	("lab_equipment", "Lab Equipment"),
@@ -371,10 +371,13 @@ def list_overdue_equipment():
 	return out
 
 
-def get_lj_series(analyte_code, qc_level="1", limit=30):
+def get_lj_series(analyte_code, qc_level="1", limit=30, days=None):
+	filters = {"analyte_code": analyte_code, "qc_level": str(qc_level)}
+	if cint(days) > 0:
+		filters["run_date"] = [">=", add_days(today(), -cint(days))]
 	points = frappe.get_all(
 		"IQC Run",
-		filters={"analyte_code": analyte_code, "qc_level": str(qc_level)},
+		filters=filters,
 		fields=["run_date", "result_value", "lab_mean", "lab_sd", "z_score", "outcome", "name"],
 		order_by="run_date asc",
 		limit=cint(limit) or 30,
@@ -431,17 +434,60 @@ def get_qc_dashboard():
 			"status",
 			"safety_label",
 			"next_calibration_due",
+			"next_maintenance_due",
 			"location",
+			"item",
+			"erp_asset",
+			"machine_name_alias",
+			"model",
 		],
 		order_by="equipment_name asc",
 		limit=100,
 	)
+	overdue = list_overdue_equipment()
+	pm_overdue = []
+	try:
+		from health_ecosystem_core.health_ecosystem_core.clinical_phase97_equipment_assets import (
+			list_overdue_maintenance,
+		)
+
+		pm_overdue = list_overdue_maintenance()
+		seen = {r.get("name") for r in overdue}
+		for row in pm_overdue:
+			if row.get("name") not in seen:
+				overdue.append(row)
+				seen.add(row.get("name"))
+	except Exception:
+		pass
 	iqc_today = frappe.get_all(
 		"IQC Run",
 		filters={"run_date": today()},
-		fields=["name", "analyte_code", "analyte_name", "qc_level", "result_value", "outcome", "equipment"],
+		fields=[
+			"name",
+			"analyte_code",
+			"analyte_name",
+			"qc_level",
+			"result_value",
+			"outcome",
+			"equipment",
+			"lab_mean",
+			"lab_sd",
+			"z_score",
+			"creation",
+		],
 		order_by="creation desc",
 		limit=50,
+	)
+	iqc_analytes = frappe.db.sql(
+		"""
+		select analyte_code, max(analyte_name) as analyte_name, qc_level, count(*) as runs
+		from `tabIQC Run`
+		where ifnull(analyte_code, '') != ''
+		group by analyte_code, qc_level
+		order by analyte_code asc, qc_level asc
+		limit 300
+		""",
+		as_dict=True,
 	)
 	eqa = frappe.get_all(
 		"EQA Participation",
@@ -452,14 +498,20 @@ def get_qc_dashboard():
 	return _success(
 		{
 			"equipment": equipment,
-			"overdue": list_overdue_equipment(),
+			"overdue": overdue,
+			"pm_overdue": pm_overdue,
 			"iqc_today": iqc_today,
+			"iqc_analytes": iqc_analytes,
 			"eqa": eqa,
 			"counts": {
 				"equipment": frappe.db.count("Lab Equipment"),
 				"iqc": frappe.db.count("IQC Run"),
+				"iqc_tests": len(iqc_analytes),
 				"eqa": frappe.db.count("EQA Participation"),
 				"calibrations": frappe.db.count("Equipment Calibration"),
+				"maintenance": frappe.db.count("Equipment Maintenance")
+				if frappe.db.exists("DocType", "Equipment Maintenance")
+				else 0,
 			},
 		}
 	)
@@ -518,7 +570,7 @@ def submit_iqc_run(
 
 
 @frappe.whitelist()
-def get_iqc_lj_chart(analyte_code=None, qc_level=None, limit=30):
+def get_iqc_lj_chart(analyte_code=None, qc_level=None, limit=30, days=None):
 	from health_ecosystem_core.health_ecosystem_core.api import _error, _parse_request_value, _success
 
 	analyte_code = _parse_request_value("analyte_code", analyte_code)
@@ -529,6 +581,7 @@ def get_iqc_lj_chart(analyte_code=None, qc_level=None, limit=30):
 			analyte_code,
 			_parse_request_value("qc_level", qc_level) or "1",
 			_parse_request_value("limit", limit) or 30,
+			_parse_request_value("days", days),
 		)
 	)
 

@@ -6,6 +6,9 @@ import './styles.css';
 
 // Force clients onto the newest build — stale SW was serving old LoginPage
 // that called a missing loginWithOtp → "r is not a function".
+if (typeof caches !== 'undefined') {
+  void caches.delete('html-navigations');
+}
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {

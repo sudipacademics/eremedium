@@ -1,0 +1,148 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "format:JR-{YYYY}-{#####}",
+  "creation": "2026-08-21 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "job_title",
+    "department",
+    "location",
+    "column_break_1",
+    "target_headcount",
+    "status",
+    "job_opening",
+    "section_notes",
+    "description"
+  ],
+  "fields": [
+    {
+      "fieldname": "job_title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Job Title",
+      "reqd": 1
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Department"
+    },
+    {
+      "description": "Regional nodes / corporate hubs (e.g. Astra Tower).",
+      "fieldname": "location",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Location"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "target_headcount",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Target Headcount",
+      "non_negative": 1,
+      "reqd": 1
+    },
+    {
+      "default": "Open",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Open\nOn Hold\nClosed",
+      "reqd": 1
+    },
+    {
+      "description": "Optional link to HRMS Job Opening used by the public Careers portal (/careers). Job Requisition is internal headcount planning; Job Opening is the published careers surface.",
+      "fieldname": "job_opening",
+      "fieldtype": "Link",
+      "label": "Published Job Opening",
+      "options": "Job Opening"
+    },
+    {
+      "fieldname": "section_notes",
+      "fieldtype": "Section Break",
+      "label": "Details"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Text Editor",
+      "label": "Description"
+    }
+  ],
+  "modified": "2026-08-21 00:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "Job Requisition",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Health System Admin",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "HR Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "HR User",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "All"
+    },
+    {
+      "read": 1,
+      "role": "Guest"
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "title_field": "job_title",
+  "track_changes": 1
+}

@@ -2,6 +2,8 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useCart } from '../cart/CartContext';
+import { isOnlinePayment, PaymentMethod, PaymentMethodPicker } from '../components/PaymentMethodPicker';
+import { payWithRazorpay } from '../payments/razorpayCheckout';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -22,6 +24,7 @@ export function PharmacyCheckoutPage() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [prescription, setPrescription] = useState<File | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Online');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,12 +66,31 @@ export function PharmacyCheckoutPage() {
         uploaded_prescription_url: upload.data.file_url,
         order_total: total,
         items_json: JSON.stringify(items),
+        payment_method: paymentMethod,
       });
+      const orderId = String(res.data.order_id || res.data.name || '');
+      const amount = Number(res.data.amount ?? total);
+      if (!orderId) {
+        throw new Error('Order was not created');
+      }
+      if (isOnlinePayment(paymentMethod) && amount > 0) {
+        await payWithRazorpay({
+          referenceDoctype: 'Pharmacy Order',
+          referenceName: orderId,
+          amount,
+          customerName: name,
+          phone,
+        });
+      }
       clear();
-      setSuccess(`Order placed: ${String(res.data.order_id || res.data.name || 'confirmed')}`);
+      setSuccess(`Order confirmed: ${orderId}`);
       setTimeout(() => navigate('/bookings'), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Checkout failed');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Checkout failed — order is not confirmed until payment succeeds',
+      );
     } finally {
       setLoading(false);
     }
@@ -80,7 +102,10 @@ export function PharmacyCheckoutPage() {
         ← Back to cart
       </Link>
       <h1 style={{ marginTop: 12 }}>Pharmacy checkout</h1>
-      <p className="muted">Order total: ₹{total.toFixed(0)} · {count} items</p>
+      <p className="muted">
+        Order total: ₹{total.toFixed(0)} · {count} items. Online payment must succeed before the order
+        is confirmed.
+      </p>
 
       <form className="form" onSubmit={onSubmit} style={{ marginTop: 20 }}>
         <label>
@@ -99,15 +124,16 @@ export function PharmacyCheckoutPage() {
           Prescription (required)
           <input
             type="file"
-            accept="image/*,.pdf"
+            accept="image/*,application/pdf"
             onChange={(e) => setPrescription(e.target.files?.[0] || null)}
             required
           />
         </label>
-        {error && <div className="error">{error}</div>}
-        {success && <div className="success">{success}</div>}
+        <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} variant="doctor" />
+        {error ? <p className="error">{error}</p> : null}
+        {success ? <p className="success">{success}</p> : null}
         <button className="btn" type="submit" disabled={loading}>
-          {loading ? 'Placing order…' : `Place order · ₹${total.toFixed(0)}`}
+          {loading ? 'Processing…' : isOnlinePayment(paymentMethod) ? 'Pay & confirm order' : 'Place order'}
         </button>
       </form>
     </>

@@ -43,7 +43,9 @@ def resolve_trf_health_patient(trf):
 
     phone = (trf.get("patient_phone") or "").strip()
     if phone:
-        patient_id = frappe.db.get_value("Health Patient", {"mobile": phone}, "name")
+        from health_ecosystem_core.health_ecosystem_core.patient_bridge import find_patient_by_phone
+
+        patient_id = find_patient_by_phone(phone, trf.get("patient_name"))
         if patient_id:
             frappe.db.set_value("Customer TRF", trf.name, "health_patient", patient_id, update_modified=False)
             return patient_id
@@ -78,6 +80,10 @@ def on_customer_trf_on_update(doc, method=None):
         if patient_id or doc.get("care_journey"):
             sync_journey_from_trf(doc.name, doc.order_status)
             frappe.db.commit()
+    if doc.has_value_changed("order_status"):
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import on_trf_status_change
+
+        on_trf_status_change(doc.name, doc.order_status)
 
 
 def on_doctor_appointment_after_insert(doc, method=None):

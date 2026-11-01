@@ -1,11 +1,103 @@
-const ABNORMAL_FLAGS = new Set(["H", "L", "Critical", "HIGH", "LOW"]);
+const ABNORMAL_FLAGS = new Set(["H", "L", "CRITICAL", "HIGH", "LOW", "Critical"]);
 
 function labReportSummary(frm) {
 	const rows = frm.doc.parameters || [];
 	const filled = rows.filter((r) => r.result_value).length;
-	const abnormal = rows.filter((r) => ABNORMAL_FLAGS.has(r.abnormal_flag)).length;
+	const abnormal = listAbnormalParams(rows).length;
 	const pending = rows.length - filled;
 	return { total: rows.length, filled, abnormal, pending };
+}
+
+function clientFlagFromRanges(value, lower, upper) {
+	const num = Number(value);
+	if (value === "" || value == null || Number.isNaN(num)) {
+		return "";
+	}
+	if (lower != null && lower !== "" && !Number.isNaN(Number(lower)) && num < Number(lower)) {
+		return "L";
+	}
+	if (upper != null && upper !== "" && !Number.isNaN(Number(upper)) && num > Number(upper)) {
+		return "H";
+	}
+	return "N";
+}
+
+function effectiveAbnormalFlag(row) {
+	let flag = (row.abnormal_flag || "").trim();
+	const rtype = (row.result_input_type || "Numeric").trim();
+	if (rtype === "Numeric" || !rtype) {
+		const computed = clientFlagFromRanges(row.result_value, row.lower_range, row.upper_range);
+		if (computed) {
+			flag = computed;
+		}
+	}
+	return flag;
+}
+
+function isAbnormalFlag(flag) {
+	const f = String(flag || "")
+		.trim()
+		.toUpperCase();
+	if (!f || f === "N" || f === "NORMAL" || f === "—" || f === "-") {
+		return false;
+	}
+	return ABNORMAL_FLAGS.has(flag) || ABNORMAL_FLAGS.has(f) || f === "H" || f === "L" || f === "CRITICAL";
+}
+
+function listAbnormalParams(rows) {
+	return (rows || [])
+		.filter((r) => (r.result_value || "").toString().trim())
+		.filter((r) => {
+			const rtype = (r.result_input_type || "Numeric").trim();
+			if (rtype === "Heading" || rtype === "Spacer") {
+				return false;
+			}
+			return isAbnormalFlag(effectiveAbnormalFlag(r));
+		})
+		.map((r) => ({
+			description: r.description || r.parameter_code || __("Parameter"),
+			result_value: r.result_value,
+			flag: effectiveAbnormalFlag(r),
+			range:
+				r.reference_range_label ||
+				(r.lower_range != null && r.upper_range != null ? `${r.lower_range}-${r.upper_range}` : ""),
+		}));
+}
+
+function syncClientAbnormalFlags(frm) {
+	(frm.doc.parameters || []).forEach((row) => {
+		const rtype = (row.result_input_type || "Numeric").trim();
+		if (rtype !== "Numeric" && rtype) {
+			return;
+		}
+		if (!(row.result_value || "").toString().trim()) {
+			return;
+		}
+		const computed = clientFlagFromRanges(row.result_value, row.lower_range, row.upper_range);
+		if (computed) {
+			row.abnormal_flag = computed;
+		}
+	});
+}
+
+function confirmIfAbnormal(rows, actionLabel, onConfirm) {
+	const abnormal = listAbnormalParams(rows);
+	if (!abnormal.length) {
+		onConfirm();
+		return;
+	}
+	const lines = abnormal
+		.slice(0, 12)
+		.map((a) => `• ${a.description} = ${a.result_value} (${a.flag}${a.range ? `, ref ${a.range}` : ""})`)
+		.join("<br>");
+	const more = abnormal.length > 12 ? `<br>${__("{0} more…", [abnormal.length - 12])}` : "";
+	frappe.confirm(
+		__(
+			"<b>Abnormal result(s) found ({0}).</b><br><br>{1}{2}<br><br>This is abnormal — confirm {3}?",
+			[abnormal.length, lines, more, actionLabel]
+		),
+		onConfirm
+	);
 }
 
 function renderLabReportSummary(frm) {
@@ -33,16 +125,30 @@ function highlightAbnormalGrid(frm) {
 	const grid = frm.fields_dict.parameters?.grid;
 	if (!grid || !grid.grid_rows) return;
 	grid.grid_rows.forEach((row) => {
-		const flag = row.doc.abnormal_flag;
+		const flag = effectiveAbnormalFlag(row.doc);
 		const resultCol = row.columns?.result_value;
 		const flagCol = row.columns?.abnormal_flag;
 		if (resultCol) {
-			resultCol.css("font-weight", ABNORMAL_FLAGS.has(flag) ? "700" : "");
-			resultCol.css("color", flag === "H" || flag === "Critical" ? "#b91c1c" : flag === "L" ? "#1d4ed8" : "");
+			resultCol.css("font-weight", isAbnormalFlag(flag) ? "700" : "");
+			resultCol.css(
+				"color",
+				flag === "H" || flag === "Critical" || String(flag).toUpperCase() === "CRITICAL"
+					? "#b91c1c"
+					: flag === "L"
+						? "#1d4ed8"
+						: ""
+			);
 		}
 		if (flagCol) {
-			flagCol.css("font-weight", ABNORMAL_FLAGS.has(flag) ? "700" : "");
-			flagCol.css("color", flag === "H" || flag === "Critical" ? "#b91c1c" : flag === "L" ? "#1d4ed8" : "#16a34a");
+			flagCol.css("font-weight", isAbnormalFlag(flag) ? "700" : "");
+			flagCol.css(
+				"color",
+				flag === "H" || flag === "Critical" || String(flag).toUpperCase() === "CRITICAL"
+					? "#b91c1c"
+					: flag === "L"
+						? "#1d4ed8"
+						: "#16a34a"
+			);
 		}
 	});
 }
@@ -88,13 +194,14 @@ frappe.ui.form.on("Lab Report", {
 				if (frm.fields_dict[field]) {
 					frm.set_df_property(field, "collapsible", 1);
 				}
-			},
+			}
 		);
 	},
 
 	refresh(frm) {
 		if (frm.is_new()) return;
 
+		syncClientAbnormalFlags(frm);
 		renderLabReportSummary(frm);
 		setTimeout(() => {
 			highlightAbnormalGrid(frm);
@@ -111,7 +218,7 @@ frappe.ui.form.on("Lab Report", {
 				() => {
 					frm.reload_doc();
 					frappe.show_alert({ message: __("Parameter grid refreshed"), indicator: "green" });
-				},
+				}
 			);
 		}, __("Workflow"));
 
@@ -127,7 +234,7 @@ frappe.ui.form.on("Lab Report", {
 						message: __("Imported {0} machine result(s)", [imported]),
 						indicator: "green",
 					});
-				},
+				}
 			);
 		}, __("Workflow"));
 
@@ -139,7 +246,7 @@ frappe.ui.form.on("Lab Report", {
 				() => {
 					frm.reload_doc();
 					frappe.show_alert({ message: __("Derived parameters recalculated"), indicator: "green" });
-				},
+				}
 			);
 		}, __("Workflow"));
 
@@ -147,24 +254,27 @@ frappe.ui.form.on("Lab Report", {
 			frm.add_custom_button(
 				__("Finalize → Review"),
 				() => {
-					frappe.confirm(__("Save results and send to pathologist review?"), () => {
-						frm.save().then(() => {
-							callLabMethod(
-								frm,
-								"health_ecosystem_core.health_ecosystem_core.clinical_phase8.finalize_lab_report",
-								{},
-								() => {
-									frm.reload_doc();
-									frappe.show_alert({
-										message: __("Report sent for pathologist review"),
-										indicator: "green",
-									});
-								},
-							);
+					syncClientAbnormalFlags(frm);
+					confirmIfAbnormal(frm.doc.parameters, __("finalize for review"), () => {
+						frappe.confirm(__("Save results and send to pathologist review?"), () => {
+							frm.save().then(() => {
+								callLabMethod(
+									frm,
+									"health_ecosystem_core.health_ecosystem_core.clinical_phase8.finalize_lab_report",
+									{},
+									() => {
+										frm.reload_doc();
+										frappe.show_alert({
+											message: __("Report sent for pathologist review"),
+											indicator: "green",
+										});
+									}
+								);
+							});
 						});
 					});
 				},
-				__("Workflow"),
+				__("Workflow")
 			).addClass("btn-primary");
 		}
 
@@ -177,32 +287,35 @@ frappe.ui.form.on("Lab Report", {
 			frm.add_custom_button(
 				__("Authorize & PDF"),
 				() => {
-					frappe.prompt(
-						[{ fieldname: "pathologist_notes", fieldtype: "Small Text", label: __("Notes (optional)") }],
-						(values) => {
-							frappe.call({
-								method: "health_ecosystem_core.health_ecosystem_core.clinical_journey.authorize_lab_report",
-								args: {
-									journey_id: frm.doc.care_journey,
-									pathologist_notes: values.pathologist_notes,
-								},
-								freeze: true,
-								callback(r) {
-									if (r.message?.status === "success") {
-										frm.reload_doc();
-										frappe.show_alert({
-											message: __("Report authorized — patient notified"),
-											indicator: "green",
-										});
-									}
-								},
-							});
-						},
-						__("Authorize lab report"),
-						__("Authorize"),
-					);
+					syncClientAbnormalFlags(frm);
+					confirmIfAbnormal(frm.doc.parameters, __("authorization"), () => {
+						frappe.prompt(
+							[{ fieldname: "pathologist_notes", fieldtype: "Small Text", label: __("Notes (optional)") }],
+							(values) => {
+								frappe.call({
+									method: "health_ecosystem_core.health_ecosystem_core.clinical_journey.authorize_lab_report",
+									args: {
+										journey_id: frm.doc.care_journey,
+										pathologist_notes: values.pathologist_notes,
+									},
+									freeze: true,
+									callback(r) {
+										if (r.message?.status === "success") {
+											frm.reload_doc();
+											frappe.show_alert({
+												message: __("Report authorized — patient notified"),
+												indicator: "green",
+											});
+										}
+									},
+								});
+							},
+							__("Authorize lab report"),
+							__("Authorize")
+						);
+					});
 				},
-				__("Workflow"),
+				__("Workflow")
 			).addClass("btn-primary");
 		}
 
@@ -241,7 +354,7 @@ frappe.ui.form.on("Lab Report", {
 	},
 
 	before_save(frm) {
-		// Server validate recalculates Derivation Equations for Calculated rows
+		syncClientAbnormalFlags(frm);
 		frappe.show_alert({
 			message: __("Evaluating derivation equations on Save…"),
 			indicator: "blue",
@@ -250,10 +363,24 @@ frappe.ui.form.on("Lab Report", {
 });
 
 frappe.ui.form.on("Lab Report Parameter", {
-	result_value(frm) {
-		setTimeout(() => highlightAbnormalGrid(frm), 100);
+	result_value(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		const rtype = (row.result_input_type || "Numeric").trim();
+		if (rtype === "Numeric" || !rtype) {
+			const computed = clientFlagFromRanges(row.result_value, row.lower_range, row.upper_range);
+			if (computed) {
+				frappe.model.set_value(cdt, cdn, "abnormal_flag", computed);
+			}
+		}
+		setTimeout(() => {
+			renderLabReportSummary(frm);
+			highlightAbnormalGrid(frm);
+		}, 100);
 	},
 	abnormal_flag(frm) {
-		setTimeout(() => highlightAbnormalGrid(frm), 100);
+		setTimeout(() => {
+			renderLabReportSummary(frm);
+			highlightAbnormalGrid(frm);
+		}, 100);
 	},
 });

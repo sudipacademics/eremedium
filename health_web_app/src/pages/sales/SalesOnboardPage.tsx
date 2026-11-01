@@ -1,183 +1,93 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api, SalesLead } from '../../api';
+import { useEffect, useState } from 'react';
+import { api } from '../../api';
+import { useAuth } from '../../auth/AuthContext';
+
+const ONBOARD_BASE = 'https://www.e-remedium.in/onboard/';
+
+/** Stable Employee Referral Number for a Reach sales user (rep_code preferred). */
+export function employeeReferralNumber(repCode?: string | null, fallbackUser?: string | null) {
+  const raw = (repCode || fallbackUser || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  const code = raw.slice(0, 16) || 'REACH';
+  return `ERN-${code}`;
+}
 
 export function SalesOnboardPage() {
-  const [leads, setLeads] = useState<SalesLead[]>([]);
+  const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [startingSession, setStartingSession] = useState(false);
-  const [franchiseeId, setFranchiseeId] = useState<string | null>(null);
-  const [sessionUrl, setSessionUrl] = useState<string | null>(null);
-
-  const [leadId, setLeadId] = useState('');
-  const [franchiseName, setFranchiseName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [branchCode, setBranchCode] = useState('');
-  const [territory, setTerritory] = useState('East India');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [commission, setCommission] = useState('12.5');
-  const [notes, setNotes] = useState('');
+  const [referral, setReferral] = useState<string | null>(null);
+  const [targetUrl, setTargetUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    void api
-      .getSalesLeads()
-      .then((res) => setLeads(res.data.leads || []))
-      .catch(() => undefined);
-  }, []);
-
-  function pickLead(id: string) {
-    setLeadId(id);
-    const lead = leads.find((l) => l.name === id);
-    if (!lead) return;
-    setFranchiseName(lead.lead_name);
-    setPhone(lead.phone);
-    setTerritory(lead.city || territory);
-  }
-
-  async function startEAgreement(targetFranchiseeId: string) {
-    setStartingSession(true);
-    setError(null);
-    try {
-      const session = await api.createOnboardingSession({
-        franchisee_id: targetFranchiseeId,
-        ...(leadId ? { lead_id: leadId } : {}),
-      });
-      setSessionUrl(session.data.url);
-      setMessage(`Franchisee ${targetFranchiseeId} ready. Opening FFMS e-Aadhaar / e-agreement portal…`);
-      window.open(session.data.url, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start e-agreement session');
-    } finally {
-      setStartingSession(false);
-    }
-  }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    setMessage(null);
-    setSessionUrl(null);
-    try {
-      const res = await api.submitSalesOnboarding({
-        ...(leadId ? { lead_id: leadId } : {}),
-        franchise_name: franchiseName,
-        owner_name: ownerName,
-        proposed_branch_code: branchCode.toUpperCase(),
-        territory_region: territory,
-        address,
-        phone,
-        email,
-        commission_percentage_rate: commission,
-        notes,
-      });
-      setFranchiseeId(res.data.franchisee_id);
-      setMessage(`Franchisee ${res.data.franchisee_id} created and linked to your portfolio.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Onboarding failed');
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    let active = true;
+    void (async () => {
+      try {
+        const portal = await api.getSalesPortal();
+        const repCode = portal.data.rep?.rep_code || user?.user?.split('@')[0] || '';
+        const ern = employeeReferralNumber(repCode, user?.user);
+        const url = `${ONBOARD_BASE}?employee_referral=${encodeURIComponent(ern)}`;
+        if (!active) return;
+        setReferral(ern);
+        setTargetUrl(url);
+        window.location.assign(url);
+      } catch (err) {
+        if (!active) return;
+        const fallback = employeeReferralNumber(user?.user?.split('@')[0], user?.user);
+        const url = `${ONBOARD_BASE}?employee_referral=${encodeURIComponent(fallback)}`;
+        setReferral(fallback);
+        setTargetUrl(url);
+        setError(err instanceof Error ? err.message : 'Unable to load sales profile — using your login referral.');
+        window.setTimeout(() => window.location.assign(url), 600);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user?.user]);
 
   return (
-    <>
-      <h1>Onboard franchisee</h1>
-      <p className="muted">
-        Complete franchise registration — creates Franchisee Profile and B2B wallet, then hand off to FFMS for e-Aadhaar /
-        e-agreement.
-      </p>
-
-      {message ? (
-        <div className="success">
-          {message}
-          {franchiseeId ? (
-            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={startingSession}
-                  onClick={() => void startEAgreement(franchiseeId)}
-                >
-                  {startingSession ? 'Opening…' : 'Start e-Aadhaar / e-agreement'}
-                </button>
-                <Link to="/sales/franchisees">View franchisee stats →</Link>
-              </div>
-              {sessionUrl ? (
-                <p className="muted" style={{ margin: 0, wordBreak: 'break-all' }}>
-                  Portal link: <a href={sessionUrl} target="_blank" rel="noreferrer">{sessionUrl}</a>
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+    <div className="reach-onboard-redirect">
+      <div className="reach-page-head">
+        <div>
+          <h1>Onboard franchisee</h1>
+          <p>
+            Opening the franchise application portal with your Employee Referral Number. Applicants complete FOFO/FOCO
+            registration on www.e-remedium.in — your referral is stored automatically and cannot be edited by them.
+          </p>
         </div>
-      ) : null}
-      {error ? <div className="error">{error}</div> : null}
+      </div>
 
-      <form className="card form-stack" onSubmit={onSubmit}>
-        <label>
-          From lead (optional)
-          <select value={leadId} onChange={(e) => pickLead(e.target.value)}>
-            <option value="">— New —</option>
-            {leads
-              .filter((l) => l.status !== 'Won')
-              .map((l) => (
-                <option key={l.name} value={l.name}>
-                  {l.lead_name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label>
-          Franchise / lab name *
-          <input value={franchiseName} onChange={(e) => setFranchiseName(e.target.value)} required />
-        </label>
-        <label>
-          Owner name *
-          <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required />
-        </label>
-        <label>
-          Branch code * (unique, e.g. KOL-01)
-          <input
-            value={branchCode}
-            onChange={(e) => setBranchCode(e.target.value.toUpperCase())}
-            required
-            pattern="[A-Z0-9-]+"
-          />
-        </label>
-        <label>
-          Territory / region *
-          <input value={territory} onChange={(e) => setTerritory(e.target.value)} required />
-        </label>
-        <label>
-          Address
-          <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
-        </label>
-        <label>
-          Phone
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </label>
-        <label>
-          Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label>
-          Commission % (default 12.5)
-          <input type="number" step="0.1" value={commission} onChange={(e) => setCommission(e.target.value)} />
-        </label>
-        <label>
-          Notes
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-        </label>
-        <button type="submit" className="btn" disabled={submitting}>
-          {submitting ? 'Submitting…' : 'Submit onboarding'}
-        </button>
-      </form>
-    </>
+      {error ? <div className="reach-alert err">{error}</div> : null}
+
+      <div className="reach-card">
+        <div className="reach-card-head">
+          <div className="reach-card-icon" aria-hidden>
+            →
+          </div>
+          <div>
+            <h2>Redirecting to applicant onboarding</h2>
+            <p>
+              {referral ? (
+                <>
+                  Employee Referral Number <strong>{referral}</strong> will be attached to the application as an internal
+                  Reach reference.
+                </>
+              ) : (
+                'Preparing your Employee Referral Number…'
+              )}
+            </p>
+          </div>
+        </div>
+        {targetUrl ? (
+          <div className="reach-form-footer">
+            <span className="reach-gps">If you are not redirected automatically, continue below.</span>
+            <a className="reach-btn" href={targetUrl}>
+              Open onboarding portal
+            </a>
+          </div>
+        ) : (
+          <p className="muted">Please wait…</p>
+        )}
+      </div>
+    </div>
   );
 }

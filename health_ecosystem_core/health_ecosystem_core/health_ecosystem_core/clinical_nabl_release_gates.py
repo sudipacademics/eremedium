@@ -146,6 +146,18 @@ def evaluate_release_gates(lab_report_doc):
 			)
 
 			overdue = list_overdue_equipment()
+			try:
+				from health_ecosystem_core.health_ecosystem_core.clinical_phase97_equipment_assets import (
+					list_overdue_maintenance,
+				)
+
+				pm = list_overdue_maintenance()
+				seen = {o.get("name") for o in overdue}
+				for row in pm:
+					if row.get("name") not in seen:
+						overdue.append(row)
+			except Exception:
+				pass
 			if overdue and _settings_flag("nabl_enforce_calibration"):
 				holds.append(
 					"Equipment calibration/OOS: "

@@ -1,0 +1,193 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "creation": "2026-08-10 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "section_identity",
+    "lab_name",
+    "lab_tagline",
+    "column_break_id",
+    "lab_address",
+    "lab_phone",
+    "lab_website",
+    "section_logos",
+    "lab_logo",
+    "nabl_logo",
+    "column_break_logos",
+    "header_banner",
+    "nabl_header_banner",
+    "non_nabl_header_banner",
+    "footer_banner",
+    "section_style",
+    "report_primary_color",
+    "nabl_accreditation",
+    "nabl_certificate_no",
+    "report_footer",
+    "show_authorized_badge"
+  ],
+  "fields": [
+    {
+      "fieldname": "section_identity",
+      "fieldtype": "Section Break",
+      "label": "Lab Identity"
+    },
+    {
+      "default": "Remedium Diagnostics",
+      "fieldname": "lab_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Lab / Brand Name",
+      "reqd": 1
+    },
+    {
+      "fieldname": "lab_tagline",
+      "fieldtype": "Data",
+      "label": "Tagline"
+    },
+    {
+      "fieldname": "column_break_id",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "lab_address",
+      "fieldtype": "Small Text",
+      "label": "Lab Address (on report header)"
+    },
+    {
+      "fieldname": "lab_phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "lab_website",
+      "fieldtype": "Data",
+      "label": "Website"
+    },
+    {
+      "fieldname": "section_logos",
+      "fieldtype": "Section Break",
+      "label": "Logos & Banners (upload here)"
+    },
+    {
+      "description": "Remedium / lab logo — shown left on NABL PDF header",
+      "fieldname": "lab_logo",
+      "fieldtype": "Attach Image",
+      "label": "Lab Logo"
+    },
+    {
+      "description": "NABL symbol / accreditation mark — shown right on PDF header",
+      "fieldname": "nabl_logo",
+      "fieldtype": "Attach Image",
+      "label": "NABL Logo"
+    },
+    {
+      "fieldname": "column_break_logos",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Legacy/default letterhead strip. Used as NABL header when NABL Header Banner is empty.",
+      "fieldname": "header_banner",
+      "fieldtype": "Attach Image",
+      "label": "Header Banner"
+    },
+    {
+      "description": "Full-width NABL letterhead (accreditation seal). Replace in Desk without code changes.",
+      "fieldname": "nabl_header_banner",
+      "fieldtype": "Attach Image",
+      "label": "NABL Header Banner"
+    },
+    {
+      "description": "Full-width Non-NABL letterhead (no NABL seal). Replace in Desk without code changes.",
+      "fieldname": "non_nabl_header_banner",
+      "fieldtype": "Attach Image",
+      "label": "Non-NABL Header Banner"
+    },
+    {
+      "description": "Approved footer strip (ISO / contact / addresses). Used with NABL and Non-NABL headers.",
+      "fieldname": "footer_banner",
+      "fieldtype": "Attach Image",
+      "label": "Footer Banner"
+    },
+    {
+      "fieldname": "section_style",
+      "fieldtype": "Section Break",
+      "label": "Report Style"
+    },
+    {
+      "default": "#0b5cab",
+      "fieldname": "report_primary_color",
+      "fieldtype": "Color",
+      "label": "Accent Color"
+    },
+    {
+      "default": "NABL Accredited Laboratory | ISO 15189:2022",
+      "fieldname": "nabl_accreditation",
+      "fieldtype": "Data",
+      "label": "Accreditation Line"
+    },
+    {
+      "fieldname": "nabl_certificate_no",
+      "fieldtype": "Data",
+      "label": "NABL Certificate No."
+    },
+    {
+      "fieldname": "report_footer",
+      "fieldtype": "Small Text",
+      "label": "Footer Disclaimer"
+    },
+    {
+      "default": "1",
+      "fieldname": "show_authorized_badge",
+      "fieldtype": "Check",
+      "label": "Show AUTHORIZED badge when reported"
+    }
+  ],
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-08-10 00:00:00.000000",
+  "module": "Health Ecosystem Core",
+  "name": "Lab Report Branding",
+  "naming_rule": "",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 0,
+      "email": 0,
+      "export": 0,
+      "print": 0,
+      "read": 1,
+      "role": "System Manager",
+      "share": 0,
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "email": 0,
+      "export": 0,
+      "print": 0,
+      "read": 1,
+      "role": "Health System Admin",
+      "share": 0,
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "email": 0,
+      "export": 0,
+      "print": 1,
+      "read": 1,
+      "role": "Lab Technician",
+      "share": 0,
+      "write": 0
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

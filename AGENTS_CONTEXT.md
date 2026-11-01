@@ -1,5 +1,7 @@
 # Shared project context (read by all Cursor agents)
 
+Each product has its own `PROJECT.md`. Start with `PROJECTS.md`, then read the sections below that name that product. This file stays the shared live-system record. Do not copy passwords or API keys into the project files.
+
 ## Live system — DO NOT destroy
 
 - **Server:** root@167.233.108.90
@@ -66,21 +68,98 @@ chmod +x safe-update-app.sh bench.sh scripts/*.sh
 - Masked calls need Settings: telephony_enabled + exotel_sid + exotel_api_key + exotel_api_token + exotel_virtual_number; staff `mobile_no`
 - Canonical code: `C:\develop\My_Lab_System`; compose on server: `/opt/health-ecosystem/docker`
 
+## People HRMS add-on layer + portal access (2026-10-31 → 2026-11-01)
+
+Live at https://people.e-remedium.in (same SPA also on `www.remediumlabs.in/people/*` and `aesthetics.e-remedium.in/people/*`). Owner: Snehasish Ganguly.
+
+### How it is built and deployed (read before touching HRMS)
+
+- **Main SPA bundle is built and deployed from another machine** (`/opt/health-ecosystem/health_web_app/dist/web-assets/index-*.js`, renamed copies such as `-fix2`, `-auth`). Those deploys have wiped HRMS files more than once. **Do not full-rebuild the SPA from this tree for HRMS work** (some CSS sources were missing); HRMS changes ship as plain add-on JS/CSS files loaded by `dist/index.html`.
+- **Add-on store on the server:** `/opt/health-ecosystem/people-addons/` (web files) and `people-addons/backend/` (`clinical_*.py`). Repo sources: `health_web_app/public/{people-org,people-access,people-geofence,employee-id-card,people-user-menu,people-profile-align}.{js,css}`, `qrcode-generator.js`, `verify-id.html`; backend `health_ecosystem_core/.../clinical_people_*.py`; ops gate `ops_portal/public/ops-gate.js`.
+- **Self-healing cron (root):** `*/2 * * * * /usr/bin/python3 /opt/health-ecosystem/people-addons/restore_people_addons.py >> /var/log/people-addons.log`. Source `.deploy/restore_people_addons.py`. Every run it:
+  - copies add-on files into `dist/` and re-adds the versioned `<script>/<link>` tags (`TAGS`) to `dist/index.html`; bumps the `index.html` revision in `dist/sw.js` (md5 of the HTML) so browsers pick up new versions;
+  - copies `backend/clinical_*.py` into the backend container's site-packages, re-adds the `before_request` hook `clinical_people_access.enforce_portal_permissions` to `hooks.py`, and re-applies three surgical patches (phase132 `pinned = {"hr_manager@health.local"}` so the demo HR password is not rotated; phase90 `include_inactive` employee filter; phase90 asset `geo_sites` locations). Restarts `docker-backend-1` only when something changed;
+  - re-installs `ops-gate.js` + its tag in `/opt/health-ecosystem/ops_portal/dist/index.html`;
+  - patches the aesthetic console role check in the live main bundle (adds `Aesthetic Staff` / `Aesthetic Manager`) if a redeploy dropped it.
+- **Deploy flow:** bump the `?v=` in `TAGS` (and in `health_web_app/index.html`), `scp` files to `/tmp/addons/`, then `bash /tmp/addons/publish_addons.sh` (stages `clinical_*.py` into `people-addons/backend`, other files into `people-addons/`, runs the restore). Compile-check Python first in a separate dir (a `__pycache__` folder inside `/tmp/addons` stops the publish script).
+- **Testing without passwords:** create a temporary Frappe session server-side (`frappe.sessions.Session` inside a werkzeug `EnvironBuilder` request context), put `{sid,user,fullName,roles}` in the browser's `localStorage.hec_web_session` (ops portal: `ops_session`), then delete the session with `delete_session`. Never print rotated passwords (`hec_rotated_admin_passwords`).
+
+### Features (all live)
+
+- **WDD module** (Wing → Division → Department → Designation → Unit/Centre → Position): tree page, add/edit/deactivate/delete (blocked when children or employees exist), `parent_master` link prevents cross-wing overlap. Inline WDD filters on Employees/Leave/Attendance/Payslips/etc. **for HR only** (`get_people_org.can_edit`). Backend `clinical_people_org.py`, `clinical_people_org_delete.py`.
+- **Employees:** add/edit popup with full org chain, reporting manager, photo, geofence site; View panel shows the 7.5 × 11 cm ID card (Directory only); single + bulk delete with password check (`clinical_people_employee_delete.py`: permanent delete keeping history, or mark Left). The table pencil links to ERPNext `/app/employee/…`; `people-org.js` intercepts it once org data has loaded — keep `ensureData()` running on those pages.
+- **ID card + secure QR:** `employee-id-card.js` renders a fixed-size card; QR opens `/api/method/…clinical_people_id_verify.card?t=<HMAC token>` which shows data only for Active employees.
+- **Leave attachments** (`clinical_people_leave_attach.py`), **payroll edit** for HR (`clinical_people_payroll_edit.py`), **geofence editor popup + saved-site dropdowns** (`people-geofence.js`), asset location list from geofence sites.
+- **Portal Access + module permissions** (`clinical_people_access.py`, `people-access.js`): DocType `People Portal Access` (employee, portal, login_user, permissions JSON, active). Levels none/view/create/edit/approve/manage. Portals: People HRMS, Lab Technician, Collection, Franchise Partners, Reach/Sales, Careers, **Aesthetic Backend** (`aesthetics.e-remedium.in`, roles Aesthetic Staff/Manager + Employee) and **Operations Backend** (`ops.e-remedium.in`, roles Operations Staff/Manager + Employee). Roles are created on first use; role sync only removes roles this screen granted. Enforcement: frontend nav/URL gating per portal + backend `before_request` hook (`METHOD_RULES`) for People APIs. `save_access` links the People login to `Employee.user_id` (never auto-creates a duplicate employee) and marks HR-issued logins email-verified.
+- **Asset assignment PDF** on assign (no digital signature; blank signature lines for paper signing), stored as a private People Document.
+- **Ops portal sign-in gate** (`ops-gate.js`): the ops portal had no login. It now requires an HRMS login with Operations Backend access (System Managers exempt) and hides/blocks modules set to none.
+- **My HR Workspace inside other consoles:** aesthetic console (same origin) and ops portal (cross-origin) embed `people.e-remedium.in/people/profile` with HRMS chrome hidden and a workspace tab bar. Ops passes its session via `postMessage`; both sides only accept `https://ops.e-remedium.in` ↔ `https://people.e-remedium.in`. Shared session: signing out of one signs out the other.
+
+### Gotchas
+
+- Browsers keep old add-on versions until the service worker updates: always bump `?v=`; users may need one or two reloads.
+- The main SPA redirects to `/login` before deferred add-ons run, so query markers can be lost; cross-origin embed detection uses the parent origin instead.
+- `get_my_portal_permissions` only requires a valid session (not People roles) so aesthetic/ops-only staff can use it.
+
+## Phase 84 — WB geo master (ERP) → RFMS map + Reach sales (2026-07-29)
+
+- **Goal:** ERPNext holds the West Bengal Administrative & Postal Directory (V2) as geographic SoR; RFMS keeps operational FOFO/FOCO capacity (no auto-open of every PIN); Reach rolls up sales by district.
+- **Data:** `docker/data/wb-postal-directory-v2.json` (~341 rows). DocType `HEC WB Postal Locality`.
+- **HEC:** `clinical_phase84_wb_geo.py` — import + `get_wb_geo_hierarchy` / `resolve_wb_pincode` / `get_territorial_sales_summary`. Lead fields: `district`, `subdivision`, `pincode`.
+- **RFMS:** `GET /api/v1/geo/wb-hierarchy` (1h cache), `GET /api/v1/geo/pincode/:pin`. Territory Setup picklists from ERP; PIN add warns if unknown. Google map default filter **Active** (capacity or allocation) + All/Available/Reserved/Occupied.
+- **Reach:** leads/onboard geo pickers; Reports territorial table + bar; team map colours/labels by district.
+- **Deploy:** hot-copy (skip full migrate while `hec_job_application_education` broken). Scripts: `hot-deploy-phase84-wb-geo.sh`, `import-wb-postal-directory.sh`, `smoke-phase84-wb-geo.sh`.
+- **Operator:** Desk confirm row count on `HEC WB Postal Locality` (341); hard-refresh `/ffms` Territory → Active map; on Reach `/sales` create lead with district/PIN and open Reports territorial section. Smoke PIN sample: `700135` (Rajarhat).
+- **Live 2026-07-29:** `PHASE84_OK` / `PHASE84_HOT_DEPLOY_DONE` — import 341 rows / 23 districts; RFMS hierarchy + PIN resolve OK; admin rebuilt with Active map filters; Reach dist deployed with geo pickers + territorial reports.
+
+## Phase 83 — HEC secrets hub + RFMS↔ERPNext bridge (2026-07-29)
+
+- **Goal:** Mother ERPNext holds Razorpay + MSG91 secrets and the Google Maps **browser** key. RFMS never stores Razorpay secret / MSG91 authkey; it fetches safe config and proxies OTP + Razorpay create/verify over the Phase 80 HMAC bridge.
+- **HEC:** `google_maps_api_key` on Health Ecosystem Settings; `clinical_phase83_rfms_bridge.py` + API methods `get_rfms_integration_config`, `create_rfms_razorpay_order`, `verify_rfms_razorpay_payment`.
+- **RFMS:** `hec-frappe-bridge.mjs` config/order/verify helpers; `GET /api/v1/integrations/public-config`; officer `GET /api/v1/admin/integrations/maps-key`; gateway `initiate`/`complete` via ERP (simulate only when `RFMS_GATEWAY_SIMULATE=1` or ERP test mode without key_id). Default `RFMS_CONTACT_OTP_VIA_ERP=1` (mobile + email).
+- **UI:** Portal uses Razorpay Checkout.js when `key_id` + `razorpay_order_id` returned; admin Maps prefers runtime key from ERP over baked `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+- **Deploy:** hot-copy (skip full migrate while `hec_job_application_education` broken). Scripts: `docker/scripts/hot-deploy-phase83.sh`, `docker/scripts/smoke-phase83-erp-bridge.sh`.
+- **Live 2026-07-29:** `PHASE83_OK` / `PHASE83_HOT_DEPLOY_DONE` — ERP config returns Razorpay key_id + MSG91 flags (no secrets); RFMS `public-config` 200; contact OTP live MSG91 path. Portal/admin rebuilt for Checkout.js + runtime Maps.
+- **Operator verify 2026-07-29:** Desk Maps field had a `GOCSPX-…` OAuth client secret by mistake (was briefly on public-config) — replaced with browser `AIza…` key from RFMS env. **Rotate that Google OAuth client secret** in GCP. Maps geocode now **OK**. Live Razorpay `gateway/initiate` via ERP: `PHASE83_GATEWAY_INIT_OK`. Scripts: `verify-phase83-operator.sh`, `test-phase83-gateway-init.sh`.
+- **Operator:** hard-refresh `/ffms` and `/onboard`. Manual Checkout pay still needed for full paid→officer path (cannot automate live card).
+
+## Phase 82b — Real officer company IDs (2026-07-29)
+
+- **Scope:** User Management issues permanent company IDs (`RFMS-NNNN`) for staff login instead of typing free-form IDs / relying only on seed `RFMS-0001…0007`.
+- **API:** `nextOfficerEmployeeId()`; `POST /admin/users` auto-allocates from `RFMS-0008+`; `GET /admin/users/next-employee-id` preview; PATCH refuses ID changes; format `^RFMS-\d{4,}$`.
+- **UI:** Company ID column; create shows next ID (read-only); edit locks ID; success toast includes issued ID.
+- **Seed hygiene:** empty officers table still bootstraps demo accounts; missing-seed append only when `RFMS_SEED_OFFICERS=1`.
+- **Smoke:** `docker/scripts/smoke-phase82b-officer-ids.sh`. **Live 2026-07-29:** `PHASE82B_OK` (issued `RFMS-0008`/`RFMS-0009`, login OK, ID immutable). Admin UI rebuilt (`PHASE82B_UI_DONE`).
+
+## Phase 82 UI — receipt download + agreement PDF worker (2026-07-29)
+
+- **Admin receipt download:** Payments panel was calling `origin + /api/v1/...` and missing live `/rfms-api/v1`. Fixed in `payment-operations.tsx` via `resolveReceiptApiUrl` against `RFMS_API_BASE`.
+- **Agreement PDF viewer:** portal used `window.location.origin/pdf.worker.min.mjs` (hits www root HTML). Now `appPath('/pdf.worker.min.mjs')` → `/onboard/pdf.worker.min.mjs`.
+- **Note:** `/rfms-api/v1/receipts/verify/RCP-…` returns JSON metadata for QR validation; PDF download is the admin/public `.../payments/{key}/receipt` route.
+- **Deploy:** `docker/scripts/deploy-phase82-ui-fixes.sh` + `rebuild-rfms-with-maps-key.sh`. Live: `PHASE82_UI_DEPLOY_DONE`, `MAPS_KEY_BAKED_OK`.
+
+## Phase 82a — Fresh FOFO/FOCO applicant path (2026-07-28)
+
+- **Scope:** Reach mint → `/onboard/hec-session` lead-only handoff → applicant picks FOFO/FOCO → contact OTP + KYC docs → submit → first payment (simulated gateway) → officer sees app in `/ffms` Applicants (`visible_to_admin=true` only after payment).
+- **Fixes:** public KYC contact OTP defaults via ERP when `RFMS_CONTACT_OTP_VIA_ERP=1` (Phase 83); `123456` when ERP `otp_test_mode` / flag off; ERP send failure still falls back when `RFMS_OTP_DEV_FALLBACK=1`; `territoryAllocation` no longer invents FOFO for blank model.
+- **Smoke:** `docker/scripts/smoke-phase82a-fresh-applicant.sh` (API E2E). Deploy API: SCP `server.mjs` → `/tmp/phase82a-server.mjs`, SCP smoke + `hot-deploy-phase82a.sh`, then `bash docker/scripts/hot-deploy-phase82a.sh`. **Live 2026-07-28:** `PHASE82A_OK` — mint → OTP → FOFO app → gateway pay → officer `/applications` sees applicant; lead `franchise_model=FOFO`.
+- **Superseded by Phase 83:** live Razorpay/MSG91 bridge + Maps key from HEC (see Phase 83). Officer company IDs: see Phase 82b.
+
 ## Phase 81 — Franchisee Hub sheet + wallet (2026-07-28)
 
 - **Scope:** expand `Franchisee Profile` with commercials/GPS/bank/docs; import ops sheet into profiles; opening wallet = `max(0, deposit − ₹80,000 fee)` via Phase 23 `Franchisee Wallet Transaction` (`payment_reference=OPENING-RECHARGE`). No second wallet DocType.
 - **Code:** `clinical_franchisee_import.py`; `get_franchisee_dashboard` returns wallet + hub fields; `search_franchisees` includes lat/lng/category/wallet.
 - **Deploy:** SCP HEC + `docker/deploy-franchisee-hub.sh` + `docker/import-franchise-sheet.sh`; put CSV at `/tmp/franchise-sheet.csv` on server; `bash deploy-franchisee-hub.sh`. Prefer **`docker/scripts/hot-deploy-phase81-hub.sh`** until `hec_job_application_education` module is restored (full migrate still fails on that DocType). Users default password `HubChangeMe@123`.
 - **Live 2026-07-28:** hot deploy OK; sheet import **21 updated / 0 errors**; `search_franchisees` HTTP 200 with wallet/category fields. Geocode skipped (`GEOCODE=0`); re-run import with `GEOCODE=1` for GPS.
-- **Google Maps (FFMS admin):** rebuilds must pass `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (from `apps_external/ffms/.env.local` into `docker/.env`). Use `docker/scripts/rebuild-rfms-with-maps-key.sh`. GCP project still needs **Billing enabled** or Maps returns `REQUEST_DENIED`.
+- **Google Maps (FFMS admin):** prefer runtime key from HEC via RFMS `/admin/integrations/maps-key` (Phase 83). Bake `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` only as offline/dev fallback (`rebuild-rfms-with-maps-key.sh`). GCP project still needs **Billing enabled** or Maps returns `REQUEST_DENIED`.
 
 ## RFMS officer login (2026-07-28)
 
 - Officer sign-in at `/ffms`: **company ID (`employee_id`) + password only**. No OTP.
 - API: `POST /api/v1/auth/login` with `{ login_id, password }`. Legacy `/auth/otp/*` returns `OTP_DISABLED`.
 - Company ID examples from seed: `RFMS-0001` (admin), `RFMS-0005` (consultant), etc. Email also accepted as alias for existing accounts.
-- **Parked (do not start unless asked):** (1) issue real officer IDs in User Management vs seed logins; (2) full applicant KYC + first-payment path on a fresh handoff.
-- **RFMS rebuilds:** use `docker/scripts/rebuild-rfms-with-maps-key.sh` (or officer-login script) so `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is not dropped.
+- **Integrations:** Razorpay/MSG91/Maps hub is Phase 83 (ERP Settings). Officer IDs: see Phase 82b.
+- **RFMS rebuilds:** use `docker/scripts/rebuild-rfms-with-maps-key.sh` when baking a Maps fallback key; runtime key from HEC is preferred after Phase 83.
 
 ## Phase 80 — FFMS ↔ Reach handoff (2026-07-27)
 

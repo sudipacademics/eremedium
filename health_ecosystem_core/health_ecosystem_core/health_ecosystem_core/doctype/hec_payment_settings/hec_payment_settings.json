@@ -1,0 +1,236 @@
+{
+  "actions": [],
+  "creation": "2026-09-29 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "section_providers",
+    "provider_patient_checkout",
+    "provider_subscriptions",
+    "provider_patient_wallet",
+    "column_break_providers",
+    "provider_b2b_wallet",
+    "provider_ffms_fees",
+    "poller_enabled",
+    "section_books",
+    "company",
+    "collection_bank_account",
+    "bank_account",
+    "razorpay_clearing_account",
+    "cash_account",
+    "column_break_books",
+    "franchisee_wallet_account",
+    "patient_wallet_account",
+    "franchise_fee_income_account",
+    "application_fee_income_account",
+    "security_deposit_account",
+    "temporary_opening_account",
+    "franchise_commission_account",
+    "hub_receipts_from",
+    "books_excluded_hubs",
+    "wallet_books_from",
+    "promo_credit_account",
+    "patient_wallet_books_from"
+  ],
+  "fields": [
+    {
+      "fieldname": "section_providers",
+      "fieldtype": "Section Break",
+      "label": "Payment provider per scope"
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider_patient_checkout",
+      "fieldtype": "Select",
+      "label": "Patient checkout (lab, pharmacy, consults)",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider_subscriptions",
+      "fieldtype": "Select",
+      "label": "Health Circle / subscriptions",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider_patient_wallet",
+      "fieldtype": "Select",
+      "label": "Patient wallet top-up",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "fieldname": "column_break_providers",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider_b2b_wallet",
+      "fieldtype": "Select",
+      "label": "Franchisee B2B wallet top-up",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "default": "Razorpay",
+      "fieldname": "provider_ffms_fees",
+      "fieldtype": "Select",
+      "label": "FFMS franchise fees and deposits",
+      "options": "Razorpay\nICICI"
+    },
+    {
+      "default": "1",
+      "description": "Every 10 minutes, check Razorpay for payments whose checkout window closed before confirmation.",
+      "fieldname": "poller_enabled",
+      "fieldtype": "Check",
+      "label": "Recover unconfirmed online payments"
+    },
+    {
+      "description": "Offset for opening franchisee wallets that predate the system (hubs imported from the franchise sheet).",
+      "fieldname": "temporary_opening_account",
+      "fieldtype": "Link",
+      "label": "Temporary opening account",
+      "options": "Account"
+    },
+    {
+      "description": "Expense booked when FOFO commission is credited to a FOCO hub wallet.",
+      "fieldname": "franchise_commission_account",
+      "fieldtype": "Link",
+      "label": "Franchise commission expense",
+      "options": "Account"
+    },
+    {
+      "description": "Franchisee Profile IDs kept out of the books (demo hubs), comma separated.",
+      "fieldname": "books_excluded_hubs",
+      "fieldtype": "Small Text",
+      "label": "Hubs excluded from books"
+    },
+    {
+      "description": "Set when opening wallet balances were booked; wallet credits after this are booked as they happen.",
+      "fieldname": "wallet_books_from",
+      "fieldtype": "Datetime",
+      "label": "Wallet balances booked from",
+      "read_only": 1
+    },
+    {
+      "description": "Expense charged when patients receive promotional wallet credit (referral, first-order and purchase rewards).",
+      "fieldname": "promo_credit_account",
+      "fieldtype": "Link",
+      "label": "Patient promotional credit expense",
+      "options": "Account"
+    },
+    {
+      "description": "Patient wallet credits and spends after this are booked as they happen.",
+      "fieldname": "patient_wallet_books_from",
+      "fieldtype": "Datetime",
+      "label": "Patient wallet booked from",
+      "read_only": 1
+    },
+    {
+      "description": "Hub collections from this date are platform-billed from the franchisee wallet instead of booked as company cash. Older ones are left as they were.",
+      "fieldname": "hub_receipts_from",
+      "fieldtype": "Date",
+      "label": "Hub receipts rule from"
+    },
+    {
+      "fieldname": "section_books",
+      "fieldtype": "Section Break",
+      "label": "Accounting"
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company for new invoices and payments",
+      "options": "Company"
+    },
+    {
+      "description": "Company current account that receives bank transfers, cheques and UPI (ICICI).",
+      "fieldname": "collection_bank_account",
+      "fieldtype": "Link",
+      "label": "Collection bank account (GL)",
+      "options": "Account"
+    },
+    {
+      "description": "Bank Account record used for statement import and reconciliation.",
+      "fieldname": "bank_account",
+      "fieldtype": "Link",
+      "label": "Statement bank account",
+      "options": "Bank Account"
+    },
+    {
+      "fieldname": "razorpay_clearing_account",
+      "fieldtype": "Link",
+      "label": "Razorpay clearing account",
+      "options": "Account"
+    },
+    {
+      "fieldname": "cash_account",
+      "fieldtype": "Link",
+      "label": "Cash account",
+      "options": "Account"
+    },
+    {
+      "fieldname": "column_break_books",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "franchisee_wallet_account",
+      "fieldtype": "Link",
+      "label": "Franchisee wallet liability",
+      "options": "Account"
+    },
+    {
+      "fieldname": "patient_wallet_account",
+      "fieldtype": "Link",
+      "label": "Patient wallet liability",
+      "options": "Account"
+    },
+    {
+      "fieldname": "franchise_fee_income_account",
+      "fieldtype": "Link",
+      "label": "Franchise fee income",
+      "options": "Account"
+    },
+    {
+      "fieldname": "application_fee_income_account",
+      "fieldtype": "Link",
+      "label": "Application fee income",
+      "options": "Account"
+    },
+    {
+      "fieldname": "security_deposit_account",
+      "fieldtype": "Link",
+      "label": "Franchise security deposit (liability)",
+      "options": "Account"
+    }
+  ],
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-10-01 17:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Health Ecosystem Core",
+  "name": "HEC Payment Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Health System Admin",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Accounts Manager",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}
