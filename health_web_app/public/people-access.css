@@ -79,6 +79,8 @@
 html.pa-embed .hrms-sidebar, html.pa-embed .hrms-topbar, html.pa-embed .mobile-bottom-nav, html.pa-embed .hrms-backdrop { display: none !important; }
 html.pa-embed .hrms-main-wrap { margin-left: 0 !important; min-height: 0 !important; }
 html.pa-embed .hrms-app { min-height: 0 !important; }
+.mp2-page.pa-ws-on > :not(.pa-ws) { display: none !important; }
+.pa-ws-frame { display: block; width: 100%; min-height: 480px; border: 0; border-radius: 14px; background: #f4f8f8; }
 .pa-embed-tabs { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; max-width: 1120px; margin: 0 auto; padding: 18px 28px 0; box-sizing: border-box; font-family: "DM Sans", "Segoe UI", sans-serif; }
 .pa-embed-tabs a { display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 999px; border: 1px solid #d5e3e8; background: #fff; color: #0f3d3a; font-weight: 700; font-size: 0.86rem; text-decoration: none; }
 .pa-embed-tabs a:hover { border-color: #0f766e; }

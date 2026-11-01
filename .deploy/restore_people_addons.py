@@ -34,8 +34,8 @@ TAGS = (
     '<script src="/qrcode-generator.js"></script>',
     '<script src="/people-user-menu.js" defer></script>',
     '<script src="/employee-id-card.js?v=12" defer></script>',
-    '<link rel="stylesheet" href="/people-access.css?v=8" />',
-    '<script src="/people-access.js?v=12" defer></script>',
+    '<link rel="stylesheet" href="/people-access.css?v=9" />',
+    '<script src="/people-access.js?v=14" defer></script>',
     '<script src="/people-org.js?v=30" defer></script>',
     '<script src="/people-geofence.js?v=2" defer></script>',
 )
@@ -43,9 +43,24 @@ TAGS = (
 OPS_DIST = Path("/opt/health-ecosystem/ops_portal/dist")
 OPS_TAG = '<script src="/ops-gate.js?v=2"></script>'
 
-# The aesthetics console only lets in staff/HR roles; also admit the roles Portal Access grants for it.
-AE_GATE = re.compile(r'\b(\w+)\.includes\("Administrator"\)\|\|\1\.includes\("HR Manager"\)')
-AE_MARK = 'includes("Aesthetic Staff")'
+# Small fixes to the main SPA bundle, which is built elsewhere: (name, marker proving the fix is in, pattern, replacement).
+BUNDLE_PATCHES = (
+    (
+        # The aesthetics console only lets in staff/HR roles; also admit the roles Portal Access grants for it.
+        "aesthetic console roles",
+        'includes("Aesthetic Staff")',
+        re.compile(r'\b(\w+)\.includes\("Administrator"\)\|\|\1\.includes\("HR Manager"\)'),
+        lambda g: f'{g.group(0)}||{g.group(1)}.includes("Aesthetic Staff")||{g.group(1)}.includes("Aesthetic Manager")',
+    ),
+    (
+        # Lab staff are sent from /people/* to their lab My Profile; inside an embedded HR workspace that loops.
+        "lab profile redirect skipped in frames",
+        ".roles)||window.self!==window.top)return",
+        re.compile(r'(\{tab:\w+="profile",children:\w+\}\)\{const\{user:\w+\}=\w+\(\),\{pathname:\w+\}=\w+\(\);if\(!\w+\(\w+==null\?void 0:\w+\.roles\))(\)return)'),
+        lambda g: g.group(1) + "||window.self!==window.top" + g.group(2),
+    ),
+)
+BUNDLE_SUFFIX = "-pa.js"
 
 CONTAINER = "docker-backend-1"
 PKG = "/home/frappe/frappe-bench/env/lib/python3.11/site-packages/health_ecosystem_core"
@@ -149,28 +164,46 @@ def restore_ops_gate():
         print("ops restored:", ", ".join(changed))
 
 
-def patch_aesthetic_gate():
+def bump_sw_index(html):
+    sw = DIST / "sw.js"
+    if not sw.exists():
+        return
+    text = sw.read_text(encoding="utf-8", errors="replace")
+    rev = "people-addons-" + hashlib.md5(html.encode()).hexdigest()[:12]
+    sw.write_text(re.sub(r'(\{url:"index\.html",revision:")[^"]+', r"\g<1>" + rev, text, count=1), encoding="utf-8")
+
+
+def patch_main_bundle():
+    """Apply BUNDLE_PATCHES to the entry bundle. Web assets are cached as immutable, so the patched
+    code is saved under a new file name and index.html is pointed at it."""
     index = DIST / "index.html"
     if not index.exists():
         return
-    m = re.search(r'src="/?(web-assets/index-[^"]+\.js)"', index.read_text())
+    html = index.read_text()
+    m = re.search(r'src="/?(web-assets/index-[^"]+\.js)"', html)
     if not m:
         return
-    bundle = DIST / m.group(1)
-    text = bundle.read_text(encoding="utf-8")
-    if AE_MARK in text or len(AE_GATE.findall(text)) != 1:
+    entry = m.group(1)
+    text = (DIST / entry).read_text(encoding="utf-8")
+    applied = []
+    for name, marker, pattern, repl in BUNDLE_PATCHES:
+        if marker in text or len(pattern.findall(text)) != 1:
+            continue
+        text = pattern.sub(repl, text)
+        applied.append(name)
+    if not applied:
         return
-    new_text = AE_GATE.sub(lambda g: f'{g.group(0)}||{g.group(1)}.includes("Aesthetic Staff")||{g.group(1)}.includes("Aesthetic Manager")', text)
-    tmp = bundle.with_name(bundle.name + ".tmp")
-    tmp.write_text(new_text, encoding="utf-8")
-    shutil.copymode(bundle, tmp)
-    tmp.replace(bundle)
-    sw = DIST / "sw.js"
-    if sw.exists():
-        sw_text = sw.read_text(encoding="utf-8", errors="replace")
-        pattern = r'(\{url:"' + re.escape(m.group(1)) + r'",revision:)(null|"[^"]*")'
-        sw.write_text(re.sub(pattern, lambda g: f'{g.group(1)}"ae-{len(new_text)}"', sw_text, count=1), encoding="utf-8")
-    print("aesthetic console gate patched:", bundle.name)
+    target = entry if entry.endswith(BUNDLE_SUFFIX) else entry[:-3] + BUNDLE_SUFFIX
+    dst = DIST / target
+    tmp = dst.with_name(dst.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    shutil.copymode(DIST / entry, tmp)
+    tmp.replace(dst)
+    if target != entry:
+        html = html.replace(entry, target)
+        index.write_text(html)
+        bump_sw_index(html)
+    print("main bundle patched (" + ", ".join(applied) + "):", target)
 
 
 def main():
@@ -178,7 +211,7 @@ def main():
         restore_backend()
     except Exception as exc:
         print("backend restore failed:", exc)
-    for step in (restore_ops_gate, patch_aesthetic_gate):
+    for step in (restore_ops_gate, patch_main_bundle):
         try:
             step()
         except Exception as exc:
@@ -201,11 +234,7 @@ def main():
         html = html.replace("</body>", block + "</body>", 1)
         index.write_text(html)
         changed.append("index.html")
-        sw = DIST / "sw.js"
-        if sw.exists():
-            text = sw.read_text(encoding="utf-8", errors="replace")
-            rev = "people-addons-" + hashlib.md5(html.encode()).hexdigest()[:12]
-            sw.write_text(re.sub(r'(\{url:"index\.html",revision:")[^"]+', r"\g<1>" + rev, text, count=1), encoding="utf-8")
+        bump_sw_index(html)
     if changed:
         print("restored:", ", ".join(changed))
 

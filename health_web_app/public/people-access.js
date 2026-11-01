@@ -656,18 +656,27 @@
   /* ------------------------------------------------------------ HR workspace embedded in another console */
 
   // Other Smilecure consoles (on their own domain) that may embed this workspace and hand over their sign-in.
-  var EMBED_PARENTS = ['https://ops.e-remedium.in'];
+  var EMBED_PARENTS = [
+    'https://ops.e-remedium.in',
+    'https://labtech.e-remedium.in',
+    'https://collect.remediumlabs.in',
+    'https://www.remediumlabs.in',
+    'https://remediumlabs.in',
+  ];
 
   function embedParent() {
-    var origin = sessionStorage.getItem('pa_embed_parent') || '';
-    if (!origin) {
-      var ancestors = location.ancestorOrigins;
-      if (ancestors && ancestors.length) origin = ancestors[ancestors.length - 1];
-      else { try { origin = new URL(document.referrer).origin; } catch (e) { origin = ''; } }
-      if (EMBED_PARENTS.indexOf(origin) === -1) return '';
-      sessionStorage.setItem('pa_embed_parent', origin);
+    var origin = '';
+    var ancestors = location.ancestorOrigins;
+    if (ancestors && ancestors.length) {
+      origin = ancestors[0];
+    } else {
+      // No ancestorOrigins (Firefox): the first load's referrer is the parent; later in-frame loads reuse it.
+      try { origin = new URL(document.referrer).origin; } catch (e) { origin = ''; }
+      if (EMBED_PARENTS.indexOf(origin) === -1) origin = sessionStorage.getItem('pa_embed_parent') || '';
     }
-    return EMBED_PARENTS.indexOf(origin) === -1 ? '' : origin;
+    if (EMBED_PARENTS.indexOf(origin) === -1) return '';
+    sessionStorage.setItem('pa_embed_parent', origin);
+    return origin;
   }
 
   var embedded = (function () {
@@ -735,6 +744,42 @@
     content.parentNode.insertBefore(bar, content);
   }
 
+  /* ------------------------------------------------------------ My Profile in the lab / collection portals */
+
+  var PEOPLE_ORIGIN = 'https://people.e-remedium.in';
+
+  function fitWorkspace() {
+    var frame = document.querySelector('.pa-ws-frame');
+    if (frame) frame.style.height = Math.max(480, window.innerHeight - frame.getBoundingClientRect().top - 8) + 'px';
+  }
+  window.addEventListener('resize', fitWorkspace);
+
+  function profileWorkspace() {
+    if (embedded || location.origin === PEOPLE_ORIGIN) return;
+    var page = document.querySelector('.mp2-page');
+    if (!page || !currentSid()) return;
+    if (page.querySelector('.pa-ws')) return;
+    page.classList.add('pa-ws-on');
+    var box = document.createElement('div');
+    box.className = 'pa-ws';
+    box.innerHTML = '<iframe class="pa-ws-frame" title="My Profile" src="' + PEOPLE_ORIGIN + '/people/profile?pa_embed=1"></iframe>';
+    page.appendChild(box);
+    fitWorkspace();
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== PEOPLE_ORIGIN || !e.data || e.data.type !== 'pa-embed-ready') return;
+    var frame = document.querySelector('.pa-ws-frame');
+    if (!frame || e.source !== frame.contentWindow) return;
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem('hec_web_session') || 'null'); } catch (err) { s = null; }
+    if (!s || !s.sid) return;
+    frame.contentWindow.postMessage({
+      type: 'pa-embed-session',
+      session: { sid: s.sid, user: s.user, fullName: s.fullName, roles: s.roles || [] },
+    }, PEOPLE_ORIGIN);
+  });
+
   var portalsShown = false;
   function portalsCard() {
     if (!/\/people\/profile\/?$/.test(location.pathname) || new URLSearchParams(location.search).get('employee')) { portalsShown = false; return; }
@@ -753,7 +798,7 @@
     host.parentNode.insertBefore(card, host.nextSibling);
   }
 
-  function tick() { profileBanner(); applyGate(); applyAestheticGate(); aestheticProfileLink(); embedTabs(); portalsCard(); }
+  function tick() { profileBanner(); applyGate(); applyAestheticGate(); aestheticProfileLink(); embedTabs(); profileWorkspace(); portalsCard(); }
   new MutationObserver(tick).observe(document.body, { childList: true, subtree: true });
   tick();
   window.addEventListener('load', tick);
