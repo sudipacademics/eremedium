@@ -1191,6 +1191,8 @@ def _manual_hire_user(email, full_name, mobile, roles):
 			user.save(ignore_permissions=True)
 	else:
 		temp_password = f"Hire@{random_string(6)}"
+		# A mobile number can belong to only one login (often a patient OTP account); then keep it on the Employee only.
+		mobile_taken = bool(mobile) and bool(frappe.db.exists("User", {"mobile_no": mobile}))
 		user = frappe.get_doc(
 			{
 				"doctype": "User",
@@ -1198,7 +1200,7 @@ def _manual_hire_user(email, full_name, mobile, roles):
 				"first_name": first_name,
 				"last_name": last_name,
 				"full_name": full_name,
-				"mobile_no": mobile,
+				"mobile_no": None if mobile_taken else mobile,
 				"send_welcome_email": 0,
 				"user_type": "System User",
 			}

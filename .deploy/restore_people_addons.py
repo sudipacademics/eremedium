@@ -96,6 +96,18 @@ PATCHES = (
             '\tpayload["locations"] = geo_sites + sorted({r.get("location") for r in rows if r.get("location")} - set(geo_sites))\n'
         ),
     ),
+    (
+        "clinical_phase90_people_hrms.py",
+        "mobile_taken",
+        re.compile(r'(\t\ttemp_password = f"Hire@\{random_string\(6\)\}"\n)(\t\tuser = frappe\.get_doc\(\n(?:\t\t\t.*\n){1,8}?\t\t\t\t"mobile_no": )mobile,\n'),
+        lambda m: (
+            m.group(1)
+            + "\t\t# A mobile number can belong to only one login (often a patient OTP account); then keep it on the Employee only.\n"
+            + '\t\tmobile_taken = bool(mobile) and bool(frappe.db.exists("User", {"mobile_no": mobile}))\n'
+            + m.group(2)
+            + "None if mobile_taken else mobile,\n"
+        ),
+    ),
 )
 
 
