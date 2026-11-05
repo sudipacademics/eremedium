@@ -489,6 +489,7 @@
         gateLoading = false;
         applyGate();
         applyAestheticGate();
+        applyLabGate();
       }).catch(function () { if (gateSid === sid) { gate = {}; gateLoading = false; } });
       return false;
     }
@@ -582,6 +583,40 @@
       var target = (mods[first].paths || ['/'])[0];
       target = base ? (target === '/' ? base : base + target) : target;
       history.replaceState(null, '', target);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      denyToast();
+    }
+  }
+
+  /* ------------------------------------------------------------ module permission gating (Lab Technician portal) */
+
+  function matchModule(mods, path) {
+    path = cleanPath(path);
+    var best = null;
+    var bestLen = -1;
+    Object.keys(mods).forEach(function (name) {
+      (mods[name].paths || []).forEach(function (p) {
+        if ((path === p || path.indexOf(p + '/') === 0) && p.length > bestLen) { best = name; bestLen = p.length; }
+      });
+    });
+    return best;
+  }
+
+  function applyLabGate() {
+    if (location.hostname !== 'labtech.e-remedium.in' || embedded) return;
+    if (!ensureGate() || !gate.managed) return;
+    var mods = (gate.portal_modules || {}).labtech;
+    if (!mods) return;
+    function allowed(path) {
+      var m = matchModule(mods, path);
+      return !m || mods[m].level !== 'none';
+    }
+    document.querySelectorAll('.lt-side-link[href]').forEach(function (a) {
+      a.style.display = allowed(a.getAttribute('href')) ? '' : 'none';
+    });
+    if (!allowed(location.pathname)) {
+      var first = Object.keys(mods).filter(function (m) { return mods[m].level !== 'none'; })[0];
+      history.replaceState(null, '', first ? mods[first].paths[0] : '/dashboard/profile');
       window.dispatchEvent(new PopStateEvent('popstate'));
       denyToast();
     }
@@ -798,7 +833,7 @@
     host.parentNode.insertBefore(card, host.nextSibling);
   }
 
-  function tick() { profileBanner(); applyGate(); applyAestheticGate(); aestheticProfileLink(); embedTabs(); profileWorkspace(); portalsCard(); }
+  function tick() { profileBanner(); applyGate(); applyAestheticGate(); applyLabGate(); aestheticProfileLink(); embedTabs(); profileWorkspace(); portalsCard(); }
   new MutationObserver(tick).observe(document.body, { childList: true, subtree: true });
   tick();
   window.addEventListener('load', tick);

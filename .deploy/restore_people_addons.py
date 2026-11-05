@@ -35,7 +35,7 @@ TAGS = (
     '<script src="/people-user-menu.js" defer></script>',
     '<script src="/employee-id-card.js?v=13" defer></script>',
     '<link rel="stylesheet" href="/people-access.css?v=9" />',
-    '<script src="/people-access.js?v=14" defer></script>',
+    '<script src="/people-access.js?v=16" defer></script>',
     '<script src="/people-org.js?v=30" defer></script>',
     '<script src="/people-geofence.js?v=2" defer></script>',
 )

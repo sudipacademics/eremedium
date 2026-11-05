@@ -97,6 +97,31 @@ OPS_MODULE_PATHS = {
 # Roles these portals check that may not exist yet on a fresh site (created on first use).
 PORTAL_ROLES = ("Aesthetic Staff", "Aesthetic Manager", "Operations Staff", "Operations Manager")
 
+# Lab Technician portal sidebar (LabTechChrome). My Profile is always open.
+LAB_MODULE_PATHS = {
+	"Result entry": ["/dashboard/lab-reports"],
+	"Mother lab bill": ["/dashboard/lab-bill-entry"],
+	"Accession": ["/dashboard/accession"],
+	"PhleboFirst inbox": ["/dashboard/pf-inbox"],
+	"Report lifecycle": ["/dashboard/report-lifecycle"],
+	"Critical alerts": ["/dashboard/critical-alerts"],
+	"IQC / NABL QC": ["/dashboard/qc"],
+	"QMS": ["/dashboard/qms"],
+	"Barcode bench": ["/dashboard/lab-tech"],
+	"All bookings": ["/dashboard/all-bookings"],
+	"Reagents": ["/dashboard/reagents"],
+	"Inventory Management": ["/dashboard/inventory"],
+	"Pathologist": ["/dashboard/pathologist"],
+	"Reports (Signed)": ["/dashboard/pathologist/signed"],
+}
+# Lab settings saved with the earlier five-module list.
+LAB_LEGACY_MODULES = {
+	"Samples": ["Accession", "PhleboFirst inbox", "Barcode bench", "All bookings"],
+	"Results": ["Result entry", "Mother lab bill", "Report lifecycle", "Critical alerts"],
+	"Reports": ["Pathologist", "Reports (Signed)"],
+	"Inventory": ["Inventory Management", "Reagents"],
+	"Quality Control": ["IQC / NABL QC", "QMS"],
+}
 PORTALS = {
 	"people": {
 		"label": "People HRMS",
@@ -113,8 +138,9 @@ PORTALS = {
 		"label": "Lab Technician Portal",
 		"url": "https://labtech.e-remedium.in",
 		"roles": ["Lab Technician"],
-		"modules": ["Samples", "Results", "Reports", "Inventory", "Quality Control"],
+		"modules": list(LAB_MODULE_PATHS),
 		"manage_roles": ["Lab Manager"],
+		"module_paths": LAB_MODULE_PATHS,
 	},
 	"collect": {
 		"label": "Collection / Phlebotomy",
@@ -251,6 +277,11 @@ def _parse_perms(raw, portal):
 					data[k] = legacy[old]
 		data["Dashboard"] = "view"
 		data.setdefault("Expenses", "view" if cstr(legacy.get("Payroll") or "none") != "none" else "none")
+	if portal == "labtech" and data and not any(m in data for m in modules):
+		legacy = dict(data)
+		for old, new_keys in LAB_LEGACY_MODULES.items():
+			for k in new_keys:
+				data[k] = legacy.get(old, "none")
 	out = {}
 	for m in modules:
 		level = cstr(data.get(m) or "none").lower()
