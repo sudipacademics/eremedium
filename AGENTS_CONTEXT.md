@@ -101,6 +101,11 @@ Live at https://people.e-remedium.in (same SPA also on `www.remediumlabs.in/peop
 - The main SPA redirects to `/login` before deferred add-ons run, so query markers can be lost; cross-origin embed detection uses the parent origin instead.
 - `get_my_portal_permissions` only requires a valid session (not People roles) so aesthetic/ops-only staff can use it.
 
+## Lab Test Result text values (2026-11-05)
+
+- Result entry stores non-numeric results (Reactive, Nil, `<0.5`, `1,200`) in `result_value_text` with `numeric_result_value` empty (`clinical_phase8.sync_lab_report_to_results`, `api.py` result upload). The live DocType lacked that field and still had `numeric_result_value` mandatory, so such saves failed with "Value missing for Lab Test Result: Numeric Result Value".
+- Fixed in the database (survives migrate): Custom Field `Lab Test Result.result_value_text` (Small Text, after `numeric_result_value`) and Property Setter `numeric_result_value.reqd = 0`. Do not also add `result_value_text` to `lab_test_result.json` — a JSON field with the same name would clash with the Custom Field on migrate.
+
 ## Phase 84 — WB geo master (ERP) → RFMS map + Reach sales (2026-07-29)
 
 - **Goal:** ERPNext holds the West Bengal Administrative & Postal Directory (V2) as geographic SoR; RFMS keeps operational FOFO/FOCO capacity (no auto-open of every PIN); Reach rolls up sales by district.
