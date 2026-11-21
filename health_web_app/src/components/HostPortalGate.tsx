@@ -5,7 +5,11 @@ import {
   getPortalKind,
   isPathAllowedOnPortal,
   isPatientPortalHost,
+  isPeoplePath,
+  isSalesPath,
+  peoplePortalOrigin,
   portalHomePath,
+  reachPortalOrigin,
   teleporterAppPathFor,
 } from '../config/portalHosts';
 import { PhleboFirstSiteLazy } from '../pages/phlebofirst/PhleboFirstSiteLazy';
@@ -30,6 +34,32 @@ export function HostPortalGate() {
     return (
       <div className="page-center">
         <p className="muted">Redirecting to ERPNext…</p>
+      </div>
+    );
+  }
+
+  // Field sales / Reach is host-only — bounce /sales off www and other non-Reach hosts.
+  if (kind !== 'sales' && isSalesPath(path)) {
+    const dest = `${reachPortalOrigin()}${path}${location.search || ''}${location.hash || ''}`;
+    if (typeof window !== 'undefined') {
+      window.location.replace(dest);
+    }
+    return (
+      <div className="page-center">
+        <p className="muted">Sales moved to Reach — redirecting…</p>
+      </div>
+    );
+  }
+
+  // People HRMS is host-only — bounce /people off www and other non-People hosts.
+  if (kind !== 'people' && kind !== 'careers' && isPeoplePath(path)) {
+    const dest = `${peoplePortalOrigin()}${path}${location.search || ''}${location.hash || ''}`;
+    if (typeof window !== 'undefined') {
+      window.location.replace(dest);
+    }
+    return (
+      <div className="page-center">
+        <p className="muted">People HRMS moved to people.e-remedium.in — redirecting…</p>
       </div>
     );
   }

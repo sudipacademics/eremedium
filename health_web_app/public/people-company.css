@@ -1,0 +1,23 @@
+/* People → Settings → Company Settings (HR signature for Performance Report). */
+.pcs-panel { --pcs-teal: #1d6f72; --pcs-line: #e3eaee; --pcs-ink: #10233a; --pcs-mute: #64748b; }
+.pcs-panel *, .pcs-toast * { box-sizing: border-box; }
+.pcs-panel { display: grid; gap: 18px; padding: 4px 0 28px; color: var(--pcs-ink); font-size: 14px; max-width: 720px; }
+.pcs-panel h1 { margin: 0 0 4px; font-size: 22px; }
+.pcs-panel .pcs-lead { margin: 0; color: var(--pcs-mute); line-height: 1.5; }
+.pcs-card { border: 1px solid var(--pcs-line); border-radius: 14px; background: #fff; padding: 18px 18px 16px; display: grid; gap: 14px; }
+.pcs-card h2 { margin: 0; font-size: 16px; }
+.pcs-card p { margin: 0; color: var(--pcs-mute); font-size: 13.5px; line-height: 1.45; }
+.pcs-preview { min-height: 88px; border: 1px dashed #c9d6dc; border-radius: 12px; background: #f8fafb; display: grid; place-items: center; padding: 12px; }
+.pcs-preview img { max-height: 72px; max-width: 260px; display: block; }
+.pcs-preview .pcs-empty { color: var(--pcs-mute); font-size: 13px; }
+.pcs-meta { font-size: 12.5px; color: var(--pcs-mute); }
+.pcs-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pcs-btn { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--pcs-line); background: #fff; color: var(--pcs-ink); font: inherit; font-size: 13.5px; font-weight: 650; cursor: pointer; }
+.pcs-btn.primary { background: var(--pcs-teal); border-color: var(--pcs-teal); color: #fff; }
+.pcs-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.pcs-btn.danger { color: #9f1239; border-color: #fecdd3; background: #fff1f2; }
+.pcs-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pcs-toast { position: fixed; right: 24px; bottom: 24px; z-index: 1400; background: #0f3d3e; color: #fff; padding: 12px 16px; border-radius: 12px; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25); font-size: 14px; max-width: 420px; }
+.pcs-toast.bad { background: #9f1239; }
+.pcs-alert { padding: 10px 12px; border-radius: 10px; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.hrms-placeholder.pcs-hidden { display: none !important; }

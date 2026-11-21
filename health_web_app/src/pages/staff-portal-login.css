@@ -1,0 +1,202 @@
+/* Dedicated People / Reach staff login (no Labs public chrome). */
+.spl-page {
+  --spl-ink: #0f2f2a;
+  --spl-muted: #5f746f;
+  --spl-line: #d7e3df;
+  --spl-teal: #0f766e;
+  --spl-teal-soft: #e6f4f1;
+  --spl-bg: #0b3d38;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(45, 212, 191, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 110% 10%, rgba(14, 165, 233, 0.12), transparent 50%),
+    var(--spl-bg);
+  color: var(--spl-ink);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.spl-page[data-portal='reach'] {
+  --spl-bg: #062c28;
+  --spl-teal: #0d9488;
+}
+
+.spl-page[data-portal='people'] {
+  --spl-bg: #0b3a3b;
+  --spl-teal: #17a37a;
+  --spl-muted: #64748b;
+  --spl-ink: #142033;
+  --spl-line: #d5e1de;
+  background:
+    radial-gradient(circle at 20% 10%, #17a37a33, transparent 40%),
+    linear-gradient(135deg, #0b3a3b, #0e5a52);
+}
+
+.spl-card {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  border: 0;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
+  padding: 30px;
+}
+
+.spl-page[data-portal='people'] .spl-card {
+  width: min(460px, 100%);
+  background: #fff;
+  color: var(--spl-ink);
+  overflow: visible;
+}
+
+.spl-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.spl-brand-logo {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.spl-logo-wrap {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.spl-logo {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.spl-brand-sub {
+  margin: 0;
+  text-align: center;
+  color: var(--spl-teal);
+  font: 800 11px/1.2 'DM Sans', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spl-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--spl-teal-soft);
+  color: var(--spl-teal);
+  font: 800 14px/1 Manrope, sans-serif;
+}
+
+.spl-brand strong {
+  display: block;
+  font: 800 15px/1.2 Manrope, sans-serif;
+}
+
+.spl-brand small {
+  display: block;
+  color: var(--spl-muted);
+  font: 500 12px/1.3 'DM Sans', sans-serif;
+}
+
+.spl-page[data-portal='people'] .spl-form input {
+  background: #fff;
+  border-color: #d5e1de;
+  color: var(--spl-ink);
+}
+
+.spl-page[data-portal='people'] .spl-form button[type='submit'] {
+  background: #17a37a;
+}
+
+.spl-kicker {
+  margin: 0;
+  color: var(--spl-teal);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font: 800 11px/1.2 Manrope, sans-serif;
+}
+
+.spl-card h1 {
+  margin: 8px 0 6px;
+  font: 800 28px/1.15 Manrope, sans-serif;
+}
+
+.spl-card .spl-muted {
+  margin: 0 0 18px;
+  color: var(--spl-muted);
+  font-size: 13.5px;
+}
+
+.spl-form {
+  display: grid;
+  gap: 12px;
+}
+
+.spl-form label {
+  display: grid;
+  gap: 6px;
+  font: 600 13px/1.3 'DM Sans', sans-serif;
+}
+
+.spl-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--spl-line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font: 500 14px/1.3 'DM Sans', sans-serif;
+}
+
+.spl-form button[type='submit'] {
+  margin-top: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--spl-teal);
+  color: #fff;
+  font: 700 14px/1 'DM Sans', sans-serif;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.spl-form button[type='submit']:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.spl-error {
+  margin: 0;
+  color: #b91c1c;
+  font: 600 13px/1.35 'DM Sans', sans-serif;
+}
+
+.spl-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.spl-links a {
+  color: var(--spl-teal);
+  font: 600 13px/1.3 'DM Sans', sans-serif;
+  text-decoration: none;
+}
+
+.spl-foot {
+  margin: 16px 0 0;
+  text-align: center;
+  color: var(--spl-muted);
+  font: 500 12px/1.4 'DM Sans', sans-serif;
+}

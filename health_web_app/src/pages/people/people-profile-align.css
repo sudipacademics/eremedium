@@ -1,6 +1,15 @@
 /* Keep the profile row on one aligned grid. The ID column was 270px,
    so its two buttons spilled past the card. */
 
+/* Employee name on teal profile/home heroes — beat .hrms-list-page h1 { color:#0f3d4d } */
+.hrms-list-page .me-hero h1,
+.me-hero h1,
+.hrms-list-page .people-hero h1,
+.people-hero h1,
+.me-hero .me-hero-id h1 {
+  color: #ffffff !important;
+}
+
 .me-grid {
   grid-template-columns: minmax(0, 1.5fr) minmax(260px, 320px) minmax(240px, 280px);
   align-items: start;

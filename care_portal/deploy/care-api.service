@@ -1,0 +1,27 @@
+[Unit]
+Description=Remedium Care backend API (care.e-remedium.in)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=careapi
+Group=careapi
+WorkingDirectory=/opt/health-ecosystem/care_portal
+Environment=CARE_HOST=127.0.0.1
+Environment=CARE_PORT=8095
+Environment=CARE_DB=/opt/health-ecosystem/care_portal/data/care.db
+Environment=CARE_ERP_URL=http://127.0.0.1:8080
+Environment=CARE_ERP_HOST=www.remediumlabs.in
+Environment=CARE_ERP_SITE=health.localhost
+ExecStart=/usr/bin/node --no-warnings server/server.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/health-ecosystem/care_portal/data
+
+[Install]
+WantedBy=multi-user.target

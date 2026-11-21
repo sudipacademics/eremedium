@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script src="/hec-login-2fa.js?v=1"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d9488" />
@@ -11,6 +12,33 @@
     <title>Remedium Health</title>
     <script>
       (function () {
+        if (location.hostname === 'aesthetics.e-remedium.in') {
+          var mark = document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]');
+          for (var n = 0; n < mark.length; n++) {
+            mark[n].href = '/aesthetic-icon.png?v=1';
+            if (mark[n].rel === 'icon') mark[n].type = 'image/png';
+          }
+        }
+        if (location.hostname === 'people.e-remedium.in') {
+          var peopleMark = document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]');
+          for (var p = 0; p < peopleMark.length; p++) {
+            peopleMark[p].href = '/brand/smilecure-icon.png?v=5';
+            if (peopleMark[p].rel === 'icon') peopleMark[p].type = 'image/png';
+          }
+          var theme = document.querySelector('meta[name="theme-color"]');
+          if (theme) theme.setAttribute('content', '#0b3a3b');
+          var appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (appTitle) appTitle.setAttribute('content', 'People Management - SLPL');
+          document.title = 'People Management - SLPL';
+        }
+        // People HRMS is host-only — bounce /people off www before the SPA boots.
+        (function () {
+          var host = (location.hostname || '').toLowerCase();
+          var path = location.pathname || '';
+          if (host === 'people.e-remedium.in') return;
+          if (path !== '/people' && path.indexOf('/people/') !== 0) return;
+          location.replace('https://people.e-remedium.in' + path + (location.search || '') + (location.hash || ''));
+        })();
         var gone = /^\/(?:aesthetic|aesthetics|wellness\/aesthetics)\/?$/;
         function leave() {
           var host = location.hostname;
@@ -39,31 +67,71 @@
   </head>
   <body>
     <div id="root"></div>
-    <link rel="stylesheet" href="/people-profile-align.css?v=3" />
+    <link rel="stylesheet" href="/people-profile-align.css?v=4" />
     <link rel="stylesheet" href="/people-user-menu.css" />
     <link rel="stylesheet" href="/employee-id-card.css?v=5" />
     <link rel="stylesheet" href="/people-org.css?v=18" />
     <script src="/qrcode-generator.js"></script>
     <script src="/people-user-menu.js" defer></script>
     <script src="/employee-id-card.js?v=13" defer></script>
-    <link rel="stylesheet" href="/people-access.css?v=9" />
-    <script src="/people-access.js?v=16" defer></script>
-    <script src="/people-org.js?v=30" defer></script>
+    <link rel="stylesheet" href="/people-access.css?v=23" />
+    <script src="/people-access.js?v=24" defer></script>
+    <script src="/people-org.js?v=34" defer></script>
     <script src="/people-geofence.js?v=2" defer></script>
-    <link rel="stylesheet" href="/aesthetic-bookings.css?v=2" />
-    <script src="/aesthetic-bookings.js?v=4" defer></script>
-    <link rel="stylesheet" href="/aesthetic-services.css?v=1" />
-    <script src="/aesthetic-services.js?v=3" defer></script>
-    <link rel="stylesheet" href="/aesthetic-sessions.css?v=1" />
-    <script src="/aesthetic-sessions.js?v=2" defer></script>
-    <link rel="stylesheet" href="/aesthetic-walkin.css?v=1" />
-    <script src="/aesthetic-walkin.js?v=1" defer></script>
-    <link rel="stylesheet" href="/aesthetic-invoice.css?v=4" />
-    <script src="/aesthetic-invoice.js?v=3" defer></script>
+    <link rel="stylesheet" href="/people-assets.css?v=11" />
+    <script src="/people-assets.js?v=11" defer></script>
+    <link rel="stylesheet" href="/people-announce.css?v=2" />
+    <script src="/people-announce.js?v=2" defer></script>
+    <link rel="stylesheet" href="/people-login-shell.css?v=14" />
+    <script src="/people-login-shell.js?v=16" defer></script>
+    <script src="/people-host.js?v=1"></script>
+    <link rel="stylesheet" href="/lab-test-master.css?v=1" />
+    <script src="/lab-test-master.js?v=2" defer></script>
+    <link rel="stylesheet" href="/reach-team-perf.css?v=9" />
+    <script src="/reach-team-perf.js?v=9" defer></script>
+    <link rel="stylesheet" href="/reach-portal-ui.css?v=10" />
+    <script src="/reach-portal-ui.js?v=10" defer></script>
+    <script src="/reach-sales-host.js?v=1" defer></script>
+    <script src="/aesthetic-stock.js?v=6" defer></script>
+    <link rel="stylesheet" href="/aesthetic-branch.css?v=3" />
+    <script src="/aesthetic-branch.js?v=6" defer></script>
+    <link rel="stylesheet" href="/aesthetic-dash.css?v=2" />
+    <script src="/aesthetic-dash.js?v=3" defer></script>
+    <link rel="stylesheet" href="/aesthetic-bookings.css?v=7" />
+    <script src="/aesthetic-bookings.js?v=17" defer></script>
+    <link rel="stylesheet" href="/aesthetic-services.css?v=3" />
+    <script src="/aesthetic-services.js?v=10" defer></script>
+    <link rel="stylesheet" href="/aesthetic-sessions.css?v=6" />
+    <script src="/aesthetic-sessions.js?v=21" defer></script>
+    <link rel="stylesheet" href="/aesthetic-walkin.css?v=2" />
+    <script src="/aesthetic-walkin.js?v=2" defer></script>
+    <link rel="stylesheet" href="/aesthetic-employees.css?v=1" />
+    <script src="/aesthetic-employees.js?v=1" defer></script>
+    <link rel="stylesheet" href="/aesthetic-topbar.css?v=1" />
+    <script src="/aesthetic-topbar.js?v=1" defer></script>
+    <link rel="stylesheet" href="/aesthetic-vouchers.css?v=1" />
+    <script src="/aesthetic-vouchers.js?v=4" defer></script>
+    <link rel="stylesheet" href="/aesthetic-reviews.css?v=1" />
+    <script src="/aesthetic-reviews.js?v=2" defer></script>
+    <link rel="stylesheet" href="/aesthetic-patients.css?v=1" />
+    <script src="/aesthetic-patients.js?v=3" defer></script>
+    <link rel="stylesheet" href="/aesthetic-machines.css?v=2" />
+    <script src="/aesthetic-machines.js?v=4" defer></script>
+    <link rel="stylesheet" href="/aesthetic-branches.css?v=2" />
+    <script src="/aesthetic-branches.js?v=3" defer></script>
+    <link rel="stylesheet" href="/aesthetic-brand.css?v=2" />
+    <link rel="stylesheet" href="/aesthetic-settings.css?v=1" />
+    <script src="/aesthetic-settings.js?v=4" defer></script>
+    <link rel="stylesheet" href="/aesthetic-invoice.css?v=11" />
+    <script src="/aesthetic-invoice.js?v=22" defer></script>
     <link rel="stylesheet" href="/aesthetic-payments.css?v=1" />
-    <script src="/aesthetic-payments.js?v=1" defer></script>
-    <link rel="stylesheet" href="/aesthetic-plans.css?v=1" />
-    <script src="/aesthetic-plans.js?v=1" defer></script>
+    <script src="/aesthetic-payments.js?v=5" defer></script>
+    <link rel="stylesheet" href="/aesthetic-plans.css?v=5" />
+    <script src="/aesthetic-plans.js?v=13" defer></script>
+    <link rel="stylesheet" href="/aesthetic-inventory.css?v=3" />
+    <script src="/aesthetic-inventory.js?v=2" defer></script>
+    <link rel="stylesheet" href="/aesthetic-procedure.css?v=2" />
+    <script src="/aesthetic-procedure.js?v=11" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

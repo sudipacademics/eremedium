@@ -10,7 +10,7 @@ import { StructuredData } from './StructuredData';
 import { GlobalSeoTags } from './GlobalSeoTags';
 import { PortalAnalytics } from './PortalAnalytics';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { isB2bPortalHost, isCollectPortalHost, isLabtechPortalHost } from '../config/portalHosts';
+import { isIsolatedStaffLoginHost } from '../config/portalHosts';
 
 function isPackagesQuery(search: string) {
   return new URLSearchParams(search).get('q')?.trim().toLowerCase() === 'package';
@@ -35,7 +35,7 @@ export function PublicLayout() {
   const roles = user?.roles ?? [];
   const patientPortal = !user || isPatientPortal(roles);
   const phlebo = Boolean(user && isPhlebotomist(roles));
-  const isolatedStaffHost = isB2bPortalHost() || isCollectPortalHost() || isLabtechPortalHost();
+  const isolatedStaffHost = isIsolatedStaffLoginHost();
   const partnerLogin = isolatedStaffHost;
   const showBottomNav = isMobile && patientPortal && !phlebo && location.pathname !== '/login' && !partnerLogin;
 

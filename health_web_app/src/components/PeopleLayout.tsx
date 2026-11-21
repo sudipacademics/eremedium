@@ -148,11 +148,15 @@ export function PeopleLayout({ preview = false }: { preview?: boolean }) {
     return () => document.removeEventListener('mousedown', onPointer);
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    document.title = 'People Management - SLPL';
+  }, []);
+
   if (!preview && user && !isPeopleHrmsStaff(user.roles)) {
     return (
       <div className="page people-shell">
         <div className="people-gate-card">
-          <h1>People HRMS</h1>
+          <h1>People Management - SLPL</h1>
           <p>
             This portal needs a staff role (Employee, System Manager, Health System Admin, or HR).
             Your account currently has no matching roles — ask an administrator to grant access, then
@@ -196,15 +200,11 @@ export function PeopleLayout({ preview = false }: { preview?: boolean }) {
       ) : null}
 
       <aside className={`hrms-sidebar${menuOpen && isMobile ? ' open' : ''}`} aria-label="HRMS">
-        <Link to="/people" className="hrms-brand" onClick={() => setMenuOpen(false)}>
-          <div className="hrms-brand-mark" aria-hidden>
-            <HrmsIcon name="users" size={22} />
+        <Link to="/people" className="hrms-brand pls-hrms-brand" onClick={() => setMenuOpen(false)}>
+          <div className="pls-hrms-logo-plate">
+            <img className="pls-hrms-logo" src="/brand/smilecure-lifestyle.png?v=12" alt="Smilecure Lifestyle Private Limited" />
           </div>
-          <div>
-            <strong>Remedium</strong>
-            <strong>HRMS</strong>
-            <span>People • Process • Growth</span>
-          </div>
+          <span className="pls-hrms-label">People Management - SLPL</span>
         </Link>
 
         <nav>

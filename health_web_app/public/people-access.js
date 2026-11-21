@@ -79,9 +79,9 @@
 
   /* ------------------------------------------------------------ editor (inside Edit employee) */
 
-  function issuedPill() {
-    var cls = a.status === 'Signed' ? 'ok' : 'warn';
-    return '<span class="pa-pill ' + cls + '">' + esc(a.status) + '</span>';
+  function issuedPill(a) {
+    var status = (a && a.status) || 'Issued';
+    return '<span class="pa-pill ' + (status === 'Signed' ? 'ok' : 'warn') + '">' + esc(status) + '</span>';
   }
 
   function mountEditor(container, employeeId) {
@@ -97,7 +97,7 @@
     function snapshotAccess() {
       return JSON.stringify(Object.keys(state.rows).sort().map(function (k) {
         var r = state.rows[k];
-        return [k, r.login_id, r.active, r.permissions, !!r.password];
+        return [k, r.login_id, r.active, r.permissions, !!r.password, r.branches || []];
       }));
     }
 
@@ -129,12 +129,13 @@
           '</div>' +
           '<table class="pa-perms"><thead><tr><th>Module</th><th>Access <select data-pa-all><option value="">Set all…</option>' +
           levels.map(function (l) { return '<option value="' + l.value + '">' + esc(l.label) + '</option>'; }).join('') + '</select></th></tr></thead><tbody>' +
-          p.modules.map(function (m) {
+          portalModules(p).map(function (m) {
             var org = (p.org_modules || []).indexOf(m) !== -1;
             return '<tr><td>' + esc(m) + (org ? ' <span class="pa-tag">HR menu</span>' : '') + '</td><td><select data-pa-module="' + esc(m) + '">' + levels.map(function (l) {
               return '<option value="' + l.value + '"' + ((r.permissions[m] || 'none') === l.value ? ' selected' : '') + '>' + esc(l.label) + '</option>';
             }).join('') + '</select></td></tr>';
           }).join('') + '</tbody></table>' +
+          (k === 'care' || k === 'aesthetics' ? portalBranchesHtml(r, k) : '') +
           '<p class="pa-summary" data-pa-summary="' + esc(k) + '">' + summaryText(p, r) + '</p></div>';
       }).join('');
       accessBox.innerHTML = '<div class="pa-ms"><button type="button" class="pa-ms-btn" data-pa-toggle>' + chips + '<span class="pa-caret">▾</span></button>' + menu + '</div>' +
@@ -146,12 +147,55 @@
       markDirty();
     }
 
+    function careManager(r) {
+      return Object.keys(r.permissions).some(function (m) { return r.permissions[m] === 'manage'; });
+    }
+
+    function aesManager(r) {
+      return (r.permissions.Settings || 'none') !== 'none';
+    }
+
+    function portalModules(p) {
+      var mods = (p && p.modules) || [];
+      if (p && p.key === 'aesthetics') mods = mods.filter(function (m) { return m !== 'Employees'; });
+      return mods;
+    }
+
+    function portalBranchesHtml(r, portal) {
+      var aes = portal === 'aesthetics';
+      var manager = aes ? aesManager(r) : careManager(r);
+      var all = ((aes ? state.access.aes_branches : state.access.care_branches) || []).filter(function (b) { return b.active; });
+      var picked = r.branches || [];
+      var every = picked.indexOf('*') !== -1;
+      if (aes && !manager && every) every = false;
+      var unitId = aes ? state.access.aes_unit_branch : state.access.unit_branch;
+      var unitBranch = all.filter(function (b) { return b.id === unitId; })[0];
+      var kind = aes ? 'Aesthetic' : 'Remedium Care';
+      var unitText = state.access.unit
+        ? 'Unit / Centre in HRMS: <b>' + esc(state.access.unit) + '</b>' + (unitBranch ? ' → ' + esc(unitBranch.name) + ' branch' : ' (not a ' + kind + ' branch)')
+        : 'No Unit / Centre is set in HRMS for this employee.';
+      var hint = aes
+        ? 'Leave every branch unticked to use the branch of the Unit / Centre. Staff work in one branch and cannot switch. All branches, or more than one, needs Settings access (clinic manager).'
+        : 'Leave every branch unticked to use the branch of the Unit / Centre. Staff work in one branch; more than one, or All branches, needs Manage on at least one Care module (Care Manager).';
+      var allBox = manager
+        ? '<label class="pa-branch' + (every ? ' on' : '') + '"><input type="checkbox" data-pa-branch="*"' + (every ? ' checked' : '') + ' /> All branches <small>(including new ones)</small></label>'
+        : '';
+      return '<div class="pa-branches"><div class="pa-branches-head"><b>Branches</b><small>' + unitText + '</small></div>' +
+        (all.length ? '<div class="pa-branch-list">' + allBox +
+          all.map(function (b) {
+            var on = !every && picked.indexOf(b.id) !== -1;
+            return '<label class="pa-branch' + (on ? ' on' : '') + '"><input type="checkbox" data-pa-branch="' + b.id + '"' + (on ? ' checked' : '') + (every ? ' disabled' : '') + ' /> ' + esc(b.name) + (b.city && b.city !== b.name ? ' <small>' + esc(b.city) + '</small>' : '') + '</label>';
+          }).join('') + '</div>' : '<p class="pa-err">Could not load the ' + kind + ' branches. Try again in a moment.</p>') +
+        '<p class="pa-muted">' + hint + '</p></div>';
+    }
+
     function summaryText(p, r) {
-      var on = p.modules.filter(function (m) { return (r.permissions[m] || 'none') !== 'none'; });
+      var listed = portalModules(p);
+      var on = listed.filter(function (m) { return (r.permissions[m] || 'none') !== 'none'; });
       var hr = on.some(function (m) { return (p.org_modules || []).indexOf(m) !== -1; }) ||
         on.some(function (m) { return ['approve', 'manage'].indexOf(r.permissions[m]) !== -1; });
       var menu = p.key === 'people' ? (hr ? ' · gets the HR menu' : ' · gets the employee self-service menu') : '';
-      return '<b>' + on.length + ' of ' + p.modules.length + '</b> modules enabled' + menu + (r.active ? '' : ' · portal disabled');
+      return '<b>' + on.length + ' of ' + listed.length + '</b> modules enabled' + menu + (r.active ? '' : ' · portal disabled');
     }
 
     function markDirty() {
@@ -176,7 +220,9 @@
     function accessPayload() {
       return Object.keys(state.rows).map(function (k) {
         var r = state.rows[k];
-        return { portal: k, login_id: r.login_id, password: r.password || '', permissions: r.permissions, active: r.active ? 1 : 0 };
+        var out = { portal: k, login_id: r.login_id, password: r.password || '', permissions: r.permissions, active: r.active ? 1 : 0 };
+        if (k === 'care' || k === 'aesthetics') out.branches = r.branches || [];
+        return out;
       });
     }
 
@@ -184,7 +230,7 @@
       state.access = d;
       state.rows = {};
       d.access.forEach(function (a) {
-        state.rows[a.portal] = { login_id: a.login_id, permissions: a.permissions, active: a.active, existing: true, login_enabled: a.login_enabled, last_login: a.last_login, granted_by: a.granted_by, password: '', password2: '' };
+        state.rows[a.portal] = { login_id: a.login_id, permissions: a.permissions, active: a.active, existing: true, login_enabled: a.login_enabled, last_login: a.last_login, granted_by: a.granted_by, password: '', password2: '', branches: a.branches || [] };
       });
       state.original = snapshotAccess();
     }
@@ -222,6 +268,12 @@
         var label = (state.access.portals.filter(function (x) { return x.key === keys[i]; })[0] || {}).label || keys[i];
         if (!r.login_id) return label + ': enter a login ID';
         if (r.password !== r.password2) return label + ': passwords do not match';
+        if (keys[i] === 'care' && ((r.branches || []).indexOf('*') !== -1 || (r.branches || []).length > 1) && !careManager(r)) {
+          return label + ': only a Care Manager (Manage on at least one module) can work in more than one branch';
+        }
+        if (keys[i] === 'aesthetics' && ((r.branches || []).indexOf('*') !== -1 || (r.branches || []).length > 1) && !aesManager(r)) {
+          return label + ': only staff with Settings access can work in more than one branch';
+        }
       }
       return '';
     }
@@ -234,9 +286,9 @@
           if (cb.checked) {
             var p = state.access.portals.filter(function (x) { return x.key === k; })[0];
             var perms = {};
-            p.modules.forEach(function (m) { perms[m] = (p.defaults && p.defaults[m]) || 'none'; });
+            portalModules(p).forEach(function (m) { perms[m] = (p.defaults && p.defaults[m]) || 'none'; });
             var shared = Object.keys(state.rows).map(function (x) { return state.rows[x].login_id; }).filter(Boolean)[0];
-            state.rows[k] = { login_id: shared || state.access.default_login || '', permissions: perms, active: 1, password: '', password2: '' };
+            state.rows[k] = { login_id: shared || state.access.default_login || '', permissions: perms, active: 1, password: '', password2: '', branches: [] };
           } else {
             delete state.rows[k];
           }
@@ -272,7 +324,29 @@
           drawAccess();
         });
         card.querySelectorAll('[data-pa-module]').forEach(function (sel) {
-          sel.addEventListener('change', function () { r.permissions[sel.getAttribute('data-pa-module')] = sel.value; refreshSummaries(); });
+          sel.addEventListener('change', function () {
+            r.permissions[sel.getAttribute('data-pa-module')] = sel.value;
+            if (k === 'aesthetics' && sel.getAttribute('data-pa-module') === 'Settings') {
+              if (!aesManager(r) && (r.branches || []).indexOf('*') !== -1) r.branches = [];
+              drawAccess();
+              return;
+            }
+            refreshSummaries();
+          });
+        });
+        card.querySelectorAll('[data-pa-branch]').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            var v = cb.getAttribute('data-pa-branch');
+            var list = (r.branches || []).filter(function (x) { return x !== '*'; });
+            if (v === '*') list = cb.checked ? ['*'] : [];
+            else {
+              var id = Number(v);
+              list = list.filter(function (x) { return x !== id; });
+              if (cb.checked) list.push(id);
+            }
+            r.branches = list;
+            drawAccess();
+          });
         });
       });
       var saveBtn = accessBox.querySelector('[data-pa-save]');
@@ -297,7 +371,7 @@
         }).join('') : '<p class="pa-muted">No available assets match.</p>') + '</div>' +
         '<p class="pa-muted">Untick an assigned asset to collect it back. Newly assigned assets create an Asset Assignment form (PDF) in the employee\'s Documents.</p>' +
         (agreements.length ? '<div class="pa-agreements"><b>Asset forms</b>' + agreements.map(function (a) {
-          return '<div class="pa-agreement"><div><b>' + esc(a.id) + '</b> · ' + esc(fmtDate(a.issued_on)) + ' · ' + a.assets.length + ' asset(s) ' + issuedPill() +
+          return '<div class="pa-agreement"><div><b>' + esc(a.id) + '</b> · ' + esc(fmtDate(a.issued_on)) + ' · ' + a.assets.length + ' asset(s) ' + issuedPill(a) +
             '<small>' + esc((a.assets || []).map(function (x) { return x.title; }).join(', ')) + '</small></div>' +
             '<span class="pa-agreement-actions"><button type="button" class="pa-link" data-pa-dl="' + esc(a.id) + '">Download PDF</button>' +
             '</span></div>';
@@ -383,7 +457,7 @@
       card.setAttribute('data-pa-mine', '1');
       function draw() {
         card.innerHTML = '<h3>My asset forms</h3>' + list.map(function (a) {
-          return '<div class="pa-agreement"><div><b>' + esc((a.assets || []).map(function (x) { return x.title; }).join(', ')) + '</b> ' + issuedPill() +
+          return '<div class="pa-agreement"><div><b>' + esc((a.assets || []).map(function (x) { return x.title; }).join(', ')) + '</b> ' + issuedPill(a) +
             '<small>' + esc(a.id) + ' · issued ' + esc(fmtDate(a.issued_on)) + '</small></div>' +
             '<span class="pa-agreement-actions"><button type="button" class="pa-link" data-pa-dl="' + esc(a.id) + '">Download PDF</button>' +
             '</span></div>';
@@ -576,7 +650,7 @@
     document.querySelectorAll('.aea-nav-group').forEach(function (g) {
       var btn = g.querySelector('.aea-nav-group-btn');
       var name = btn ? btn.textContent.trim() : '';
-      g.style.display = mods[name] && mods[name].level === 'none' ? 'none' : '';
+      g.style.display = name === 'Employees' || (mods[name] && mods[name].level === 'none') ? 'none' : '';
     });
     if (!allowed(location.pathname)) {
       var first = Object.keys(mods).filter(function (m) { return mods[m].level !== 'none'; })[0];
@@ -625,6 +699,7 @@
   /* ------------------------------------------------------------ My HR Profile inside the Aesthetic console */
 
   var hrp = { open: false };
+  var PEOPLE_ORIGIN = 'https://people.e-remedium.in';
   var USER_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>';
 
   function fitFrame() {
@@ -651,8 +726,12 @@
       if (content) content.parentNode.insertBefore(panel, content.nextSibling);
       else main.appendChild(panel);
     }
+    /* People is host-only — embed people.e-remedium.in and hand over hec_web_session (same as Reach). */
     if (!panel.querySelector('.pa-hrp-frame')) {
-      panel.innerHTML = '<iframe class="pa-hrp-frame" title="My HR Workspace" src="/people/profile?pa_embed=1"></iframe>';
+      panel.innerHTML =
+        '<iframe class="pa-hrp-frame" title="My HR Workspace" src="' +
+        PEOPLE_ORIGIN +
+        '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
     }
     window.scrollTo(0, 0);
     fitFrame();
@@ -692,7 +771,12 @@
 
   // Other Smilecure consoles (on their own domain) that may embed this workspace and hand over their sign-in.
   var EMBED_PARENTS = [
+    'https://crm.e-remedium.in',
     'https://ops.e-remedium.in',
+    'https://care.e-remedium.in',
+    'https://aesthetics.e-remedium.in',
+    'https://aes.e-remedium.in',
+    'https://reach.e-remedium.in',
     'https://labtech.e-remedium.in',
     'https://collect.remediumlabs.in',
     'https://www.remediumlabs.in',
@@ -716,10 +800,11 @@
 
   var embedded = (function () {
     if (window.self === window.top) return false;
+    if (/[?&]pa_embed=1/.test(location.search)) sessionStorage.setItem('pa_embed', '1');
     var sameOrigin = false;
     try { sameOrigin = window.top.location.origin === location.origin; } catch (e) { sameOrigin = false; }
-    if (!sameOrigin) return !!embedParent();
-    if (/[?&]pa_embed=1/.test(location.search)) sessionStorage.setItem('pa_embed', '1');
+    // Cross-origin console embed (CRM / Ops / Care / …) — prefer known parent, fall back to ?pa_embed=1.
+    if (!sameOrigin) return !!(embedParent() || sessionStorage.getItem('pa_embed') === '1');
     return sessionStorage.getItem('pa_embed') === '1';
   })();
   if (embedded) document.documentElement.classList.add('pa-embed');
@@ -736,7 +821,7 @@
         roles: Array.isArray(s.roles) ? s.roles.map(String) : [],
         franchisee: null,
       }));
-      location.replace('/people/profile');
+      location.replace('/people/profile?pa_embed=1');
     });
     window.parent.postMessage({ type: 'pa-embed-ready' }, embedParent());
   }
@@ -744,9 +829,15 @@
   function embedTabs() {
     if (!embedded) return;
     if (!/^\/(people|login)(\/|$)/.test(location.pathname)) {
-      location.replace('/people/profile');
+      location.replace('/people/profile?pa_embed=1');
       return;
     }
+    /* Force-hide People Management chrome even if CSS arrives late */
+    document.documentElement.classList.add('pa-embed');
+    var side = document.querySelector('.hrms-sidebar');
+    if (side) side.setAttribute('hidden', '');
+    var top = document.querySelector('.hrms-topbar');
+    if (top) top.setAttribute('hidden', '');
     var content = document.querySelector('.hrms-content');
     if (!content) return;
     var group = Array.prototype.filter.call(document.querySelectorAll('.hrms-sidebar .hrms-nav-group'), function (g) {
@@ -781,8 +872,6 @@
 
   /* ------------------------------------------------------------ My Profile in the lab / collection portals */
 
-  var PEOPLE_ORIGIN = 'https://people.e-remedium.in';
-
   function fitWorkspace() {
     var frame = document.querySelector('.pa-ws-frame');
     if (frame) frame.style.height = Math.max(480, window.innerHeight - frame.getBoundingClientRect().top - 8) + 'px';
@@ -797,21 +886,21 @@
     page.classList.add('pa-ws-on');
     var box = document.createElement('div');
     box.className = 'pa-ws';
-    box.innerHTML = '<iframe class="pa-ws-frame" title="My Profile" src="' + PEOPLE_ORIGIN + '/people/profile?pa_embed=1"></iframe>';
+    box.innerHTML = '<iframe class="pa-ws-frame" title="My Profile" src="' + PEOPLE_ORIGIN + '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
     page.appendChild(box);
     fitWorkspace();
   }
 
   window.addEventListener('message', function (e) {
     if (e.origin !== PEOPLE_ORIGIN || !e.data || e.data.type !== 'pa-embed-ready') return;
-    var frame = document.querySelector('.pa-ws-frame');
+    var frame = document.querySelector('.pa-hrp-frame') || document.querySelector('.pa-ws-frame');
     if (!frame || e.source !== frame.contentWindow) return;
     var s = null;
     try { s = JSON.parse(localStorage.getItem('hec_web_session') || 'null'); } catch (err) { s = null; }
     if (!s || !s.sid) return;
     frame.contentWindow.postMessage({
       type: 'pa-embed-session',
-      session: { sid: s.sid, user: s.user, fullName: s.fullName, roles: s.roles || [] },
+      session: { sid: s.sid, user: s.user, fullName: s.fullName || s.full_name, roles: s.roles || [] },
     }, PEOPLE_ORIGIN);
   });
 

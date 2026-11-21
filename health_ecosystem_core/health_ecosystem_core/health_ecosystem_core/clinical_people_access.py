@@ -4,8 +4,8 @@ Portal access maps each portal to the existing roles that already gate it. Highe
 portal's manager role. HR / manager roles can only be granted by an HR Manager or System Manager, and
 System Manager / Administrator / Health System Admin are never granted here.
 
-Assigning assets snapshots them into an Asset Assignment PDF (with blank signature lines for paper
-signing) stored as a private People Document on the employee.
+Assigning assets snapshots them into an Asset Assignment PDF. HR and the employee can sign
+on screen; the signed PDF is stored as a private People Document on the employee.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ AGREEMENT_STATUSES = "Issued\nPending Signatures\nPending Employee\nPending HR\n
 LEVELS = ("none", "view", "create", "edit", "approve", "manage")
 LEVEL_LABEL = {"none": "No access", "view": "View", "create": "Create", "edit": "Edit", "approve": "Approve", "manage": "Manage"}
 FORBIDDEN_ROLES = {"System Manager", "Administrator", "Health System Admin"}
-ELEVATED_ROLES = {"HR Manager", "HR User", "Lab Manager", "Sales Manager", "Aesthetic Manager", "Operations Manager"}
+ELEVATED_ROLES = {"HR Manager", "HR User", "Lab Manager", "Sales Manager", "Aesthetic Manager", "Operations Manager", "Care Manager", "CRM Manager"}
 GRANTOR_ROLES = {"HR Manager", "System Manager", "Administrator"}
 COMPANY = "Smilecure Lifestyle Pvt Ltd"
 
@@ -77,7 +77,6 @@ AESTHETIC_MODULE_PATHS = {
 	"Machines": ["/machines"],
 	"Invoices": ["/invoices"],
 	"Branches": ["/branches"],
-	"Employees": ["/employees"],
 	"Settings": ["/settings"],
 }
 OPS_MODULE_PATHS = {
@@ -94,9 +93,6 @@ OPS_MODULE_PATHS = {
 	"Reports & Analytics": ["/reports"],
 	"Settings": ["/settings"],
 }
-# Roles these portals check that may not exist yet on a fresh site (created on first use).
-PORTAL_ROLES = ("Aesthetic Staff", "Aesthetic Manager", "Operations Staff", "Operations Manager")
-
 # Lab Technician portal sidebar (LabTechChrome). My Profile is always open.
 LAB_MODULE_PATHS = {
 	"Result entry": ["/dashboard/lab-reports"],
@@ -113,6 +109,7 @@ LAB_MODULE_PATHS = {
 	"Inventory Management": ["/dashboard/inventory"],
 	"Pathologist": ["/dashboard/pathologist"],
 	"Reports (Signed)": ["/dashboard/pathologist/signed"],
+	"Test Master": ["/dashboard/test-master"],
 }
 # Lab settings saved with the earlier five-module list.
 LAB_LEGACY_MODULES = {
@@ -122,6 +119,49 @@ LAB_LEGACY_MODULES = {
 	"Inventory": ["Inventory Management", "Reagents"],
 	"Quality Control": ["IQC / NABL QC", "QMS"],
 }
+CARE_MODULE_PATHS = {
+	"Dashboard": ["/"],
+	"Appointments": ["/appointments"],
+	"Doctors": ["/doctors"],
+	"Physiotherapy": ["/physio"],
+	"Patients": ["/patients"],
+	"Test & Lab": ["/lab"],
+	"Diagnostics": ["/diagnostics"],
+	"Billing & Invoice": ["/billing"],
+	"Pharmacy": ["/pharmacy"],
+	"Inventory Management": ["/inventory"],
+	"Branch Management": ["/branches"],
+	"Reports & Analytics": ["/reports"],
+	"Assets Management": ["/assets"],
+	"User & Access": ["/access"],
+	"Settings": ["/settings"],
+}
+CRM_MODULE_PATHS = {
+	"Dashboard": ["/"],
+	"Leads": ["/leads"],
+	"Contacts": ["/contacts"],
+	"Accounts": ["/accounts"],
+	"Deals": ["/deals"],
+	"Activities": ["/activities"],
+	"Bookings": ["/bookings"],
+	"Franchise": ["/franchise"],
+	"Partner Bookings": ["/partner-bookings"],
+	"Campaigns": ["/campaigns"],
+	"Reports": ["/reports"],
+	"Settings": ["/settings"],
+}
+# Roles these portals check that may not exist yet on a fresh site (created on first use).
+PORTAL_ROLES = (
+	"Aesthetic Staff",
+	"Aesthetic Manager",
+	"Operations Staff",
+	"Operations Manager",
+	"Care Staff",
+	"Care Manager",
+	"CRM Staff",
+	"CRM Manager",
+)
+
 PORTALS = {
 	"people": {
 		"label": "People HRMS",
@@ -161,6 +201,14 @@ PORTALS = {
 		"modules": ["Leads", "Visits", "Targets", "Reports"],
 		"manage_roles": ["Sales Manager"],
 	},
+	"crm": {
+		"label": "CRM Portal",
+		"url": "https://crm.e-remedium.in",
+		"roles": ["CRM Staff", "Employee"],
+		"modules": list(CRM_MODULE_PATHS),
+		"manage_roles": ["CRM Manager", "Sales Manager"],
+		"module_paths": CRM_MODULE_PATHS,
+	},
 	"careers": {
 		"label": "Careers / Recruitment",
 		"url": "https://career.e-remedium.in",
@@ -182,6 +230,14 @@ PORTALS = {
 		"modules": list(OPS_MODULE_PATHS),
 		"manage_roles": ["Operations Manager"],
 		"module_paths": OPS_MODULE_PATHS,
+	},
+	"care": {
+		"label": "Care Backend",
+		"url": "https://care.e-remedium.in",
+		"roles": ["Care Staff", "Employee"],
+		"modules": list(CARE_MODULE_PATHS),
+		"manage_roles": ["Care Manager"],
+		"module_paths": CARE_MODULE_PATHS,
 	},
 }
 
@@ -221,6 +277,16 @@ def _ensure_portal_roles():
 			frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert(ignore_permissions=True)
 
 
+def _ensure_access_fields():
+	"""Fields added to People Portal Access after it was first created."""
+	if not frappe.db.exists("DocType", ACCESS_DT) or frappe.get_meta(ACCESS_DT).has_field("branches"):
+		return
+	doc = frappe.get_doc("DocType", ACCESS_DT)
+	doc.append("fields", {"fieldname": "branches", "label": "Branches", "fieldtype": "Small Text", "description": "Clinic portal branch ids (JSON) for Care or Aesthetic Backend, or [\"*\"] for every branch."})
+	doc.save(ignore_permissions=True)
+	frappe.clear_cache(doctype=ACCESS_DT)
+
+
 def _ensure_doctypes():
 	from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import _ensure_custom_doctype
 
@@ -236,8 +302,10 @@ def _ensure_doctypes():
 			{"fieldname": "active", "label": "Active", "fieldtype": "Check", "default": "1", "in_list_view": 1},
 			{"fieldname": "granted_by", "label": "Granted By", "fieldtype": "Data", "read_only": 1},
 			{"fieldname": "granted_on", "label": "Granted On", "fieldtype": "Datetime", "read_only": 1},
+			{"fieldname": "branches", "label": "Branches", "fieldtype": "Small Text"},
 		],
 	)
+	_ensure_access_fields()
 	_ensure_custom_doctype(
 		AGREEMENT_DT,
 		[
@@ -266,6 +334,127 @@ def _caller_can_grant(roles):
 	return bool(set(roles or []) & GRANTOR_ROLES)
 
 
+# ---------------------------------------------------------------- Care Backend branches
+
+# Public lists of branches kept by each clinic portal (id, name, code, city, active); new branches show up here.
+CARE_BRANCH_DIRECTORY = "https://care.e-remedium.in/care-api/branch-directory"
+CARE_BRANCH_CACHE = "care_branch_directory"
+AES_BRANCH_DIRECTORY = "https://care.e-remedium.in/aes-api/branch-directory"
+AES_BRANCH_CACHE = "aes_branch_directory"
+ALL_BRANCHES = "*"
+
+
+def _portal_branches(url, cache_key):
+	"""Branches of a clinic portal, cached for five minutes; the last good copy is used if the portal is unreachable."""
+	cache = frappe.cache()
+	hit = cache.get_value(cache_key)
+	if hit is not None:
+		return hit
+	import urllib.request
+
+	try:
+		with urllib.request.urlopen(url, timeout=6) as resp:
+			payload = json.loads(resp.read().decode("utf-8") or "{}")
+		branches = [
+			{"id": cint(b.get("id")), "name": cstr(b.get("name")), "code": cstr(b.get("code")), "city": cstr(b.get("city")), "active": cint(b.get("active"))}
+			for b in (payload.get("data") or [])
+			if cint(b.get("id"))
+		]
+		cache.set_value(cache_key, branches, expires_in_sec=300)
+		cache.set_value(cache_key + "_last", branches)
+		return branches
+	except Exception:
+		return cache.get_value(cache_key + "_last") or []
+
+
+def care_branches():
+	"""Branches of the Care portal, cached for five minutes; the last good copy is used if the portal is unreachable."""
+	return _portal_branches(CARE_BRANCH_DIRECTORY, CARE_BRANCH_CACHE)
+
+
+def aes_branches():
+	"""Branches of the Aesthetic portal; new branches appear here without a code change."""
+	return _portal_branches(AES_BRANCH_DIRECTORY, AES_BRANCH_CACHE)
+
+
+def _parse_branches(raw):
+	try:
+		data = json.loads(raw) if isinstance(raw, str) else raw
+	except ValueError:
+		data = None
+	if not isinstance(data, list):
+		return []
+	if ALL_BRANCHES in data:
+		return [ALL_BRANCHES]
+	return sorted({cint(x) for x in data if cint(x) > 0})
+
+
+def _unit_branch(unit, branches):
+	"""Clinic branch an HRMS Unit/Centre stands for: 'Remedium Care - Ashoknagar' -> branch 'Ashoknagar'."""
+	text = cstr(unit).strip().lower()
+	if not text:
+		return None
+	for b in branches:
+		name = b["name"].strip().lower()
+		if not name:
+			continue
+		if text == name or text.endswith(" - " + name) or text.endswith(" " + name) or name.endswith(" " + text) or name in text or text in name:
+			return b["id"]
+	return None
+
+
+def _checked_care_branches(employee, raw, new_roles, active):
+	branches = _parse_branches(raw)
+	directory = care_branches()
+	known = {b["id"] for b in directory}
+	unknown = [b for b in branches if b != ALL_BRANCHES and known and b not in known]
+	if unknown:
+		frappe.throw(_("Unknown Care branch: {0}").format(", ".join(str(b) for b in unknown)))
+	manager = "Care Manager" in new_roles
+	if not manager and (branches == [ALL_BRANCHES] or len(branches) > 1):
+		frappe.throw(_("Only a Care Manager can work in more than one branch. Give Manage on at least one Care module, or pick one branch."))
+	if active and not branches and not care_scope(employee, [])["ids"]:
+		frappe.throw(_("Pick the Care branch this employee works in, or set their Unit / Centre to a Remedium Care branch."))
+	return branches
+
+
+def care_scope(employee, assigned):
+	"""Branches a Care Backend login may use: explicit HR assignment, else the branch of the employee's Unit/Centre."""
+	return _portal_scope(employee, assigned, care_branches())
+
+
+def aes_scope(employee, assigned):
+	"""Branches an Aesthetic Backend login may use: explicit HR assignment, else Unit/Centre."""
+	return _portal_scope(employee, assigned, aes_branches())
+
+
+def _portal_scope(employee, assigned, branches):
+	unit = cstr(frappe.db.get_value("Employee", employee, "people_unit")) if employee and frappe.get_meta("Employee").has_field("people_unit") else ""
+	unit_branch = _unit_branch(unit, branches)
+	if assigned == [ALL_BRANCHES]:
+		return {"all": True, "ids": [], "source": "assigned", "unit": unit, "unit_branch": unit_branch}
+	known = {b["id"] for b in branches}
+	ids = [i for i in assigned if not known or i in known]
+	if ids:
+		return {"all": False, "ids": ids, "source": "assigned", "unit": unit, "unit_branch": unit_branch}
+	return {"all": False, "ids": [unit_branch] if unit_branch else [], "source": "unit", "unit": unit, "unit_branch": unit_branch}
+
+
+def _checked_aes_branches(employee, raw, perms, active):
+	branches = _parse_branches(raw)
+	directory = aes_branches()
+	known = {b["id"] for b in directory}
+	unknown = [b for b in branches if b != ALL_BRANCHES and known and b not in known]
+	if unknown:
+		frappe.throw(_("Unknown Aesthetic branch: {0}").format(", ".join(str(b) for b in unknown)))
+	manager = cstr((perms or {}).get("Settings") or "none") not in ("", "none")
+	if not manager and (branches == [ALL_BRANCHES] or len(branches) > 1):
+		frappe.throw(_("Only staff with Settings access can work in more than one Aesthetic branch. Give Settings access, or pick one branch."))
+	if active and not branches and not aes_scope(employee, [])["ids"]:
+		frappe.throw(_("Pick the Aesthetic branch this employee works in, or set their Unit / Centre to an Aesthetic branch."))
+	return branches
+
+
 def _parse_perms(raw, portal):
 	modules = PORTALS[portal]["modules"]
 	data = dict(raw) if isinstance(raw, dict) else {}
@@ -282,6 +471,9 @@ def _parse_perms(raw, portal):
 		for old, new_keys in LAB_LEGACY_MODULES.items():
 			for k in new_keys:
 				data[k] = legacy.get(old, "none")
+	if portal == "labtech" and data and "Test Master" not in data:
+		# Rows saved before the Test Master module existed keep the level they have for result entry.
+		data["Test Master"] = data.get("Result entry", "none")
 	out = {}
 	for m in modules:
 		level = cstr(data.get(m) or "none").lower()
@@ -367,7 +559,7 @@ def _portal_catalog():
 def access_state(employee):
 	_ensure_doctypes()
 	emp = _employee_row(employee)
-	rows = frappe.get_all(ACCESS_DT, filters={"employee": employee}, fields=["name", "portal", "login_user", "permissions", "active", "granted_by", "granted_on"])
+	rows = frappe.get_all(ACCESS_DT, filters={"employee": employee}, fields=["name", "portal", "login_user", "permissions", "active", "granted_by", "granted_on", "branches"])
 	access = []
 	for r in rows:
 		if r.portal not in PORTALS:
@@ -387,8 +579,11 @@ def access_state(employee):
 				"last_login": cstr(user.last_login) if user and user.last_login else "",
 				"granted_by": r.granted_by or "",
 				"granted_on": cstr(r.granted_on or ""),
+				"branches": _parse_branches(r.branches),
 			}
 		)
+	scope = care_scope(employee, [])
+	aes = aes_scope(employee, [])
 	return {
 		"employee": employee,
 		"employee_name": emp.get("employee_name") or employee,
@@ -396,6 +591,11 @@ def access_state(employee):
 		"portals": _portal_catalog(),
 		"levels": [{"value": v, "label": LEVEL_LABEL[v]} for v in LEVELS],
 		"access": access,
+		"care_branches": care_branches(),
+		"aes_branches": aes_branches(),
+		"unit": scope["unit"],
+		"unit_branch": scope["unit_branch"],
+		"aes_unit_branch": aes["unit_branch"],
 	}
 
 
@@ -493,6 +693,10 @@ def save_access(employee, entries, roles):
 			"granted_by": frappe.session.user,
 			"granted_on": now_datetime(),
 		}
+		if portal == "care":
+			values["branches"] = json.dumps(_checked_care_branches(employee, item.get("branches"), new_roles, active))
+		if portal == "aesthetics":
+			values["branches"] = json.dumps(_checked_aes_branches(employee, item.get("branches"), perms, active))
 		if portal in existing:
 			old_user = existing[portal].login_user
 			frappe.db.set_value(ACCESS_DT, existing[portal].name, values, update_modified=True)
@@ -513,6 +717,10 @@ def save_access(employee, entries, roles):
 
 	for portal, row in existing.items():
 		if portal not in wanted:
+			# Keep rows for portal keys not in the current catalog (so a temporary
+			# catalog gap cannot wipe CRM / other assignments on save).
+			if portal not in PORTALS:
+				continue
 			frappe.delete_doc(ACCESS_DT, row.name, ignore_permissions=True, force=True)
 
 	for user in touched_users:
@@ -560,7 +768,7 @@ def _sync_user_roles(user, previously_needed):
 		doc.save(ignore_permissions=True)
 
 
-PERM_CACHE = "people_portal_perms"
+PERM_CACHE = "people_portal_perms_v2"
 
 
 def _user_portal_perms(user):
@@ -568,13 +776,17 @@ def _user_portal_perms(user):
 	cached = frappe.cache().hget(PERM_CACHE, user)
 	if cached is not None:
 		return cached
-	rows = frappe.get_all(ACCESS_DT, filters={"login_user": user}, fields=["portal", "permissions", "active", "employee"])
-	portals, employee = {}, None
+	rows = frappe.get_all(ACCESS_DT, filters={"login_user": user}, fields=["portal", "permissions", "active", "employee", "branches"])
+	portals, employee, care, aes = {}, None, None, None
 	for r in rows:
 		if r.portal not in PORTALS:
 			continue
 		if r.portal == "people":
 			employee = r.employee
+		if r.portal == "care" and cint(r.active):
+			care = {"employee": r.employee, "branches": _parse_branches(r.branches)}
+		if r.portal == "aesthetics" and cint(r.active):
+			aes = {"employee": r.employee, "branches": _parse_branches(r.branches)}
 		if not cint(r.active):
 			portals[r.portal] = {m: "none" for m in PORTALS[r.portal]["modules"]}
 			continue
@@ -582,7 +794,7 @@ def _user_portal_perms(user):
 			portals[r.portal] = _parse_perms(json.loads(r.permissions or "{}"), r.portal)
 		except ValueError:
 			portals[r.portal] = {m: "none" for m in PORTALS[r.portal]["modules"]}
-	value = {"managed": bool(rows), "portals": portals, "employee": employee}
+	value = {"managed": bool(rows), "portals": portals, "employee": employee, "care": care, "aes": aes}
 	frappe.cache().hset(PERM_CACHE, user, value)
 	return value
 
@@ -615,6 +827,11 @@ def my_permissions():
 		paths = PORTALS[key].get("module_paths", {})
 		portal_modules[key] = {m: {"level": level, "paths": paths.get(m, [])} for m, level in perms.items()}
 	user_doc = frappe.db.get_value("User", user, ["full_name", "user_image"], as_dict=True) or {}
+	care = info.get("care")
+	aes = info.get("aes")
+	emp = info.get("employee") or (aes and aes.get("employee")) or (care and care.get("employee"))
+	if not aes and emp:
+		aes = {"employee": emp, "branches": []}
 	return {
 		"user": user,
 		"full_name": user_doc.get("full_name") or user,
@@ -625,6 +842,8 @@ def my_permissions():
 		"portal_modules": portal_modules,
 		"people_modules": portal_modules.get("people", {}),
 		"always_paths": ["/people/profile"],
+		"care_branches": {"all": True, "ids": [], "source": "admin"} if exempt else (care_scope(care["employee"], care["branches"]) if care else None),
+		"aes_branches": {"all": True, "ids": [], "source": "admin"} if exempt else (aes_scope(aes["employee"], aes["branches"]) if aes else None),
 	}
 
 
@@ -708,6 +927,13 @@ METHOD_RULES = {
 	"update_people_asset_request": ("Assets", "approve"),
 	"get_employee_asset_options": ("Assets", "edit"),
 	"save_employee_assets": ("Assets", "edit"),
+	"get_asset_inventory": ("Assets", "view"),
+	"save_inventory_asset": ("Assets", "create"),
+	"update_inventory_assets": ("Assets", "edit"),
+	"delete_inventory_assets": ("Assets", "manage"),
+	"decide_asset_request": ("Assets", "view"),
+	"get_announcement_desk": ("Announcements", "view"),
+	"save_announcement": ("Announcements", "create"),
 	"get_people_announcements": ("Announcements", "view"),
 	"save_people_announcement": ("Announcements", "create"),
 	"update_people_announcement": ("Announcements", "edit"),
@@ -843,15 +1069,25 @@ def save_assets(employee, asset_ids, roles):
 
 def _asset_snapshot(asset_ids):
 	dt = _asset_dt()
-	rows = frappe.get_all(dt, filters={"name": ("in", list(asset_ids))}, fields=["name", "title", "category", "serial", "location", "assign_date", "notes"], order_by="title asc")
+	wanted = ["name", "title", "category", "serial", "location", "assign_date", "notes", "brand", "model", "vendor", "warranty_until", "purchase_cost", "condition", "expected_return"]
+	meta = frappe.get_meta(dt)
+	fields = [name for name in wanted if name == "name" or meta.has_field(name)]
+	rows = frappe.get_all(dt, filters={"name": ("in", list(asset_ids))}, fields=fields, order_by="title asc")
 	return [
 		{
 			"id": r.name,
 			"title": r.title,
 			"category": r.category or "",
+			"brand": getattr(r, "brand", "") or "",
+			"model": getattr(r, "model", "") or "",
+			"vendor": getattr(r, "vendor", "") or "",
 			"serial": r.serial or "",
 			"location": r.location or "",
 			"assign_date": cstr(r.assign_date or today()),
+			"expected_return": cstr(getattr(r, "expected_return", "") or ""),
+			"warranty_until": cstr(getattr(r, "warranty_until", "") or ""),
+			"purchase_cost": getattr(r, "purchase_cost", 0) or 0,
+			"condition": getattr(r, "condition", "") or "",
 			"notes": r.notes or "",
 		}
 		for r in rows
@@ -866,7 +1102,7 @@ def create_agreement(employee, asset_ids):
 			"doctype": AGREEMENT_DT,
 			"employee": employee,
 			"employee_name": emp.get("employee_name") or employee,
-			"status": "Issued",
+			"status": "Pending Signatures",
 			"assets": json.dumps(_asset_snapshot(asset_ids)),
 			"issued_on": today(),
 		}
@@ -932,18 +1168,39 @@ def _agreement_html(doc):
 			row("Date of joining", format_date(emp.get("date_of_joining")) if emp.get("date_of_joining") else ""),
 		]
 	)
+	def asset_extra(a):
+		bits = []
+		product = " ".join(p for p in (cstr(a.get("brand")), cstr(a.get("model"))) if p).strip()
+		if product:
+			bits.append(product)
+		if a.get("condition"):
+			bits.append(f"Condition: {a.get('condition')}")
+		if a.get("expected_return"):
+			bits.append(f"Return by {format_date(a.get('expected_return'))}")
+		if a.get("warranty_until"):
+			bits.append(f"Warranty {format_date(a.get('warranty_until'))}")
+		if a.get("notes"):
+			bits.append(cstr(a.get("notes")))
+		return f"<br><small>{e(' · '.join(bits))}</small>" if bits else ""
+
 	asset_rows = "".join(
-		f"<tr><td>{i}</td><td><b>{e(a.get('title'))}</b>{'<br><small>' + e(a.get('notes')) + '</small>' if a.get('notes') else ''}</td>"
+		f"<tr><td>{i}</td><td><b>{e(a.get('title'))}</b>{asset_extra(a)}</td>"
 		f"<td>{e(a.get('category'))}</td><td class='mono'>{e(a.get('id'))}</td><td class='mono'>{e(a.get('serial') or '—')}</td>"
 		f"<td>{e(a.get('location') or '—')}</td><td>{e(format_date(a.get('assign_date')) if a.get('assign_date') else '')}</td></tr>"
 		for i, a in enumerate(assets, 1)
 	)
 
-	def sign_box(title, name):
+	def sign_box(title, name, signature="", signed_on=""):
+		img = ""
+		sig = cstr(signature)
+		if sig.startswith("data:image/") and "base64," in sig and len(sig) < 400000:
+			img = f'<img src="{sig}" alt="signature">'
+		when = format_date(signed_on) if signed_on else ""
+		date_line = f"Date: <b>{e(when)}</b>" if when else "Date: ____ / ____ / ________"
 		return (
-			f"<div class='sign'><div class='sign-title'>{e(title)}</div><div class='sign-pad'></div>"
+			f"<div class='sign'><div class='sign-title'>{e(title)}</div><div class='sign-pad'>{img}</div>"
 			f"<div class='sign-line'></div><div class='sign-meta'><span>Name: <b>{e(name or '')}</b></span>"
-			"<span>Date: ____ / ____ / ________</span></div></div>"
+			f"<span>{date_line}</span></div></div>"
 		)
 
 	terms = [
@@ -996,8 +1253,8 @@ ol {{ margin: 0; padding-left: 18px; }} ol li {{ margin: 0 0 4px; font-size: 9.3
 <table class="assets"><thead><tr><th>#</th><th>Asset</th><th>Category</th><th>Asset ID</th><th>Serial number</th><th>Location</th><th>Assigned on</th></tr></thead><tbody>{asset_rows}</tbody></table>
 <h2>Terms &amp; conditions</h2><ol>{terms_html}</ol>
 <div class="ack"><b>Acknowledgement.</b> I confirm that I have received the assets listed above in good working condition, that I have read and understood the terms above, and that I agree to follow them.</div>
-<div class="signs">{sign_box("Employee signature", emp.get("employee_name"))}{sign_box("HR Manager signature", "")}</div>
-<div class="foot">Document {e(doc.name)} · Generated {e(cstr(now_datetime())[:16])} · Print this form, have both parties sign, and keep the signed copy on file.</div>
+<div class="signs">{sign_box("Employee signature", doc.employee_signer or emp.get("employee_name"), doc.employee_signature, doc.employee_signed_on)}{sign_box("HR Manager signature", doc.hr_signer, doc.hr_signature, doc.hr_signed_on)}</div>
+<div class="foot">Document {e(doc.name)} · Generated {e(cstr(now_datetime())[:16])} · Smilecure Lifestyle Pvt Ltd · Official asset assignment record.</div>
 </body></html>"""
 
 
@@ -1048,6 +1305,46 @@ def _render_and_store(doc):
 	doc.file_url = file_doc.file_url
 
 
+def sign_agreement(agreement, party, signature, roles):
+	_ensure_doctypes()
+	if not agreement or not frappe.db.exists(AGREEMENT_DT, agreement):
+		frappe.throw(_("Agreement not found"))
+	party = cstr(party).strip().lower()
+	if party not in ("hr", "employee"):
+		frappe.throw(_("Choose who is signing"))
+	sig = cstr(signature).strip()
+	if not sig.startswith("data:image/") or "base64," not in sig:
+		frappe.throw(_("Draw a signature first"))
+	if len(sig) > 350000:
+		frappe.throw(_("Signature image is too large"))
+	doc = frappe.get_doc(AGREEMENT_DT, agreement)
+	own = frappe.db.get_value("Employee", doc.employee, "user_id") == frappe.session.user
+	if party == "hr":
+		if not _is_manager(roles):
+			frappe.throw(_("HR manager access required"), frappe.PermissionError)
+		doc.hr_signature = sig
+		doc.hr_signer = frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user
+		doc.hr_signed_by = frappe.session.user
+		doc.hr_signed_on = now_datetime()
+	else:
+		if not own and not _is_manager(roles):
+			frappe.throw(_("Not allowed"), frappe.PermissionError)
+		doc.employee_signature = sig
+		doc.employee_signer = doc.employee_name
+		doc.employee_signed_on = now_datetime()
+	if doc.hr_signature and doc.employee_signature:
+		doc.status = "Signed"
+	elif doc.hr_signature:
+		doc.status = "Pending Employee"
+	elif doc.employee_signature:
+		doc.status = "Pending HR"
+	else:
+		doc.status = "Pending Signatures"
+	doc.save(ignore_permissions=True)
+	_render_and_store(doc)
+	return _agreement_row(doc)
+
+
 def agreement_pdf(agreement, roles):
 	if not agreement or not frappe.db.exists(AGREEMENT_DT, agreement):
 		frappe.throw(_("Agreement not found"))
@@ -1055,10 +1352,7 @@ def agreement_pdf(agreement, roles):
 	own = frappe.db.get_value("Employee", doc.employee, "user_id") == frappe.session.user
 	if not own and not _is_manager(roles):
 		frappe.throw(_("Not allowed"), frappe.PermissionError)
-	if doc.status != "Issued" and not doc.employee_signature and not doc.hr_signature:
-		doc.db_set("status", "Issued", update_modified=False)
-		_render_and_store(doc)
-	elif not doc.file_url:
+	if doc.hr_signature or doc.employee_signature or not doc.file_url:
 		_render_and_store(doc)
 	file_name = frappe.db.get_value("File", {"file_url": doc.file_url}, "name")
 	content = frappe.get_doc("File", file_name).get_content()
@@ -1127,6 +1421,114 @@ def get_my_portal_permissions(sid=None):
 	return _run(my_permissions)
 
 
+def list_crm_portal_assignees():
+	"""Employees with active People → Portal Access → CRM Portal (for CRM transfer ownership)."""
+	_ensure_doctypes()
+	# Match portal key variants HR may have stored
+	rows = frappe.get_all(
+		ACCESS_DT,
+		filters={"active": 1},
+		fields=["employee", "login_user", "permissions", "portal"],
+		limit_page_length=2000,
+	)
+	out = []
+	seen = set()
+	for r in rows:
+		portal = cstr(r.get("portal") or "").strip().lower().replace(" ", "")
+		if portal not in ("crm", "crmportal", "smilecurecrm"):
+			continue
+		emp = cstr(r.employee or "").strip()
+		if not emp or emp in seen:
+			continue
+		seen.add(emp)
+		emp_row = frappe.db.get_value(
+			"Employee",
+			emp,
+			["employee_name", "user_id", "status", "designation"],
+			as_dict=True,
+		) or {}
+		if emp_row.get("status") and emp_row.status != "Active":
+			continue
+		user = cstr(r.login_user or emp_row.get("user_id") or "").strip()
+		name = cstr(emp_row.get("employee_name") or "").strip()
+		if not name and user:
+			name = cstr(frappe.db.get_value("User", user, "full_name") or user.split("@")[0]).strip()
+		if not name:
+			name = emp
+		# Skip rows with no usable CRM modules (all none) when permissions are present
+		try:
+			raw = r.permissions or "{}"
+			data = json.loads(raw) if isinstance(raw, str) else (raw or {})
+			perms = _parse_perms(data, "crm")
+			if perms and not any(v and str(v).lower() != "none" for v in perms.values()):
+				continue
+		except Exception:
+			pass
+		out.append(
+			{
+				"employee": emp,
+				"employee_name": name,
+				"user": user,
+				"full_name": name,
+				"designation": cstr(emp_row.get("designation") or ""),
+			}
+		)
+
+	# Also include active users with CRM Staff / CRM Manager roles (portal login roles)
+	for role in ("CRM Staff", "CRM Manager"):
+		for has in frappe.get_all("Has Role", filters={"role": role, "parenttype": "User"}, fields=["parent"], limit_page_length=500):
+			user = cstr(has.parent or "").strip()
+			if not user or user in ("Guest", "Administrator"):
+				continue
+			emp = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name") or frappe.db.get_value(
+				"Employee", {"user_id": user}, "name"
+			)
+			if not emp or emp in seen:
+				# still allow user-only CRM logins without Employee row
+				if not emp:
+					key = f"user:{user}"
+					if key in seen:
+						continue
+					seen.add(key)
+					full = cstr(frappe.db.get_value("User", user, "full_name") or user.split("@")[0]).strip()
+					if frappe.db.get_value("User", user, "enabled") in (0, "0"):
+						continue
+					out.append(
+						{
+							"employee": "",
+							"employee_name": full,
+							"user": user,
+							"full_name": full,
+							"designation": role,
+						}
+					)
+				continue
+			seen.add(emp)
+			emp_row = frappe.db.get_value(
+				"Employee",
+				emp,
+				["employee_name", "user_id", "status", "designation"],
+				as_dict=True,
+			) or {}
+			if emp_row.get("status") and emp_row.status != "Active":
+				continue
+			name = cstr(emp_row.get("employee_name") or "").strip() or cstr(
+				frappe.db.get_value("User", user, "full_name") or user.split("@")[0]
+			).strip()
+			out.append(
+				{
+					"employee": emp,
+					"employee_name": name,
+					"user": user,
+					"full_name": name,
+					"designation": cstr(emp_row.get("designation") or role),
+				}
+			)
+
+	out.sort(key=lambda x: (x.get("employee_name") or "").lower())
+	return {"users": out, "count": len(out)}
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def get_employee_asset_options(employee=None, sid=None):
 	denied, _roles = _guard(sid)
@@ -1146,6 +1548,20 @@ def save_employee_assets(employee=None, assets=None, sid=None):
 	except ValueError:
 		return _api()[0](_("Invalid asset list"))
 	return _run(save_assets, cstr(_arg("employee", employee)), ids, roles)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def sign_asset_agreement(agreement=None, party=None, signature=None, sid=None):
+	denied, roles = _guard(sid, manager=False)
+	if denied:
+		return denied
+	return _run(
+		sign_agreement,
+		cstr(_arg("agreement", agreement)),
+		cstr(_arg("party", party)),
+		cstr(_arg("signature", signature)),
+		roles,
+	)
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

@@ -1490,13 +1490,23 @@
     var nativeFetch = window.fetch;
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (url.indexOf('list_people_employees') !== -1 && /\/people\/employees\/?$/.test(location.pathname) && init && init.body) {
-        if (typeof init.body === 'string' && init.body.indexOf('include_inactive=') === -1) {
-          init = Object.assign({}, init, { body: init.body + (init.body ? '&' : '') + 'include_inactive=1' });
-        } else if (init.body instanceof URLSearchParams) {
-          init.body.set('include_inactive', '1');
-        }
-        return nativeFetch.call(this, input, init);
+      if (url.indexOf('list_people_employees') !== -1 && /\/people\/employees\/?$/.test(location.pathname) && init &&
+        (typeof init.body === 'string' || init.body instanceof URLSearchParams)) {
+        var params = new URLSearchParams(init.body);
+        var q = params.get('q') || '';
+        if (q.indexOf(WDD_MARK) === 0) params.set('q', q.slice(q.indexOf(':') + 1));
+        params.set('include_inactive', '1');
+        init = Object.assign({}, init, { body: params.toString() });
+        return nativeFetch.call(this, input, init).then(function (res) {
+          if (!res.ok) return res;
+          return res.clone().json().then(function (json) {
+            var msg = json && json.message && typeof json.message === 'object' ? json.message : null;
+            var rows = msg && msg.data && msg.data.employees;
+            // Work Location filters on Branch; most employees only have their geofence work site set.
+            if (Array.isArray(rows)) rows.forEach(function (row) { if (!row.branch && row.geofence_label) row.branch = row.geofence_label; });
+            return new Response(JSON.stringify(filterEmployeeList(json)), { status: res.status, statusText: res.statusText, headers: res.headers });
+          }).catch(function () { return res; });
+        });
       }
       var p = nativeFetch.apply(this, arguments);
       if (url.indexOf('submit_leave_application') !== -1 || url.indexOf('create_people_leave_request') !== -1) {
@@ -1596,19 +1606,16 @@
     var caret = anchor ? anchor.querySelector('svg') : null;
     var caretHtml = caret ? caret.outerHTML : '';
     var f = state.filters;
-    var wings = byOrder(businessWings().filter(function (row) { return row.active; }), WING_ORDER);
-    var divisions = byOrder(filterOptions('Division', 'wing', f.wing), DIVISION_ORDER);
-    var departments = filterOptions('Department', 'wing', f.wing);
-    var designations = masters('Designation').filter(function (row) { return row.active && (!f.department || sameDept(row, { title: f.department, wing: f.wing, erp_name: f.department })); });
-    var units = filterOptions('Unit', 'wing', f.wing).filter(function (row) { return !f.department || sameDept(row, { title: f.department, wing: f.wing, erp_name: f.department }); });
-    var positions = masters('Position').filter(function (row) { return row.active && (!f.unit || row.unit === f.unit); });
-    function field(key, label, rows, corporate) {
+    var choices = wddOptions();
+    function field(key, label, pairs, corporate) {
       var allLabel = 'All ' + (label === 'Unit/Centre' ? 'Units/Centres' : label + 's');
+      if (f[key] && f[key] !== '__corporate__' && !pairs.some(function (p) { return p[0] === f[key]; })) pairs = pairs.concat([[f[key], f[key]]]);
       var opts = '<option value="">' + allLabel + '</option>' +
-        (corporate ? '<option value="__corporate__"' + (f[key] === '__corporate__' ? ' selected' : '') + '>Corporate / Back Office</option>' : '') +
-        options(rows, '', null, f[key]);
+        (corporate ? '<option value="__corporate__"' + (f[key] === '__corporate__' ? ' selected' : '') + '>Corporate / Back Office · ' + choices.corporate + '</option>' : '') +
+        pairs.map(function (p) { return '<option value="' + esc(p[0]) + '"' + (p[0] === f[key] ? ' selected' : '') + '>' + esc(p[1]) + '</option>'; }).join('');
       if (anchor) {
-        var shown = f[key] === '__corporate__' ? 'Corporate / Back Office' : (f[key] || allLabel);
+        var picked = pairs.filter(function (p) { return p[0] === f[key]; })[0];
+        var shown = f[key] === '__corporate__' ? 'Corporate / Back Office' : (picked ? picked[1] : allLabel);
         var cls = boxClass + (f[key] ? ' active' : '');
         var textCls = anchor.classList.contains('emp-filter') ? ' class="emp-filter-text"' : '';
         return '<label class="' + esc(cls) + '"><span' + textCls + '>' + esc(shown) + '</span>' + caretHtml +
@@ -1617,36 +1624,195 @@
       return '<label>' + label + '<select data-wdd-filter="' + key + '">' + opts + '</select></label>';
     }
     old.innerHTML =
-      field('wing', 'Wing', wings, true) +
-      field('division', 'Division', divisions, false) +
-      field('department', 'Department', departments, false) +
-      field('designation', 'Designation', designations, false) +
-      field('unit', 'Unit/Centre', units, false) +
-      field('position', 'Position', positions, false) +
+      field('wing', 'Wing', choices.wing, true) +
+      field('division', 'Division', choices.division, false) +
+      field('department', 'Department', choices.department, false) +
+      field('designation', 'Designation', choices.designation, false) +
+      field('unit', 'Unit/Centre', choices.unit, false) +
+      field('position', 'Position', choices.position, false) +
       (anchor ? '' : '<button type="button" data-wdd-clear="1">Clear</button>');
     old.querySelectorAll('[data-wdd-filter]').forEach(function (select) {
       select.addEventListener('change', function () {
-        state.filters[select.getAttribute('data-wdd-filter')] = select.value;
-        if (select.getAttribute('data-wdd-filter') === 'wing') {
-          state.filters.division = '';
-          state.filters.department = '';
-          state.filters.designation = '';
-          state.filters.unit = '';
-          state.filters.position = '';
-        }
+        var key = select.getAttribute('data-wdd-filter');
+        state.filters[key] = select.value;
+        WDD_LEVELS.slice(WDD_LEVELS.indexOf(key) + 1).forEach(function (k) { state.filters[k] = ''; });
         renderFilters();
+        refreshEmployeeList();
       });
     });
     var clear = old.querySelector('[data-wdd-clear]');
-    if (clear) clear.addEventListener('click', function () { state.filters = blankFilters(); renderFilters(); });
+    if (clear) clear.addEventListener('click', function () { state.filters = blankFilters(); renderFilters(); refreshEmployeeList(); });
     applyPeopleFilters();
   }
 
+  var WDD_LEVELS = ['wing', 'division', 'department', 'designation', 'unit', 'position'];
+
+  function wddActive() {
+    return Object.keys(state.filters).some(function (key) { return state.filters[key]; });
+  }
+
+  function wddMatch(emp, filters) {
+    var f = filters || state.filters;
+    return (f.wing !== '__corporate__' ? (!f.wing || emp.wing === f.wing) : !emp.wing) &&
+      (!f.division || emp.division === f.division) &&
+      (!f.department || (emp.department || '') === f.department) &&
+      (!f.designation || (emp.designation || '') === f.designation) &&
+      (!f.unit || (emp.unit || '') === f.unit) &&
+      (!f.position || (emp.position || '') === f.position);
+  }
+
+  function shortDept(name) {
+    var parts = String(name || '').split(' — ');
+    return parts[parts.length - 1].replace(/\s+-\s+[A-Z0-9]{2,8}$/, '');
+  }
+
+  // Dropdown choices for each level: configured masters plus the values employees actually carry,
+  // narrowed by the levels above, so every choice can match someone.
+  function wddOptions() {
+    var f = state.filters;
+    var emps = (state.data && state.data.employees) || [];
+    function above(level) {
+      var out = {};
+      WDD_LEVELS.slice(0, WDD_LEVELS.indexOf(level)).forEach(function (k) { out[k] = f[k]; });
+      return out;
+    }
+    function inScope(level) {
+      var lim = above(level);
+      return emps.filter(function (e) { return wddMatch(e, lim); });
+    }
+    function wingOk(row) {
+      if (f.wing === '__corporate__') return !row.wing;
+      return !f.wing || !row.wing || row.wing === f.wing;
+    }
+    function add(list, seen, value, label) {
+      if (!value || seen[value]) return;
+      seen[value] = 1;
+      list.push([value, label || value]);
+    }
+    function sorted(list) { return list.sort(function (a, b) { return String(a[1]).localeCompare(String(b[1])); }); }
+
+    var wing = byOrder(businessWings().filter(function (r) { return r.active; }), WING_ORDER).map(function (r) { return [r.title, r.title]; });
+
+    var division = [];
+    var seenDiv = {};
+    if (f.wing && f.wing !== '__corporate__') {
+      byOrder(masters('Division').filter(function (r) { return r.active && r.wing === f.wing; }), DIVISION_ORDER).forEach(function (r) { add(division, seenDiv, r.title); });
+    } else if (!f.wing) {
+      byOrder(masters('Division').filter(function (r) { return r.active; }), DIVISION_ORDER).forEach(function (r) { add(division, seenDiv, r.title); });
+    }
+    inScope('division').forEach(function (e) { add(division, seenDiv, e.division); });
+
+    var department = [];
+    var seenDept = {};
+    masters('Department').filter(function (r) {
+      return r.active && wingOk(r) && (!f.wing || f.wing === '__corporate__' || r.wing === f.wing) && (!f.division || !r.division || r.division === f.division);
+    }).forEach(function (r) {
+      var where = f.wing ? (f.division ? '' : r.division) : [r.wing || 'Corporate', r.division].filter(Boolean).join(' · ');
+      add(department, seenDept, deptKey(r), r.title + (where ? ' (' + where + ')' : ''));
+    });
+    inScope('department').forEach(function (e) {
+      add(department, seenDept, e.department, shortDept(e.department) + (e.wing && !f.wing ? ' (' + e.wing + ')' : ''));
+    });
+
+    var designation = [];
+    var seenDes = {};
+    masters('Designation').filter(function (r) {
+      return r.active && (f.department ? r.department === f.department : wingOk(r) && (!f.wing || f.wing === '__corporate__' || r.wing === f.wing));
+    }).forEach(function (r) { add(designation, seenDes, r.title); });
+    inScope('designation').forEach(function (e) { add(designation, seenDes, e.designation); });
+
+    var unit = [];
+    var seenUnit = {};
+    masters('Unit').filter(function (r) {
+      return r.active && wingOk(r) && (!f.department || !r.department || r.department === f.department);
+    }).forEach(function (r) { add(unit, seenUnit, r.title); });
+    inScope('unit').forEach(function (e) { add(unit, seenUnit, e.unit); });
+
+    var position = [];
+    var seenPos = {};
+    masters('Position').filter(function (r) { return r.active && (!f.unit || !r.unit || r.unit === f.unit); }).forEach(function (r) { add(position, seenPos, r.title); });
+    inScope('position').forEach(function (e) { add(position, seenPos, e.position); });
+
+    function counted(level, list, keepOrder) {
+      var pool = inScope(level);
+      var withCount = list.map(function (p) {
+        var n = pool.filter(function (e) { return (e[level] || '') === p[0]; }).length;
+        return [p[0], p[1] + ' · ' + n, n];
+      });
+      if (!keepOrder) sorted(withCount);
+      return withCount.filter(function (p) { return p[2] > 0; }).concat(withCount.filter(function (p) { return !p[2]; }));
+    }
+
+    return {
+      wing: counted('wing', wing, true),
+      corporate: emps.filter(function (e) { return !e.wing; }).length,
+      division: counted('division', division, true),
+      department: counted('department', department),
+      designation: counted('designation', designation),
+      unit: counted('unit', unit),
+      position: counted('position', position),
+    };
+  }
+
+  function onEmployeesPage() {
+    return /\/people\/employees\/?$/.test(location.pathname);
+  }
+
+  // The Employees page loads its list once (and again only when ?q= changes) and paginates in the browser,
+  // so WDD filters are applied to the list response; a short ?q= swap makes the page fetch it again.
+  var WDD_MARK = '__wdd';
+  function refreshEmployeeList() {
+    if (!onEmployeesPage()) return;
+    var original = location.pathname + location.search + location.hash;
+    var url = new URL(location.href);
+    url.searchParams.set('q', WDD_MARK + Date.now() + ':' + (url.searchParams.get('q') || ''));
+    history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    setTimeout(function () {
+      history.replaceState(history.state, '', original);
+      window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    }, 80);
+  }
+
+  function filterEmployeeList(json) {
+    var msg = json && json.message && typeof json.message === 'object' ? json.message : null;
+    var data = msg && msg.data;
+    if (!data || !Array.isArray(data.employees) || !state.data || !wddActive()) return json;
+    var byId = {};
+    (state.data.employees || []).forEach(function (row) { if (row.id) byId[String(row.id).toUpperCase()] = row; });
+    data.employees = data.employees.filter(function (row) {
+      var emp = byId[String(row.id || row.name || '').toUpperCase()];
+      return !!emp && wddMatch(emp);
+    });
+    data.total = data.employees.length;
+    return json;
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('button');
+    if (!btn || !onEmployeesPage() || !wddActive() || btn.closest('[data-wdd-filters]')) return;
+    if (!/^\s*reset\s*$/i.test(btn.textContent || '')) return;
+    state.filters = blankFilters();
+    renderFilters();
+    refreshEmployeeList();
+  }, true);
+
+  function syncResetButton() {
+    if (!onEmployeesPage()) return;
+    var content = document.querySelector('.hrms-content, .people-main');
+    if (!content) return;
+    Array.prototype.forEach.call(content.querySelectorAll('button'), function (btn) {
+      if (!/^\s*reset\s*$/i.test(btn.textContent || '') || btn.closest('[data-wdd-filters]')) return;
+      if (wddActive() && btn.disabled) { btn.disabled = false; btn.setAttribute('data-wdd-reset', '1'); }
+    });
+  }
+
   function applyPeopleFilters() {
+    syncResetButton();
     var employees = (state.data && state.data.employees) || [];
     var byId = {};
     employees.forEach(function (row) { if (row.id) byId[String(row.id).toUpperCase()] = row; });
-    var active = Object.keys(state.filters).some(function (key) { return state.filters[key]; });
+    var active = wddActive();
     document.querySelectorAll('.hrms-content table, .people-main table').forEach(function (table) {
       if (table.closest('[data-org-page]')) return;
       var bodyText = table.innerText || '';
@@ -1664,14 +1830,7 @@
           });
         }
         if (!emp) { tr.style.display = ''; return; }
-        var f = state.filters;
-        var ok = (f.wing !== '__corporate__' ? (!f.wing || emp.wing === f.wing) : !emp.wing) &&
-          (!f.division || emp.division === f.division) &&
-          (!f.department || (emp.department || '').indexOf(f.department) !== -1) &&
-          (!f.designation || emp.designation === f.designation || (emp.designation || '').indexOf(f.designation) !== -1) &&
-          (!f.unit || emp.unit === f.unit) &&
-          (!f.position || emp.position === f.position);
-        tr.style.display = ok ? '' : 'none';
+        tr.style.display = wddMatch(emp) ? '' : 'none';
       });
     });
   }

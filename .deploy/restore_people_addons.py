@@ -24,24 +24,82 @@ FILES = (
     "people-geofence.js",
     "people-access.js",
     "people-access.css",
+    "people-assets.js",
+    "people-assets.css",
+    "people-announce.js",
+    "people-announce.css",
+    "people-my-team.js",
+    "people-my-team.css",
+    "people-company.js",
+    "people-company.css",
+    "people-login-shell.js",
+    "people-login-shell.css",
+    "people-host.js",
+    "smilecure-lifestyle.png",
+    "smilecure-lifestyle-glow.png",
+    "smilecure-icon.png",
+    "smilecure-icon-care.png",
+    "lab-test-master.js",
+    "lab-test-master.css",
+    "reach-team-perf.js",
+    "reach-team-perf.css",
+    "reach-portal-ui.js",
+    "reach-portal-ui.css",
+    "reach-sales-host.js",
+    "aesthetic-stock.js",
+    "aesthetic-sessions.js",
+    "aesthetic-sessions.css",
+    "aesthetic-plans.js",
+    "aesthetic-plans.css",
+    "aesthetic-patients.js",
+    "aesthetic-patients.css",
+    "aesthetic-machines.js",
+    "aesthetic-machines.css",
     "verify-id.html",
 )
 TAGS = (
-    '<link rel="stylesheet" href="/people-profile-align.css?v=3" />',
+    '<link rel="stylesheet" href="/people-profile-align.css?v=4" />',
     '<link rel="stylesheet" href="/people-user-menu.css" />',
     '<link rel="stylesheet" href="/employee-id-card.css?v=5" />',
     '<link rel="stylesheet" href="/people-org.css?v=18" />',
     '<script src="/qrcode-generator.js"></script>',
     '<script src="/people-user-menu.js" defer></script>',
     '<script src="/employee-id-card.js?v=13" defer></script>',
-    '<link rel="stylesheet" href="/people-access.css?v=9" />',
-    '<script src="/people-access.js?v=16" defer></script>',
-    '<script src="/people-org.js?v=30" defer></script>',
+    '<link rel="stylesheet" href="/people-access.css?v=11" />',
+    '<script src="/people-access.js?v=22" defer></script>',
+    '<script src="/people-org.js?v=34" defer></script>',
     '<script src="/people-geofence.js?v=2" defer></script>',
+    '<link rel="stylesheet" href="/people-assets.css?v=11" />',
+    '<script src="/people-assets.js?v=11" defer></script>',
+    '<link rel="stylesheet" href="/people-announce.css?v=2" />',
+    '<script src="/people-announce.js?v=2" defer></script>',
+    '<link rel="stylesheet" href="/people-my-team.css?v=4" />',
+    '<script src="/people-my-team.js?v=4" defer></script>',
+    '<link rel="stylesheet" href="/people-company.css?v=1" />',
+    '<script src="/people-company.js?v=1" defer></script>',
+    '<link rel="stylesheet" href="/people-login-shell.css?v=12" />',
+    '<script src="/people-login-shell.js?v=14" defer></script>',
+    '<script src="/people-host.js?v=1"></script>',
+    '<link rel="stylesheet" href="/lab-test-master.css?v=1" />',
+    '<script src="/lab-test-master.js?v=2" defer></script>',
+    '<link rel="stylesheet" href="/reach-team-perf.css?v=9" />',
+    '<script src="/reach-team-perf.js?v=9" defer></script>',
+    '<link rel="stylesheet" href="/reach-portal-ui.css?v=10" />',
+    '<script src="/reach-portal-ui.js?v=10" defer></script>',
+    '<script src="/reach-sales-host.js?v=1" defer></script>',
+    '<script src="/aesthetic-stock.js?v=3" defer></script>',
+    '<link rel="stylesheet" href="/aesthetic-sessions.css?v=6" />',
+    '<script src="/aesthetic-sessions.js?v=14" defer></script>',
+    '<link rel="stylesheet" href="/aesthetic-plans.css?v=5" />',
+    '<script src="/aesthetic-plans.js?v=13" defer></script>',
+    '<link rel="stylesheet" href="/aesthetic-patients.css?v=1" />',
+    '<script src="/aesthetic-patients.js?v=2" defer></script>',
+    '<link rel="stylesheet" href="/aesthetic-machines.css?v=2" />',
+    '<script src="/aesthetic-machines.js?v=3" defer></script>',
 )
 
 OPS_DIST = Path("/opt/health-ecosystem/ops_portal/dist")
-OPS_TAG = '<script src="/ops-gate.js?v=2"></script>'
+OPS_TAG = '<script src="/ops-gate.js?v=3"></script>'
 
 # Small fixes to the main SPA bundle, which is built elsewhere: (name, marker proving the fix is in, pattern, replacement).
 BUNDLE_PATCHES = (
@@ -65,7 +123,10 @@ BUNDLE_SUFFIX = "-pa.js"
 CONTAINER = "docker-backend-1"
 PKG = "/home/frappe/frappe-bench/env/lib/python3.11/site-packages/health_ecosystem_core"
 APP = PKG + "/health_ecosystem_core"
+SITE_FILES = "/home/frappe/frappe-bench/sites/health.localhost/public/files"
 HOOK = "health_ecosystem_core.health_ecosystem_core.clinical_people_access.enforce_portal_permissions"
+# PDF letterhead logo must live inside the container (host people-addons is not mounted).
+PDF_LOGO = "smilecure-lifestyle.png"
 
 # (file, marker that proves the fix is present, old text, new text)
 PATCHES = (
@@ -126,8 +187,32 @@ def _put(path, text):
     subprocess.check_call(["docker", "exec", CONTAINER, "/home/frappe/frappe-bench/env/bin/python", "-m", "py_compile", path])
 
 
+def restore_pdf_logo():
+    """Copy company logo into site public/files so Performance Report PDFs can embed it."""
+    src = ADDONS / PDF_LOGO
+    if not src.is_file():
+        alt = DIST / "brand" / PDF_LOGO
+        src = alt if alt.is_file() else None
+    if not src:
+        return
+    dest = f"{SITE_FILES}/{PDF_LOGO}"
+    try:
+        subprocess.check_call(["docker", "exec", CONTAINER, "test", "-f", dest], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Refresh when host file is newer / different size
+        host_size = src.stat().st_size
+        remote = subprocess.check_output(["docker", "exec", CONTAINER, "stat", "-c", "%s", dest], stderr=subprocess.DEVNULL).decode().strip()
+        if remote == str(host_size):
+            return
+    except subprocess.CalledProcessError:
+        pass
+    subprocess.check_call(["docker", "exec", CONTAINER, "mkdir", "-p", SITE_FILES])
+    subprocess.check_call(["docker", "cp", str(src), f"{CONTAINER}:{dest}"])
+    print("pdf logo restored:", PDF_LOGO)
+
+
 def restore_backend():
     changed = []
+    restore_pdf_logo()
     backend = ADDONS / "backend"
     if backend.exists():
         for src in sorted(backend.glob("clinical_*.py")):
@@ -185,6 +270,62 @@ def bump_sw_index(html):
     sw.write_text(re.sub(r'(\{url:"index\.html",revision:")[^"]+', r"\g<1>" + rev, text, count=1), encoding="utf-8")
 
 
+PEOPLE_PORTAL_NAME = "People Management - SLPL"
+PEOPLE_TITLE_MARKER = "People Management - SLPL"
+
+
+def patch_people_portal_title():
+    """Set browser tab / PWA name on people.e-remedium.in before the SPA boots."""
+    index = DIST / "index.html"
+    if not index.exists():
+        return
+    html = index.read_text(encoding="utf-8", errors="replace")
+    if "location.hostname === 'people.e-remedium.in'" in html and "document.title =" in html:
+        updated = (
+            html.replace("people management SLPL", PEOPLE_PORTAL_NAME)
+            .replace("People HRMS", PEOPLE_PORTAL_NAME)
+        )
+        # Normalize any leftover title/content strings inside the people-host block.
+        updated = re.sub(
+            r"(if \(appTitle\) appTitle\.setAttribute\('content', ')[^']+('\);)",
+            rf"\g<1>{PEOPLE_PORTAL_NAME}\2",
+            updated,
+            count=1,
+        )
+        updated = re.sub(
+            r"(document\.title = ')[^']+(';)",
+            rf"\g<1>{PEOPLE_PORTAL_NAME}\2",
+            updated,
+            count=1,
+        )
+        if updated != html:
+            index.write_text(updated, encoding="utf-8")
+            bump_sw_index(updated)
+            print("people portal title updated in index.html")
+        return
+    block = (
+        "        if (location.hostname === 'people.e-remedium.in') {\n"
+        "          var peopleMark = document.querySelectorAll('link[rel=\"icon\"],link[rel=\"apple-touch-icon\"]');\n"
+        "          for (var p = 0; p < peopleMark.length; p++) {\n"
+        "            peopleMark[p].href = '/brand/smilecure-icon.png?v=5';\n"
+        "            if (peopleMark[p].rel === 'icon') peopleMark[p].type = 'image/png';\n"
+        "          }\n"
+        "          var theme = document.querySelector('meta[name=\"theme-color\"]');\n"
+        "          if (theme) theme.setAttribute('content', '#0b3a3b');\n"
+        "          var appTitle = document.querySelector('meta[name=\"apple-mobile-web-app-title\"]');\n"
+        f"          if (appTitle) appTitle.setAttribute('content', '{PEOPLE_PORTAL_NAME}');\n"
+        f"          document.title = '{PEOPLE_PORTAL_NAME}';\n"
+        "        }\n"
+    )
+    needle = "        var gone = /^\\/(?:aesthetic|aesthetics|wellness\\/aesthetics)\\/?$/;"
+    if needle not in html:
+        return
+    html = html.replace(needle, block + needle, 1)
+    index.write_text(html, encoding="utf-8")
+    bump_sw_index(html)
+    print("people portal title patched into index.html")
+
+
 def patch_main_bundle():
     """Apply BUNDLE_PATCHES to the entry bundle. Web assets are cached as immutable, so the patched
     code is saved under a new file name and index.html is pointed at it."""
@@ -223,7 +364,7 @@ def main():
         restore_backend()
     except Exception as exc:
         print("backend restore failed:", exc)
-    for step in (restore_ops_gate, patch_main_bundle):
+    for step in (restore_ops_gate, patch_main_bundle, patch_people_portal_title):
         try:
             step()
         except Exception as exc:
@@ -232,9 +373,17 @@ def main():
     if not index.exists() or not ADDONS.exists():
         return
     changed = []
+    brand_map = {
+        "smilecure-lifestyle.png": DIST / "brand" / "smilecure-lifestyle.png",
+        "smilecure-lifestyle-glow.png": DIST / "brand" / "smilecure-lifestyle-glow.png",
+        "smilecure-icon.png": DIST / "brand" / "smilecure-icon.png",
+        "smilecure-icon-care.png": DIST / "brand" / "smilecure-icon-care.png",
+    }
     for name in FILES:
-        src, dst = ADDONS / name, DIST / name
+        src = ADDONS / name
+        dst = brand_map.get(name, DIST / name)
         if src.exists() and (not dst.exists() or not filecmp.cmp(src, dst, shallow=False)):
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             changed.append(name)
     html = index.read_text()

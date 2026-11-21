@@ -20,6 +20,7 @@ export const PATIENT_HOST = 'www.remediumlabs.in';
 export const COLLECT_HOST = 'collect.remediumlabs.in';
 export const PARTNERS_HOST = 'partners.remediumlabs.in';
 export const LABTECH_HOST = 'labtech.e-remedium.in';
+export const REACH_HOST = 'reach.e-remedium.in';
 export const PHLEBOFIRST_HOST = 'phlebofirst.com';
 export const TELEPORTER_HOST = 'teleports.in';
 /** Uber Doc apex host. Domain not decided yet: set it here (or VITE_UBERDOC_HOST at build time); empty = preview only. */
@@ -46,7 +47,7 @@ const HOST_PORTAL: Record<string, PortalKind> = {
   [COLLECT_HOST]: 'collect',
   [COLLECT_LEGACY]: 'collect',
   [LABTECH_HOST]: 'labtech',
-  'reach.e-remedium.in': 'sales',
+  [REACH_HOST]: 'sales',
   'career.e-remedium.in': 'careers',
   'career.smilecurelifestyle.in': 'careers',
   'people.e-remedium.in': 'people',
@@ -302,6 +303,32 @@ export function teleporterAppPathFor(pathname: string): string | null {
   return hit ? hit[1] : null;
 }
 
+export function isPeoplePortalHost(hostname = currentHostname()) {
+  return getPortalKind(hostname) === 'people';
+}
+
+export function isSalesPortalHost(hostname = currentHostname()) {
+  return getPortalKind(hostname) === 'sales';
+}
+
+export function isAgentsPortalHost(hostname = currentHostname()) {
+  return getPortalKind(hostname) === 'agents';
+}
+
+/** Staff hosts that must not render the patient Labs public chrome (header/footer/cart). */
+export function isIsolatedStaffLoginHost(hostname = currentHostname()) {
+  const kind = getPortalKind(hostname);
+  return (
+    kind === 'b2b' ||
+    kind === 'collect' ||
+    kind === 'labtech' ||
+    kind === 'people' ||
+    kind === 'sales' ||
+    kind === 'agents' ||
+    kind === 'careers'
+  );
+}
+
 export function isStaffPortalHost(hostname = currentHostname()) {
   const kind = getPortalKind(hostname);
   return (
@@ -334,16 +361,12 @@ export function careersPortalBaseUrl() {
   return `https://${PATIENT_LEGACY}/careers`;
 }
 
-/** Path-mounted on www until people.e-remedium.in DNS exists. */
+/** Canonical People HRMS origin (people.e-remedium.in). */
 export function peoplePortalBaseUrl() {
-  if (typeof window !== 'undefined') {
-    const { protocol, host } = window.location;
-    if (host && !host.startsWith('people.')) {
-      return `${protocol}//${host}/people`;
-    }
-    return `${protocol}//${PATIENT_LEGACY}/people`;
+  if (typeof window !== 'undefined' && DEV_HOSTS.has(currentHostname())) {
+    return `${window.location.origin}/people`;
   }
-  return `https://${PATIENT_LEGACY}/people`;
+  return `${peoplePortalOrigin()}`;
 }
 
 /** Path-mounted BA / MLM agents portal on www (agents.e-remedium.in later). */
@@ -406,10 +429,39 @@ function isAlwaysAllowed(pathname: string) {
 }
 
 /** Paths allowed on each staff portal (prefix match). */
+/** Reach / field sales lives only on reach.e-remedium.in — not on www patient hosts. */
+export function isSalesPath(pathname: string) {
+  return pathname === '/sales' || pathname.startsWith('/sales/');
+}
+
+export function reachPortalOrigin() {
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${REACH_HOST}`;
+  }
+  return `https://${REACH_HOST}`;
+}
+
+export const PEOPLE_HOST = 'people.e-remedium.in';
+
+/** People HRMS lives only on people.e-remedium.in — not on www patient hosts. */
+export function isPeoplePath(pathname: string) {
+  return pathname === '/people' || pathname.startsWith('/people/');
+}
+
+export function peoplePortalOrigin() {
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${PEOPLE_HOST}`;
+  }
+  return `https://${PEOPLE_HOST}`;
+}
+
 export function isPathAllowedOnPortal(pathname: string, kind = getPortalKind()): boolean {
   if (kind === 'patient') {
     const host = currentHostname();
     const isolatedPatient = host === PATIENT_HOST || host === 'remediumlabs.in';
+    // Sales portal is Reach-only; People HRMS is people.e-remedium.in only.
+    if (isSalesPath(pathname)) return false;
+    if (isPeoplePath(pathname)) return false;
     if (isolatedPatient) {
       if (pathname.startsWith('/dashboard/phlebotomist') || isPartnerAppPath(pathname)) return false;
       if (LABTECH_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return false;

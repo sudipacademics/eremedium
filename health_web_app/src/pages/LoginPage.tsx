@@ -24,6 +24,8 @@ import {
   isLabtechPortalHost,
   isPatientCanonicalHost,
   isPatientPortalHost,
+  isPeoplePortalHost,
+  isSalesPortalHost,
   isStaffPortalHost,
 } from '../config/portalHosts';
 import { isFranchisee, isLabTechnician, isPatientPortal, isPhlebotomist } from '../auth/roles';
@@ -31,6 +33,7 @@ import { REMEDIUM_BRAND } from '../seo/brandSchema';
 import './home-v2.css';
 import './login-v2.css';
 import './partner-login-v2.css';
+import './staff-portal-login.css';
 
 const PARTNER_REMEMBER_KEY = 'hec.partners.rememberUsr';
 
@@ -62,9 +65,12 @@ export function LoginPage() {
   const partnerHost = isB2bPortalHost();
   const collectHost = isCollectPortalHost();
   const labtechHost = isLabtechPortalHost();
+  const peopleHost = isPeoplePortalHost();
+  const salesHost = isSalesPortalHost();
   const aestheticsHost =
     typeof window !== 'undefined' && window.location.hostname === 'aesthetics.e-remedium.in';
   const passwordFirst = staffHost || aestheticsHost;
+  const dedicatedStaffLogin = peopleHost || salesHost;
   const [mode, setMode] = useState<LoginMode>(passwordFirst ? 'password' : 'otp');
   const [usr, setUsr] = useState('');
   const [pwd, setPwd] = useState('');
@@ -431,6 +437,71 @@ export function LoginPage() {
             <p className="pl2-secure">Secure · Encrypted · For authorized partners only</p>
           </div>
         </aside>
+      </div>
+    );
+  }
+
+  if (dedicatedStaffLogin) {
+    const brand = peopleHost
+      ? { mark: 'PH', title: 'People Management - SLPL', kicker: 'People Management - SLPL', portal: 'people' as const }
+      : { mark: 'RP', title: 'Reach Portal', kicker: 'Reach Portal', portal: 'reach' as const };
+    const dedicatedSubtitle = peopleHost
+      ? 'Employee portal — sign in with your work email and the password issued by HR.'
+      : 'Field sales — sign in with your Reach email and the password issued by your administrator.';
+    const foot = peopleHost
+      ? 'Access is managed by HR in People HRMS → Portal Access.'
+      : 'Access is managed by HR in People HRMS → Portal Access → Reach / Sales.';
+    return (
+      <div className="spl-page" data-portal={brand.portal}>
+        <div className="spl-card">
+          {peopleHost ? (
+            <div className="spl-brand spl-brand-logo">
+              <div className="spl-logo-wrap">
+                <img className="spl-logo" src="/brand/smilecure-lifestyle.png?v=5" alt="Smilecure Lifestyle Private Limited" />
+              </div>
+              <p className="spl-brand-sub">People Management - SLPL</p>
+            </div>
+          ) : (
+            <div className="spl-brand">
+              <div className="spl-brand-mark" aria-hidden>
+                {brand.mark}
+              </div>
+              <span>
+                <strong>{brand.title}</strong>
+                <small>A unit of Smilecure Lifestyle Pvt. Ltd.</small>
+              </span>
+            </div>
+          )}
+          {peopleHost ? null : <p className="spl-kicker">{brand.kicker}</p>}
+          <h1>Sign in</h1>
+          <p className="spl-muted">{dedicatedSubtitle}</p>
+          <form className="spl-form" onSubmit={onPasswordLogin}>
+            <label>
+              Email or username
+              <input value={usr} onChange={(e) => setUsr(e.target.value)} required autoComplete="username" />
+            </label>
+            <PasswordField
+              label="Password"
+              name="password"
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+            {error ? (
+              <p className="spl-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button type="submit" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+            <div className="spl-links">
+              <Link to="/forgot-password">Forgot password?</Link>
+            </div>
+          </form>
+          <p className="spl-foot">{foot}</p>
+        </div>
       </div>
     );
   }

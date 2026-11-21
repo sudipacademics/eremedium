@@ -1,0 +1,292 @@
+/* People HRMS / Reach / Careers — standalone staff login (Care/Ops gate colours). */
+html.pls-auth {
+  --pls-ink: #142033;
+  --pls-muted: #64748b;
+  --pls-line: #d7e3df;
+  --pls-teal: #17a37a;
+  --pls-teal-soft: #e7f7f1;
+  --pls-bg: #0b3a3b;
+  --pls-card: #ffffff;
+}
+
+html.pls-auth body {
+  background: var(--pls-bg) !important;
+}
+
+html.pls-auth .site-header,
+html.pls-auth .site-footer,
+html.pls-auth .site-footer-wrap,
+html.pls-auth .mobile-bottom-nav,
+html.pls-auth .mobile-nav,
+html.pls-auth .header-tools,
+html.pls-auth .layout-public > header,
+html.pls-auth .layout-public > footer,
+html.pls-auth .back-to-top {
+  display: none !important;
+}
+
+html.pls-auth .layout,
+html.pls-auth .layout-public {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, #17a37a33, transparent 40%),
+    linear-gradient(135deg, #0b3a3b, #0e5a52) !important;
+  padding: 0 !important;
+}
+
+html.pls-auth main,
+html.pls-auth .main,
+html.pls-auth .layout-public > div,
+html.pls-auth .home-v2.auth-v2 {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+  margin: 0 !important;
+  max-width: none !important;
+  background: transparent !important;
+}
+
+html.pls-auth .auth-shell.hv-card,
+html.pls-auth .hv-card.auth-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: min(460px, 100%);
+  margin: 0 auto;
+  border-radius: 20px;
+  overflow: visible;
+  border: 0;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
+  background: var(--pls-card);
+}
+
+html.pls-auth .auth-visual {
+  display: none !important;
+}
+
+html.pls-auth .auth-panel {
+  padding: 26px 28px 28px !important;
+  overflow: visible !important;
+}
+
+html.pls-auth .auth-kicker {
+  color: var(--pls-teal) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font: 800 11px/1.2 Manrope, 'DM Sans', sans-serif !important;
+}
+
+html.pls-auth .auth-panel h1 {
+  margin: 8px 0 6px;
+  font: 800 22px/1.15 Manrope, 'DM Sans', sans-serif;
+  color: var(--pls-ink);
+}
+
+html.pls-auth .auth-panel .hv-muted,
+html.pls-auth .auth-panel > p {
+  color: var(--pls-muted) !important;
+  font-size: 13.5px;
+}
+
+html.pls-auth .auth-form label {
+  color: var(--pls-ink);
+  font-weight: 600;
+}
+
+html.pls-auth .auth-form input {
+  border-color: #d5e1de !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: var(--pls-ink) !important;
+}
+
+html.pls-auth .hv-btn,
+html.pls-auth .auth-form button[type='submit'] {
+  background: #17a37a !important;
+  border-color: #17a37a !important;
+  border-radius: 10px !important;
+  font-weight: 700;
+  color: #fff !important;
+}
+
+html.pls-auth .auth-trust,
+html.pls-auth .auth-modes {
+  display: none !important;
+}
+
+html.pls-auth .pls-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+html.pls-auth .pls-brand-logo {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Full wordmark — transparent logo sits on the white card, never clipped */
+html.pls-auth .pls-logo-wrap {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 0 2px;
+  width: 100%;
+  overflow: visible;
+}
+
+html.pls-auth .pls-logo {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+html.pls-auth .pls-brand-sub {
+  margin: 0;
+  text-align: center;
+  color: var(--pls-teal);
+  font: 800 11px/1.2 'DM Sans', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+html.pls-auth .pls-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--pls-teal-soft);
+  color: var(--pls-teal);
+  font: 800 14px/1 Manrope, sans-serif;
+}
+
+html.pls-auth .pls-brand strong {
+  display: block;
+  font: 800 15px/1.2 Manrope, sans-serif;
+  color: var(--pls-ink);
+}
+
+html.pls-auth .pls-brand small {
+  display: block;
+  color: var(--pls-muted);
+  font: 500 12px/1.3 'DM Sans', sans-serif;
+}
+
+html.pls-auth .pls-foot {
+  margin-top: 16px;
+  color: var(--pls-muted);
+  font: 500 12px/1.4 'DM Sans', sans-serif;
+  text-align: center;
+}
+
+html.pls-auth .auth-links a,
+html.pls-auth .hv-link {
+  color: var(--pls-teal) !important;
+}
+
+html.pls-auth.pls-reach {
+  --pls-bg: #0b3a3b;
+  --pls-teal: #0d9488;
+}
+
+/* Aesthetic clinic console login */
+html.pls-auth.pls-aesthetics {
+  --pls-bg: #0f3d3a;
+  --pls-teal: #0f766e;
+  --pls-teal-soft: #ccfbf1;
+}
+
+html.pls-auth.pls-aesthetics .pls-logo {
+  max-width: 280px;
+}
+
+html.pls-auth.pls-aesthetics .auth-modes,
+html.pls-auth.pls-aesthetics .auth-trust,
+html.pls-auth.pls-aesthetics .auth-google,
+html.pls-auth.pls-aesthetics .oauth-google,
+html.pls-auth.pls-aesthetics .btn-google,
+html.pls-auth.pls-aesthetics button.btn-google,
+html.pls-auth.pls-aesthetics button.auth-mode,
+html.pls-auth.pls-aesthetics .auth-or,
+html.pls-auth.pls-aesthetics .auth-divider {
+  display: none !important;
+}
+
+html.pls-auth .btn-google,
+html.pls-auth button.btn-google,
+html.pls-auth button.auth-mode {
+  display: none !important;
+}
+
+/* People sidebar — Smilecure logo on white plate (replaces Remedium HRMS mark) */
+aside.hrms-sidebar a.hrms-brand.pls-hrms-brand,
+.pls-hrms-brand {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  text-decoration: none !important;
+  padding: 10px 10px 8px !important;
+}
+
+/* Only hide native Remedium mark after Smilecure plate is mounted */
+aside.hrms-sidebar a.hrms-brand.pls-hrms-brand .hrms-brand-mark,
+aside.hrms-sidebar a.hrms-brand.pls-hrms-brand > div:not(.pls-hrms-logo-plate) {
+  display: none !important;
+}
+
+/* Clean white plate — override .hrms-brand span { opacity:.7 } (that was the smoky grey) */
+.pls-hrms-brand .pls-hrms-logo-plate {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  min-height: 72px;
+  background: #ffffff !important;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  overflow: hidden;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+.pls-hrms-brand .pls-hrms-logo {
+  display: block !important;
+  width: 100% !important;
+  max-width: 300px !important;
+  min-height: 48px;
+  height: auto !important;
+  margin: 0 auto;
+  background: transparent !important;
+  border-radius: 0;
+  padding: 0;
+  box-sizing: border-box;
+  object-fit: contain;
+  object-position: center;
+  visibility: visible !important;
+  opacity: 1 !important;
+  image-rendering: auto;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  box-shadow: none !important;
+}
+
+.pls-hrms-brand .pls-hrms-label {
+  color: rgba(255, 255, 255, 0.72);
+  font: 700 11px/1.2 'DM Sans', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 2px;
+}

@@ -6,7 +6,7 @@
 .pa-ms-btn { width: 100%; min-height: 42px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; text-align: left; border: 1px solid #d5e3e8; border-radius: 10px; background: #fff; padding: 6px 34px 6px 10px; cursor: pointer; position: relative; font: inherit; }
 .pa-caret { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #64748b; }
 .pa-chip { background: #e6f4f1; color: #0f766e; border-radius: 999px; padding: 3px 10px; font-size: 0.78rem; font-weight: 700; }
-.pa-menu { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14); padding: 6px; display: grid; gap: 2px; max-height: 300px; overflow: auto; }
+.pa-menu { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14); padding: 6px; display: grid; gap: 2px; max-height: min(420px, 55vh); overflow: auto; }
 .pa-menu label { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 500; }
 .pa-menu label:hover { background: #f1f5f9; }
 .pa-menu label.off { opacity: 0.5; cursor: not-allowed; }
@@ -76,9 +76,24 @@
 .aea-shell.pa-hrp-on .aea-nav .is-active:not([data-pa-hrp]) { background: transparent; color: rgba(244, 255, 252, 0.92); }
 .pa-hrp { padding: 0; }
 .pa-hrp-frame { display: block; width: 100%; height: calc(100vh - 72px); border: 0; background: #f4f8f8; }
-html.pa-embed .hrms-sidebar, html.pa-embed .hrms-topbar, html.pa-embed .mobile-bottom-nav, html.pa-embed .hrms-backdrop { display: none !important; }
-html.pa-embed .hrms-main-wrap { margin-left: 0 !important; min-height: 0 !important; }
-html.pa-embed .hrms-app { min-height: 0 !important; }
+/* Embedded self HR workspace (CRM / Ops / Care iframe) — hide People Management chrome */
+html.pa-embed .hrms-sidebar,
+html.pa-embed aside.hrms-sidebar,
+html.pa-embed .hrms-topbar,
+html.pa-embed .mobile-bottom-nav,
+html.pa-embed .hrms-backdrop,
+html.pa-embed .hrms-sidebar[hidden] { display: none !important; width: 0 !important; min-width: 0 !important; padding: 0 !important; border: 0 !important; }
+html.pa-embed .hrms-main-wrap { margin-left: 0 !important; min-height: 0 !important; width: 100% !important; max-width: 100% !important; }
+html.pa-embed .hrms-app { min-height: 0 !important; display: block !important; }
+html.pa-embed .hrms-content { max-width: 1120px; margin: 0 auto; }
+.pa-branches { border: 1px solid #dbe7ea; border-radius: 10px; background: #fff; padding: 10px 12px; display: grid; gap: 8px; }
+.pa-branches-head { display: grid; gap: 2px; }
+.pa-branches-head small { color: #475569; font-size: 0.78rem; }
+.pa-branch-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.pa-branch { display: inline-flex !important; align-items: center; gap: 6px; border: 1px solid #d5e3e8; border-radius: 999px; padding: 6px 12px; font-size: 0.84rem; font-weight: 600; cursor: pointer; background: #fff; }
+.pa-branch.on { border-color: #0f766e; background: #e6f4f1; color: #0f766e; }
+.pa-branch input { width: auto !important; margin: 0; }
+.pa-branch small { color: #64748b; font-weight: 500; }
 .mp2-page.pa-ws-on > :not(.pa-ws) { display: none !important; }
 .pa-ws-frame { display: block; width: 100%; min-height: 480px; border: 0; border-radius: 14px; background: #f4f8f8; }
 .pa-embed-tabs { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; max-width: 1120px; margin: 0 auto; padding: 18px 28px 0; box-sizing: border-box; font-family: "DM Sans", "Segoe UI", sans-serif; }

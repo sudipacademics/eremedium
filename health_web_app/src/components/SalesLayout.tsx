@@ -15,8 +15,7 @@ export function SalesLayout() {
 
   const mobileNavItems = useMemo((): MobileNavItem[] => {
     return [
-      { type: 'link', to: '/sales', label: 'Portal', end: true },
-      { type: 'link', to: '/sales/profile', label: 'Profile' },
+      { type: 'link', to: '/sales', label: 'Dashboard', end: true },
       { type: 'link', to: '/sales/leads', label: 'Leads' },
       { type: 'link', to: '/sales/visit', label: 'Log visit' },
       { type: 'link', to: '/sales/onboard', label: 'Onboard' },
@@ -27,7 +26,7 @@ export function SalesLayout() {
       { type: 'link', to: '/sales/b2b-sales', label: 'B2B Sales' },
       { type: 'link', to: '/sales/reports', label: 'Closing reports' },
       { type: 'link', to: '/sales/map', label: 'Team map' },
-      { type: 'link', to: '/dashboard/hr', label: 'HR' },
+      { type: 'link', to: '/sales/my-hr', label: 'My HR Profile' },
       { type: 'link', to: '/', label: 'Consumer home' },
       { type: 'button', label: 'Logout', onClick: logout },
     ];
@@ -56,16 +55,15 @@ export function SalesLayout() {
           ) : null}
           <div>
             <Link to="/sales" className="brand">
-              Field sales · MR tracker
+              Reach Portal
             </Link>
             <p className="muted">{user.full_name || rep}</p>
           </div>
         </div>
         <nav className="b2b-nav b2b-nav-desktop" aria-label="Sales">
           <NavLink to="/sales" end>
-            Portal
+            Dashboard
           </NavLink>
-          <NavLink to="/sales/profile">Profile</NavLink>
           <NavLink to="/sales/leads">Leads</NavLink>
           <NavLink to="/sales/visit">Log visit</NavLink>
           <NavLink to="/sales/onboard">Onboard</NavLink>
@@ -76,7 +74,7 @@ export function SalesLayout() {
           <NavLink to="/sales/b2b-sales">B2B Sales</NavLink>
           <NavLink to="/sales/reports">Closing</NavLink>
           <NavLink to="/sales/map">Team map</NavLink>
-          <NavLink to="/dashboard/hr">HR</NavLink>
+          <NavLink to="/sales/my-hr">My HR Profile</NavLink>
           <button type="button" className="btn-link" onClick={logout}>
             Logout
           </button>

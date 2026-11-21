@@ -10,6 +10,13 @@
   var USER_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>';
   var root = document.documentElement;
   root.classList.add('ops-locked');
+  /* Embedded in the Aesthetic console (Products → Inventory / Purchase & Stock): only the aesthetic stock page,
+     signed in with the console's session, for staff with Aesthetic Backend → Products access. */
+  var EMBED_PARENTS = ['https://aesthetics.e-remedium.in'];
+  var EMBED_PATH = '/inventory/aesthetic';
+  var EMBED = window.self !== window.top && /[?&]embed=1(&|$)/.test(location.search) && location.pathname.indexOf(EMBED_PATH) === 0;
+  var embedWaiting = EMBED;
+  if (EMBED) root.classList.add('ops-embed');
 
   var style = document.createElement('style');
   style.textContent = [
@@ -75,6 +82,10 @@
   }
 
   function showLogin(message) {
+    if (EMBED) {
+      screen('<h1>Aesthetic inventory</h1><p>' + esc(message || 'Sign in to the Aesthetic console again to open the inventory.') + '</p>');
+      return;
+    }
     var el = screen(
       '<h1>Operations Portal</h1><p>Sign in with your Smilecure staff login.</p>' +
       '<form class="og-form" style="display:grid;gap:12px" autocomplete="on">' +
@@ -143,7 +154,15 @@
     return best;
   }
 
+  function aestheticAllowed(p) {
+    var mods = p && p.portal_modules && p.portal_modules.aesthetics;
+    if (mods && mods.Products) return mods.Products.level !== 'none';
+    var roles = (p && p.roles) || [];
+    return roles.indexOf('Aesthetic Staff') >= 0 || roles.indexOf('Aesthetic Manager') >= 0;
+  }
+
   function allowed(path) {
+    if (EMBED) return String(path || '').split('?')[0].indexOf(EMBED_PATH) === 0;
     if (!perms || perms.exempt) return true;
     var mods = opsModules();
     var m = moduleOf(path);
@@ -161,6 +180,13 @@
 
   function decorate() {
     if (!perms) return;
+    if (EMBED) {
+      if (location.pathname.indexOf(EMBED_PATH) !== 0) {
+        history.replaceState(null, '', EMBED_PATH + '?embed=1');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
     hrLink();
     document.querySelectorAll('.sidebar a[href]:not([data-og-hr])').forEach(function (a) {
       var hide = !allowed(a.getAttribute('href'));
@@ -216,7 +242,7 @@
     if (!panel) {
       panel = document.createElement('div');
       panel.className = 'og-hr';
-      panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1"></iframe>';
+      panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
       main.appendChild(panel);
     }
     var sidebar = document.querySelector('.sidebar');
@@ -269,15 +295,39 @@
     decorate();
   }
 
+  window.addEventListener('message', function (e) {
+    if (!EMBED || EMBED_PARENTS.indexOf(e.origin) < 0 || e.source !== window.parent || !e.data || e.data.type !== 'ops-embed-session') return;
+    var s = e.data.session || {};
+    if (!s.sid) return;
+    var cur = saved();
+    embedWaiting = false;
+    if (!cur || cur.sid !== s.sid) {
+      localStorage.setItem(KEY, JSON.stringify({ sid: String(s.sid), user: String(s.user || ''), full_name: String(s.full_name || s.user || ''), roles: s.roles || [] }));
+      perms = null;
+    }
+    check();
+  });
+
+  function askParent() {
+    EMBED_PARENTS.forEach(function (origin) {
+      try { window.parent.postMessage({ type: 'ops-embed-ready' }, origin); } catch (e) {}
+    });
+  }
+
   function check() {
     var s = saved();
+    if (EMBED && embedWaiting) {
+      screen('<h1>Aesthetic inventory</h1><p>Connecting to the Aesthetic console…</p>');
+      return;
+    }
     if (!s || !s.sid) { showLogin(); return; }
     post('clinical_people_access.get_my_portal_permissions', { sid: s.sid }).then(function (d) {
       perms = d || {};
       perms.full_name = perms.full_name || s.full_name;
       var mods = opsModules();
       var open = mods && Object.keys(mods).some(function (m) { return mods[m].level !== 'none'; });
-      if (perms.exempt || open) unlock();
+      if (perms.exempt || (EMBED ? open || aestheticAllowed(perms) : open)) unlock();
+      else if (EMBED) screen('<h1>No access</h1><p>' + esc(perms.full_name || 'This login') + ' has no access to aesthetic stock. Ask HR to give Aesthetic Backend → Products in Portal Access.</p>');
       else showDenied(perms.full_name);
     }).catch(function (ex) {
       if (ex.status === 401 || ex.status === 403) {
@@ -291,6 +341,14 @@
   }
 
   function start() {
+    if (EMBED) {
+      askParent();
+      setTimeout(function () {
+        if (!embedWaiting) return;
+        embedWaiting = false;
+        check();
+      }, 4000);
+    }
     check();
     new MutationObserver(function () { if (perms && !root.classList.contains('ops-locked')) decorate(); })
       .observe(document.body, { childList: true, subtree: true });

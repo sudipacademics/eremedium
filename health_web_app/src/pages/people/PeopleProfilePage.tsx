@@ -116,7 +116,18 @@ function readGps(): Promise<{ latitude: number; longitude: number }> {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      (err) => reject(new Error(err.message || 'Unable to read GPS location')),
+      (err) => {
+        const msg = err && err.message ? String(err.message) : '';
+        if (/permissions policy/i.test(msg)) {
+          reject(
+            new Error(
+              'Location is blocked in this view. Open Attendance on people.e-remedium.in (not inside another portal iframe), allow location when prompted, then try again.',
+            ),
+          );
+          return;
+        }
+        reject(new Error(msg || 'Unable to read GPS location'));
+      },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
     );
   });
