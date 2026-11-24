@@ -338,6 +338,45 @@ def code128_svg(data, module=2, height=50, quiet=10, show_text=True, font_size=1
 	)
 
 
+def code128_png_data_uri(data, module=2, height=40, quiet=10):
+	"""1-bit Code 128 PNG as a data URI — wkhtmltopdf paints this reliably (SVG often blank)."""
+	import struct
+	import zlib
+
+	modules = code128_modules(data)
+	module = max(1, cint(module) or 2)
+	height = max(8, cint(height) or 40)
+	quiet = max(0, cint(quiet) or 0)
+	bits = ("0" * quiet) + modules + ("0" * quiet)
+	width = len(bits) * module
+	# Expand modules horizontally, then vertically into raw RGB rows.
+	row_rgb = bytearray()
+	for bit in bits:
+		pix = b"\x00\x00\x00" if bit == "1" else b"\xff\xff\xff"
+		row_rgb.extend(pix * module)
+	raw = b""
+	stride = b"\x00" + bytes(row_rgb)  # filter=None per scanline
+	for _ in range(height):
+		raw += stride
+
+	def _chunk(tag, payload):
+		return (
+			struct.pack(">I", len(payload))
+			+ tag
+			+ payload
+			+ struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+		)
+
+	ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit RGB
+	png = (
+		b"\x89PNG\r\n\x1a\n"
+		+ _chunk(b"IHDR", ihdr)
+		+ _chunk(b"IDAT", zlib.compress(raw, 9))
+		+ _chunk(b"IEND", b"")
+	)
+	return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
 # ---------------------------------------------------------------------------
 # Labels
 # ---------------------------------------------------------------------------

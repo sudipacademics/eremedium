@@ -158,10 +158,64 @@ def _allocation_covers_dates(employee, leave_type, from_date, to_date):
     return rows[0] if rows else None
 
 
+def _resolve_department_link(department, company=None):
+    """Map a department label/name to a real Department document name."""
+    department = (department or "").strip()
+    if not department:
+        return None
+    if frappe.db.exists("Department", department):
+        return department
+    filters = {"department_name": department}
+    if company:
+        name = frappe.db.get_value("Department", {**filters, "company": company}, "name")
+        if name:
+            return name
+    name = frappe.db.get_value("Department", filters, "name")
+    if name:
+        return name
+    # Abbreviation-style leftovers like "CRM" → "CRM - RESLD"
+    if company:
+        rows = frappe.get_all(
+            "Department",
+            filters={"company": company, "department_name": department},
+            pluck="name",
+            limit=1,
+        )
+        if rows:
+            return rows[0]
+    return None
+
+
+def fix_employee_department_link(employee):
+    """Repair Employee.department when it stores a label (e.g. CRM) instead of the link name (CRM - RESLD).
+
+    Leave Allocation / Leave Application copy department from Employee and fail Link validation otherwise.
+    """
+    if not employee or not frappe.db.exists("Employee", employee):
+        return None
+    row = frappe.db.get_value("Employee", employee, ["department", "company"], as_dict=True) or {}
+    current = (row.get("department") or "").strip()
+    if not current:
+        return None
+    if frappe.db.exists("Department", current):
+        return current
+    resolved = _resolve_department_link(current, row.get("company"))
+    frappe.db.set_value(
+        "Employee",
+        employee,
+        "department",
+        resolved,
+        update_modified=False,
+    )
+    return resolved
+
+
 def ensure_leave_allocation(employee, leave_type, from_date, to_date, leaves=None):
     """Create a submitted Leave Allocation covering from_date..to_date if missing."""
     if not frappe.db.exists("DocType", "Leave Allocation"):
         return None
+
+    fix_employee_department_link(employee)
 
     from_date = getdate(from_date)
     to_date = getdate(to_date)
@@ -173,6 +227,8 @@ def ensure_leave_allocation(employee, leave_type, from_date, to_date, leaves=Non
         leaves = flt(
             frappe.db.get_value("Leave Type", leave_type, "max_leaves_allowed") or 12
         )
+    if leaves <= 0:
+        leaves = 12
 
     company = _default_company()
     doc = frappe.get_doc(
@@ -186,24 +242,74 @@ def ensure_leave_allocation(employee, leave_type, from_date, to_date, leaves=Non
             "company": company,
         }
     )
+    doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)
     try:
+        doc.flags.ignore_permissions = True
         doc.submit()
     except Exception:
         frappe.log_error(title="leave_allocation_submit", message=frappe.get_traceback())
-    return doc.name
+        # Draft allocations do not satisfy Leave Application validation — cancel and surface a clear error.
+        try:
+            if doc.name and frappe.db.exists("Leave Allocation", doc.name):
+                frappe.delete_doc("Leave Allocation", doc.name, force=1, ignore_permissions=True)
+        except Exception:
+            pass
+        frappe.throw(
+            _("Could not create a leave balance for {0}. Ask HR to allocate {0} for this year, then retry.").format(
+                leave_type
+            )
+        )
+    covered = _allocation_covers_dates(employee, leave_type, from_date, to_date)
+    if not covered:
+        frappe.throw(
+            _("Leave balance for {0} is still missing after allocation. Ask HR to check Leave Allocation.").format(
+                leave_type
+            )
+        )
+    return covered
 
 
-def ensure_leave_allocations_for_staff(year=None):
-    """Seed calendar-year leave allocations for linked field staff."""
+DEFAULT_LEAVE_TYPES = ("Casual Leave", "Sick Leave", "Privilege Leave")
+
+
+def ensure_leave_allocations_for_employees(employee_ids, year=None, leave_types=None):
+    """Ensure calendar-year leave allocations exist for the given employees."""
     if not frappe.db.exists("DocType", "Leave Allocation"):
         return []
-
     year = cint(year) or getdate(today()).year
     period_start = getdate(f"{year}-01-01")
     period_end = getdate(f"{year}-12-31")
+    types = [t for t in (leave_types or DEFAULT_LEAVE_TYPES) if frappe.db.exists("Leave Type", t)]
     created = []
+    for employee in employee_ids or []:
+        if not employee or not frappe.db.exists("Employee", employee):
+            continue
+        fix_employee_department_link(employee)
+        for leave_type in types:
+            name = ensure_leave_allocation(employee, leave_type, period_start, period_end)
+            if name:
+                created.append({"employee": employee, "leave_type": leave_type, "allocation": name})
+    return created
 
+
+def ensure_leave_allocations_for_all_employees(year=None):
+    """Seed / top-up leave allocations for every Active employee."""
+    if not frappe.db.exists("DocType", "Leave Allocation"):
+        return []
+    ids = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit_page_length=5000)
+    created = ensure_leave_allocations_for_employees(ids, year=year)
+    frappe.db.commit()
+    return created
+
+
+def ensure_leave_allocations_for_staff(year=None):
+    """Seed calendar-year leave allocations for linked field staff + all active employees."""
+    created = ensure_leave_allocations_for_all_employees(year=year)
+    # Keep demo field-staff seed for local/dev sites that may not use Active Employee status yet.
+    year = cint(year) or getdate(today()).year
+    period_start = getdate(f"{year}-01-01")
+    period_end = getdate(f"{year}-12-31")
     for email in (
         "phlebotomist@health.local",
         "franchise_hub@health.local",
@@ -217,12 +323,9 @@ def ensure_leave_allocations_for_staff(year=None):
         for leave_type in ("Casual Leave", "Sick Leave"):
             if not frappe.db.exists("Leave Type", leave_type):
                 continue
-            name = ensure_leave_allocation(
-                employee, leave_type, period_start, period_end
-            )
+            name = ensure_leave_allocation(employee, leave_type, period_start, period_end)
             if name:
                 created.append({"employee": employee, "leave_type": leave_type, "allocation": name})
-
     frappe.db.commit()
     return created
 
@@ -415,10 +518,13 @@ def submit_leave_application(user, leave_type, from_date, to_date, description=N
     if to_date < from_date:
         frappe.throw(_("To date cannot be before from date"))
 
-    if not _allocation_covers_dates(employee, leave_type, from_date, to_date):
-        year_start = getdate(f"{from_date.year}-01-01")
-        year_end = getdate(f"{from_date.year}-12-31")
-        ensure_leave_allocation(employee, leave_type, year_start, year_end)
+    # Employee.department sometimes stores the label ("CRM") instead of the link ("CRM - RESLD").
+    fix_employee_department_link(employee)
+
+    # Always ensure a submitted calendar-year allocation before HRMS validates the application.
+    year_start = getdate(f"{from_date.year}-01-01")
+    year_end = getdate(f"{from_date.year}-12-31")
+    ensure_leave_allocation(employee, leave_type, year_start, year_end)
 
     # HRMS: Leave Application is submitted only when Approved/Rejected.
     # ESS creates Open applications for manager approval in Desk.
@@ -440,7 +546,32 @@ def submit_leave_application(user, leave_type, from_date, to_date, description=N
             payload["leave_approver"] = leave_approver
 
     doc = frappe.get_doc(payload)
-    doc.insert(ignore_permissions=True)
+    doc.flags.ignore_permissions = True
+    try:
+        doc.insert(ignore_permissions=True)
+    except frappe.ValidationError:
+        raise
+    except Exception:
+        frappe.log_error(title="submit_leave_application_insert", message=frappe.get_traceback())
+        frappe.throw(_("Could not save leave application. Please try again or contact HR."))
+    # People HRMS two-step review: employee submit → reporting manager → HR.
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase90_people_hrms import (
+            ensure_leave_review_fields,
+        )
+
+        if ensure_leave_review_fields():
+            doc.reload()
+            patch = {"people_leave_stage": "Manager Review"}
+            if doc.meta.has_field("people_manager_decision"):
+                patch["people_manager_decision"] = None
+            if doc.meta.has_field("people_original_from"):
+                patch["people_original_from"] = from_date
+            if doc.meta.has_field("people_original_to"):
+                patch["people_original_to"] = to_date
+            doc.db_set(patch)
+    except Exception:
+        frappe.log_error(title="people_leave_stage_on_submit", message=frappe.get_traceback())
     frappe.db.commit()
     return serialize_leave_application(doc)
 

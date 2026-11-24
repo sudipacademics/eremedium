@@ -23,9 +23,61 @@ from health_ecosystem_core.health_ecosystem_core.api import (
 )
 
 CHROME_TEMPLATES = {
-    "nabl": {"label": "With NABL Header", "chrome_mode": "nabl"},
-    "non_nabl": {"label": "With Non-NABL Header", "chrome_mode": "non_nabl"},
-    "none": {"label": "Without Header/Footer", "chrome_mode": "none"},
+    "with_header": {
+        "label": "With Header",
+        "chrome_mode": "with_header",
+        "brand": "remedium",
+        "format": "with_header",
+    },
+    "without_header": {
+        "label": "Without Header",
+        "chrome_mode": "without_header",
+        "brand": "remedium",
+        "format": "without_header",
+    },
+    "nabl": {"label": "With Header (NABL pad)", "chrome_mode": "nabl", "brand": "remedium", "format": "with_header"},
+    "non_nabl": {
+        "label": "With Header (Non-NABL pad)",
+        "chrome_mode": "non_nabl",
+        "brand": "remedium",
+        "format": "non_nabl",
+    },
+    "none": {
+        "label": "Without Header",
+        "chrome_mode": "none",
+        "brand": "remedium",
+        "format": "without_header",
+    },
+    "remedium_with_header": {
+        "label": "Remedium Lab · With Header & Footer",
+        "chrome_mode": "remedium_with_header",
+        "brand": "remedium",
+        "format": "with_header",
+    },
+    "remedium_without_header": {
+        "label": "Remedium Lab · Without Header & Footer",
+        "chrome_mode": "remedium_without_header",
+        "brand": "remedium",
+        "format": "without_header",
+    },
+    "slpl_with_header": {
+        "label": "SLPL Lab · With Header & Footer",
+        "chrome_mode": "slpl_with_header",
+        "brand": "slpl",
+        "format": "with_header",
+    },
+    "slpl_non_nabl": {
+        "label": "SLPL Lab · With Non-NABL Header",
+        "chrome_mode": "slpl_non_nabl",
+        "brand": "slpl",
+        "format": "non_nabl",
+    },
+    "slpl_without_header": {
+        "label": "SLPL Lab · Without Header & Footer",
+        "chrome_mode": "slpl_without_header",
+        "brand": "slpl",
+        "format": "without_header",
+    },
 }
 
 DEFAULT_PATIENT_PORTAL = "https://www.remediumlabs.in"
@@ -176,33 +228,71 @@ def _audit(journey_id, message, lab_report=None):
 
 
 def build_authorized_report_pdf(journey_id, chrome_mode="nabl"):
-    """Render a fresh PDF from authorized patient/test data and the selected chrome."""
+    """Render a fresh PDF from authorized patient/test data and the selected chrome.
+
+    With Header: Page Management letterhead (Remedium with_header = NABL pad,
+    Remedium non_nabl = Non-NABL pad) chosen from Test Master ``is_nabl``.
+    Without Header: blank bands for pre-printed paper.
+    """
 
     from health_ecosystem_core.health_ecosystem_core.clinical_phase6 import render_branded_lab_report_html
-    from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import journey_pdf_payload
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import (
+        _existing_lab_report,
+        journey_pdf_payload,
+    )
     from health_ecosystem_core.health_ecosystem_core.clinical_report_format import (
         html_to_lab_report_pdf,
         render_remedium_lab_report_html,
+        resolve_remedium_report_chrome,
+    )
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        parse_chrome_to_layout,
     )
 
-    mode = normalize_chrome_mode(chrome_mode)
     payload = journey_pdf_payload(journey_id)
-    letterhead_plain = 1 if mode == "none" else 0
+    lab_report = None
+    trf_id = payload.get("trf_id")
+    if trf_id:
+        lab_report = _existing_lab_report(trf_id)
+    mode = resolve_remedium_report_chrome(
+        requested=chrome_mode,
+        lab_report=lab_report,
+        payload=payload.get("nabl_report") or payload,
+    )
+    # HTML body chrome only understands classic modes; PDF uses Page Management layouts.
+    html_mode = mode
+    if mode.endswith("_without_header") or mode == "none":
+        html_mode = "remedium_without_header"
+    elif mode == "non_nabl" or mode.endswith("_non_nabl"):
+        html_mode = "non_nabl"
+    elif mode in ("nabl", "with_header") or mode.endswith("_with_header"):
+        html_mode = "nabl"
+    letterhead_plain = 1 if html_mode.endswith("_without_header") or html_mode == "none" else 0
     if payload.get("nabl_report"):
         html = render_remedium_lab_report_html(
             payload["nabl_report"],
             letterhead_plain=letterhead_plain,
-            chrome_mode=mode,
+            chrome_mode=html_mode,
             for_pdf=1,
         )
     else:
-        html = render_branded_lab_report_html(payload, chrome_mode=mode)
+        html = render_branded_lab_report_html(payload, chrome_mode=html_mode)
     if not html:
         frappe.throw(_("Could not generate report HTML"))
-    pdf_content = html_to_lab_report_pdf(html, chrome_mode=mode)
+    brand = "slpl" if str(mode).startswith("slpl") else "remedium"
+    # Always stamp from Report Page Management for the resolved chrome (NABL / Non-NABL / blank).
+    page_layout = parse_chrome_to_layout(mode, brand=brand)
+    pdf_content = html_to_lab_report_pdf(
+        html, chrome_mode=mode, page_layout=page_layout, brand=brand
+    )
     if not pdf_content:
         frappe.throw(_("PDF generation returned empty output"))
-    label = CHROME_TEMPLATES.get(mode, {}).get("label", mode)
+    if mode == "non_nabl":
+        label = "With Header · Non-NABL pad (Test Master)"
+    elif mode == "nabl":
+        label = "With Header · NABL pad (Test Master)"
+    else:
+        label = CHROME_TEMPLATES.get(mode, {}).get("label") or mode
     fname = f"Lab_Report_{journey_id}_{mode}.pdf"
     return pdf_content, fname, mode, label
 
@@ -238,21 +328,35 @@ def download_authorized_report_pdf(journey_id=None, template=None, chrome_mode=N
     if not _require_mobile_auth(sid):
         frappe.throw(_("Not authenticated"), frappe.AuthenticationError)
 
-    try:
-        ensure_phase125_report_share(commit=False)
-    except Exception:
-        pass
-
     journey_id = _parse_request_value("journey_id", journey_id)
-    mode = normalize_chrome_mode(_parse_request_value("template", template) or chrome_mode or "nabl")
+    # Operator picks only with/without header. NABL vs Non-NABL pad is resolved
+    # from Test Master inside build_authorized_report_pdf → resolve_remedium_report_chrome.
+    requested = normalize_chrome_mode(
+        _parse_request_value("template", template) or chrome_mode or "with_header"
+    )
+    if requested in ("none", "plain", "without_header", "no_header", "without_header_footer", "headerless"):
+        mode = "remedium_without_header"
+    elif requested.endswith("_without_header"):
+        mode = "remedium_without_header"
+    elif requested in (
+        "with_header",
+        "nabl",
+        "non_nabl",
+        "remedium_non_nabl",
+        "with_nabl",
+        "remedium_with_header",
+        "slpl_with_header",
+        "slpl_non_nabl",
+    ) or requested.endswith("_with_header") or requested.endswith("_non_nabl"):
+        mode = "with_header"
+    else:
+        mode = "with_header"
     journey = _load_journey(journey_id)
     if not journey:
         frappe.throw(_("Journey not found"), frappe.DoesNotExistError)
     assert_report_share_ready(journey)
     if not _can_share_report(journey, staff_only=False):
         frappe.throw(_("Not permitted to download this report"), frappe.PermissionError)
-    if not _is_share_staff() and mode != "nabl":
-        mode = "nabl"
 
     try:
         pdf_content, fname, mode, label = build_authorized_report_pdf(journey.name, chrome_mode=mode)
@@ -289,11 +393,6 @@ def send_authorized_report_whatsapp(journey_id=None):
         return _error(_("Not authenticated"), 401)
     if not _is_share_staff():
         return _error(_("Not authorized to send reports"), 403)
-
-    try:
-        ensure_phase125_report_share(commit=False)
-    except Exception:
-        pass
 
     journey_id = _parse_request_value("journey_id", journey_id)
     journey = _load_journey(journey_id)
@@ -624,7 +723,12 @@ def _ensure_branding_fields():
     frappe.clear_cache(doctype="Lab Report Branding")
 
 
-def _seed_branding_asset(filename, fieldname, stored_name, force=True):
+def _seed_branding_asset(filename, fieldname, stored_name, force=False):
+    """Install a bundled pad only when that banner is still empty.
+
+    force must stay false on the download path. Rewriting remedium-*-header.png
+    on every PDF was putting the old artwork back into Template Management.
+    """
     path = os.path.join(_report_assets_dir(), filename)
     if not os.path.isfile(path):
         return None
@@ -636,9 +740,29 @@ def _seed_branding_asset(filename, fieldname, stored_name, force=True):
     public_path = None
     try:
         public_path = frappe.get_site_path("public", "files", stored_name)
-        os.makedirs(os.path.dirname(public_path), exist_ok=True)
-        with open(public_path, "wb") as fh:
-            fh.write(content)
+    except Exception:
+        public_path = None
+    current = ""
+    try:
+        current = cstr(frappe.db.get_single_value("Lab Report Branding", fieldname) or "").strip()
+    except Exception:
+        current = ""
+    file_exists = bool(public_path and os.path.isfile(public_path))
+    # A saved Template Management / branding URL wins over the bundled pad.
+    if not force and current and current.split("?", 1)[0] != url:
+        return current
+    if not force and file_exists:
+        if not current:
+            try:
+                frappe.db.set_single_value("Lab Report Branding", fieldname, url)
+            except Exception:
+                frappe.log_error(title="phase125_set_branding_field", message=frappe.get_traceback())
+        return current or url
+    try:
+        if public_path:
+            os.makedirs(os.path.dirname(public_path), exist_ok=True)
+            with open(public_path, "wb") as fh:
+                fh.write(content)
     except Exception:
         frappe.log_error(title="phase125_write_public_file", message=frappe.get_traceback())
 

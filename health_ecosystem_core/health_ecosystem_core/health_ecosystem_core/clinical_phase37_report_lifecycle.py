@@ -17,8 +17,19 @@ from health_ecosystem_core.health_ecosystem_core.clinical_phase33_journey_ops im
     JOURNEY_STAFF_ROLES,
 )
 
-REPORT_STAFF_ROLES = JOURNEY_STAFF_ROLES | {"Pathologist"}
-PATHOLOGIST_ACT_ROLES = {"Pathologist", "Health System Admin", "System Manager"}
+REPORT_STAFF_ROLES = JOURNEY_STAFF_ROLES | {
+    "Pathologist",
+    "Lab Manager",
+    "Quality Control Manager",
+}
+# Sign & finalize: Lab Manager + QC Manager (HR LabTech user types) and legacy Pathologist / admins.
+PATHOLOGIST_ACT_ROLES = {
+    "Lab Manager",
+    "Quality Control Manager",
+    "Pathologist",
+    "Health System Admin",
+    "System Manager",
+}
 
 READY_PREFIX = "[PATH-DRAFT]"
 SEND_BACK_PREFIX = "[PATH-SEND-BACK]"
@@ -530,7 +541,7 @@ def pathologist_save_draft(journey_id=None, lab_report=None, remarks=None, sid=N
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
     if not _can_act_pathologist():
-        return _error(_("Only pathologists can save review drafts"), 403)
+        return _error(_("Only Lab Manager or Quality Control Manager can save review drafts"), 403)
 
     lab_report = _parse_request_value("lab_report", lab_report)
     remarks = (_parse_request_value("remarks", remarks) or "").strip()
@@ -568,7 +579,7 @@ def pathologist_send_back(journey_id=None, lab_report=None, reason=None, sid=Non
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
     if not _can_act_pathologist():
-        return _error(_("Only pathologists can send reports back"), 403)
+        return _error(_("Only Lab Manager or Quality Control Manager can send reports back"), 403)
 
     reason = (_parse_request_value("reason", reason) or "").strip()
     if not reason:
@@ -608,7 +619,7 @@ def pathologist_finalize(journey_id=None, lab_report=None, remarks=None, sid=Non
     if not _require_mobile_auth(sid):
         return _error(_("Not authenticated"), 401)
     if not _can_act_pathologist():
-        return _error(_("Only pathologists can sign and finalize reports"), 403)
+        return _error(_("Only Lab Manager or Quality Control Manager can sign and finalize reports"), 403)
 
     lab_report = _parse_request_value("lab_report", lab_report)
     remarks = (_parse_request_value("remarks", remarks) or "").strip()

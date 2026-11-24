@@ -233,20 +233,50 @@ def resolve_parameter_bounds(
 	}
 
 
+def _is_blank_numeric_label(label):
+	"""0-0 and 0.0-0.0 are unset Float defaults, not a biological interval."""
+	text = "".join((label or "").lower().split())
+	if not text:
+		return False
+	head = text.split("/", 1)[0]
+	sep = "–" if "–" in head else "-"
+	if sep not in head:
+		return False
+	left, right = head.split(sep, 1)
+	try:
+		return float(left) == 0 and float(right) == 0
+	except ValueError:
+		return False
+
+
 def format_range_label(bounds, unit=None):
 	if not bounds:
 		return ""
-	if bounds.get("display_label"):
-		return bounds["display_label"]
+	label = (bounds.get("display_label") or "").strip()
+	if label and not _is_blank_numeric_label(label):
+		return label
 	low = bounds.get("normal_min")
 	high = bounds.get("normal_max")
+
+	def _num(value):
+		if value is None or value == "":
+			return None
+		try:
+			return float(value)
+		except (TypeError, ValueError):
+			return None
+
+	lo, hi = _num(low), _num(high)
+	# Child-table Float fields default to 0. Both zeros means "no range entered".
+	if lo == 0 and hi == 0:
+		lo = hi = None
 	unit = (unit or bounds.get("unit") or "").strip()
-	if low is not None and high is not None:
-		return f"{flt(low)}-{flt(high)} {unit}".strip()
-	if low is not None:
-		return f">={flt(low)} {unit}".strip()
-	if high is not None:
-		return f"<{flt(high)} {unit}".strip()
+	if lo is not None and hi is not None:
+		return f"{flt(lo)}-{flt(hi)} {unit}".strip()
+	if lo is not None:
+		return f">={flt(lo)} {unit}".strip()
+	if hi is not None:
+		return f"<{flt(hi)} {unit}".strip()
 	return ""
 
 

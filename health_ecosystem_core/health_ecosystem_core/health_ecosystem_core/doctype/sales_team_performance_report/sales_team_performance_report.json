@@ -1,0 +1,121 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-11-19 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "naming_series",
+    "sales_rep",
+    "activity_date",
+    "title",
+    "doctors_met",
+    "visits_done",
+    "samples_collected",
+    "km_traveled",
+    "location_note",
+    "activity_summary",
+    "attachment_meta"
+  ],
+  "fields": [
+    {
+      "default": "STPR-.#####",
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "STPR-.#####",
+      "reqd": 1
+    },
+    {
+      "fieldname": "sales_rep",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Sales Rep",
+      "options": "Sales Rep Profile",
+      "reqd": 1
+    },
+    {
+      "fieldname": "activity_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Activity Date",
+      "reqd": 1
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Title",
+      "reqd": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "doctors_met",
+      "fieldtype": "Int",
+      "label": "Doctors Met"
+    },
+    {
+      "default": "0",
+      "fieldname": "visits_done",
+      "fieldtype": "Int",
+      "label": "Visits Done"
+    },
+    {
+      "default": "0",
+      "fieldname": "samples_collected",
+      "fieldtype": "Int",
+      "label": "Samples / Orders"
+    },
+    {
+      "default": "0",
+      "fieldname": "km_traveled",
+      "fieldtype": "Float",
+      "label": "KM Traveled"
+    },
+    {
+      "fieldname": "location_note",
+      "fieldtype": "Data",
+      "label": "Area / Location"
+    },
+    {
+      "fieldname": "activity_summary",
+      "fieldtype": "Long Text",
+      "label": "Daily Activity Summary",
+      "reqd": 1
+    },
+    {
+      "fieldname": "attachment_meta",
+      "fieldtype": "Long Text",
+      "label": "Attachment Meta JSON"
+    }
+  ],
+  "module": "Health Ecosystem Core",
+  "name": "Sales Team Performance Report",
+  "naming_rule": "By \"Naming Series\" field",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    },
+    {
+      "role": "Sales Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    },
+    {
+      "role": "Sales Representative",
+      "read": 1,
+      "write": 1,
+      "create": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

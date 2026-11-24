@@ -12,6 +12,7 @@
     "disabled",
     "lis_code",
     "report_category",
+    "is_nabl",
     "nabl_discipline",
     "machine_method",
     "section_collection",
@@ -52,6 +53,15 @@
     },
     {"fieldname": "lis_code", "fieldtype": "Data", "in_list_view": 1, "label": "LIS Machine Code"},
     {"default": "CLINICAL BIOCHEMISTRY", "fieldname": "report_category", "fieldtype": "Data", "in_list_view": 1, "label": "Report Category Heading"},
+    {
+      "default": "0",
+      "description": "Mark this test as NABL-accredited. Used when choosing NABL vs Non-NABL report letterhead.",
+      "fieldname": "is_nabl",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "NABL"
+    },
     {
       "fieldname": "nabl_discipline",
       "fieldtype": "Select",

@@ -238,6 +238,81 @@ def get_whatsapp_franchise_auto_ack_message():
     ).strip()
 
 
+def _crm_service_wa_doc():
+    """Single DocType for CRM Service Meta WhatsApp (separate from Franchise AI number)."""
+    name = "CRM WhatsApp Channel Settings"
+    if not frappe.db.exists("DocType", name):
+        return None
+    try:
+        return frappe.get_single(name)
+    except Exception:
+        return None
+
+
+def get_crm_service_whatsapp_settings():
+    """Return service-channel Meta Cloud settings (enabled, phone id, token, …)."""
+    conf_enabled = frappe.conf.get("crm_service_whatsapp_enabled")
+    conf_phone = cstr(frappe.conf.get("crm_service_whatsapp_phone_number_id") or "").strip()
+    conf_token = cstr(frappe.conf.get("crm_service_whatsapp_access_token") or "").strip()
+    conf_waba = cstr(frappe.conf.get("crm_service_whatsapp_waba_id") or "").strip()
+    conf_sender = cstr(frappe.conf.get("crm_service_whatsapp_sender_number") or "").strip()
+    conf_url = cstr(frappe.conf.get("crm_service_whatsapp_api_url") or "").strip()
+    conf_verify = cstr(frappe.conf.get("crm_service_whatsapp_webhook_verify_token") or "").strip()
+
+    doc = _crm_service_wa_doc()
+    enabled = False
+    phone = conf_phone
+    token = conf_token or None
+    waba = conf_waba
+    sender = conf_sender
+    api_url = conf_url or "https://graph.facebook.com/v26.0"
+    verify = conf_verify
+    if doc:
+        enabled = bool(cint(getattr(doc, "service_enabled", 0)))
+        phone = phone or cstr(getattr(doc, "service_phone_number_id", "") or "").strip()
+        waba = waba or cstr(getattr(doc, "service_waba_id", "") or "").strip()
+        sender = sender or cstr(getattr(doc, "service_sender_number", "") or "").strip()
+        api_url = cstr(getattr(doc, "service_api_url", "") or "").strip() or api_url
+        verify = verify or cstr(getattr(doc, "service_webhook_verify_token", "") or "").strip()
+        if not token:
+            try:
+                token = doc.get_password("service_access_token", raise_exception=False)
+            except Exception:
+                token = None
+    if conf_enabled is not None:
+        enabled = cstr(conf_enabled).strip().lower() in ("1", "true", "yes", "on")
+    elif doc:
+        enabled = bool(cint(getattr(doc, "service_enabled", 0)))
+    configured = bool(phone and token)
+    return {
+        "enabled": enabled and configured,
+        "configured": configured,
+        "provider": "meta",
+        "apiUrl": api_url,
+        "apiKey": token or "",
+        "phoneNumberId": phone or "",
+        "wabaId": waba or "",
+        "senderNumber": sender if not sender or sender.startswith("+") else f"+{sender}",
+        "webhookVerifyToken": verify or "",
+        "channel": "service",
+    }
+
+
+def get_crm_service_whatsapp_access_token():
+    data = get_crm_service_whatsapp_settings()
+    return cstr(data.get("apiKey") or "").strip() or None
+
+
+def get_crm_service_whatsapp_phone_number_id():
+    data = get_crm_service_whatsapp_settings()
+    return cstr(data.get("phoneNumberId") or "").strip() or None
+
+
+def get_crm_service_whatsapp_sender_number():
+    data = get_crm_service_whatsapp_settings()
+    return cstr(data.get("senderNumber") or "").strip() or None
+
+
 def sms_test_mode():
     channel = (get_notification_channel() or "Test").strip().lower()
     if channel in ("", "test", "none"):

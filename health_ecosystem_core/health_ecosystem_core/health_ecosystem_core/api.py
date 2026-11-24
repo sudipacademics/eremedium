@@ -523,6 +523,15 @@ def authenticate_user(usr=None, pwd=None):
     try:
         login_manager = frappe.local.login_manager
         login_manager.authenticate(usr, pwd)
+        from health_ecosystem_core.health_ecosystem_core.clinical_login_2fa import start_challenge
+
+        challenge = start_challenge(
+            login_manager.user,
+            must_change_password=_user_must_change_password(login_manager.user, pwd=pwd),
+            partner=_is_partner_portal_login(),
+        )
+        if challenge is not None:
+            return challenge
         login_manager.post_login()
     except frappe.AuthenticationError:
         return _error(_("Invalid credentials"), 401)
@@ -2794,7 +2803,11 @@ def get_people_hrms_dashboard(sid=None):
         get_people_hrms_dashboard as _dashboard,
     )
 
-    return _success(_dashboard(frappe.session.user, _user_roles()))
+    try:
+        return _success(_dashboard(frappe.session.user, _user_roles()))
+    except Exception:
+        frappe.log_error(title="get_people_hrms_dashboard", message=frappe.get_traceback())
+        return _error(_("Could not load People dashboard. Please refresh and try again."))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -3403,8 +3416,17 @@ def list_people_leave(from_date=None, to_date=None, sid=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def act_people_leave(name=None, action=None, remark=None, sid=None):
-    """Phase 90 — forward / return / approve / reject a leave application."""
+def act_people_leave(
+    name=None,
+    action=None,
+    remark=None,
+    from_date=None,
+    to_date=None,
+    half_day=None,
+    half_day_date=None,
+    sid=None,
+):
+    """Phase 90 — forward / return / approve / reject a leave application (optional date revise)."""
     denied = _require_people_hrms_access(sid)
     if denied:
         return denied
@@ -3413,8 +3435,26 @@ def act_people_leave(name=None, action=None, remark=None, sid=None):
         act_people_leave as _act,
     )
 
+    name = _parse_request_value("name", name)
+    action = _parse_request_value("action", action)
+    remark = _parse_request_value("remark", remark)
+    from_date = _parse_request_value("from_date", from_date)
+    to_date = _parse_request_value("to_date", to_date)
+    half_day = _parse_request_value("half_day", half_day)
+    half_day_date = _parse_request_value("half_day_date", half_day_date)
     try:
-        return _success(_act(_user_roles(), name, action, remark=remark))
+        return _success(
+            _act(
+                _user_roles(),
+                name,
+                action,
+                remark=remark,
+                from_date=from_date,
+                to_date=to_date,
+                half_day=half_day,
+                half_day_date=half_day_date,
+            )
+        )
     except frappe.PermissionError as exc:
         return _error(str(exc), 403)
     except frappe.ValidationError as exc:
@@ -3536,7 +3576,7 @@ def get_people_performance(from_date=None, to_date=None, sid=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def save_people_performance_review(employee=None, period=None, rating=None, remarks=None, sid=None):
+def save_people_performance_review(employee=None, period=None, rating=None, remarks=None, recommendation=None, sid=None):
     """Phase 90 — save the monthly manager rating for an employee."""
     denied = _require_people_hrms_access(sid)
     if denied:
@@ -3547,7 +3587,14 @@ def save_people_performance_review(employee=None, period=None, rating=None, rema
     )
 
     try:
-        row = _save(_user_roles(), employee, period=period, rating=rating, remarks=remarks)
+        row = _save(
+            _user_roles(),
+            employee,
+            period=period,
+            rating=rating,
+            remarks=remarks,
+            recommendation=recommendation,
+        )
         return _success(row, message=_("Rating saved"))
     except frappe.PermissionError as exc:
         return _error(str(exc), 403)
@@ -6025,6 +6072,619 @@ def ffms_archive_field_visit(**kwargs):
         return _error(str(exc) or _("Unable to archive field visit"))
 
 
+def _require_crm_reach_access(sid=None):
+    """CRM Staff/Manager or sales roles may assign leads into REACH."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    roles = set(_user_roles())
+    allowed = {
+        "CRM Staff",
+        "CRM Manager",
+        "Sales Representative",
+        "Sales Manager",
+        "System Manager",
+        "Health System Admin",
+        "HR Manager",
+    }
+    if not (roles & allowed):
+        return _error(_("CRM Backend or REACH access required"), 403)
+    return None
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_reach_reps(sid=None):
+    """Smilecure CRM — list REACH managers / portal users for lead assignment."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import crm_list_reach_reps
+
+        return _success({"reps": crm_list_reach_reps()})
+    except Exception as exc:
+        frappe.log_error(title="list_crm_reach_reps", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list REACH users"))
+
+
+def _list_crm_portal_assignees_rows():
+    """Employees / users who can own CRM work: Portal Access → CRM, or CRM Staff/Manager roles."""
+    import json as _json
+
+    ACCESS_DT = "People Portal Access"
+    out = []
+    seen = set()
+
+    def _add(emp, name, user, designation=""):
+        key = cstr(emp or "") or f"user:{cstr(user)}"
+        if not name or key in seen:
+            return
+        seen.add(key)
+        out.append(
+            {
+                "employee": cstr(emp or ""),
+                "employee_name": cstr(name),
+                "user": cstr(user or ""),
+                "full_name": cstr(name),
+                "designation": cstr(designation or ""),
+            }
+        )
+
+    if frappe.db.exists("DocType", ACCESS_DT):
+        for r in frappe.get_all(
+            ACCESS_DT,
+            filters={"active": 1},
+            fields=["employee", "login_user", "permissions", "portal"],
+            limit_page_length=2000,
+        ):
+            portal = cstr(r.get("portal") or "").strip().lower().replace(" ", "")
+            if portal not in ("crm", "crmportal", "smilecurecrm"):
+                continue
+            emp = cstr(r.get("employee") or "").strip()
+            if not emp:
+                continue
+            emp_row = frappe.db.get_value(
+                "Employee",
+                emp,
+                ["employee_name", "user_id", "status", "designation"],
+                as_dict=True,
+            ) or {}
+            if emp_row.get("status") and emp_row.status != "Active":
+                continue
+            user = cstr(r.get("login_user") or emp_row.get("user_id") or "").strip()
+            name = cstr(emp_row.get("employee_name") or "").strip()
+            if not name and user:
+                name = cstr(frappe.db.get_value("User", user, "full_name") or user.split("@")[0]).strip()
+            if not name:
+                name = emp
+            # Skip explicit all-none module grants
+            try:
+                raw = r.get("permissions") or "{}"
+                data = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                if isinstance(data, dict) and data and not any(
+                    v and str(v).lower() != "none" for v in data.values()
+                ):
+                    continue
+            except Exception:
+                pass
+            _add(emp, name, user, emp_row.get("designation") or "")
+
+    for role in ("CRM Staff", "CRM Manager"):
+        if not frappe.db.exists("DocType", "Has Role"):
+            break
+        for has in frappe.get_all(
+            "Has Role",
+            filters={"role": role, "parenttype": "User"},
+            fields=["parent"],
+            limit_page_length=500,
+        ):
+            user = cstr(has.parent or "").strip()
+            if not user or user in ("Guest", "Administrator"):
+                continue
+            if frappe.db.get_value("User", user, "enabled") in (0, "0"):
+                continue
+            emp = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name") or frappe.db.get_value(
+                "Employee", {"user_id": user}, "name"
+            )
+            if emp:
+                emp_row = frappe.db.get_value(
+                    "Employee",
+                    emp,
+                    ["employee_name", "status", "designation"],
+                    as_dict=True,
+                ) or {}
+                if emp_row.get("status") and emp_row.status != "Active":
+                    continue
+                name = cstr(emp_row.get("employee_name") or "").strip() or cstr(
+                    frappe.db.get_value("User", user, "full_name") or user.split("@")[0]
+                ).strip()
+                _add(emp, name, user, emp_row.get("designation") or role)
+            else:
+                name = cstr(frappe.db.get_value("User", user, "full_name") or user.split("@")[0]).strip()
+                _add("", name, user, role)
+
+    out.sort(key=lambda x: (x.get("employee_name") or "").lower())
+    return {"users": out, "count": len(out)}
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_portal_assignees(sid=None):
+    """Smilecure CRM — employees with active People Portal Access → CRM Portal (or CRM roles)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        return _success(_list_crm_portal_assignees_rows())
+    except Exception as exc:
+        frappe.log_error(title="list_crm_portal_assignees", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list CRM portal assignees"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_ownership(sid=None):
+    """Shared CRM ownership map (leads / follow-ups) for all portal logins."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import list_crm_ownership as _list
+
+        return _success(_list())
+    except Exception as exc:
+        frappe.log_error(title="list_crm_ownership", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load CRM ownership"))
+
+
+@frappe.whitelist(allow_guest=True)
+def transfer_crm_ownership(
+    sid=None,
+    from_owner=None,
+    to_owner=None,
+    lead_ids=None,
+    activity_ids=None,
+    deal_ids=None,
+    contact_ids=None,
+    note=None,
+    lead_meta=None,
+    transferred_by_name=None,
+    snapshots=None,
+):
+    """Persist CRM ownership transfer so Avik / other logins see the new owner."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    roles = set(_user_roles())
+    if not (roles & {"CRM Manager", "Sales Manager", "System Manager", "Administrator", "Health System Admin", "HR Manager"}):
+        return _error(_("Only CRM Managers can transfer ownership"), 403)
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            ensure_crm_ownership_doctype,
+            ensure_crm_record_snapshot_doctype,
+            ensure_crm_transfer_history_doctype,
+            ensure_crm_transfer_notice_doctype,
+            transfer_crm_ownership as _xfer,
+        )
+
+        ensure_crm_ownership_doctype()
+        ensure_crm_transfer_history_doctype()
+        ensure_crm_transfer_notice_doctype()
+        ensure_crm_record_snapshot_doctype()
+        return _success(
+            _xfer(
+                from_owner=_parse_request_value("from_owner", from_owner),
+                to_owner=_parse_request_value("to_owner", to_owner),
+                lead_ids=_parse_request_value("lead_ids", lead_ids),
+                activity_ids=_parse_request_value("activity_ids", activity_ids),
+                deal_ids=_parse_request_value("deal_ids", deal_ids),
+                contact_ids=_parse_request_value("contact_ids", contact_ids),
+                note=_parse_request_value("note", note),
+                lead_meta=_parse_request_value("lead_meta", lead_meta),
+                transferred_by_name=_parse_request_value("transferred_by_name", transferred_by_name),
+                snapshots=_parse_request_value("snapshots", snapshots),
+            ),
+            message=_("Ownership transferred"),
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="transfer_crm_ownership", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to transfer CRM ownership"))
+
+
+def _crm_is_manager():
+    roles = set(_user_roles())
+    return bool(
+        roles
+        & {
+            "CRM Manager",
+            "Sales Manager",
+            "System Manager",
+            "Administrator",
+            "Health System Admin",
+            "HR Manager",
+        }
+    )
+
+
+def _crm_session_display_name():
+    user = frappe.session.user
+    full = cstr(frappe.db.get_value("User", user, "full_name") or "").strip()
+    emp = ""
+    try:
+        emp = cstr(frappe.db.get_value("Employee", {"user_id": user}, "employee_name") or "").strip()
+    except Exception:
+        emp = ""
+    return emp or full or cstr(user or "").split("@")[0]
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_record_snapshots(sid=None, owner=None, record_type=None, limit=2000, include_all=0):
+    """Pull CRM lead/follow-up payloads for the current (or named) owner after transfer."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            ensure_crm_record_snapshot_doctype,
+            list_crm_record_snapshots as _list,
+        )
+
+        ensure_crm_record_snapshot_doctype()
+        is_mgr = _crm_is_manager()
+        who = cstr(_parse_request_value("owner", owner) or "").strip()
+        me = _crm_session_display_name()
+        # Executives may only pull their own snapshots (ignore spoofed owner / include_all).
+        if not is_mgr:
+            who = me
+            include_all = 0
+        elif who and who.lower() not in {me.lower(), cstr(frappe.session.user).lower()} and not cint(include_all):
+            # Named owner for managers is allowed; include_all still requires manager role.
+            pass
+        return _success(
+            _list(
+                owner=who or None,
+                record_type=_parse_request_value("record_type", record_type),
+                limit=min(cint(limit) or 2000, 2000),
+                include_all=1 if is_mgr and cint(include_all) else 0,
+            )
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_crm_record_snapshots", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load CRM record snapshots"))
+
+
+@frappe.whitelist(allow_guest=True)
+def upsert_crm_record_snapshots(sid=None, snapshots=None, default_owner=None):
+    """Publish local CRM lead/follow-up payloads so other logins can pull them."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            ensure_crm_record_snapshot_doctype,
+            upsert_crm_record_snapshots as _upsert,
+        )
+
+        ensure_crm_record_snapshot_doctype()
+        dst = cstr(_parse_request_value("default_owner", default_owner) or "").strip()
+        # Non-managers cannot republish as another owner.
+        if not _crm_is_manager():
+            dst = _crm_session_display_name()
+        return _success(
+            _upsert(
+                snapshots=_parse_request_value("snapshots", snapshots),
+                default_owner=dst or None,
+            ),
+            message=_("CRM snapshots saved"),
+        )
+    except Exception as exc:
+        frappe.log_error(title="upsert_crm_record_snapshots", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to save CRM record snapshots"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_transfer_history(sid=None, lead_id=None, limit=100):
+    """Append-only ownership transfer log for Smilecure CRM."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            list_crm_transfer_history as _list,
+        )
+
+        return _success(_list(lead_id=_parse_request_value("lead_id", lead_id), limit=limit))
+    except Exception as exc:
+        frappe.log_error(title="list_crm_transfer_history", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load transfer history"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_transfer_notices(sid=None, recipient=None, limit=30):
+    """In-app transfer notifications for the current CRM user."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            list_crm_transfer_notices as _list,
+        )
+
+        who = cstr(_parse_request_value("recipient", recipient) or "").strip()
+        # Always scope to the logged-in user (ignore client recipient spoof).
+        who = _crm_session_display_name()
+        return _success(
+            _list(recipient=who or None, limit=min(cint(limit) or 30, 100))
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_crm_transfer_notices", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load transfer notices"))
+
+
+@frappe.whitelist(allow_guest=True)
+def mark_crm_transfer_notice_read(sid=None, notice_id=None):
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import (
+            mark_crm_transfer_notice_read as _mark,
+        )
+
+        return _success(_mark(notice_id=_parse_request_value("notice_id", notice_id)))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="mark_crm_transfer_notice_read", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to update notice"))
+
+
+@frappe.whitelist(allow_guest=True)
+def assign_crm_lead_to_reach(sid=None, **kwargs):
+    """Smilecure CRM → REACH: upsert lead + follow-up notes and assign to REACH user."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import crm_assign_lead_to_reach as _assign
+        import json as _json
+
+        crm_lead_id = _parse_request_value("crm_lead_id", kwargs.get("crm_lead_id"))
+        sales_rep_id = _parse_request_value("sales_rep_id", kwargs.get("sales_rep_id"))
+        create_visit_raw = _parse_request_value("create_visit", kwargs.get("create_visit"))
+        create_visit = str(create_visit_raw or "1").lower() not in ("0", "false", "no")
+
+        lead_payload = {}
+        lead_json = _parse_request_value("lead_json", kwargs.get("lead_json"))
+        if lead_json:
+            try:
+                parsed = _json.loads(lead_json) if isinstance(lead_json, str) else lead_json
+                if isinstance(parsed, dict):
+                    lead_payload = parsed
+            except Exception:
+                lead_payload = {}
+        for key in (
+            "name", "lead_name", "email", "phone", "mobile", "city", "territory", "address",
+            "notes", "status", "source", "campaign_name", "franchise_model", "district", "pincode", "state",
+        ):
+            value = _parse_request_value(key, kwargs.get(key)) or _parse_request_value(f"lead_{key}", kwargs.get(f"lead_{key}"))
+            if value is not None and str(value).strip() != "":
+                lead_payload[key] = value
+
+        followups = None
+        followups_json = _parse_request_value("followups_json", kwargs.get("followups_json"))
+        if followups_json:
+            try:
+                followups = _json.loads(followups_json) if isinstance(followups_json, str) else followups_json
+            except Exception:
+                followups = None
+
+        row = _assign(
+            crm_lead_id=crm_lead_id,
+            sales_rep_id=sales_rep_id,
+            lead=lead_payload,
+            followups=followups,
+            create_visit=create_visit,
+            assigned_from=_parse_request_value("assigned_from", kwargs.get("assigned_from"))
+            or f"Smilecure CRM ({frappe.session.user})",
+            assigned_to_name=_parse_request_value("assigned_to_name", kwargs.get("assigned_to_name")),
+        )
+        return _success(row, message=_("Lead assigned to REACH"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="assign_crm_lead_to_reach", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to assign lead to REACH"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_crm_reach_lead(sid=None, crm_lead_id=None, hec_lead_id=None):
+    """Smilecure CRM — pull REACH status for a previously assigned CRM lead."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import crm_get_reach_lead
+
+        row = crm_get_reach_lead(
+            crm_lead_id=_parse_request_value("crm_lead_id", crm_lead_id),
+            hec_lead_id=_parse_request_value("hec_lead_id", hec_lead_id),
+        )
+        if not row:
+            return _error(_("Lead not yet synced to REACH"), 404)
+        return _success(row)
+    except Exception as exc:
+        frappe.log_error(title="get_crm_reach_lead", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load REACH lead"))
+
+
+@frappe.whitelist(allow_guest=True)
+def sync_crm_lead_status_to_reach(sid=None, crm_lead_id=None, status=None):
+    """Smilecure CRM → REACH status push for an already-linked lead."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import crm_sync_lead_status_to_reach
+
+        row = crm_sync_lead_status_to_reach(
+            crm_lead_id=_parse_request_value("crm_lead_id", crm_lead_id),
+            status=_parse_request_value("status", status),
+        )
+        return _success(row, message=_("REACH status updated"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="sync_crm_lead_status_to_reach", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to sync status to REACH"))
+
+
+def _require_crm_sales_close_access(sid=None):
+    """Care / Aesthetic / lab billers OR CRM / HR staff may record a portal sales close."""
+    if not _require_mobile_auth(sid):
+        return _error(_("Not authenticated"), 401)
+    roles = set(_user_roles())
+    allowed = {
+        "CRM Staff",
+        "CRM Manager",
+        "Sales Representative",
+        "Sales Manager",
+        "Care Staff",
+        "Care Manager",
+        "Aesthetic Staff",
+        "Aesthetic Manager",
+        "Lab Technician",
+        "Franchisee Operator",
+        "System Manager",
+        "Health System Admin",
+        "Administrator",
+        "HR Manager",
+    }
+    if not (roles & allowed):
+        return _error(_("Not permitted to record CRM sales closes"), 403)
+    return None
+
+
+@frappe.whitelist(allow_guest=True)
+def record_crm_sales_close(sid=None, **kwargs):
+    """Care / Aesthetic / lab bill generation records the close; CRM reads it back for telecaller credit."""
+    denied = _require_crm_sales_close_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import record_crm_sales_close as _record
+        import json as _json
+
+        data = {}
+        raw = _parse_request_value("data", kwargs.get("data"))
+        if raw:
+            try:
+                data = _json.loads(raw) if isinstance(raw, str) else dict(raw)
+            except Exception:
+                data = {}
+        for key in (
+            "tracking_tag", "booking_id", "executive", "executive_code", "amount", "total",
+            "bill_ref", "invoice_number", "number", "portal", "patient_name", "patient",
+            "mobile", "notes", "referred_by", "closed_at",
+        ):
+            value = _parse_request_value(key, kwargs.get(key))
+            if value is not None and str(value).strip() != "":
+                data[key] = value
+        portal = str(data.get("portal") or "").strip().lower()
+        if portal in ("", "crm"):
+            return _error(_("Portal bill source is required (care / aesthetic / lab)"), 403)
+        if portal not in ("care", "aesthetic", "lab", "franchise"):
+            return _error(_("Unrecognized bill portal"), 403)
+        row = _record(data)
+        return _success(row, message=_("CRM sales close recorded"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="record_crm_sales_close", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to record CRM sales close"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_sales_closes(sid=None, limit=100, executive=None, tracking_tag=None):
+    """Smilecure CRM — executive sales closes from portal bills."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import list_crm_sales_closes as _list
+
+        exec_filter = cstr(_parse_request_value("executive", executive) or "").strip()
+        # Non-managers only see their own closes (ignore client executive spoof).
+        if not _crm_is_manager():
+            exec_filter = _crm_session_display_name()
+        return _success(
+            _list(
+                limit=min(cint(_parse_request_value("limit", limit) or 100), 300),
+                executive=exec_filter or None,
+                tracking_tag=_parse_request_value("tracking_tag", tracking_tag),
+            )
+        )
+    except Exception as exc:
+        frappe.log_error(title="list_crm_sales_closes", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list CRM sales closes"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_crm_target_achievement(sid=None, period=None, employee=None):
+    """CRM dashboard — monthly target (My Team) vs achievement (synced portal bills)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import get_crm_target_achievement as _get
+
+        emp = cstr(_parse_request_value("employee", employee) or "").strip()
+        if not _crm_is_manager():
+            emp = _crm_session_display_name()
+        return _success(
+            _get(
+                period=_parse_request_value("period", period),
+                employee=emp or None,
+            )
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception as exc:
+        frappe.log_error(title="get_crm_target_achievement", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load CRM target achievement"))
+
+
+@frappe.whitelist(allow_guest=True)
+def set_crm_sales_target(sid=None, employee=None, period=None, target_amount=None, notes=None):
+    """Reporting manager sets a CRM sales ₹ target from My Team (or CRM Manager / HR)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        # Also allow HR-only sessions that manage teams but aren't CRM roles
+        if not _require_mobile_auth(sid):
+            return _error(_("Not authenticated"), 401)
+        roles = set(_user_roles())
+        if not (roles & {"HR Manager", "HR User", "System Manager", "Administrator", "Health System Admin", "CRM Manager", "Sales Manager"}):
+            return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking import set_crm_sales_target as _set
+
+        return _success(
+            _set(
+                employee=_parse_request_value("employee", employee),
+                period=_parse_request_value("period", period),
+                target_amount=_parse_request_value("target_amount", target_amount),
+                notes=_parse_request_value("notes", notes),
+            ),
+            message=_("CRM sales target saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception as exc:
+        frappe.log_error(title="set_crm_sales_target", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to save CRM sales target"))
+
+
 @frappe.whitelist(allow_guest=True)
 def ffms_disable_partner_portal(**kwargs):
     frappe.flags.ignore_csrf = True
@@ -6637,6 +7297,419 @@ def franchise_ads_status(**kwargs):
         return _error(str(exc) or _("Unable to read franchise ads status"))
 
 
+def _ensure_crm_whatsapp_channel_settings():
+    """Single DocType for CRM Service WhatsApp Meta Cloud credentials."""
+    name = "CRM WhatsApp Channel Settings"
+    if frappe.db.exists("DocType", name):
+        return name
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import ensure_hec_module_def
+
+        ensure_hec_module_def()
+    except Exception:
+        pass
+    doc = frappe.get_doc(
+        {
+            "doctype": "DocType",
+            "name": name,
+            "module": "Health Ecosystem Core",
+            "custom": 1,
+            "issingle": 1,
+            "engine": "InnoDB",
+            "fields": [
+                {"fieldname": "service_section", "fieldtype": "Section Break", "label": "Service WhatsApp (Meta Cloud)"},
+                {"fieldname": "service_enabled", "fieldtype": "Check", "label": "Enable Service WhatsApp", "default": "0"},
+                {
+                    "fieldname": "service_provider",
+                    "fieldtype": "Select",
+                    "label": "Provider",
+                    "options": "meta\ninterakt\naisensy\ncustom",
+                    "default": "meta",
+                },
+                {"fieldname": "service_api_url", "fieldtype": "Data", "label": "API Base URL", "default": "https://graph.facebook.com/v26.0"},
+                {"fieldname": "service_access_token", "fieldtype": "Password", "label": "Access Token"},
+                {"fieldname": "service_phone_number_id", "fieldtype": "Data", "label": "Phone Number ID"},
+                {"fieldname": "service_waba_id", "fieldtype": "Data", "label": "WABA ID"},
+                {"fieldname": "service_sender_number", "fieldtype": "Data", "label": "Sender Number"},
+                {"fieldname": "service_webhook_verify_token", "fieldtype": "Data", "label": "Webhook Verify Token"},
+            ],
+            "permissions": [
+                {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+                {"role": "CRM Manager", "read": 1, "write": 1, "create": 1},
+            ],
+        }
+    )
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return name
+
+
+@frappe.whitelist(allow_guest=True)
+def get_crm_whatsapp_api(sid=None, channel=None):
+    """Smilecure CRM Settings — Franchise (AI Workforce) or Service Meta Cloud WhatsApp."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    if not _crm_is_manager():
+        return _error(_("Only CRM Managers can load WhatsApp API settings"), 403)
+    ch = cstr(channel or "franchise").strip().lower() or "franchise"
+    try:
+        if ch == "service":
+            from health_ecosystem_core.health_ecosystem_core.clinical_secrets import (
+                get_crm_service_whatsapp_settings,
+            )
+
+            _ensure_crm_whatsapp_channel_settings()
+            data = get_crm_service_whatsapp_settings()
+            data["channel"] = "service"
+            data["serviceFollowUp"] = True
+            return _success(data)
+
+        from health_ecosystem_core.health_ecosystem_core.clinical_secrets import (
+            get_meta_whatsapp_access_token,
+            get_whatsapp_business_account_id,
+            get_whatsapp_phone_number_id,
+            get_whatsapp_provider,
+            get_whatsapp_source_number,
+            get_whatsapp_webhook_verify_token,
+        )
+
+        phone = cstr(get_whatsapp_phone_number_id() or "").strip()
+        token = cstr(get_meta_whatsapp_access_token() or "").strip()
+        waba = cstr(get_whatsapp_business_account_id() or "").strip()
+        verify = cstr(get_whatsapp_webhook_verify_token() or "").strip()
+        sender = cstr(get_whatsapp_source_number() or "").strip()
+        provider = cstr(get_whatsapp_provider() or "").strip() or "Meta"
+        configured = bool(phone and token)
+        return _success(
+            {
+                "configured": configured,
+                "enabled": configured,
+                "provider": "meta" if provider.lower() == "meta" else "custom",
+                "apiUrl": "https://graph.facebook.com/v26.0",
+                "apiKey": token,
+                "phoneNumberId": phone,
+                "wabaId": waba,
+                "senderNumber": sender if sender.startswith("+") else (f"+{sender}" if sender else ""),
+                "webhookVerifyToken": verify,
+                "franchiseFollowUp": True,
+                "channel": "franchise",
+            }
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_crm_whatsapp_api", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WhatsApp API settings"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_crm_service_whatsapp_api(
+    sid=None,
+    enabled=None,
+    provider=None,
+    api_url=None,
+    api_key=None,
+    phone_number_id=None,
+    waba_id=None,
+    sender_number=None,
+    webhook_verify_token=None,
+):
+    """CRM Managers — save Service Meta Cloud WhatsApp (separate from Franchise AI number)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    if not _crm_is_manager():
+        return _error(_("Only CRM Managers can save Service WhatsApp API"), 403)
+    try:
+        _ensure_crm_whatsapp_channel_settings()
+        doc = frappe.get_single("CRM WhatsApp Channel Settings")
+        doc.service_enabled = 1 if cstr(enabled or "").strip().lower() in ("1", "true", "yes", "on") else 0
+        doc.service_provider = cstr(provider or "meta").strip().lower() or "meta"
+        doc.service_api_url = cstr(api_url or "https://graph.facebook.com/v26.0").strip()
+        phone = cstr(phone_number_id or "").strip()
+        if phone:
+            doc.service_phone_number_id = phone
+        waba = cstr(waba_id or "").strip()
+        if waba:
+            doc.service_waba_id = waba
+        sender = cstr(sender_number or "").strip()
+        if sender:
+            doc.service_sender_number = sender
+        verify = cstr(webhook_verify_token or "").strip()
+        if verify:
+            doc.service_webhook_verify_token = verify
+        token = cstr(api_key or "").strip()
+        if token:
+            doc.service_access_token = token
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        from health_ecosystem_core.health_ecosystem_core.clinical_secrets import (
+            get_crm_service_whatsapp_settings,
+        )
+
+        data = get_crm_service_whatsapp_settings()
+        # Never echo full token back after save unless already returned by getter for managers.
+        return _success({"ok": True, "channel": "service", **{k: v for k, v in data.items() if k != "apiKey"}, "configured": data.get("configured")})
+    except Exception as exc:
+        frappe.log_error(title="save_crm_service_whatsapp_api", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to save Service WhatsApp API"))
+
+
+@frappe.whitelist(allow_guest=True)
+def list_crm_whatsapp_conversations(sid=None, wing=None, q=None, limit=100, channel=None):
+    """Smilecure CRM WhatsApp Centre — inbox for all wings or one wing (Franchise/Service channel)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            list_crm_whatsapp_conversations as _list,
+        )
+
+        return _success(_list(wing=wing, q=q, limit=limit, channel=channel))
+    except Exception as exc:
+        frappe.log_error(title="list_crm_whatsapp_conversations", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to list WhatsApp conversations"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_crm_whatsapp_thread(
+    sid=None, conversation_id=None, phone=None, wing=None, crm_lead_id=None, contact_name=None, channel=None
+):
+    """Smilecure CRM WhatsApp Centre — open one chat thread."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            get_crm_whatsapp_thread as _get,
+        )
+
+        return _success(
+            _get(
+                conversation_id=conversation_id,
+                phone=phone,
+                crm_wing=wing,
+                crm_lead_id=crm_lead_id,
+                contact_name=contact_name,
+                channel=channel,
+            )
+        )
+    except Exception as exc:
+        frappe.log_error(title="get_crm_whatsapp_thread", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to load WhatsApp thread"))
+
+
+@frappe.whitelist(allow_guest=True)
+def mark_crm_whatsapp_conversation_read(sid=None, conversation_id=None):
+    """Shared WhatsApp inbox — mark conversation read for all CRM executives."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            mark_crm_whatsapp_conversation_read as _mark,
+        )
+
+        return _success(_mark(conversation_id=conversation_id))
+    except Exception as exc:
+        frappe.log_error(title="mark_crm_whatsapp_conversation_read", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to mark WhatsApp conversation read"))
+
+
+@frappe.whitelist(allow_guest=True)
+def send_crm_whatsapp(
+    sid=None,
+    phone=None,
+    message=None,
+    contact_name=None,
+    crm_lead_id=None,
+    wing=None,
+    conversation_id=None,
+    template=None,
+    language=None,
+    use_template=None,
+    channel=None,
+):
+    """Smilecure CRM — send Meta Cloud WhatsApp (Franchise AI number or Service number)."""
+    denied = _require_crm_reach_access(sid)
+    if denied:
+        return denied
+    mobile = cstr(phone or "").strip()
+    body = cstr(message or "").strip()
+    cid = cstr(conversation_id or "").strip()
+    crm_wing = cstr(wing or "franchise").strip().lower() or "franchise"
+    ch = cstr(channel or "").strip().lower()
+    if ch not in ("franchise", "service"):
+        # Default Franchise (WA Centre Lab/Care/Aesthetic tabs). Callers must pass channel=service explicitly.
+        ch = "franchise"
+    tpl = cstr(template or "").strip()
+    want_tpl = cstr(use_template or "").strip().lower() in ("1", "true", "yes") or bool(tpl)
+    if not body and not want_tpl:
+        return _error(_("Message is required"))
+    if len(body) > 4096:
+        return _error(_("Message is too long (max 4096 characters)"))
+    try:
+        from health_ecosystem_core.health_ecosystem_core.clinical_phase87_whatsapp import (
+            get_or_create_conversation,
+            send_whatsapp,
+        )
+        from health_ecosystem_core.health_ecosystem_core.clinical_secrets import (
+            get_crm_service_whatsapp_sender_number,
+            get_crm_service_whatsapp_settings,
+            get_meta_whatsapp_access_token,
+            get_whatsapp_phone_number_id,
+            get_whatsapp_provider,
+            get_whatsapp_source_number,
+        )
+
+        meta_token = None
+        meta_phone = None
+        sender_label = ""
+        if ch == "service":
+            svc = get_crm_service_whatsapp_settings()
+            if not svc.get("enabled") or not svc.get("configured"):
+                return _error(_("Service WhatsApp is not configured — set it under CRM Settings → WhatsApp API → Service"))
+            meta_token = cstr(svc.get("apiKey") or "").strip()
+            meta_phone = cstr(svc.get("phoneNumberId") or "").strip()
+            sender_label = cstr(svc.get("senderNumber") or "").strip() or get_crm_service_whatsapp_sender_number() or ""
+        else:
+            provider = cstr(get_whatsapp_provider() or "").strip() or "Meta"
+            if provider.lower() != "meta":
+                return _error(_("CRM Franchise WhatsApp expects Meta Cloud API"))
+            if not get_meta_whatsapp_access_token() or not get_whatsapp_phone_number_id():
+                return _error(_("Franchise Meta WhatsApp is not configured on the server"))
+            sender_label = cstr(get_whatsapp_source_number() or "").strip() or "+91 81001 49229"
+            if sender_label and not sender_label.startswith("+"):
+                sender_label = f"+{sender_label}"
+
+        conv = None
+        if cid and frappe.db.exists("HEC WhatsApp Conversation", cid):
+            conv = frappe.get_doc("HEC WhatsApp Conversation", cid)
+            mobile = cstr(conv.phone or mobile).strip()
+        if not mobile:
+            return _error(_("Phone is required"))
+        if not conv:
+            conv = get_or_create_conversation(
+                mobile,
+                contact_name=contact_name,
+                crm_wing=crm_wing,
+                crm_lead_id=crm_lead_id,
+                franchise=ch == "franchise",
+                channel=ch,
+            )
+
+        # Only use a Meta template when explicitly requested (Start chat / use_template).
+        # Free-text must go as free-text so the client sees what the telecaller typed.
+        # Meta often accepts free-text (returns wamid) then fails async with 131047 outside the
+        # 24h customer window — so we pre-check recent inbound and block before sending.
+        contact = cstr(contact_name or getattr(conv, "contact_name", "") or "")[:120]
+        first_name = (contact.split() or ["there"])[0][:60] or "there"
+        recent_inbound = False
+        if conv and not want_tpl:
+            try:
+                from frappe.utils import add_to_date, now_datetime
+
+                cutoff = add_to_date(now_datetime(), hours=-24, as_datetime=True)
+                recent_inbound = bool(
+                    frappe.get_all(
+                        "HEC WhatsApp Message",
+                        filters={
+                            "conversation": conv.name,
+                            "direction": "In",
+                            "creation": [">=", cutoff],
+                        },
+                        limit=1,
+                        pluck="name",
+                    )
+                )
+            except Exception:
+                recent_inbound = False
+            sender_hint = sender_label or ("Service WhatsApp" if ch == "service" else "Remedium Labs (+91 81001 49229)")
+            if not recent_inbound:
+                return _error(
+                    _(
+                        "Custom text can only be sent after the client replies to {0} within the last 24 hours. Use New chat → Start chat to send the approved template first, then wait for their reply."
+                    ).format(sender_hint)
+                )
+        if want_tpl:
+            cached_tpl = ""
+            try:
+                cached_tpl = cstr(frappe.cache().get_value("hec_crm_wa_default_template") or "").strip()
+            except Exception:
+                cached_tpl = ""
+            tpl = tpl or cached_tpl or "crm_lead_hello"
+
+        ctx = {
+            "conversation": conv,
+            "franchise": ch == "franchise",
+            "persist": True,
+            "force_live": True,
+            "contact_name": contact,
+            "crm_lead_id": cstr(crm_lead_id or getattr(conv, "crm_lead_id", "") or "")[:80],
+            "crm_wing": crm_wing,
+            "wing": crm_wing,
+            "source": "crm_portal",
+            "channel": ch,
+            "template": tpl if want_tpl else "",
+            "language": cstr(language or "en").strip() or "en",
+            "template_params": [first_name] if want_tpl and tpl else None,
+        }
+        if ch == "service" and meta_token and meta_phone:
+            ctx["meta_token"] = meta_token
+            ctx["meta_phone_id"] = meta_phone
+        send_body = body or (f"Template {tpl}" if want_tpl and tpl else "")
+        if not send_body:
+            return _error(_("Message is required"))
+        result = send_whatsapp(mobile, send_body, context=ctx)
+        if not result and want_tpl and ctx.get("template"):
+            # Explicit template failed (missing/rejected) — do not silently send free-text.
+            detail = cstr(ctx.get("last_error") or "").strip()
+            return _error(
+                _("WhatsApp template failed: {0}").format(detail or _("unknown Meta error"))
+            )
+        if not result:
+            detail = cstr(ctx.get("last_error") or "").strip()
+            low = detail.lower()
+            window_blocked = any(
+                x in low
+                for x in (
+                    "24 hour",
+                    "24-hour",
+                    "outside",
+                    "131047",
+                    "re-engage",
+                    "customer care",
+                    "session",
+                )
+            )
+            if window_blocked:
+                sender_hint = sender_label or ("Service WhatsApp" if ch == "service" else "Remedium Labs (+91 81001 49229)")
+                return _error(
+                    _(
+                        "Custom text cannot be delivered until the client replies in WhatsApp to {0}. Use Start chat to send the approved template first."
+                    ).format(sender_hint)
+                )
+            if detail:
+                return _error(_("WhatsApp was not delivered: {0}").format(detail))
+            return _error(_("WhatsApp could not be sent — check Meta Cloud credentials / number"))
+        return _success(
+            {
+                "ok": True,
+                "message_id": result if isinstance(result, str) else cstr(result),
+                "phone": mobile,
+                "conversation_id": conv.name if conv else "",
+                "crm_wing": crm_wing,
+                "channel": ch,
+                "live": True,
+                "template": ctx.get("template") or "",
+                "sender": sender_label or ("+91 81001 49229" if ch == "franchise" else ""),
+            }
+        )
+    except Exception as exc:
+        frappe.log_error(title="send_crm_whatsapp", message=frappe.get_traceback())
+        return _error(str(exc) or _("Unable to send WhatsApp"))
+
+
 @frappe.whitelist(allow_guest=True)
 def ingest_whatsapp_cloud_webhook(**kwargs):
     """Phase 87: Meta WhatsApp Cloud webhook (verify + inbound messages)."""
@@ -6867,6 +7940,180 @@ def get_sales_team_map(sid=None):
     from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import get_sales_team_map as _map
 
     return _success(_map(frappe.session.user))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_team_performance_reports(
+    sid=None, limit=None, activity_date=None, date_from=None, date_to=None, sales_rep=None
+):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import list_team_performance_reports
+
+    activity_date = _parse_request_value("activity_date", activity_date)
+    date_from = _parse_request_value("date_from", date_from)
+    date_to = _parse_request_value("date_to", date_to)
+    sales_rep = _parse_request_value("sales_rep", sales_rep)
+    return _success(
+        list_team_performance_reports(
+            frappe.session.user,
+            limit=limit or 50,
+            activity_date=activity_date,
+            date_from=date_from,
+            date_to=date_to,
+            sales_rep=sales_rep,
+        )
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def get_sales_team_portal_activity(
+    sid=None,
+    activity_date=None,
+    date_from=None,
+    date_to=None,
+    limit=None,
+    sales_rep=None,
+):
+    """Team performance check: day-by-day lead / visit / onboarding uploads per employee."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import get_team_portal_activity
+
+    activity_date = _parse_request_value("activity_date", activity_date)
+    date_from = _parse_request_value("date_from", date_from)
+    date_to = _parse_request_value("date_to", date_to)
+    sales_rep = _parse_request_value("sales_rep", sales_rep)
+    return _success(
+        get_team_portal_activity(
+            frappe.session.user,
+            activity_date=activity_date,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit or 500,
+            sales_rep=sales_rep,
+        )
+    )
+
+
+@frappe.whitelist(allow_guest=True)
+def download_sales_team_portal_activity_csv(sid=None, activity_date=None, date_from=None, date_to=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import team_portal_activity_csv
+
+    activity_date = _parse_request_value("activity_date", activity_date)
+    date_from = _parse_request_value("date_from", date_from)
+    date_to = _parse_request_value("date_to", date_to)
+    try:
+        return _success(
+            team_portal_activity_csv(
+                frappe.session.user,
+                activity_date=activity_date,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def download_sales_team_employee_pack(
+    sid=None, sales_rep=None, activity_date=None, date_from=None, date_to=None
+):
+    """ZIP for one employee: all lead/visit/onboarding fields + visit photographs."""
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import download_team_employee_pack
+
+    sales_rep = _parse_request_value("sales_rep", sales_rep)
+    activity_date = _parse_request_value("activity_date", activity_date)
+    date_from = _parse_request_value("date_from", date_from)
+    date_to = _parse_request_value("date_to", date_to)
+    try:
+        return _success(
+            download_team_employee_pack(
+                frappe.session.user,
+                sales_rep,
+                activity_date=activity_date,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def submit_sales_team_performance_report(sid=None, **kwargs):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import submit_team_performance_report
+
+    keys = (
+        "activity_date",
+        "title",
+        "activity_summary",
+        "notes",
+        "doctors_met",
+        "visits_done",
+        "samples_collected",
+        "km_traveled",
+        "location_note",
+        "attachments_json",
+    )
+    data = {k: _parse_request_value(k, kwargs.get(k)) for k in keys}
+    try:
+        report = submit_team_performance_report(frappe.session.user, data)
+        return _success(report, message=_("Daily activity submitted"))
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def download_sales_team_performance_csv(sid=None, activity_date=None, sales_rep=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import team_performance_reports_csv
+
+    activity_date = _parse_request_value("activity_date", activity_date)
+    sales_rep = _parse_request_value("sales_rep", sales_rep)
+    try:
+        return _success(
+            team_performance_reports_csv(
+                frappe.session.user,
+                activity_date=activity_date,
+                sales_rep=sales_rep,
+            )
+        )
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+
+
+@frappe.whitelist(allow_guest=True)
+def download_sales_team_performance_file(sid=None, report_name=None, file_name=None):
+    denied = _require_sales_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_phase25 import get_team_performance_attachment
+
+    report_name = _parse_request_value("report_name", report_name)
+    file_name = _parse_request_value("file_name", file_name)
+    try:
+        return _success(get_team_performance_attachment(frappe.session.user, report_name, file_name))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
 
 
 @frappe.whitelist(allow_guest=True)
@@ -8744,3 +9991,371 @@ def __getattr__(name):
         )
         return getattr(mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+@frappe.whitelist(allow_guest=True)
+def get_labtech_settings(sid=None):
+    """Lab Technician Settings — reporting pad, WhatsApp, pathologist signatures."""
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_labtech_settings import (
+        get_labtech_settings as _get,
+    )
+
+    try:
+        data = _get(frappe.session.user)
+        try:
+            from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+                get_report_page_management,
+            )
+
+            data["report_page"] = get_report_page_management(frappe.session.user)
+        except Exception:
+            frappe.log_error(title="get_labtech_settings_report_page", message=frappe.get_traceback())
+            data["report_page"] = None
+        return _success(data)
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="get_labtech_settings", message=frappe.get_traceback())
+        return _error(_("Could not load lab settings"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_report_page_management(sid=None, brand=None, format=None, branch=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        get_report_page_management as _get,
+    )
+
+    try:
+        return _success(_get(frappe.session.user, brand=brand, fmt=format, branch=branch))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="get_report_page_management", message=frappe.get_traceback())
+        return _error(_("Could not load report page management"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_report_page_layout(
+    sid=None,
+    brand=None,
+    format=None,
+    layout=None,
+    branch=None,
+    as_branch_override=None,
+    file_name=None,
+    file_data=None,
+    image_field=None,
+):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    import base64
+
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        save_report_page_layout as _save,
+    )
+
+    # Prefer raw multipart file from the browser (reliable for large letterheads).
+    # FormData base64 in file_data often arrives empty after proxies — that used to
+    # silently keep the old header while the UI said "saved".
+    try:
+        req = getattr(frappe.local, "request", None)
+        files = getattr(req, "files", None) if req is not None else None
+        uploaded = files.get("file") if files else None
+        if uploaded and getattr(uploaded, "filename", None):
+            raw = uploaded.stream.read() if hasattr(uploaded, "stream") else uploaded.read()
+            if raw:
+                file_name = file_name or uploaded.filename
+                mime = "image/png"
+                lower = str(file_name or "").lower()
+                if lower.endswith(".jpg") or lower.endswith(".jpeg"):
+                    mime = "image/jpeg"
+                elif lower.endswith(".webp"):
+                    mime = "image/webp"
+                file_data = f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
+    except Exception:
+        frappe.log_error(title="save_report_page_layout_multipart", message=frappe.get_traceback())
+
+    try:
+        return _success(
+            _save(
+                frappe.session.user,
+                brand=brand,
+                fmt=format,
+                layout=layout,
+                branch=branch,
+                as_branch_override=as_branch_override,
+                file_name=file_name,
+                file_data=file_data,
+                image_field=image_field,
+            ),
+            message=_("Report page layout saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="save_report_page_layout", message=frappe.get_traceback())
+        return _error(_("Could not save report page layout"))
+
+
+@frappe.whitelist(allow_guest=True)
+def reset_report_page_layout(sid=None, brand=None, format=None, branch=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        reset_report_page_layout as _reset,
+    )
+
+    try:
+        return _success(
+            _reset(frappe.session.user, brand=brand, fmt=format, branch=branch),
+            message=_("Layout reset to defaults"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="reset_report_page_layout", message=frappe.get_traceback())
+        return _error(_("Could not reset layout"))
+
+
+@frappe.whitelist(allow_guest=True)
+def apply_report_page_layout_to_branches(sid=None, brand=None, format=None, branches=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        apply_report_page_layout_to_branches as _apply,
+    )
+
+    try:
+        return _success(
+            _apply(frappe.session.user, brand=brand, fmt=format, branches=branches),
+            message=_("Layout applied to selected branches"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="apply_report_page_layout_to_branches", message=frappe.get_traceback())
+        return _error(_("Could not apply layout to branches"))
+
+
+@frappe.whitelist(allow_guest=True)
+def preview_report_page_pdf(sid=None, brand=None, format=None, branch=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        preview_report_page_pdf as _preview,
+    )
+
+    try:
+        return _success(_preview(frappe.session.user, brand=brand, fmt=format, branch=branch))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="preview_report_page_pdf", message=frappe.get_traceback())
+        return _error(_("Could not build layout preview PDF"))
+
+
+@frappe.whitelist(allow_guest=True)
+def get_report_page_editor_template(sid=None, brand=None, format=None, template_id=None, branch=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        get_report_page_editor_template as _get,
+    )
+
+    try:
+        return _success(
+            _get(frappe.session.user, brand=brand, fmt=format, template_id=template_id, branch=branch)
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="get_report_page_editor_template", message=frappe.get_traceback())
+        return _error(_("Could not load page editor template"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_report_page_editor_template(
+    sid=None,
+    brand=None,
+    format=None,
+    name=None,
+    canvas_json=None,
+    meta=None,
+    header_image=None,
+    footer_image=None,
+    set_active=None,
+    template_id=None,
+):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        save_report_page_editor_template as _save,
+    )
+
+    try:
+        return _success(
+            _save(
+                frappe.session.user,
+                brand=brand,
+                fmt=format,
+                name=name,
+                canvas_json=canvas_json,
+                meta=meta,
+                header_image=header_image,
+                footer_image=footer_image,
+                set_active=set_active,
+                template_id=template_id,
+            ),
+            message=_("Page design saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="save_report_page_editor_template", message=frappe.get_traceback())
+        return _error(_("Could not save page design"))
+
+
+@frappe.whitelist(allow_guest=True)
+def delete_report_page_editor_template(sid=None, template_id=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_page_layout import (
+        delete_report_page_editor_template as _delete,
+    )
+
+    try:
+        return _success(_delete(frappe.session.user, template_id=template_id), message=_("Design deleted"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="delete_report_page_editor_template", message=frappe.get_traceback())
+        return _error(_("Could not delete design"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_labtech_reporting_pad(sid=None, identity=None, images=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_labtech_settings import (
+        save_labtech_reporting_pad as _save,
+    )
+
+    try:
+        return _success(_save(frappe.session.user, identity=identity, images=images), message=_("Reporting pad saved"))
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="save_labtech_reporting_pad", message=frappe.get_traceback())
+        return _error(_("Could not save reporting pad"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_labtech_whatsapp(sid=None, report_enabled=None, report_message=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_labtech_settings import (
+        save_labtech_whatsapp as _save,
+    )
+
+    try:
+        return _success(
+            _save(frappe.session.user, report_enabled=report_enabled, report_message=report_message),
+            message=_("WhatsApp settings saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except Exception:
+        frappe.log_error(title="save_labtech_whatsapp", message=frappe.get_traceback())
+        return _error(_("Could not save WhatsApp settings"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_pathologist_signature(sid=None, employee=None, file_name=None, file_data=None, clear=None):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_labtech_settings import (
+        save_pathologist_signature as _save,
+    )
+
+    try:
+        return _success(
+            _save(
+                frappe.session.user,
+                employee=employee,
+                file_name=file_name,
+                file_data=file_data,
+                clear=clear,
+            ),
+            message=_("Signature updated"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="save_pathologist_signature", message=frappe.get_traceback())
+        return _error(_("Could not save signature"))
+
+
+@frappe.whitelist(allow_guest=True)
+def save_department_signature_default(
+    sid=None,
+    department_key=None,
+    name=None,
+    qualification=None,
+    file_name=None,
+    file_data=None,
+    clear_image=None,
+):
+    denied = _require_lab_ops_access(sid)
+    if denied:
+        return denied
+    from health_ecosystem_core.health_ecosystem_core.clinical_labtech_settings import (
+        save_department_signature_default as _save,
+    )
+
+    try:
+        return _success(
+            _save(
+                frappe.session.user,
+                department_key=department_key,
+                name=name,
+                qualification=qualification,
+                file_name=file_name,
+                file_data=file_data,
+                clear_image=clear_image,
+            ),
+            message=_("Department signature saved"),
+        )
+    except frappe.PermissionError as exc:
+        return _error(str(exc), 403)
+    except frappe.ValidationError as exc:
+        return _error(str(exc))
+    except Exception:
+        frappe.log_error(title="save_department_signature_default", message=frappe.get_traceback())
+        return _error(_("Could not save department signature"))

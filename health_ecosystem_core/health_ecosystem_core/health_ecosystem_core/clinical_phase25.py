@@ -16,6 +16,16 @@ SALES_REP_ROLE = "Sales Representative"
 SALES_MANAGER_ROLE = "Sales Manager"
 SALES_ROLES = (SALES_REP_ROLE, SALES_MANAGER_ROLE, "Health System Admin", "System Manager")
 LOCATION_CACHE_KEY = "hec_sales_rep_locations"
+# Director / national leadership sees the full Reach field force (not only reports_to tree).
+ORG_WIDE_SALES_DESIGNATIONS = (
+    "director",
+    "managing director",
+    "national head",
+    "sales director",
+    "ceo",
+    "owner",
+    "founder",
+)
 
 PHASE25_DOCTYPES = (
     ("sales_rep_profile", "Sales Rep Profile"),
@@ -23,6 +33,7 @@ PHASE25_DOCTYPES = (
     ("field_sales_visit", "Field Sales Visit"),
     ("franchise_onboarding_request", "Franchise Onboarding Request"),
     ("sales_closing_report", "Sales Closing Report"),
+    ("sales_team_performance_report", "Sales Team Performance Report"),
 )
 
 HEC_MODULE = "Health Ecosystem Core"
@@ -61,6 +72,29 @@ def is_sales_user(user=None):
 def is_sales_manager(user=None):
     roles = set(frappe.get_roles(user or frappe.session.user))
     return SALES_MANAGER_ROLE in roles or "Health System Admin" in roles or "System Manager" in roles
+
+
+def is_org_wide_sales_viewer(user=None):
+    """Director / System Admin / National Head — full Reach team, not just reports_to children."""
+    user = user or frappe.session.user
+    if not user or user == "Guest":
+        return False
+    roles = set(frappe.get_roles(user))
+    if "System Manager" in roles or "Health System Admin" in roles or "Administrator" in roles:
+        return True
+    if user == "Administrator":
+        return True
+    rep_id = resolve_sales_rep(user)
+    if not rep_id:
+        return False
+    designation = cstr(frappe.db.get_value("Sales Rep Profile", rep_id, "designation") or "").strip().lower()
+    if not designation:
+        return False
+    return any(token in designation for token in ORG_WIDE_SALES_DESIGNATIONS)
+
+
+def all_active_sales_rep_ids():
+    return frappe.get_all("Sales Rep Profile", filters={"active": 1}, pluck="name") or []
 
 
 def _import_doctype(folder, doctype_name):
@@ -181,12 +215,18 @@ def _subordinate_rep_ids(rep_id, collected=None):
 
 
 def scoped_rep_ids(user=None):
-    """Reps visible to user: self, or self + team if manager."""
-    rep_id = get_or_create_sales_rep(user or frappe.session.user)
+    """Reps visible to user: self, hierarchy if manager, or full Reach team if director/admin."""
+    user = user or frappe.session.user
+    if is_org_wide_sales_viewer(user):
+        return all_active_sales_rep_ids()
+    rep_id = get_or_create_sales_rep(user)
     if not rep_id:
         return []
     if is_sales_manager(user):
-        return _subordinate_rep_ids(rep_id)
+        team = _subordinate_rep_ids(rep_id)
+        # Sales Manager role is widely granted; if nobody reports to this profile, keep self only
+        # (org-wide viewers are handled above via designation / System Admin).
+        return team or [rep_id]
     return [rep_id]
 
 
@@ -1195,11 +1235,188 @@ def _ffms_source_to_reach_lead_source(source):
         "google_ads": "Google Ads",
         "whatsapp_ads": "WhatsApp Ads",
         "csv_upload": "Manual",
+        "csv_import": "Manual",
         "appointment": "Manual",
         "reach_sales": "REACH",
+        "reach": "REACH",
+        "telecaller": "Manual",
+        "portal": "Website",
+        "smilecure_crm": "Manual",
+        "crm": "Manual",
+        "field_marketing": "Manual",
+        "partner": "Manual",
+        "referral": "Manual",
+        "walk-in": "Manual",
+        "walk_in": "Manual",
     }
     key = cstr(source or "").strip().lower().replace(" ", "_")
     return mapping.get(key, "Manual")
+
+
+def _crm_status_to_reach(status):
+    mapping = {
+        "New": "New",
+        "Contacted": "Contacted",
+        "Connected": "Contacted",
+        "Not Reachable": "Contacted",
+        "Interested": "Qualified",
+        "Not Interested": "Lost",
+        "Qualified": "Qualified",
+        "Proposal Required": "Negotiation",
+        "Discussion Ongoing": "Negotiation",
+        "Ready to Proceed": "Negotiation",
+        "Won": "Won",
+        "Lost": "Lost",
+    }
+    return mapping.get(cstr(status or "").strip(), "New")
+
+
+def _reach_status_to_crm(status):
+    mapping = {
+        "New": "New",
+        "Contacted": "Contacted",
+        "Meeting Done": "Connected",
+        "Qualified": "Qualified",
+        "Negotiation": "Discussion Ongoing",
+        "Won": "Won",
+        "Lost": "Lost",
+        "Cancelled": "Lost",
+        "Disqualified": "Lost",
+        "Closed": "Lost",
+    }
+    return mapping.get(cstr(status or "").strip(), None)
+
+
+def crm_external_lead_key(crm_lead_id):
+    return f"crm-{cstr(crm_lead_id or '').strip()}"
+
+
+def crm_list_reach_reps():
+    """Active REACH / Sales Rep Profiles for Smilecure CRM assignment."""
+    return list_sales_reps_for_manager(user=None)
+
+
+def crm_get_reach_lead(*, crm_lead_id=None, hec_lead_id=None):
+    """Pull REACH Franchise Sales Lead linked to a Smilecure CRM lead."""
+    rfms = crm_external_lead_key(crm_lead_id) if crm_lead_id else None
+    lead_id = resolve_franchise_sales_lead_id(hec_lead_id=hec_lead_id, rfms_lead_id=rfms)
+    if not lead_id:
+        return None
+    doc = frappe.get_doc("Franchise Sales Lead", lead_id)
+    rep_id = cstr(doc.get("assigned_rep") or "")
+    rep_name = ""
+    if rep_id and frappe.db.exists("Sales Rep Profile", rep_id):
+        rep_name = cstr(frappe.db.get_value("Sales Rep Profile", rep_id, "full_name") or rep_id)
+    return {
+        "lead_id": lead_id,
+        "crm_lead_id": cstr(crm_lead_id or "").strip(),
+        "rfms_lead_id": cstr(doc.get("rfms_lead_id") or ""),
+        "status": cstr(doc.get("status") or ""),
+        "crm_status": _reach_status_to_crm(doc.get("status")),
+        "assigned_rep": rep_id,
+        "assigned_rep_name": rep_name,
+        "notes": cstr(doc.get("notes") or ""),
+        "phone": cstr(doc.get("phone") or ""),
+        "email": cstr(doc.get("email") or ""),
+        "modified": cstr(doc.get("modified") or ""),
+    }
+
+
+def crm_assign_lead_to_reach(
+    *,
+    crm_lead_id,
+    sales_rep_id,
+    lead=None,
+    followups=None,
+    create_visit=True,
+    assigned_from=None,
+    assigned_to_name=None,
+):
+    """Create/upsert REACH lead from Smilecure CRM and assign to REACH user + Log Visit."""
+    crm_id = cstr(crm_lead_id or "").strip()
+    if not crm_id:
+        frappe.throw(_("crm_lead_id is required"))
+    if not sales_rep_id:
+        frappe.throw(_("sales_rep_id is required"))
+
+    lead_payload = lead if isinstance(lead, dict) else {}
+    if isinstance(lead, str) and lead.strip():
+        try:
+            parsed = json.loads(lead)
+            if isinstance(parsed, dict):
+                lead_payload = parsed
+        except Exception:
+            lead_payload = {}
+
+    fu_rows = followups if isinstance(followups, list) else []
+    if isinstance(followups, str) and followups.strip():
+        try:
+            parsed_fu = json.loads(followups)
+            if isinstance(parsed_fu, list):
+                fu_rows = parsed_fu
+        except Exception:
+            fu_rows = []
+
+    fu_lines = []
+    for row in fu_rows[:12]:
+        if not isinstance(row, dict):
+            continue
+        when = cstr(row.get("dueAt") or row.get("due_at") or row.get("when") or "")[:40]
+        title = cstr(row.get("title") or row.get("type") or "Follow-up")[:80]
+        outcome = cstr(row.get("outcome") or row.get("notes") or "")[:120]
+        owner = cstr(row.get("owner") or "")[:40]
+        done = "done" if row.get("done") else "open"
+        bit = f"- [{done}] {when} · {title}"
+        if owner:
+            bit += f" · {owner}"
+        if outcome:
+            bit += f" · {outcome}"
+        fu_lines.append(bit)
+
+    existing_notes = cstr(lead_payload.get("notes") or "").strip()
+    blocks = []
+    if existing_notes:
+        blocks.append(existing_notes)
+    blocks.append(f"Synced from Smilecure CRM lead {crm_id}")
+    if fu_lines:
+        blocks.append("Follow-ups:\n" + "\n".join(fu_lines))
+    lead_payload["notes"] = "\n\n".join(blocks)[:2000]
+    lead_payload.setdefault("lead_name", lead_payload.get("name") or crm_id)
+    lead_payload.setdefault("source", lead_payload.get("lead_source") or "smilecure_crm")
+    if lead_payload.get("status") and not lead_payload.get("stage"):
+        lead_payload["status"] = _crm_status_to_reach(lead_payload.get("status"))
+
+    result = ffms_assign_reach_lead(
+        hec_lead_id=None,
+        rfms_lead_id=crm_external_lead_key(crm_id),
+        sales_rep_id=sales_rep_id,
+        assigned_to_name=assigned_to_name,
+        assignee_role="reach",
+        create_visit=bool(create_visit),
+        assigned_from=assigned_from or "Smilecure CRM",
+        lead=lead_payload,
+    )
+    snap = crm_get_reach_lead(crm_lead_id=crm_id, hec_lead_id=result.get("lead_id"))
+    out = dict(result or {})
+    out["crm_lead_id"] = crm_id
+    out["rfms_lead_id"] = crm_external_lead_key(crm_id)
+    if snap:
+        out["reach"] = snap
+        out["assigned_rep_name"] = snap.get("assigned_rep_name")
+    return out
+
+
+def crm_sync_lead_status_to_reach(*, crm_lead_id, status=None, stage=None):
+    """Push Smilecure CRM status onto the linked REACH Franchise Sales Lead."""
+    crm_id = cstr(crm_lead_id or "").strip()
+    if not crm_id:
+        frappe.throw(_("crm_lead_id is required"))
+    reach_status = _crm_status_to_reach(status) if status else None
+    return ffms_update_lead_status(
+        rfms_lead_id=crm_external_lead_key(crm_id),
+        stage=stage,
+        status=reach_status,
+    )
 
 
 def ensure_franchise_sales_lead_from_ffms(*, hec_lead_id=None, rfms_lead_id=None, lead=None, assigned_rep=None):
@@ -2021,6 +2238,1240 @@ def submit_closing_report(user, data):
     return doc.name
 
 
+def ensure_team_performance_doctype():
+    """Install Sales Team Performance Report via JSON import, or create it in place for hot deploys."""
+    ensure_hec_module_def()
+    if frappe.db.exists("DocType", "Sales Team Performance Report"):
+        return
+    try:
+        _import_doctype("sales_team_performance_report", "Sales Team Performance Report")
+    except Exception:
+        frappe.log_error(title="import_team_performance_doctype", message=frappe.get_traceback())
+    if frappe.db.exists("DocType", "Sales Team Performance Report"):
+        return
+    doc = frappe.get_doc(
+        {
+            "doctype": "DocType",
+            "name": "Sales Team Performance Report",
+            "module": HEC_MODULE,
+            "custom": 0,
+            "autoname": "naming_series:",
+            "naming_rule": 'By "Naming Series" field',
+            "engine": "InnoDB",
+            "track_changes": 1,
+            "fields": [
+                {
+                    "fieldname": "naming_series",
+                    "label": "Series",
+                    "fieldtype": "Select",
+                    "options": "STPR-.#####",
+                    "default": "STPR-.#####",
+                    "reqd": 1,
+                },
+                {
+                    "fieldname": "sales_rep",
+                    "label": "Sales Rep",
+                    "fieldtype": "Link",
+                    "options": "Sales Rep Profile",
+                    "reqd": 1,
+                    "in_list_view": 1,
+                },
+                {
+                    "fieldname": "activity_date",
+                    "label": "Activity Date",
+                    "fieldtype": "Date",
+                    "reqd": 1,
+                    "in_list_view": 1,
+                },
+                {"fieldname": "title", "label": "Title", "fieldtype": "Data", "reqd": 1, "in_list_view": 1},
+                {"fieldname": "doctors_met", "label": "Doctors Met", "fieldtype": "Int", "default": "0"},
+                {"fieldname": "visits_done", "label": "Visits Done", "fieldtype": "Int", "default": "0"},
+                {
+                    "fieldname": "samples_collected",
+                    "label": "Samples / Orders",
+                    "fieldtype": "Int",
+                    "default": "0",
+                },
+                {"fieldname": "km_traveled", "label": "KM Traveled", "fieldtype": "Float", "default": "0"},
+                {"fieldname": "location_note", "label": "Area / Location", "fieldtype": "Data"},
+                {
+                    "fieldname": "activity_summary",
+                    "label": "Daily Activity Summary",
+                    "fieldtype": "Long Text",
+                    "reqd": 1,
+                },
+                {
+                    "fieldname": "attachment_meta",
+                    "label": "Attachment Meta JSON",
+                    "fieldtype": "Long Text",
+                },
+            ],
+            "permissions": [
+                {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+                {"role": "Sales Manager", "read": 1, "write": 1, "create": 1},
+                {"role": "Sales Representative", "read": 1, "write": 1, "create": 1},
+            ],
+        }
+    )
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    frappe.clear_cache(doctype="Sales Team Performance Report")
+
+
+def _parse_performance_attachments(data):
+    raw = data.get("attachments_json") or data.get("attachments")
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            frappe.throw(_("Invalid attachments JSON"))
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        filename = (item.get("filename") or "activity.pdf").strip() or "activity.pdf"
+        content = item.get("file_content") or item.get("content") or ""
+        if not content:
+            continue
+        if isinstance(content, str) and "," in content and content.strip().startswith("data:"):
+            content = content.split(",", 1)[1]
+        out.append({"filename": filename[:140], "file_content": content})
+    return out[:10]
+
+
+def _attach_performance_files(report_name, attachments):
+    if not attachments:
+        return []
+    import base64
+
+    from frappe.utils.file_manager import save_file
+
+    saved = []
+    for item in attachments:
+        try:
+            content = base64.b64decode(item["file_content"])
+        except Exception:
+            frappe.throw(_("Invalid file encoding for {0}").format(item.get("filename")))
+        if len(content) > 8 * 1024 * 1024:
+            frappe.throw(_("File {0} exceeds 8MB limit").format(item.get("filename")))
+        file_doc = save_file(
+            item["filename"],
+            content,
+            "Sales Team Performance Report",
+            report_name,
+            decode=False,
+            is_private=1,
+        )
+        saved.append(
+            {
+                "file_name": file_doc.file_name,
+                "file_url": file_doc.file_url,
+                "name": file_doc.name,
+            }
+        )
+    return saved
+
+
+def _performance_attachments_for(report_name):
+    rows = frappe.get_all(
+        "File",
+        filters={
+            "attached_to_doctype": "Sales Team Performance Report",
+            "attached_to_name": report_name,
+        },
+        fields=["name", "file_name", "file_url", "file_size"],
+        order_by="creation asc",
+    )
+    return rows
+
+
+def _can_access_performance_report(user, report_name):
+    rep_ids = scoped_rep_ids(user)
+    sales_rep = frappe.db.get_value("Sales Team Performance Report", report_name, "sales_rep")
+    return bool(sales_rep and sales_rep in rep_ids)
+
+
+def serialize_team_performance_report(row):
+    meta = row.get("attachment_meta")
+    files = []
+    if isinstance(meta, str) and meta.strip():
+        try:
+            files = json.loads(meta) or []
+        except Exception:
+            files = []
+    if not files:
+        files = _performance_attachments_for(row.get("name"))
+    rep = frappe.db.get_value(
+        "Sales Rep Profile",
+        row.get("sales_rep"),
+        ["full_name", "rep_code", "designation"],
+        as_dict=True,
+    ) or {}
+    return {
+        "name": row.get("name"),
+        "sales_rep": row.get("sales_rep"),
+        "rep_code": rep.get("rep_code") or "",
+        "full_name": rep.get("full_name") or "",
+        "designation": rep.get("designation") or "",
+        "activity_date": str(row.get("activity_date") or ""),
+        "title": row.get("title") or "",
+        "doctors_met": cint(row.get("doctors_met")),
+        "visits_done": cint(row.get("visits_done")),
+        "samples_collected": cint(row.get("samples_collected")),
+        "km_traveled": flt(row.get("km_traveled")),
+        "location_note": row.get("location_note") or "",
+        "activity_summary": row.get("activity_summary") or "",
+        "creation": str(row.get("creation") or ""),
+        "attachments": files,
+    }
+
+
+def _rep_label_map(rep_ids):
+    if not rep_ids:
+        return {}
+    rows = frappe.get_all(
+        "Sales Rep Profile",
+        filters={"name": ("in", list(rep_ids))},
+        fields=["name", "full_name", "rep_code", "designation"],
+    )
+    return {
+        r.name: {
+            "full_name": r.full_name or "",
+            "rep_code": r.rep_code or "",
+            "designation": r.designation or "",
+        }
+        for r in rows
+    }
+
+
+def _parse_activity_range(activity_date=None, date_from=None, date_to=None, default_days=14, max_days=366):
+    """Resolve inclusive date range. Single activity_date wins over from/to."""
+    from datetime import timedelta
+
+    today_d = getdate(today())
+    if activity_date:
+        day = getdate(activity_date)
+        return day, day
+    start = getdate(date_from) if date_from else (today_d - timedelta(days=max(cint(default_days), 1) - 1))
+    end = getdate(date_to) if date_to else today_d
+    if start > end:
+        start, end = end, start
+    # Hard cap range length to keep payloads manageable.
+    cap = max(cint(max_days) or 366, 31)
+    if (end - start).days > cap:
+        start = end - timedelta(days=cap)
+    return start, end
+
+
+def _fmt_activity_day(value):
+    """Normalize creation / visit_date / datetime / string → YYYY-MM-DD."""
+    if value is None or value == "":
+        return ""
+    try:
+        return str(getdate(value))
+    except Exception:
+        text = cstr(value).strip()
+        if not text:
+            return ""
+        # "2026-10-03 09:50:16.252723" or "2026-10-03"
+        return text[:10] if len(text) >= 10 and text[4] == "-" else text
+
+
+def _excel_text(value):
+    """Keep phone / ids as text in Excel (avoid scientific notation)."""
+    text = cstr(value or "").strip()
+    if not text:
+        return ""
+    return f"'{text}"
+
+
+def _fmt_visit_time(value):
+    if value is None or value == "":
+        return ""
+    try:
+        from datetime import timedelta
+
+        if isinstance(value, timedelta):
+            total = int(value.total_seconds())
+            hh = (total // 3600) % 24
+            mm = (total % 3600) // 60
+            ss = total % 60
+            return f"{hh:02d}:{mm:02d}:{ss:02d}"
+    except Exception:
+        pass
+    text = str(value)
+    if text.startswith("0:"):
+        # timedelta str like "0:06:37.123"
+        parts = text.split(":")
+        if len(parts) >= 3:
+            return f"{int(parts[0]):02d}:{parts[1]}:{parts[2][:2]}"
+    return text[:8]
+
+
+def get_team_portal_activity(
+    user,
+    activity_date=None,
+    date_from=None,
+    date_to=None,
+    limit=500,
+    sales_rep=None,
+):
+    """Leads / visits / onboardings for the team, date-ranged and grouped day-by-day per employee."""
+    from datetime import timedelta
+
+    rep_ids = scoped_rep_ids(user)
+    sales_rep = cstr(sales_rep or "").strip()
+    if sales_rep:
+        # Force single-employee scope when requested (director may pass any active rep).
+        if sales_rep in (rep_ids or []) or (
+            is_org_wide_sales_viewer(user) and frappe.db.exists("Sales Rep Profile", sales_rep)
+        ):
+            rep_ids = [sales_rep]
+        else:
+            rep_ids = []
+    labels = _rep_label_map(rep_ids)
+    start, end = _parse_activity_range(activity_date, date_from, date_to, default_days=14, max_days=366)
+    start_s, end_s = str(start), str(end)
+    limit = min(max(cint(limit) or 500, 50), 5000)
+
+    leads = []
+    if rep_ids and frappe.db.exists("DocType", "Franchise Sales Lead"):
+        lead_fields = [
+            "name",
+            "lead_name",
+            "company_name",
+            "contact_person",
+            "phone",
+            "email",
+            "address",
+            "city",
+            "district",
+            "subdivision",
+            "pincode",
+            "status",
+            "assigned_rep",
+            "lead_source",
+            "notes",
+            "latitude",
+            "longitude",
+            "creation",
+            "modified",
+        ]
+        meta = frappe.get_meta("Franchise Sales Lead")
+        lead_fields = [f for f in lead_fields if f == "name" or meta.has_field(f)]
+        for row in frappe.get_all(
+            "Franchise Sales Lead",
+            filters={
+                "assigned_rep": ("in", list(rep_ids)),
+                "creation": ("between", [f"{start_s} 00:00:00", f"{end_s} 23:59:59"]),
+            },
+            fields=lead_fields,
+            order_by="creation desc",
+            limit=limit,
+        ):
+            info = labels.get(row.get("assigned_rep")) or {}
+            activity_day = _fmt_activity_day(row.get("creation"))
+            leads.append(
+                {
+                    "name": row.get("name"),
+                    "activity_date": activity_day,
+                    "lead_name": row.get("lead_name") or "",
+                    "company_name": row.get("company_name") or "",
+                    "contact_person": row.get("contact_person") or "",
+                    "phone": row.get("phone") or "",
+                    "email": row.get("email") or "",
+                    "address": row.get("address") or "",
+                    "city": row.get("city") or "",
+                    "district": row.get("district") or "",
+                    "subdivision": row.get("subdivision") or "",
+                    "pincode": row.get("pincode") or "",
+                    "status": row.get("status") or "",
+                    "lead_source": row.get("lead_source") or "Manual",
+                    "notes": (row.get("notes") or "")[:500],
+                    "latitude": flt(row.get("latitude")),
+                    "longitude": flt(row.get("longitude")),
+                    "sales_rep": row.get("assigned_rep") or "",
+                    "full_name": info.get("full_name") or "",
+                    "rep_code": info.get("rep_code") or "",
+                    "creation": cstr(row.get("creation") or "")[:19],
+                    "modified": cstr(row.get("modified") or "")[:19],
+                }
+            )
+
+    visits = []
+    if rep_ids and frappe.db.exists("DocType", "Field Sales Visit"):
+        ensure_reach_ffms_visit_fields()
+        visit_fields = [
+            "name",
+            "sales_rep",
+            "lead",
+            "visit_date",
+            "visit_time",
+            "purpose",
+            "outcome",
+            "duration_minutes",
+            "latitude",
+            "longitude",
+            "notes",
+            "creation",
+        ]
+        meta = frappe.get_meta("Field Sales Visit")
+        for optional in ("visit_status", "photo"):
+            if meta.has_field(optional):
+                visit_fields.append(optional)
+        for row in frappe.get_all(
+            "Field Sales Visit",
+            filters={
+                "sales_rep": ("in", list(rep_ids)),
+                "visit_date": ("between", [start_s, end_s]),
+            },
+            fields=visit_fields,
+            order_by="visit_date desc, creation desc",
+            limit=limit,
+        ):
+            info = labels.get(row.get("sales_rep")) or {}
+            lead_name = ""
+            if row.get("lead"):
+                lead_name = frappe.db.get_value("Franchise Sales Lead", row.get("lead"), "lead_name") or ""
+            activity_day = _fmt_activity_day(row.get("visit_date") or row.get("creation"))
+            visits.append(
+                {
+                    "name": row.get("name"),
+                    "activity_date": activity_day,
+                    "sales_rep": row.get("sales_rep") or "",
+                    "full_name": info.get("full_name") or "",
+                    "rep_code": info.get("rep_code") or "",
+                    "lead": row.get("lead") or "",
+                    "lead_name": lead_name,
+                    "visit_date": _fmt_activity_day(row.get("visit_date")),
+                    "visit_time": _fmt_visit_time(row.get("visit_time")),
+                    "purpose": row.get("purpose") or "",
+                    "outcome": row.get("outcome") or "",
+                    "duration_minutes": cint(row.get("duration_minutes")),
+                    "latitude": flt(row.get("latitude")),
+                    "longitude": flt(row.get("longitude")),
+                    "visit_status": row.get("visit_status") or "Completed",
+                    "notes": (row.get("notes") or "")[:500],
+                    "photo": row.get("photo") or "",
+                    "creation": cstr(row.get("creation") or "")[:19],
+                }
+            )
+
+    onboardings = []
+    if rep_ids and frappe.db.exists("DocType", "Franchise Onboarding Request"):
+        for row in frappe.get_all(
+            "Franchise Onboarding Request",
+            filters={
+                "sales_rep": ("in", list(rep_ids)),
+                "creation": ("between", [f"{start_s} 00:00:00", f"{end_s} 23:59:59"]),
+            },
+            fields=[
+                "name",
+                "sales_rep",
+                "lead",
+                "franchise_name",
+                "owner_name",
+                "proposed_branch_code",
+                "territory_region",
+                "address",
+                "phone",
+                "email",
+                "status",
+                "franchisee_id",
+                "notes",
+                "creation",
+                "modified",
+            ],
+            order_by="creation desc",
+            limit=limit,
+        ):
+            info = labels.get(row.get("sales_rep")) or {}
+            activity_day = _fmt_activity_day(row.get("creation"))
+            onboardings.append(
+                {
+                    "name": row.get("name"),
+                    "activity_date": activity_day,
+                    "sales_rep": row.get("sales_rep") or "",
+                    "full_name": info.get("full_name") or "",
+                    "rep_code": info.get("rep_code") or "",
+                    "franchise_name": row.get("franchise_name") or "",
+                    "owner_name": row.get("owner_name") or "",
+                    "proposed_branch_code": row.get("proposed_branch_code") or "",
+                    "territory_region": row.get("territory_region") or "",
+                    "address": row.get("address") or "",
+                    "phone": row.get("phone") or "",
+                    "email": row.get("email") or "",
+                    "status": row.get("status") or "",
+                    "franchisee_id": row.get("franchisee_id") or "",
+                    "lead": row.get("lead") or "",
+                    "notes": (row.get("notes") or "")[:500],
+                    "creation": str(row.get("creation") or "")[:19],
+                    "modified": str(row.get("modified") or "")[:19],
+                }
+            )
+
+    # Day-by-day → employee buckets
+    daily_map = {}
+    employee_map = {}
+
+    def bucket(day, rep_id, kind, item):
+        if not day:
+            return
+        info = labels.get(rep_id) or {}
+        day_entry = daily_map.setdefault(day, {})
+        emp = day_entry.setdefault(
+            rep_id or "_unassigned",
+            {
+                "sales_rep": rep_id or "",
+                "full_name": info.get("full_name") or "Unassigned",
+                "rep_code": info.get("rep_code") or "",
+                "leads": [],
+                "visits": [],
+                "onboardings": [],
+                "leads_count": 0,
+                "visits_count": 0,
+                "onboardings_count": 0,
+            },
+        )
+        emp[kind].append(item)
+        emp[f"{kind}_count"] = len(emp[kind])
+
+        roll = employee_map.setdefault(
+            rep_id or "_unassigned",
+            {
+                "sales_rep": rep_id or "",
+                "full_name": info.get("full_name") or "Unassigned",
+                "rep_code": info.get("rep_code") or "",
+                "leads_count": 0,
+                "visits_count": 0,
+                "onboardings_count": 0,
+                "days_active": set(),
+            },
+        )
+        roll[f"{kind}_count"] += 1
+        roll["days_active"].add(day)
+
+    for item in leads:
+        bucket(item.get("activity_date"), item.get("sales_rep"), "leads", item)
+    for item in visits:
+        bucket(item.get("activity_date"), item.get("sales_rep"), "visits", item)
+    for item in onboardings:
+        bucket(item.get("activity_date"), item.get("sales_rep"), "onboardings", item)
+
+    # Ensure every scoped employee appears even with zero activity in range.
+    for rid in rep_ids or []:
+        info = labels.get(rid) or {}
+        employee_map.setdefault(
+            rid,
+            {
+                "sales_rep": rid,
+                "full_name": info.get("full_name") or "",
+                "rep_code": info.get("rep_code") or "",
+                "leads_count": 0,
+                "visits_count": 0,
+                "onboardings_count": 0,
+                "days_active": set(),
+            },
+        )
+
+    daily = []
+    cursor = end
+    while cursor >= start:
+        day_s = str(cursor)
+        employees = list((daily_map.get(day_s) or {}).values())
+        employees.sort(key=lambda e: ((e.get("full_name") or "").lower(), e.get("rep_code") or ""))
+        daily.append(
+            {
+                "date": day_s,
+                "leads_count": sum(e.get("leads_count") or 0 for e in employees),
+                "visits_count": sum(e.get("visits_count") or 0 for e in employees),
+                "onboardings_count": sum(e.get("onboardings_count") or 0 for e in employees),
+                "employees": employees,
+            }
+        )
+        cursor = cursor - timedelta(days=1)
+
+    by_employee = []
+    for row in employee_map.values():
+        days_active = row.pop("days_active", set()) or set()
+        by_employee.append(
+            {
+                **row,
+                "days_active": len(days_active),
+                "total": (row.get("leads_count") or 0)
+                + (row.get("visits_count") or 0)
+                + (row.get("onboardings_count") or 0),
+            }
+        )
+    by_employee.sort(key=lambda e: (-(e.get("total") or 0), (e.get("full_name") or "").lower()))
+
+    counts = {
+        "leads": len(leads),
+        "visits": len(visits),
+        "onboardings": len(onboardings),
+        "employees": len(by_employee),
+        "days": len(daily),
+    }
+    today_s = today()
+    today_counts = {
+        "leads": sum(1 for r in leads if r.get("activity_date") == today_s),
+        "visits": sum(1 for r in visits if r.get("activity_date") == today_s),
+        "onboardings": sum(1 for r in onboardings if r.get("activity_date") == today_s),
+    }
+
+    return {
+        "is_manager": is_sales_manager(user),
+        "activity_date": start_s if start_s == end_s else "",
+        "date_from": start_s,
+        "date_to": end_s,
+        "counts": counts,
+        "today_counts": today_counts,
+        "leads": leads,
+        "visits": visits,
+        "onboardings": onboardings,
+        "daily": daily,
+        "by_employee": by_employee,
+        "prefill": {
+            "visits_done": today_counts.get("visits") or 0,
+            "doctors_met": today_counts.get("visits") or 0,
+            "samples_collected": today_counts.get("leads") or 0,
+            "leads_uploaded": today_counts.get("leads") or 0,
+            "onboardings_done": today_counts.get("onboardings") or 0,
+        },
+    }
+
+
+def _csv_entry_date(*candidates):
+    for value in candidates:
+        day = _fmt_activity_day(value)
+        if day:
+            return day
+    return ""
+
+
+def team_portal_activity_csv(user, activity_date=None, date_from=None, date_to=None):
+    """One CSV row per lead / visit / onboarding with full field set."""
+    payload = get_team_portal_activity(
+        user,
+        activity_date=activity_date,
+        date_from=date_from,
+        date_to=date_to,
+        limit=5000,
+    )
+    import csv
+    import io
+
+    buf = io.StringIO()
+    # Excel-friendly UTF-8 BOM
+    buf.write("\ufeff")
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Entry Type",
+            "Date",
+            "Employee",
+            "Rep Code",
+            "Record ID",
+            "Lead Name",
+            "Company / Franchise",
+            "Contact Person / Owner",
+            "Phone",
+            "Email",
+            "Address",
+            "City",
+            "District",
+            "Subdivision",
+            "Pincode",
+            "Territory / Area",
+            "Branch Code",
+            "Purpose",
+            "Outcome",
+            "Duration Minutes",
+            "Visit Time",
+            "Visit Status",
+            "Status",
+            "Lead Source",
+            "Linked Lead ID",
+            "Latitude",
+            "Longitude",
+            "Photo URL",
+            "Notes",
+            "Created At",
+            "Sales Rep ID",
+        ]
+    )
+
+    def _row(entry_type, date_val, emp_name, rep_code, record_id, **cols):
+        writer.writerow(
+            [
+                entry_type,
+                date_val or "",
+                emp_name or "",
+                rep_code or "",
+                record_id or "",
+                cols.get("lead_name") or "",
+                cols.get("company") or "",
+                cols.get("contact") or "",
+                cols.get("phone") or "",
+                cols.get("email") or "",
+                cols.get("address") or "",
+                cols.get("city") or "",
+                cols.get("district") or "",
+                cols.get("subdivision") or "",
+                cols.get("pincode") or "",
+                cols.get("territory") or "",
+                cols.get("branch") or "",
+                cols.get("purpose") or "",
+                cols.get("outcome") or "",
+                cols.get("duration") or "",
+                cols.get("visit_time") or "",
+                cols.get("visit_status") or "",
+                cols.get("status") or "",
+                cols.get("lead_source") or "",
+                cols.get("lead_id") or "",
+                cols.get("latitude") or "",
+                cols.get("longitude") or "",
+                cols.get("photo") or "",
+                cols.get("notes") or "",
+                cols.get("created") or "",
+                cols.get("sales_rep") or "",
+            ]
+        )
+
+    for row in payload.get("leads") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("creation"))
+        _row(
+            "Lead",
+            day,
+            row.get("full_name"),
+            row.get("rep_code"),
+            row.get("name"),
+            lead_name=row.get("lead_name"),
+            company=row.get("company_name"),
+            contact=row.get("contact_person"),
+            phone=_excel_text(row.get("phone")),
+            email=row.get("email"),
+            address=row.get("address"),
+            city=row.get("city"),
+            district=row.get("district"),
+            subdivision=row.get("subdivision"),
+            pincode=_excel_text(row.get("pincode")),
+            status=row.get("status"),
+            lead_source=row.get("lead_source"),
+            latitude=row.get("latitude"),
+            longitude=row.get("longitude"),
+            notes=row.get("notes"),
+            created=row.get("creation") or day,
+            sales_rep=row.get("sales_rep"),
+        )
+    for row in payload.get("visits") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("visit_date"), row.get("creation"))
+        _row(
+            "Visit",
+            day,
+            row.get("full_name"),
+            row.get("rep_code"),
+            row.get("name"),
+            lead_name=row.get("lead_name"),
+            purpose=row.get("purpose"),
+            outcome=row.get("outcome"),
+            duration=row.get("duration_minutes"),
+            visit_time=row.get("visit_time"),
+            visit_status=row.get("visit_status"),
+            lead_id=row.get("lead"),
+            latitude=row.get("latitude"),
+            longitude=row.get("longitude"),
+            photo=row.get("photo"),
+            notes=row.get("notes"),
+            created=row.get("creation") or day,
+            sales_rep=row.get("sales_rep"),
+        )
+    for row in payload.get("onboardings") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("creation"))
+        _row(
+            "Onboarding",
+            day,
+            row.get("full_name"),
+            row.get("rep_code"),
+            row.get("name"),
+            company=row.get("franchise_name"),
+            contact=row.get("owner_name"),
+            phone=_excel_text(row.get("phone")),
+            email=row.get("email"),
+            address=row.get("address"),
+            territory=row.get("territory_region"),
+            branch=row.get("proposed_branch_code"),
+            status=row.get("status"),
+            lead_id=row.get("lead"),
+            notes=row.get("notes"),
+            created=row.get("creation") or day,
+            sales_rep=row.get("sales_rep"),
+        )
+
+    count = (
+        len(payload.get("leads") or [])
+        + len(payload.get("visits") or [])
+        + len(payload.get("onboardings") or [])
+    )
+    return {
+        "is_manager": payload.get("is_manager"),
+        "filename": f"team-portal-activity-{payload.get('date_from')}-to-{payload.get('date_to')}.csv",
+        "csv": buf.getvalue(),
+        "count": count,
+        "counts": payload.get("counts") or {},
+        "date_from": payload.get("date_from"),
+        "date_to": payload.get("date_to"),
+    }
+
+
+def _read_visit_photo_bytes(visit_name, photo_url=None):
+    """Return (filename, bytes) for a visit photo, or None."""
+    rows = frappe.get_all(
+        "File",
+        filters={
+            "attached_to_doctype": "Field Sales Visit",
+            "attached_to_name": visit_name,
+        },
+        fields=["name", "file_name", "file_url"],
+        order_by="creation desc",
+        limit=5,
+    )
+    if not rows and photo_url:
+        rows = frappe.get_all(
+            "File",
+            filters={"file_url": photo_url},
+            fields=["name", "file_name", "file_url"],
+            limit=1,
+        )
+    for row in rows:
+        try:
+            file_doc = frappe.get_doc("File", row.name)
+            content = file_doc.get_content()
+            if content:
+                fname = cstr(row.file_name or f"{visit_name}.jpg").replace("/", "_")
+                return fname, content
+        except Exception:
+            frappe.log_error(title="team_employee_photo_read", message=frappe.get_traceback())
+    return None
+
+
+def download_team_employee_pack(user, sales_rep, activity_date=None, date_from=None, date_to=None):
+    """ZIP pack for one employee: full-field CSV of leads/visits/onboarding + visit photos."""
+    import base64
+    import csv
+    import io
+    import zipfile
+
+    sales_rep = cstr(sales_rep or "").strip()
+    if not sales_rep:
+        frappe.throw(_("sales_rep is required"))
+    allowed = set(scoped_rep_ids(user) or [])
+    if sales_rep not in allowed and not is_org_wide_sales_viewer(user):
+        frappe.throw(_("Not permitted to download this employee"), frappe.PermissionError)
+    if sales_rep not in allowed and is_org_wide_sales_viewer(user):
+        # still require an existing active profile
+        if not frappe.db.exists("Sales Rep Profile", sales_rep):
+            frappe.throw(_("Employee not found"))
+
+    payload = get_team_portal_activity(
+        user,
+        activity_date=activity_date,
+        date_from=date_from,
+        date_to=date_to,
+        limit=5000,
+        sales_rep=sales_rep,
+    )
+    labels = _rep_label_map([sales_rep])
+    info = labels.get(sales_rep) or {}
+    emp_name = info.get("full_name") or sales_rep
+    rep_code = info.get("rep_code") or sales_rep
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", emp_name).strip("_") or "employee"
+
+    # Build CSV directly from filtered payload (same columns as team export + photo file path).
+    buf = io.StringIO()
+    buf.write("\ufeff")
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Entry Type",
+            "Date",
+            "Employee",
+            "Rep Code",
+            "Record ID",
+            "Lead Name",
+            "Company / Franchise",
+            "Contact Person / Owner",
+            "Phone",
+            "Email",
+            "Address",
+            "City",
+            "District",
+            "Subdivision",
+            "Pincode",
+            "Territory / Area",
+            "Branch Code",
+            "Purpose",
+            "Outcome",
+            "Duration Minutes",
+            "Visit Time",
+            "Visit Status",
+            "Status",
+            "Lead Source",
+            "Linked Lead ID",
+            "Latitude",
+            "Longitude",
+            "Photo URL",
+            "Photo File",
+            "Notes",
+            "Created At",
+            "Sales Rep ID",
+        ]
+    )
+
+    photo_index = []
+    for row in payload.get("leads") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("creation"))
+        if not day and row.get("name"):
+            day = _fmt_activity_day(frappe.db.get_value("Franchise Sales Lead", row.get("name"), "creation"))
+        writer.writerow(
+            [
+                "Lead",
+                day,
+                row.get("full_name") or emp_name,
+                row.get("rep_code") or rep_code,
+                row.get("name") or "",
+                row.get("lead_name") or "",
+                row.get("company_name") or "",
+                row.get("contact_person") or "",
+                _excel_text(row.get("phone")),
+                row.get("email") or "",
+                row.get("address") or "",
+                row.get("city") or "",
+                row.get("district") or "",
+                row.get("subdivision") or "",
+                _excel_text(row.get("pincode")),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                row.get("status") or "",
+                row.get("lead_source") or "",
+                "",
+                row.get("latitude") or "",
+                row.get("longitude") or "",
+                "",
+                "",
+                row.get("notes") or "",
+                row.get("creation") or day,
+                row.get("sales_rep") or sales_rep,
+            ]
+        )
+
+    for row in payload.get("visits") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("visit_date"), row.get("creation"))
+        if not day and row.get("name"):
+            day = _fmt_activity_day(
+                frappe.db.get_value("Field Sales Visit", row.get("name"), "visit_date")
+                or frappe.db.get_value("Field Sales Visit", row.get("name"), "creation")
+            )
+        photo_file = ""
+        photo_url = row.get("photo") or ""
+        if photo_url or row.get("name"):
+            got = _read_visit_photo_bytes(row.get("name"), photo_url)
+            if got:
+                fname, content = got
+                stored = f"photos/{row.get('name')}_{fname}"
+                photo_index.append((stored, content))
+                photo_file = stored
+        writer.writerow(
+            [
+                "Visit",
+                day,
+                row.get("full_name") or emp_name,
+                row.get("rep_code") or rep_code,
+                row.get("name") or "",
+                row.get("lead_name") or "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                row.get("purpose") or "",
+                row.get("outcome") or "",
+                row.get("duration_minutes") or "",
+                row.get("visit_time") or "",
+                row.get("visit_status") or "",
+                "",
+                "",
+                row.get("lead") or "",
+                row.get("latitude") or "",
+                row.get("longitude") or "",
+                photo_url,
+                photo_file,
+                row.get("notes") or "",
+                row.get("creation") or day,
+                row.get("sales_rep") or sales_rep,
+            ]
+        )
+
+    for row in payload.get("onboardings") or []:
+        day = _csv_entry_date(row.get("activity_date"), row.get("creation"))
+        if not day and row.get("name"):
+            day = _fmt_activity_day(
+                frappe.db.get_value("Franchise Onboarding Request", row.get("name"), "creation")
+            )
+        writer.writerow(
+            [
+                "Onboarding",
+                day,
+                row.get("full_name") or emp_name,
+                row.get("rep_code") or rep_code,
+                row.get("name") or "",
+                "",
+                row.get("franchise_name") or "",
+                row.get("owner_name") or "",
+                _excel_text(row.get("phone")),
+                row.get("email") or "",
+                row.get("address") or "",
+                "",
+                "",
+                "",
+                "",
+                row.get("territory_region") or "",
+                row.get("proposed_branch_code") or "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                row.get("status") or "",
+                "",
+                row.get("lead") or "",
+                "",
+                "",
+                "",
+                "",
+                row.get("notes") or "",
+                row.get("creation") or day,
+                row.get("sales_rep") or sales_rep,
+            ]
+        )
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{safe_name}_entries.csv", buf.getvalue().encode("utf-8"))
+        # Employee summary
+        summary = io.StringIO()
+        summary.write("\ufeff")
+        sw = csv.writer(summary)
+        sw.writerow(["Field", "Value"])
+        sw.writerow(["Employee", emp_name])
+        sw.writerow(["Rep Code", rep_code])
+        sw.writerow(["Sales Rep ID", sales_rep])
+        sw.writerow(["Date From", payload.get("date_from") or ""])
+        sw.writerow(["Date To", payload.get("date_to") or ""])
+        sw.writerow(["Leads", (payload.get("counts") or {}).get("leads") or 0])
+        sw.writerow(["Visits", (payload.get("counts") or {}).get("visits") or 0])
+        sw.writerow(["Onboardings", (payload.get("counts") or {}).get("onboardings") or 0])
+        sw.writerow(["Photos included", len(photo_index)])
+        zf.writestr(f"{safe_name}_summary.csv", summary.getvalue().encode("utf-8"))
+        for path, content in photo_index:
+            zf.writestr(path, content)
+
+    raw = zip_buf.getvalue()
+    count = (
+        len(payload.get("leads") or [])
+        + len(payload.get("visits") or [])
+        + len(payload.get("onboardings") or [])
+    )
+    return {
+        "filename": f"{safe_name}_{payload.get('date_from')}_to_{payload.get('date_to')}.zip",
+        "content_type": "application/zip",
+        "file_content": base64.b64encode(raw).decode("ascii"),
+        "count": count,
+        "photo_count": len(photo_index),
+        "employee": emp_name,
+        "rep_code": rep_code,
+        "sales_rep": sales_rep,
+        "date_from": payload.get("date_from"),
+        "date_to": payload.get("date_to"),
+        "counts": payload.get("counts") or {},
+    }
+
+
+def list_team_performance_reports(
+    user, limit=50, activity_date=None, date_from=None, date_to=None, sales_rep=None
+):
+    ensure_team_performance_doctype()
+    rep_ids = scoped_rep_ids(user)
+    if not rep_ids:
+        return {"is_manager": is_sales_manager(user), "reports": []}
+    filters = {"sales_rep": ("in", rep_ids)}
+    if activity_date:
+        filters["activity_date"] = getdate(activity_date)
+    elif date_from or date_to:
+        start, end = _parse_activity_range(None, date_from, date_to, default_days=14)
+        filters["activity_date"] = ("between", [str(start), str(end)])
+    if sales_rep and sales_rep in rep_ids:
+        filters["sales_rep"] = sales_rep
+    rows = frappe.get_all(
+        "Sales Team Performance Report",
+        filters=filters,
+        fields=[
+            "name",
+            "sales_rep",
+            "activity_date",
+            "title",
+            "doctors_met",
+            "visits_done",
+            "samples_collected",
+            "km_traveled",
+            "location_note",
+            "activity_summary",
+            "attachment_meta",
+            "creation",
+        ],
+        order_by="activity_date desc, creation desc",
+        limit=cint(limit) or 50,
+    )
+    return {
+        "is_manager": is_sales_manager(user),
+        "my_rep_id": get_or_create_sales_rep(user),
+        "reports": [serialize_team_performance_report(r) for r in rows],
+    }
+
+
+def submit_team_performance_report(user, data):
+    ensure_team_performance_doctype()
+    rep_id = get_or_create_sales_rep(user)
+    if not rep_id:
+        frappe.throw(_("Sales rep profile required"))
+    title = (data.get("title") or "Daily activity").strip()[:140]
+    summary = (data.get("activity_summary") or data.get("notes") or "").strip()
+    if not summary:
+        frappe.throw(_("Daily activity summary is required"))
+    activity_date = getdate(data.get("activity_date") or today())
+    attachments = _parse_performance_attachments(data)
+    doc = frappe.get_doc(
+        {
+            "doctype": "Sales Team Performance Report",
+            "sales_rep": rep_id,
+            "activity_date": activity_date,
+            "title": title or "Daily activity",
+            "doctors_met": cint(data.get("doctors_met")),
+            "visits_done": cint(data.get("visits_done")),
+            "samples_collected": cint(data.get("samples_collected")),
+            "km_traveled": flt(data.get("km_traveled")),
+            "location_note": (data.get("location_note") or "")[:140],
+            "activity_summary": summary[:5000],
+        }
+    )
+    doc.insert(ignore_permissions=True)
+    saved = _attach_performance_files(doc.name, attachments)
+    if saved:
+        doc.db_set("attachment_meta", json.dumps(saved, ensure_ascii=False))
+    frappe.db.commit()
+    return serialize_team_performance_report(doc.as_dict())
+
+
+def team_performance_reports_csv(user, activity_date=None, sales_rep=None):
+    payload = list_team_performance_reports(user, limit=500, activity_date=activity_date, sales_rep=sales_rep)
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Report ID",
+            "Date",
+            "Rep Code",
+            "Employee",
+            "Designation",
+            "Title",
+            "Doctors Met",
+            "Visits Done",
+            "Samples / Orders",
+            "KM Traveled",
+            "Area / Location",
+            "Activity Summary",
+            "Attachments",
+            "Submitted At",
+        ]
+    )
+    for row in payload.get("reports") or []:
+        files = ", ".join(
+            (f.get("file_name") or f.get("filename") or "") for f in (row.get("attachments") or [])
+        )
+        writer.writerow(
+            [
+                row.get("name") or "",
+                row.get("activity_date") or "",
+                row.get("rep_code") or "",
+                row.get("full_name") or "",
+                row.get("designation") or "",
+                row.get("title") or "",
+                row.get("doctors_met") or 0,
+                row.get("visits_done") or 0,
+                row.get("samples_collected") or 0,
+                row.get("km_traveled") or 0,
+                row.get("location_note") or "",
+                (row.get("activity_summary") or "").replace("\n", " ").strip(),
+                files,
+                (row.get("creation") or "")[:19],
+            ]
+        )
+    return {
+        "is_manager": payload.get("is_manager"),
+        "filename": f"team-performance-{activity_date or 'all'}.csv",
+        "csv": buf.getvalue(),
+        "count": len(payload.get("reports") or []),
+    }
+
+
+def get_team_performance_attachment(user, report_name, file_name=None):
+    ensure_team_performance_doctype()
+    if not report_name or not _can_access_performance_report(user, report_name):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    filters = {
+        "attached_to_doctype": "Sales Team Performance Report",
+        "attached_to_name": report_name,
+    }
+    if file_name:
+        filters["name"] = file_name
+    file_row = frappe.get_all(
+        "File",
+        filters=filters,
+        fields=["name", "file_name", "file_url", "is_private"],
+        limit=1,
+    )
+    if not file_row:
+        frappe.throw(_("Attachment not found"))
+    file_doc = frappe.get_doc("File", file_row[0].name)
+    content = file_doc.get_content()
+    import base64
+
+    return {
+        "file_name": file_doc.file_name,
+        "content_type": "application/octet-stream",
+        "file_content": base64.b64encode(content).decode("ascii"),
+    }
+
+
 def update_sales_rep_location(user, latitude, longitude, on_duty=1):
     rep_id = get_or_create_sales_rep(user)
     if not rep_id:
@@ -2196,6 +3647,7 @@ def smoke_phase25():
         "Field Sales Visit",
         "Franchise Onboarding Request",
         "Sales Closing Report",
+        "Sales Team Performance Report",
     ):
         check(f"doctype_{dt}", frappe.db.exists("DocType", dt))
 

@@ -10,7 +10,7 @@ from collections import Counter
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_months, add_to_date, add_years, cint, cstr, flt, get_datetime, getdate, now_datetime, today
+from frappe.utils import add_days, add_months, add_to_date, add_years, cint, cstr, flt, format_date, get_datetime, getdate, now_datetime, today
 
 
 PEOPLE_MANAGER_ROLES = frozenset(
@@ -65,6 +65,15 @@ def _default_company():
 		return company
 	rows = frappe.get_all("Company", limit=1, pluck="name")
 	return rows[0] if rows else None
+
+
+def _division_label(value):
+	"""Show a Company Division name when the employee stores the division code."""
+	if not value:
+		return ""
+	if frappe.db.exists("DocType", "Company Division") and frappe.db.exists("Company Division", value):
+		return frappe.db.get_value("Company Division", value, "division_name") or value
+	return value
 
 
 def _employee_for_user(user, create=True):
@@ -130,6 +139,13 @@ def _employee_row(employee):
 	reports_to_name = None
 	if row.get("reports_to") and frappe.db.exists("Employee", row.reports_to):
 		reports_to_name = frappe.db.get_value("Employee", row.reports_to, "employee_name")
+	# Resolve division safely — never NameError if helper is missing from a stale worker.
+	people_div = cstr(row.get("people_division") or "").strip()
+	raw_div = people_div or row.get("division") or row.get("custom_division") or row.get("company_division") or ""
+	try:
+		division_val = people_div or _division_label(raw_div)
+	except Exception:
+		division_val = cstr(raw_div or "")
 	return {
 		"id": row.get("name"),
 		"name": row.get("employee_name") or row.get("name"),
@@ -145,7 +161,7 @@ def _employee_row(employee):
 		"personal_email": row.get("personal_email"),
 		"gender": row.get("gender"),
 		"wing": row.get("people_wing") or row.get("wing") or row.get("custom_wing") or "",
-		"division": row.get("people_division") or _division_label(row.get("division") or row.get("custom_division") or row.get("company_division")),
+		"division": division_val,
 		"unit": row.get("people_unit") or "",
 		"photo": row.get("image"),
 		"image": row.get("image"),
@@ -274,15 +290,108 @@ def _expenses_mtd(employee):
 	return {"count": len(rows), "claimed": claimed, "pending": pending}
 
 
+def _employee_geofence_flags(employee):
+	"""Whether GPS fence is enforced for this employee (override counts as not required)."""
+	flags = {"geofence_enabled": 0, "geofence_required": 0, "geofence_label": ""}
+	if not employee:
+		return flags
+	try:
+		ensure_people_geofence_fields()
+	except Exception:
+		return flags
+	meta = frappe.get_meta("Employee")
+	if not meta.has_field("geofence_enabled"):
+		return flags
+	fields = ["geofence_enabled", "geofence_label", "work_latitude", "work_longitude"]
+	if meta.has_field("geofence_override"):
+		fields.append("geofence_override")
+	if meta.has_field("geofence_override_until"):
+		fields.append("geofence_override_until")
+	row = frappe.db.get_value("Employee", employee, fields, as_dict=True) or {}
+	enabled = cint(row.get("geofence_enabled") or 0)
+	flags["geofence_enabled"] = enabled
+	flags["geofence_label"] = cstr(row.get("geofence_label") or "")
+	if not enabled:
+		return flags
+	if _override_active(row):
+		return flags
+	if flt(row.get("work_latitude")) and flt(row.get("work_longitude")):
+		flags["geofence_required"] = 1
+	return flags
+
+
+def _sync_attendance_from_punch(employee, log_type, punch_time):
+	"""Keep tab Attendance in sync with Employee Checkin punches (draft or submitted)."""
+	if not employee or not frappe.db.exists("DocType", "Attendance"):
+		return None
+	day = getdate(punch_time)
+	company = frappe.db.get_value("Employee", employee, "company")
+	existing = frappe.db.get_value(
+		"Attendance",
+		{"employee": employee, "attendance_date": day, "docstatus": ("<", 2)},
+		"name",
+	)
+	meta = frappe.get_meta("Attendance")
+	try:
+		if existing:
+			doc = frappe.get_doc("Attendance", existing)
+		else:
+			doc = frappe.new_doc("Attendance")
+			doc.employee = employee
+			doc.attendance_date = day
+			if company and meta.has_field("company"):
+				doc.company = company
+
+		updates = {"status": "Present"}
+		if meta.has_field("in_time") and log_type == "IN":
+			if not doc.get("in_time") or get_datetime(doc.in_time) > get_datetime(punch_time):
+				updates["in_time"] = punch_time
+		if meta.has_field("out_time") and log_type == "OUT":
+			updates["out_time"] = punch_time
+
+		# Submitted Attendance cannot use .save(); update fields directly so OUT still sticks.
+		if existing and cint(doc.docstatus) == 1:
+			for field, value in updates.items():
+				frappe.db.set_value("Attendance", doc.name, field, value, update_modified=True)
+			return doc.name
+
+		for field, value in updates.items():
+			doc.set(field, value)
+		doc.flags.ignore_validate = True
+		doc.flags.ignore_permissions = True
+		if existing:
+			doc.save(ignore_permissions=True)
+		else:
+			doc.insert(ignore_permissions=True)
+		# Submit so Workforce / Attendance lists show Present (not only draft).
+		try:
+			if cint(doc.docstatus) == 0:
+				doc.reload()
+				doc.flags.ignore_validate = True
+				doc.flags.ignore_permissions = True
+				doc.submit()
+		except Exception:
+			frappe.log_error(title="people_hrms_attendance_submit", message=frappe.get_traceback())
+		return doc.name
+	except Exception:
+		frappe.log_error(title="people_hrms_attendance_sync", message=frappe.get_traceback())
+		return None
+
+
 def _attendance_mtd(employee):
 	start, end, today_d = _month_bounds()
+	geo = _employee_geofence_flags(employee)
 	payload = {
 		"checkins_mtd": 0,
 		"present_days": 0,
 		"last_checkin": None,
 		"today_status": "Not checked in",
 		"checkin_available": bool(frappe.db.exists("DocType", "Employee Checkin")),
+		"geofence_enabled": geo.get("geofence_enabled") or 0,
+		"geofence_required": geo.get("geofence_required") or 0,
+		"geofence_label": geo.get("geofence_label") or "",
 		"series": [],
+		"records": [],
 	}
 	if not employee or not payload["checkin_available"]:
 		return payload
@@ -295,6 +404,17 @@ def _attendance_mtd(employee):
 		limit=500,
 	)
 	payload["checkins_mtd"] = len(rows)
+	payload["records"] = [
+		{
+			"name": r.name,
+			"time": cstr(r.time),
+			"log_type": cstr(r.log_type or "").upper() or "IN",
+			"date": cstr(getdate(r.time)),
+		}
+		for r in rows[:90]
+	]
+	payload["last_log_type"] = None
+	payload["next_log_type"] = "IN"
 	if rows:
 		latest = rows[0]
 		payload["last_checkin"] = {
@@ -304,9 +424,16 @@ def _attendance_mtd(employee):
 		}
 		today_rows = [r for r in rows if getdate(r.time) == today_d]
 		if today_rows:
-			payload["today_status"] = today_rows[0].log_type or "Checked in"
+			last_today = cstr(today_rows[0].log_type or "").upper()
+			payload["last_log_type"] = last_today
+			if last_today == "OUT":
+				payload["today_status"] = "Checked out"
+				payload["next_log_type"] = "IN"
+			else:
+				payload["today_status"] = "Checked in"
+				payload["next_log_type"] = "OUT"
 
-	by_day = Counter(cstr(getdate(r.time)) for r in rows if r.log_type in (None, "", "IN", "in", "In"))
+	by_day = Counter(cstr(getdate(r.time)) for r in rows if cstr(r.log_type or "").upper() in ("", "IN"))
 	if not by_day:
 		by_day = Counter(cstr(getdate(r.time)) for r in rows)
 	payload["present_days"] = len(by_day)
@@ -1925,7 +2052,30 @@ def get_people_hrms_dashboard(user, roles=None):
 	roles = roles or frappe.get_roles(user)
 	ready = hr_module_ready()
 	employee = _employee_for_user(user, create=ready) if ready else None
-	emp = _employee_row(employee) if employee else None
+	emp = None
+	if employee:
+		try:
+			emp = _employee_row(employee)
+		except Exception:
+			# Never blank the whole People portal because one employee field failed to serialize.
+			frappe.log_error(title="people_hrms_employee_row", message=frappe.get_traceback())
+			emp = {
+				"id": employee,
+				"name": frappe.db.get_value("Employee", employee, "employee_name") or user,
+				"department": frappe.db.get_value("Employee", employee, "department"),
+				"designation": frappe.db.get_value("Employee", employee, "designation"),
+				"status": frappe.db.get_value("Employee", employee, "status") or "Active",
+			}
+	# Every employee should have leave allocations so Self Service / Leave always shows a balance.
+	if employee:
+		try:
+			from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import (
+				ensure_leave_allocations_for_employees,
+			)
+
+			ensure_leave_allocations_for_employees([employee])
+		except Exception:
+			frappe.log_error(title="people_hrms_leave_allocations", message=frappe.get_traceback())
 	start, end, today_d = _month_bounds()
 	ctc, ctc_from_erp = _monthly_ctc(employee)
 	attendance = _attendance_mtd(employee)
@@ -2011,15 +2161,57 @@ def submit_employee_checkin(user, log_type="IN", latitude=None, longitude=None, 
 
 	lat = flt(latitude) if latitude not in (None, "") else None
 	lng = flt(longitude) if longitude not in (None, "") else None
+	# Treat 0,0 as missing GPS.
+	if lat == 0 and lng == 0:
+		lat, lng = None, None
+	geo_flags = _employee_geofence_flags(employee)
 	geo = None
 	if not cint(skip_geofence):
 		geo = _assert_within_employee_geofence(employee, lat, lng)
+	# When geofencing is off, still accept optional current location (never block the punch).
+	# When geofencing is on, _assert_within_employee_geofence already requires coords.
+
+	punch_time = now_datetime()
+	# Ignore accidental double-taps of the same punch within 2 minutes.
+	recent_rows = frappe.get_all(
+		"Employee Checkin",
+		filters={"employee": employee},
+		fields=["name", "log_type", "time", "latitude", "longitude"],
+		order_by="time desc",
+		limit=1,
+	)
+	recent = recent_rows[0] if recent_rows else None
+	if recent and cstr(recent.log_type).upper() == log_type:
+		try:
+			delta = (get_datetime(punch_time) - get_datetime(recent.time)).total_seconds()
+		except Exception:
+			delta = 9999
+		if delta < 120:
+			out = {
+				"name": recent.name,
+				"employee": employee,
+				"log_type": log_type,
+				"time": cstr(recent.time),
+				"latitude": recent.latitude,
+				"longitude": recent.longitude,
+				"geofence_enabled": cint(geo_flags.get("geofence_enabled") or 0),
+				"geofence_required": cint(geo_flags.get("geofence_required") or 0),
+				"attendance": frappe.db.get_value(
+					"Attendance",
+					{"employee": employee, "attendance_date": getdate(recent.time), "docstatus": ("<", 2)},
+					"name",
+				),
+				"deduped": 1,
+			}
+			if geo:
+				out["geofence"] = geo
+			return out
 
 	payload = {
 		"doctype": "Employee Checkin",
 		"employee": employee,
 		"log_type": log_type,
-		"time": now_datetime(),
+		"time": punch_time,
 	}
 	meta = frappe.get_meta("Employee Checkin")
 	if lat is not None and lng is not None:
@@ -2027,10 +2219,14 @@ def submit_employee_checkin(user, log_type="IN", latitude=None, longitude=None, 
 			payload["latitude"] = lat
 		if meta.has_field("longitude"):
 			payload["longitude"] = lng
-		if meta.has_field("device_id") and geo:
-			payload["device_id"] = f"geo:{geo.get('distance_m')}m"
+		if meta.has_field("device_id"):
+			if geo and geo.get("distance_m") is not None:
+				payload["device_id"] = f"geo:{geo.get('distance_m')}m"
+			elif not cint(geo_flags.get("geofence_required")):
+				payload["device_id"] = f"gps:{round(lat, 5)},{round(lng, 5)}"
 	doc = frappe.get_doc(payload)
 	doc.insert(ignore_permissions=True)
+	attendance_name = _sync_attendance_from_punch(employee, log_type, punch_time)
 	frappe.db.commit()
 	out = {
 		"name": doc.name,
@@ -2039,6 +2235,9 @@ def submit_employee_checkin(user, log_type="IN", latitude=None, longitude=None, 
 		"time": cstr(doc.time),
 		"latitude": lat,
 		"longitude": lng,
+		"geofence_enabled": cint(geo_flags.get("geofence_enabled") or 0),
+		"geofence_required": cint(geo_flags.get("geofence_required") or 0),
+		"attendance": attendance_name,
 	}
 	if geo:
 		out["geofence"] = geo
@@ -2206,7 +2405,7 @@ def ensure_people_admin_roles(user=None):
 
 
 LEAVE_PENDING_STAGES = ("Draft", "Manager Review", "HR Review")
-LEAVE_ACTIONS = ("forward", "manager_reject", "return", "resubmit", "approve", "reject")
+LEAVE_ACTIONS = ("recommend", "decide_reject", "forward", "manager_reject", "return", "resubmit", "approve", "reject")
 LEAVE_MAX_DAYS = 400
 LEAVE_REVIEW_FIELDS = (
 	"people_leave_stage",
@@ -2215,6 +2414,9 @@ LEAVE_REVIEW_FIELDS = (
 	"people_manager_on",
 	"people_manager_remark",
 	"people_hr_remark",
+	"people_original_from",
+	"people_original_to",
+	"people_unauthorized_dates",
 )
 
 
@@ -2284,12 +2486,132 @@ def ensure_leave_review_fields():
 					"fieldtype": "Small Text",
 					"insert_after": "people_manager_remark",
 				},
+				{
+					**common,
+					"fieldname": "people_original_from",
+					"label": "Originally Requested From",
+					"fieldtype": "Date",
+					"insert_after": "people_hr_remark",
+				},
+				{
+					**common,
+					"fieldname": "people_original_to",
+					"label": "Originally Requested To",
+					"fieldtype": "Date",
+					"insert_after": "people_original_from",
+				},
+				{
+					**common,
+					"fieldname": "people_unauthorized_dates",
+					"label": "Unauthorised Leave Dates",
+					"fieldtype": "Small Text",
+					"insert_after": "people_original_to",
+				},
 			]
 		},
 		update=True,
 	)
 	frappe.clear_cache(doctype="Leave Application")
 	return True
+
+
+def _date_range_list(start, end):
+	out = []
+	day = getdate(start)
+	last = getdate(end)
+	while day <= last:
+		out.append(cstr(day))
+		day = getdate(add_days(day, 1))
+	return out
+
+
+def _parse_unauthorized_dates(raw):
+	import json
+
+	text = cstr(raw or "").strip()
+	if not text:
+		return []
+	try:
+		data = json.loads(text)
+		if isinstance(data, list):
+			return sorted({cstr(getdate(x)) for x in data if x})
+	except Exception:
+		pass
+	return sorted({cstr(getdate(x.strip())) for x in text.split(",") if x.strip()})
+
+
+def _store_unauthorized_dates(doc, dates):
+	import json
+
+	merged = sorted(set(_parse_unauthorized_dates(doc.get("people_unauthorized_dates"))) | set(dates or []))
+	if doc.meta.has_field("people_unauthorized_dates"):
+		doc.db_set("people_unauthorized_dates", json.dumps(merged))
+	return merged
+
+
+def _revise_leave_dates(doc, from_date=None, to_date=None, half_day=None, half_day_date=None):
+	"""Apply manager/HR date customisation; cut days become unauthorised leave dates."""
+	if not from_date and not to_date and half_day is None and not half_day_date:
+		return []
+	start = getdate(from_date) if from_date else getdate(doc.from_date)
+	end = getdate(to_date) if to_date else getdate(doc.to_date)
+	if end < start:
+		frappe.throw(_("To date cannot be before from date"))
+	old_start, old_end = getdate(doc.from_date), getdate(doc.to_date)
+	if doc.meta.has_field("people_original_from") and not doc.get("people_original_from"):
+		doc.db_set({"people_original_from": old_start, "people_original_to": old_end})
+	cut = sorted(set(_date_range_list(old_start, old_end)) - set(_date_range_list(start, end)))
+	patch = {"from_date": start, "to_date": end}
+	if half_day is not None and doc.meta.has_field("half_day"):
+		patch["half_day"] = 1 if cint(half_day) else 0
+		if doc.meta.has_field("half_day_date"):
+			hd = getdate(half_day_date) if (cint(half_day) and half_day_date) else (start if cint(half_day) else None)
+			if hd and not (start <= hd <= end):
+				frappe.throw(_("Half day date must fall within the leave dates"))
+			patch["half_day_date"] = hd
+	doc.db_set(patch)
+	# Recalc total days when the field exists and is not read-only computed only on save.
+	try:
+		fresh = frappe.get_doc("Leave Application", doc.name)
+		if fresh.meta.has_field("total_leave_days"):
+			days = (end - start).days + 1
+			if cint(fresh.get("half_day")):
+				days = max(0.5, days - 0.5)
+			fresh.db_set("total_leave_days", days)
+	except Exception:
+		pass
+	if cut:
+		_store_unauthorized_dates(doc, cut)
+		doc.add_comment(
+			"Comment",
+			_("Leave dates revised to {0} – {1}. Unauthorised days: {2}").format(
+				format_date(start), format_date(end), ", ".join(cut)
+			),
+		)
+	return cut
+
+
+def _is_reporting_manager_of(employee):
+	me = _employee_for_user(frappe.session.user, create=False)
+	if not me or not employee:
+		return False
+	return frappe.db.get_value("Employee", employee, "reports_to") == me
+
+
+def _can_act_on_leave(roles, doc, action):
+	"""HR managers can act at any pending stage; reporting managers only at Manager Review."""
+	if is_people_manager(roles):
+		return True
+	stage = _leave_stage(doc.as_dict() if hasattr(doc, "as_dict") else doc)
+	if stage == "Manager Review" and action in (
+		"recommend",
+		"decide_reject",
+		"forward",
+		"manager_reject",
+		"return",
+	) and _is_reporting_manager_of(doc.employee):
+		return True
+	return False
 
 
 def _leave_stage(row):
@@ -2420,9 +2742,11 @@ def list_people_leave(roles, from_date=None, to_date=None):
 			emps[e.name] = e
 
 	applications = []
+	unauthorized = []
 	for r in apps:
 		emp = emps.get(r.employee) or {}
 		stage = _leave_stage(r)
+		unauth = _parse_unauthorized_dates(r.get("people_unauthorized_dates")) if has_review else []
 		applications.append(
 			{
 				"id": r.name,
@@ -2454,8 +2778,26 @@ def list_people_leave(roles, from_date=None, to_date=None):
 				"manager_on": cstr(r.get("people_manager_on") or "") or None,
 				"manager_remark": r.get("people_manager_remark") or None,
 				"hr_remark": r.get("people_hr_remark") or None,
+				"original_from": cstr(r.get("people_original_from") or "") or None,
+				"original_to": cstr(r.get("people_original_to") or "") or None,
+				"unauthorized_dates": unauth,
 			}
 		)
+		for day in unauth:
+			if getdate(start) <= getdate(day) <= getdate(end):
+				unauthorized.append(
+					{
+						"id": f"{r.name}:{day}",
+						"leave": r.name,
+						"employee": r.employee,
+						"employee_name": r.get("employee_name") or emp.get("employee_name") or r.employee,
+						"department": emp.get("department") or r.get("department"),
+						"leave_type": r.leave_type,
+						"date": day,
+						"status": "Unauthorised",
+						"reason": _("Requested but not authorised after date revision"),
+					}
+				)
 
 	leave_types = frappe.get_all(
 		"Leave Type",
@@ -2531,6 +2873,7 @@ def list_people_leave(roles, from_date=None, to_date=None):
 		{
 			"me": me,
 			"applications": applications,
+			"unauthorized": unauthorized,
 			"employees": [
 				{
 					"id": e.name,
@@ -2554,6 +2897,7 @@ def list_people_leave(roles, from_date=None, to_date=None):
 				"hr_review": stages.get("HR Review", 0),
 				"approved": sum(1 for a in ranged if a["stage"] == "Completed"),
 				"rejected": sum(1 for a in ranged if a["stage"] == "Rejected"),
+				"unauthorized_days": len(unauthorized),
 				"approved_days": sum(a["days"] for a in ranged if a["stage"] == "Completed"),
 				"on_leave_today": len(
 					{
@@ -2569,9 +2913,21 @@ def list_people_leave(roles, from_date=None, to_date=None):
 	return payload
 
 
-def act_people_leave(roles, name, action, remark=None):
-	"""Move a leave application through review: manager forward/reject/return, HR approve/reject."""
-	_require_manager(roles)
+def act_people_leave(
+	roles,
+	name,
+	action,
+	remark=None,
+	from_date=None,
+	to_date=None,
+	half_day=None,
+	half_day_date=None,
+):
+	"""Move a leave application through review: manager forward/reject/return, HR approve/reject.
+
+	Optional from_date/to_date let the manager or HR customise the leave window before deciding.
+	Days removed from the original request are stored as unauthorised leave dates.
+	"""
 	action = cstr(action).strip()
 	if action not in LEAVE_ACTIONS:
 		frappe.throw(_("Unknown leave action"))
@@ -2580,21 +2936,60 @@ def act_people_leave(roles, name, action, remark=None):
 	ensure_leave_review_fields()
 
 	doc = frappe.get_doc("Leave Application", name)
+	if not _can_act_on_leave(roles, doc, action):
+		# HR-only actions still need people manager; reporting managers handled above.
+		if action in ("approve", "reject", "resubmit") or not _is_reporting_manager_of(doc.employee):
+			_require_manager(roles)
+		else:
+			frappe.throw(_("You can only review leave for your direct reports"), frappe.PermissionError)
 	stage = _leave_stage(doc.as_dict())
 	if stage not in LEAVE_PENDING_STAGES:
 		frappe.throw(_("This application is already {0}").format(_(stage)))
 	remark = cstr(remark).strip() or None
 	user = frappe.session.user
+	cut = []
 
 	frappe.db.savepoint("people_leave_action")
 	try:
-		if action in ("forward", "manager_reject"):
+		if from_date or to_date or half_day is not None or half_day_date:
+			if action in ("recommend", "decide_reject", "forward", "manager_reject", "approve", "reject", "return"):
+				cut = _revise_leave_dates(doc, from_date, to_date, half_day, half_day_date)
+				doc.reload()
+		if action in ("recommend", "decide_reject"):
+			if stage != "Manager Review":
+				frappe.throw(_("Only applications awaiting manager review can be decided"))
+			decision = "Recommended" if action == "recommend" else "Rejected"
+			doc.db_set(
+				{
+					"people_leave_stage": "Manager Review",
+					"people_manager_decision": decision,
+					"people_manager_by": user,
+					"people_manager_on": now_datetime(),
+					"people_manager_remark": remark,
+				}
+			)
+		elif action == "forward":
+			if stage != "Manager Review":
+				frappe.throw(_("Only applications awaiting manager review can be sent to HR"))
+			decision = cstr(doc.get("people_manager_decision") or "")
+			if decision not in ("Recommended", "Rejected"):
+				frappe.throw(_("Approve or reject this leave before sending it to HR"))
+			patch = {
+				"people_leave_stage": "HR Review",
+				"people_manager_by": user,
+				"people_manager_on": now_datetime(),
+			}
+			if remark:
+				patch["people_manager_remark"] = remark
+			doc.db_set(patch)
+		elif action == "manager_reject":
+			# Legacy one-step: reject and send to HR.
 			if stage != "Manager Review":
 				frappe.throw(_("Only applications awaiting manager review can be forwarded"))
 			doc.db_set(
 				{
 					"people_leave_stage": "HR Review",
-					"people_manager_decision": "Recommended" if action == "forward" else "Rejected",
+					"people_manager_decision": "Rejected",
 					"people_manager_by": user,
 					"people_manager_on": now_datetime(),
 					"people_manager_remark": remark,
@@ -2609,6 +3004,10 @@ def act_people_leave(roles, name, action, remark=None):
 				frappe.throw(_("Only draft applications can be resubmitted"))
 			doc.db_set({"people_leave_stage": "Manager Review", "people_manager_decision": None})
 		else:
+			if stage != "HR Review" and action in ("approve", "reject"):
+				# Allow HR managers to decide even if stage drifted; block reporting managers.
+				if not is_people_manager(roles):
+					frappe.throw(_("Only HR can approve or reject at the final step"))
 			status = "Approved" if action == "approve" else "Rejected"
 			if doc.docstatus == 0:
 				if status == "Approved":
@@ -2621,28 +3020,46 @@ def act_people_leave(roles, name, action, remark=None):
 				doc.flags.ignore_permissions = True
 				doc.submit()
 			else:
-				# Legacy rows submitted while still Open: record the decision without re-running submit hooks.
 				doc.db_set({"status": status, "people_leave_stage": "Completed", "people_hr_remark": remark})
 				if status == "Approved" and hasattr(doc, "create_leave_ledger_entry"):
 					try:
 						doc.create_leave_ledger_entry()
 					except Exception:
 						frappe.log_error(title="people_leave_ledger", message=frappe.get_traceback())
-		if remark:
+		if remark or cut or action in ("recommend", "decide_reject", "forward", "manager_reject", "approve", "reject", "return", "resubmit"):
 			labels = {
-				"forward": "Forwarded to HR",
-				"manager_reject": "Rejected by manager",
+				"recommend": "Manager approved (pending send to HR)",
+				"decide_reject": "Manager rejected (pending send to HR)",
+				"forward": "Sent to HR for final review",
+				"manager_reject": "Rejected by manager · sent to HR",
 				"return": "Returned to employee",
 				"resubmit": "Resubmitted",
-				"approve": "Approved",
-				"reject": "Rejected",
+				"approve": "Approved by HR",
+				"reject": "Rejected by HR",
 			}
-			doc.add_comment("Comment", f"{labels[action]}: {remark}")
+			note = labels.get(action) or action
+			if remark:
+				note += f": {remark}"
+			if cut:
+				note += f" · unauthorised days kept on record: {', '.join(cut)}"
+			doc.add_comment("Comment", note)
 	except Exception:
 		frappe.db.rollback(save_point="people_leave_action")
 		raise
 
-	return {"name": doc.name, "stage": _leave_stage(frappe.db.get_value("Leave Application", doc.name, ["status", "docstatus", "people_leave_stage"], as_dict=True))}
+	fresh_fields = ["status", "docstatus", "people_leave_stage", "from_date", "to_date", "people_unauthorized_dates"]
+	if frappe.get_meta("Leave Application").has_field("people_manager_decision"):
+		fresh_fields.append("people_manager_decision")
+	fresh = frappe.db.get_value("Leave Application", doc.name, fresh_fields, as_dict=True)
+	return {
+		"name": doc.name,
+		"stage": _leave_stage(fresh),
+		"from_date": cstr(fresh.from_date),
+		"to_date": cstr(fresh.to_date),
+		"manager_decision": cstr(fresh.get("people_manager_decision") or "") or None,
+		"unauthorized_dates": _parse_unauthorized_dates(fresh.get("people_unauthorized_dates")),
+		"cut_dates": cut,
+	}
 
 
 def create_people_leave_request(roles, employee, leave_type, from_date, to_date, half_day=0, half_day_date=None, reason=None):
@@ -2695,6 +3112,10 @@ def create_people_leave_request(roles, employee, leave_type, from_date, to_date,
 			data["half_day_date"] = hd
 		if has_review:
 			data["people_leave_stage"] = "Manager Review"
+			if meta.has_field("people_original_from"):
+				data["people_original_from"] = start
+			if meta.has_field("people_original_to"):
+				data["people_original_to"] = end
 		doc = frappe.get_doc(data)
 		doc.insert(ignore_permissions=True)
 	except Exception:
@@ -3136,6 +3557,13 @@ def ensure_performance_review_doctype():
 					{"fieldname": "period", "label": "Month", "fieldtype": "Date", "reqd": 1, "in_list_view": 1},
 					{"fieldname": "rating", "label": "Rating (1-5)", "fieldtype": "Float", "reqd": 1, "in_list_view": 1},
 					{"fieldname": "remarks", "label": "Remarks", "fieldtype": "Small Text"},
+					{
+						"fieldname": "recommendation",
+						"label": "Recommendation",
+						"fieldtype": "Select",
+						"options": "\nPromote\nRetain\nDevelop further\nNeeds improvement\nTransfer\nNot recommended",
+						"in_list_view": 1,
+					},
 					{"fieldname": "reviewer", "label": "Reviewer", "fieldtype": "Link", "options": "User"},
 				],
 				"permissions": [
@@ -3296,10 +3724,13 @@ def get_people_performance(roles, from_date=None, to_date=None):
 
 	if feedback:
 		history_from = getdate(add_months(this_month, -11))
+		review_fields = ["name", "employee", "period", "rating", "remarks", "reviewer", "modified"]
+		if frappe.get_meta(PERFORMANCE_REVIEW_DOCTYPE).has_field("recommendation"):
+			review_fields.append("recommendation")
 		for r in frappe.get_all(
 			PERFORMANCE_REVIEW_DOCTYPE,
 			filters={"period": (">=", cstr(history_from))},
-			fields=["name", "employee", "period", "rating", "remarks", "reviewer", "modified"],
+			fields=review_fields,
 			order_by="period desc, modified desc",
 			limit_page_length=50000,
 		):
@@ -3309,6 +3740,7 @@ def get_people_performance(roles, from_date=None, to_date=None):
 					"period": cstr(r.period),
 					"rating": flt(r.rating),
 					"remarks": r.remarks,
+					"recommendation": getattr(r, "recommendation", None) or "",
 					"reviewer": r.reviewer,
 					"modified": cstr(r.modified),
 				}
@@ -3316,11 +3748,17 @@ def get_people_performance(roles, from_date=None, to_date=None):
 	return payload
 
 
-def save_people_performance_review(roles, employee, period=None, rating=None, remarks=None):
+def save_people_performance_review(roles, employee, period=None, rating=None, remarks=None, recommendation=None):
 	"""Create or update the manager rating for one employee and month."""
 	_require_manager(roles)
 	if not ensure_performance_review_doctype():
 		frappe.throw(_("Performance reviews are not available on this site"))
+	try:
+		from health_ecosystem_core.health_ecosystem_core.clinical_people_my_team import ensure_recommendation_field
+
+		ensure_recommendation_field()
+	except Exception:
+		pass
 	if not employee or not frappe.db.exists("Employee", employee):
 		frappe.throw(_("Select a valid employee"))
 	month = getdate(period or today()).replace(day=1)
@@ -3329,6 +3767,7 @@ def save_people_performance_review(roles, employee, period=None, rating=None, re
 	value = flt(rating)
 	if not 1 <= value <= 5:
 		frappe.throw(_("Rating must be between 1 and 5"))
+	rec = cstr(recommendation).strip() if recommendation is not None else None
 
 	existing = frappe.db.get_value(PERFORMANCE_REVIEW_DOCTYPE, {"employee": employee, "period": cstr(month)}, "name")
 	doc = frappe.get_doc(PERFORMANCE_REVIEW_DOCTYPE, existing) if existing else frappe.new_doc(PERFORMANCE_REVIEW_DOCTYPE)
@@ -3337,12 +3776,21 @@ def save_people_performance_review(roles, employee, period=None, rating=None, re
 	doc.rating = round(value, 1)
 	doc.remarks = cstr(remarks).strip() or None
 	doc.reviewer = frappe.session.user
+	if recommendation is not None and frappe.get_meta(PERFORMANCE_REVIEW_DOCTYPE).has_field("recommendation"):
+		doc.recommendation = rec or None
 	doc.flags.ignore_permissions = True
 	if existing:
 		doc.save(ignore_permissions=True)
 	else:
 		doc.insert(ignore_permissions=True)
-	return {"name": doc.name, "employee": employee, "period": cstr(month), "rating": doc.rating, "updated": bool(existing)}
+	return {
+		"name": doc.name,
+		"employee": employee,
+		"period": cstr(month),
+		"rating": doc.rating,
+		"recommendation": getattr(doc, "recommendation", None) or "",
+		"updated": bool(existing),
+	}
 
 
 # --------------------------------------------------------------------------- onboarding board

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_months, cstr, escape_html, flt, format_date, getdate, now_datetime, today
+from frappe.utils import add_days, add_months, cint, cstr, escape_html, flt, format_date, getdate, now_datetime, today
 
 from health_ecosystem_core.health_ecosystem_core import clinical_phase90_people_hrms as hrms
 
@@ -359,6 +359,10 @@ def get_my_team(roles, period=None, week_ending=None):
 	fields = ["name", "employee_name", "department", "designation", "image", "date_of_joining", "user_id"]
 	if meta.has_field("people_wing"):
 		fields.append("people_wing")
+	if meta.has_field("cell_number"):
+		fields.append("cell_number")
+	if meta.has_field("personal_mobile"):
+		fields.append("personal_mobile")
 	rows = []
 	if ids:
 		for e in frappe.get_all(
@@ -375,6 +379,7 @@ def get_my_team(roles, period=None, week_ending=None):
 				ach_amt = flt(achievement_from_closes(e.name, month, e.user_id).get("amount"))
 			except Exception:
 				ach_amt = 0.0
+			phone = cstr(e.get("cell_number") or e.get("personal_mobile") or "").strip()
 			rows.append(
 				{
 					"id": e.name,
@@ -382,6 +387,7 @@ def get_my_team(roles, period=None, week_ending=None):
 					"department": e.department or "",
 					"designation": e.designation or "",
 					"photo": e.image or "",
+					"phone": phone,
 					"date_of_joining": cstr(e.date_of_joining) if e.date_of_joining else None,
 					"wing": e.get("people_wing") or "",
 					"week": weekly.get(e.name),
@@ -390,8 +396,79 @@ def get_my_team(roles, period=None, week_ending=None):
 					"weeks_in_month": len(_saturdays_in_month(month)),
 					"crm_target_amount": flt(tgt.get("target_amount")),
 					"crm_achievement_amount": ach_amt,
+					"leaves": [],
 				}
 			)
+	# Ensure every report has leave allocations + surface attendance / leave records.
+	if ids:
+		try:
+			from health_ecosystem_core.health_ecosystem_core.clinical_phase21 import (
+				ensure_leave_allocations_for_employees,
+			)
+
+			ensure_leave_allocations_for_employees(ids)
+			frappe.db.commit()
+		except Exception:
+			frappe.log_error(title="my_team_leave_allocations", message=frappe.get_traceback())
+
+	leaves_by_emp = {r["id"]: [] for r in rows}
+	if ids and frappe.db.exists("DocType", "Leave Application"):
+		try:
+			hrms.ensure_leave_review_fields()
+		except Exception:
+			pass
+		leave_meta = frappe.get_meta("Leave Application")
+		leave_fields = ["name", "employee", "leave_type", "from_date", "to_date", "status", "description", "creation"]
+		for f in (
+			"total_leave_days",
+			"people_leave_stage",
+			"people_manager_decision",
+			"people_manager_remark",
+			"people_unauthorized_dates",
+			"people_original_from",
+			"people_original_to",
+		):
+			if leave_meta.has_field(f):
+				leave_fields.append(f)
+		for lv in frappe.get_all(
+			"Leave Application",
+			filters={"employee": ("in", ids), "docstatus": ("<", 2), "status": ("in", ["Open", "Approved", "Rejected"])},
+			fields=leave_fields,
+			order_by="from_date desc",
+			limit_page_length=1000,
+		):
+			stage = hrms._leave_stage(lv)
+			if stage not in ("Draft", "Manager Review", "HR Review", "Completed", "Rejected"):
+				continue
+			leaves_by_emp.setdefault(lv.employee, []).append(
+				{
+					"id": lv.name,
+					"leave_type": lv.leave_type,
+					"from_date": cstr(lv.from_date),
+					"to_date": cstr(lv.to_date),
+					"days": hrms._leave_days(lv),
+					"status": hrms._leave_status_label(lv, stage),
+					"stage": stage,
+					"reason": lv.get("description") or "",
+					"manager_decision": cstr(lv.get("people_manager_decision") or "") or None,
+					"manager_remark": cstr(lv.get("people_manager_remark") or "") or None,
+					"original_from": cstr(lv.get("people_original_from") or "") or None,
+					"original_to": cstr(lv.get("people_original_to") or "") or None,
+					"unauthorized_dates": hrms._parse_unauthorized_dates(lv.get("people_unauthorized_dates")),
+				}
+			)
+		for r in rows:
+			r["leaves"] = leaves_by_emp.get(r["id"]) or []
+			att = hrms._attendance_mtd(r["id"])
+			balances = hrms._leave_balances(r["id"])
+			r["attendance"] = {
+				"present_days": cint(att.get("present_days") or 0),
+				"checkins_mtd": cint(att.get("checkins_mtd") or 0),
+				"today_status": cstr(att.get("today_status") or "—"),
+				"last_checkin": att.get("last_checkin"),
+			}
+			r["leave_balances"] = balances
+			r["leave_balance_total"] = sum(flt(b.get("balance")) for b in balances)
 	me_row = hrms._employee_row(me) or {}
 	rated = sum(1 for r in rows if r.get("week"))
 	return {
@@ -959,5 +1036,32 @@ def save_crm_sales_target_api(employee=None, period=None, target_amount=None, no
 			_arg("period", period),
 			_arg("target_amount", target_amount),
 			_arg("notes", notes),
+		),
+	)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def act_my_team_leave_api(
+	name=None,
+	action=None,
+	remark=None,
+	from_date=None,
+	to_date=None,
+	half_day=None,
+	half_day_date=None,
+	sid=None,
+):
+	"""My Team — reporting manager reviews a direct report's leave (approve/reject/customise dates → HR)."""
+	return _run(
+		sid,
+		lambda roles: hrms.act_people_leave(
+			roles,
+			_arg("name", name),
+			_arg("action", action),
+			remark=_arg("remark", remark),
+			from_date=_arg("from_date", from_date),
+			to_date=_arg("to_date", to_date),
+			half_day=_arg("half_day", half_day),
+			half_day_date=_arg("half_day_date", half_day_date),
 		),
 	)

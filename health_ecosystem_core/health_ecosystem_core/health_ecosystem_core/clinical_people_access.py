@@ -24,7 +24,17 @@ AGREEMENT_STATUSES = "Issued\nPending Signatures\nPending Employee\nPending HR\n
 LEVELS = ("none", "view", "create", "edit", "approve", "manage")
 LEVEL_LABEL = {"none": "No access", "view": "View", "create": "Create", "edit": "Edit", "approve": "Approve", "manage": "Manage"}
 FORBIDDEN_ROLES = {"System Manager", "Administrator", "Health System Admin"}
-ELEVATED_ROLES = {"HR Manager", "HR User", "Lab Manager", "Sales Manager", "Aesthetic Manager", "Operations Manager", "Care Manager", "CRM Manager"}
+ELEVATED_ROLES = {
+	"HR Manager",
+	"HR User",
+	"Lab Manager",
+	"Quality Control Manager",
+	"Sales Manager",
+	"Aesthetic Manager",
+	"Operations Manager",
+	"Care Manager",
+	"CRM Manager",
+}
 GRANTOR_ROLES = {"HR Manager", "System Manager", "Administrator"}
 COMPANY = "Smilecure Lifestyle Pvt Ltd"
 
@@ -110,6 +120,7 @@ LAB_MODULE_PATHS = {
 	"Pathologist": ["/dashboard/pathologist"],
 	"Reports (Signed)": ["/dashboard/pathologist/signed"],
 	"Test Master": ["/dashboard/test-master"],
+	"Settings": ["/dashboard/settings"],
 }
 # Lab settings saved with the earlier five-module list.
 LAB_LEGACY_MODULES = {
@@ -136,20 +147,62 @@ CARE_MODULE_PATHS = {
 	"User & Access": ["/access"],
 	"Settings": ["/settings"],
 }
+# Mother modules only — granting a mother module covers all of its CRM sidebar submodules.
 CRM_MODULE_PATHS = {
 	"Dashboard": ["/"],
-	"Leads": ["/leads"],
+	"Service Lead": [
+		"/leads/service",
+		"/leads/service/aesthetic",
+		"/leads/service/care",
+		"/leads/service/lab",
+	],
+	"Franchise Lead": [
+		"/leads/franchise",
+		"/leads/franchise/aesthetic",
+		"/leads/franchise/care",
+		"/leads/franchise/lab",
+		"/leads/franchise/nexilab",
+	],
 	"Contacts": ["/contacts"],
 	"Accounts": ["/accounts"],
 	"Deals": ["/deals"],
-	"Activities": ["/activities"],
+	"Service Followup": [
+		"/activities/service",
+		"/activities/service/aesthetic",
+		"/activities/service/care",
+		"/activities/service/lab",
+	],
+	"Franchise Followup": [
+		"/activities/franchise",
+		"/activities/franchise/aesthetic",
+		"/activities/franchise/care",
+		"/activities/franchise/lab",
+		"/activities/franchise/nexilab",
+	],
+	"WhatsApp Centre": [
+		"/whatsapp",
+		"/whatsapp/all",
+		"/whatsapp/all/all",
+		"/whatsapp/franchise",
+		"/whatsapp/service",
+		# legacy single-segment tabs
+		"/whatsapp/aesthetic",
+		"/whatsapp/care",
+		"/whatsapp/lab",
+		"/whatsapp/nexilab",
+	],
 	"Bookings": ["/bookings"],
-	"Franchise": ["/franchise"],
-	"Partner Bookings": ["/partner-bookings"],
+	"Franchise (FFMS/RFMS)": ["/franchise"],
+	"Partner Unit Bookings": ["/partner-bookings"],
 	"Campaigns": ["/campaigns"],
-	"Reports": ["/reports"],
+	"Reports & Analytics": ["/reports"],
 	"Settings": ["/settings"],
 }
+# Executive = assigned modules + Service/Franchise categories. Manager = full CRM with manage.
+CRM_CATEGORIES = (
+	{"id": "service", "name": "Service", "hint": "Lab / Aesthetic / Care leads, follow-ups & WhatsApp"},
+	{"id": "franchise", "name": "Franchise", "hint": "Lab / Aesthetic / Care / NexiLab franchise leads, follow-ups & WhatsApp"},
+)
 # Roles these portals check that may not exist yet on a fresh site (created on first use).
 PORTAL_ROLES = (
 	"Aesthetic Staff",
@@ -158,9 +211,50 @@ PORTAL_ROLES = (
 	"Operations Manager",
 	"Care Staff",
 	"Care Manager",
+	"CRM Executive",
 	"CRM Staff",
 	"CRM Manager",
+	"Lab Technician",
+	"Lab Manager",
+	"Quality Control Manager",
+	"Lab Accessor",
 )
+
+# LabTech portal — HR picks exactly one user type per employee.
+# Sign & finalize (pathologist authorize) is only for Lab Manager + Quality Control Manager.
+LABTECH_USER_TYPES = (
+	{
+		"id": "lab_manager",
+		"name": "Lab Manager",
+		"hint": "Full lab operations · can sign & finalize reports",
+		"roles": ("Lab Technician", "Lab Manager"),
+		"can_sign": 1,
+	},
+	{
+		"id": "qc_manager",
+		"name": "Quality Control Manager",
+		"hint": "QC / NABL oversight · can sign & finalize reports",
+		"roles": ("Lab Technician", "Quality Control Manager"),
+		"can_sign": 1,
+	},
+	{
+		"id": "lab_technician",
+		"name": "Lab Technician",
+		"hint": "Result entry & bench work · cannot sign reports",
+		"roles": ("Lab Technician",),
+		"can_sign": 0,
+	},
+	{
+		"id": "accessor",
+		"name": "Accessor",
+		"hint": "Sample accession & bookings · cannot sign reports",
+		"roles": ("Lab Technician", "Lab Accessor"),
+		"can_sign": 0,
+	},
+)
+LABTECH_USER_TYPE_IDS = {t["id"] for t in LABTECH_USER_TYPES}
+LABTECH_SIGN_ROLES = frozenset({"Lab Manager", "Quality Control Manager"})
+LABTECH_DEFAULT_TYPE = "lab_technician"
 
 PORTALS = {
 	"people": {
@@ -179,8 +273,9 @@ PORTALS = {
 		"url": "https://labtech.e-remedium.in",
 		"roles": ["Lab Technician"],
 		"modules": list(LAB_MODULE_PATHS),
-		"manage_roles": ["Lab Manager"],
+		"manage_roles": ["Lab Manager", "Quality Control Manager"],
 		"module_paths": LAB_MODULE_PATHS,
+		"user_types": list(LABTECH_USER_TYPES),
 	},
 	"collect": {
 		"label": "Collection / Phlebotomy",
@@ -204,10 +299,16 @@ PORTALS = {
 	"crm": {
 		"label": "CRM Portal",
 		"url": "https://crm.e-remedium.in",
-		"roles": ["CRM Staff", "Employee"],
+		# CRM Executive = telecaller with assigned modules/categories; CRM Manager = full access.
+		# CRM Staff kept for legacy users until HR re-saves portal access.
+		# Only Settings→Manage (or the CRM Manager Frappe role) elevates to Manager —
+		# Manage on Lead/Followup modules must not turn executives into managers.
+		"roles": ["CRM Executive", "Employee"],
 		"modules": list(CRM_MODULE_PATHS),
-		"manage_roles": ["CRM Manager", "Sales Manager"],
+		"manage_roles": ["CRM Manager"],
+		"manage_modules": ["Settings"],
 		"module_paths": CRM_MODULE_PATHS,
+		"category_options": list(CRM_CATEGORIES),
 	},
 	"careers": {
 		"label": "Careers / Recruitment",
@@ -282,7 +383,7 @@ def _ensure_access_fields():
 	if not frappe.db.exists("DocType", ACCESS_DT) or frappe.get_meta(ACCESS_DT).has_field("branches"):
 		return
 	doc = frappe.get_doc("DocType", ACCESS_DT)
-	doc.append("fields", {"fieldname": "branches", "label": "Branches", "fieldtype": "Small Text", "description": "Clinic portal branch ids (JSON) for Care or Aesthetic Backend, or [\"*\"] for every branch."})
+	doc.append("fields", {"fieldname": "branches", "label": "Branches", "fieldtype": "Small Text", "description": "Clinic portal branch ids (JSON) for Care/Aesthetic, CRM category ids (service/franchise), or [\"*\"] for every branch/category."})
 	doc.save(ignore_permissions=True)
 	frappe.clear_cache(doctype=ACCESS_DT)
 
@@ -455,6 +556,135 @@ def _checked_aes_branches(employee, raw, perms, active):
 	return branches
 
 
+def _parse_crm_categories(raw):
+	"""CRM Service / Franchise categories stored in the same branches JSON field."""
+	try:
+		data = json.loads(raw) if isinstance(raw, str) else raw
+	except ValueError:
+		data = None
+	if not isinstance(data, list):
+		return []
+	if ALL_BRANCHES in data or "*" in {cstr(x).strip() for x in data}:
+		return [ALL_BRANCHES]
+	allowed = {c["id"] for c in CRM_CATEGORIES}
+	out = []
+	for x in data:
+		cid = cstr(x).strip().lower()
+		if cid in allowed and cid not in out:
+			out.append(cid)
+	return out
+
+
+def _crm_is_manager(perms):
+	"""Settings→Manage elevates to CRM Manager. Module Manage alone stays Executive."""
+	perms = perms or {}
+	return cstr(perms.get("Settings") or "none").lower() == "manage"
+
+
+def _reconcile_crm_manager_elevation(user, crm_perms, branches, user_roles):
+	"""Keep real managers; demote executives who only got CRM Manager from module Manage.
+
+	- Categories already ``*`` (all) + CRM Manager role → ensure Settings→Manage (stay Manager).
+	- Otherwise drop CRM Manager when Settings is not Manage.
+	"""
+	crm_perms = dict(crm_perms or {})
+	if _crm_is_manager(crm_perms):
+		return crm_perms
+	cats = _parse_crm_categories(branches)
+	has_mgr_role = "CRM Manager" in (user_roles or [])
+	if has_mgr_role and ALL_BRANCHES in cats:
+		crm_perms["Settings"] = "manage"
+		row = frappe.db.get_value(
+			ACCESS_DT,
+			{"login_user": user, "portal": "crm", "active": 1},
+			["name", "permissions"],
+			as_dict=True,
+		)
+		if row:
+			try:
+				data = json.loads(row.permissions or "{}")
+			except ValueError:
+				data = {}
+			if isinstance(data, dict):
+				data["Settings"] = "manage"
+				frappe.db.set_value(ACCESS_DT, row.name, "permissions", json.dumps(data), update_modified=False)
+				frappe.cache().hdel(PERM_CACHE, user)
+		_sync_user_roles(user, _needed_roles(user) | {"CRM Manager"})
+		return crm_perms
+	# Executive with leftover CRM Manager from module Manage — strip the role.
+	if has_mgr_role:
+		needed = _needed_roles(user)
+		needed.discard("CRM Manager")
+		_sync_user_roles(user, needed)
+	return crm_perms
+
+
+def _infer_crm_categories(perms):
+	"""Derive Service / Franchise from enabled mother modules."""
+	inferred = []
+	service_keys = (
+		"Service Lead",
+		"Service Followup",
+		"Bookings",
+		"Partner Unit Bookings",
+		"Partner Bookings",
+		"Contacts",
+		"Accounts",
+		"Deals",
+		"WhatsApp Centre",
+		"Dashboard",
+	)
+	franchise_keys = (
+		"Franchise Lead",
+		"Franchise Followup",
+		"Franchise (FFMS/RFMS)",
+		"Franchise",
+		"Partner Unit Bookings",
+		"WhatsApp Centre",
+		"Contacts",
+		"Accounts",
+		"Deals",
+		"Dashboard",
+	)
+	# Prefer explicit lead/followup modules when present.
+	if any(cstr(perms.get(m) or "none") != "none" for m in ("Service Lead", "Service Followup", "Bookings")):
+		inferred.append("service")
+	if any(cstr(perms.get(m) or "none") != "none" for m in ("Franchise Lead", "Franchise Followup", "Franchise (FFMS/RFMS)", "Franchise")):
+		inferred.append("franchise")
+	if inferred:
+		return inferred
+	# Shared modules only (Contacts/Deals/WA) → both until HR picks.
+	if any(cstr(perms.get(m) or "none") != "none" for m in service_keys + franchise_keys):
+		return ["service", "franchise"]
+	return []
+
+
+def _checked_crm_categories(raw, perms, active):
+	cats = _parse_crm_categories(raw)
+	manager = _crm_is_manager(perms)
+	if not manager and ALL_BRANCHES in cats:
+		frappe.throw(_("Only a CRM Manager can have all categories. Give Manage on Settings, or pick Service / Franchise."))
+	if active and not cats:
+		inferred = _infer_crm_categories(perms)
+		if manager and not inferred:
+			return [ALL_BRANCHES]
+		if manager and set(inferred) == {"service", "franchise"}:
+			return [ALL_BRANCHES]
+		if not inferred:
+			frappe.throw(_("Pick at least one CRM category: Service and/or Franchise."))
+		return inferred
+	return cats
+
+
+def crm_scope(assigned):
+	"""Categories a CRM login may use: Service / Franchise, or all for managers."""
+	cats = list(assigned or [])
+	if ALL_BRANCHES in cats:
+		return {"all": True, "ids": [c["id"] for c in CRM_CATEGORIES], "source": "assigned"}
+	ids = [c for c in cats if c in {x["id"] for x in CRM_CATEGORIES}]
+	return {"all": False, "ids": ids, "source": "assigned"}
+
+
 def _parse_perms(raw, portal):
 	modules = PORTALS[portal]["modules"]
 	data = dict(raw) if isinstance(raw, dict) else {}
@@ -474,6 +704,62 @@ def _parse_perms(raw, portal):
 	if portal == "labtech" and data and "Test Master" not in data:
 		# Rows saved before the Test Master module existed keep the level they have for result entry.
 		data["Test Master"] = data.get("Result entry", "none")
+	if portal == "labtech" and data and "Settings" not in data:
+		# Settings was added after early labtech grants. Keep the page reachable;
+		# Lab Manager vs view-only is enforced by the settings APIs.
+		has_any = any(cstr(data.get(m) or "none").lower() != "none" for m in modules if m != "Settings")
+		data["Settings"] = "view" if has_any else "none"
+	if portal == "crm" and data:
+		# Legacy flat names → mother modules (only when the new mother key is absent).
+		legacy_leads = cstr(data.get("Leads") or "none").lower()
+		legacy_acts = cstr(data.get("Activities") or "none").lower()
+		if legacy_leads in LEVELS and legacy_leads != "none":
+			if "Service Lead" not in data:
+				data["Service Lead"] = legacy_leads
+			if "Franchise Lead" not in data:
+				data["Franchise Lead"] = legacy_leads
+		if legacy_acts in LEVELS and legacy_acts != "none":
+			if "Service Followup" not in data:
+				data["Service Followup"] = legacy_acts
+			if "Franchise Followup" not in data:
+				data["Franchise Followup"] = legacy_acts
+		if cstr(data.get("Franchise") or "none").lower() not in ("", "none"):
+			data.setdefault("Franchise (FFMS/RFMS)", data.get("Franchise"))
+		if cstr(data.get("Partner Bookings") or "none").lower() not in ("", "none"):
+			data.setdefault("Partner Unit Bookings", data.get("Partner Bookings"))
+		if cstr(data.get("Reports") or "none").lower() not in ("", "none"):
+			data.setdefault("Reports & Analytics", data.get("Reports"))
+		# Roll former wing-submodule rows up into the mother module.
+		_crm_roll_up = {
+			"Service Lead": ("Service Lead · Aesthetic", "Service Lead · Care", "Service Lead · Lab"),
+			"Franchise Lead": ("Franchise Lead · Aesthetic", "Franchise Lead · Care", "Franchise Lead · Lab"),
+			"Service Followup": ("Service Followup · Aesthetic", "Service Followup · Care", "Service Followup · Lab"),
+			"Franchise Followup": (
+				"Franchise Followup · Aesthetic",
+				"Franchise Followup · Care",
+				"Franchise Followup · Lab",
+			),
+			"WhatsApp Centre": (
+				"WhatsApp · All Chats",
+				"WhatsApp · Lab",
+				"WhatsApp · Aesthetic",
+				"WhatsApp · Care",
+				"WhatsApp · NexiLab",
+				"WhatsApp · Franchise",
+			),
+		}
+		for mother, children in _crm_roll_up.items():
+			cur = cstr(data.get(mother) or "none").lower()
+			cur_i = LEVELS.index(cur) if cur in LEVELS else 0
+			best_i = cur_i
+			best = cur if cur in LEVELS else "none"
+			for child in children:
+				lvl = cstr(data.get(child) or "none").lower()
+				if lvl in LEVELS and LEVELS.index(lvl) > best_i:
+					best_i = LEVELS.index(lvl)
+					best = lvl
+			if best_i > 0:
+				data[mother] = best
 	out = {}
 	for m in modules:
 		level = cstr(data.get(m) or "none").lower()
@@ -481,11 +767,65 @@ def _parse_perms(raw, portal):
 	return out
 
 
-def _roles_for(portal, perms):
+def _parse_labtech_user_type(raw):
+	"""Single LabTech user-type id stored in the branches JSON field."""
+	vals = []
+	if isinstance(raw, list):
+		vals = [cstr(x).strip() for x in raw if cstr(x).strip()]
+	elif isinstance(raw, str):
+		text = raw.strip()
+		if not text:
+			vals = []
+		elif text.startswith("["):
+			try:
+				parsed = json.loads(text)
+			except ValueError:
+				parsed = []
+			if isinstance(parsed, list):
+				vals = [cstr(x).strip() for x in parsed if cstr(x).strip()]
+			elif cstr(parsed).strip():
+				vals = [cstr(parsed).strip()]
+		else:
+			vals = [text]
+	for v in vals:
+		if v in LABTECH_USER_TYPE_IDS:
+			return v
+	return ""
+
+
+def user_can_sign_lab_reports(roles=None):
+	"""Lab Manager + Quality Control Manager (and system admins) may sign & finalize."""
+	roles = set(roles or frappe.get_roles())
+	if roles & {"Health System Admin", "System Manager", "Administrator", "Pathologist"}:
+		return True
+	return bool(roles & LABTECH_SIGN_ROLES)
+
+
+def _checked_labtech_user_type(raw, active):
+	chosen = _parse_labtech_user_type(raw)
+	if active and not chosen:
+		frappe.throw(_("Pick a LabTech user type: Lab Manager, Quality Control Manager, Lab Technician, or Accessor."))
+	return [chosen] if chosen else []
+
+
+def _labtech_type_spec(type_id):
+	for row in LABTECH_USER_TYPES:
+		if row["id"] == type_id:
+			return row
+	return None
+
+
+def _roles_for(portal, perms, branches=None):
 	spec = PORTALS[portal]
-	levels = [LEVELS.index(v) for v in perms.values()]
+	levels = [LEVELS.index(v) for v in perms.values() if cstr(v).lower() in LEVELS]
 	if not levels or max(levels) == 0:
 		return set()
+	# LabTech: HR-assigned user type is the source of truth for Frappe roles.
+	if portal == "labtech":
+		type_id = _parse_labtech_user_type(branches) or LABTECH_DEFAULT_TYPE
+		type_spec = _labtech_type_spec(type_id) or _labtech_type_spec(LABTECH_DEFAULT_TYPE)
+		roles = set(type_spec.get("roles") or spec["roles"])
+		return {r for r in roles if frappe.db.exists("Role", r)}
 	roles = set(spec["roles"])
 	top = max(levels)
 	org_view = any(perms.get(m, "none") != "none" for m in spec.get("org_modules", ()))
@@ -538,21 +878,39 @@ def _employee_row(employee):
 def _portal_catalog():
 	out = []
 	for key, spec in PORTALS.items():
-		available = all(frappe.db.exists("Role", r) for r in spec["roles"])
-		out.append(
-			{
-				"key": key,
-				"label": spec["label"],
-				"url": spec["url"],
-				"modules": spec["modules"],
-				"available": available,
-				"elevated": bool(set(spec["roles"]) & ELEVATED_ROLES),
-				"org_modules": sorted(spec.get("org_modules", ())),
-				"defaults": {m: ("view" if m in PEOPLE_SELF_SERVICE_DEFAULT else "none") for m in spec["modules"]}
-				if key == "people"
-				else {m: "view" for m in spec["modules"]},
+		# CRM Manager is created on first use; base roles are enough for "available".
+		base_roles = list(spec["roles"]) + list(spec.get("manage_roles", []))
+		available = all(frappe.db.exists("Role", r) for r in spec["roles"]) if spec["roles"] else True
+		# Treat as available once at least one portal role exists (roles are auto-created on ensure).
+		if not available and any(frappe.db.exists("Role", r) for r in base_roles):
+			available = True
+		entry = {
+			"key": key,
+			"label": spec["label"],
+			"url": spec["url"],
+			"modules": spec["modules"],
+			"available": available,
+			"elevated": bool(set(spec["roles"] + list(spec.get("manage_roles", []))) & ELEVATED_ROLES),
+			"org_modules": sorted(spec.get("org_modules", ())),
+			"defaults": {m: ("view" if m in PEOPLE_SELF_SERVICE_DEFAULT else "none") for m in spec["modules"]}
+			if key == "people"
+			else {m: "view" for m in spec["modules"]},
+		}
+		if spec.get("category_options"):
+			entry["category_options"] = list(spec["category_options"])
+			entry["role_labels"] = {
+				"staff": "Executive",
+				"manager": "Manager",
+				"hint": "Manager = Manage on any module (sees all activity in selected modules). Executive = only assigned modules and categories.",
 			}
-		)
+		if spec.get("user_types"):
+			entry["user_types"] = list(spec["user_types"])
+			entry["role_labels"] = {
+				"hint": "Pick one LabTech user type. Only Lab Manager and Quality Control Manager can sign & finalize reports.",
+			}
+		if spec.get("module_meta"):
+			entry["module_meta"] = dict(spec["module_meta"])
+		out.append(entry)
 	return out
 
 
@@ -579,7 +937,16 @@ def access_state(employee):
 				"last_login": cstr(user.last_login) if user and user.last_login else "",
 				"granted_by": r.granted_by or "",
 				"granted_on": cstr(r.granted_on or ""),
-				"branches": _parse_branches(r.branches),
+				"branches": (
+					_parse_crm_categories(r.branches)
+					if r.portal == "crm"
+					else (
+						([_parse_labtech_user_type(r.branches)] if _parse_labtech_user_type(r.branches) else [])
+						if r.portal == "labtech"
+						else _parse_branches(r.branches)
+					)
+				),
+				"labtech_user_type": _parse_labtech_user_type(r.branches) if r.portal == "labtech" else None,
 			}
 		)
 	scope = care_scope(employee, [])
@@ -593,6 +960,7 @@ def access_state(employee):
 		"access": access,
 		"care_branches": care_branches(),
 		"aes_branches": aes_branches(),
+		"crm_categories": list(CRM_CATEGORIES),
 		"unit": scope["unit"],
 		"unit_branch": scope["unit_branch"],
 		"aes_unit_branch": aes["unit_branch"],
@@ -622,6 +990,7 @@ def _resolve_login(employee, login_id, roles):
 
 def save_access(employee, entries, roles):
 	_ensure_doctypes()
+	_ensure_portal_roles()
 	if not frappe.db.exists("Employee", employee):
 		frappe.throw(_("Employee not found"))
 	emp = _employee_row(employee)
@@ -640,16 +1009,33 @@ def save_access(employee, entries, roles):
 
 	for portal, item in wanted.items():
 		spec = PORTALS[portal]
-		if not all(frappe.db.exists("Role", r) for r in spec["roles"]):
-			frappe.throw(_("{0} is not available on this server").format(spec["label"]))
+		missing = [r for r in spec["roles"] if not frappe.db.exists("Role", r)]
+		if missing:
+			# Create any newly introduced portal roles (e.g. CRM Executive) instead of blocking save.
+			_ensure_portal_roles()
+			missing = [r for r in spec["roles"] if not frappe.db.exists("Role", r)]
+		if missing:
+			frappe.throw(_("{0} is not available on this server (missing roles: {1})").format(spec["label"], ", ".join(missing)))
 		perms = _parse_perms(item.get("permissions") or {}, portal)
 		active = 1 if cint(item.get("active", 1)) else 0
-		new_roles = _roles_for(portal, perms) if active else set()
+		labtech_branches = None
+		if portal == "labtech":
+			labtech_branches = _checked_labtech_user_type(item.get("branches") or item.get("labtech_user_type"), active)
+		new_roles = _roles_for(portal, perms, labtech_branches if portal == "labtech" else item.get("branches")) if active else set()
 		if new_roles & FORBIDDEN_ROLES:
 			frappe.throw(_("That access level is not allowed"))
 		if (new_roles & ELEVATED_ROLES) and not can_grant:
 			prev = existing.get(portal)
-			prev_roles = _roles_for(portal, _parse_perms(json.loads(prev.permissions or "{}"), portal)) if prev else set()
+			prev_branches = None
+			if prev and portal == "labtech":
+				prev_row = frappe.db.get_value(ACCESS_DT, prev.name, "branches")
+				prev_branches = _parse_labtech_user_type(prev_row)
+				prev_branches = [prev_branches] if prev_branches else []
+			prev_roles = (
+				_roles_for(portal, _parse_perms(json.loads(prev.permissions or "{}"), portal), prev_branches)
+				if prev
+				else set()
+			)
 			if (new_roles & ELEVATED_ROLES) - prev_roles:
 				frappe.throw(_("Only an HR Manager or System Manager can grant {0} access").format(", ".join(sorted(new_roles & ELEVATED_ROLES))))
 		user, is_new = _resolve_login(employee, item.get("login_id") or emp.get("user_id") or emp.get("company_email"), roles)
@@ -697,6 +1083,10 @@ def save_access(employee, entries, roles):
 			values["branches"] = json.dumps(_checked_care_branches(employee, item.get("branches"), new_roles, active))
 		if portal == "aesthetics":
 			values["branches"] = json.dumps(_checked_aes_branches(employee, item.get("branches"), perms, active))
+		if portal == "crm":
+			values["branches"] = json.dumps(_checked_crm_categories(item.get("branches"), perms, active))
+		if portal == "labtech":
+			values["branches"] = json.dumps(labtech_branches or [])
 		if portal in existing:
 			old_user = existing[portal].login_user
 			frappe.db.set_value(ACCESS_DT, existing[portal].name, values, update_modified=True)
@@ -734,10 +1124,18 @@ def _needed_roles(user):
 	needed = set()
 	if not user:
 		return needed
-	for r in frappe.get_all(ACCESS_DT, filters={"login_user": user, "active": 1}, fields=["portal", "permissions"]):
+	for r in frappe.get_all(
+		ACCESS_DT,
+		filters={"login_user": user, "active": 1},
+		fields=["portal", "permissions", "branches"],
+	):
 		if r.portal in PORTALS:
 			try:
-				needed |= _roles_for(r.portal, _parse_perms(json.loads(r.permissions or "{}"), r.portal))
+				needed |= _roles_for(
+					r.portal,
+					_parse_perms(json.loads(r.permissions or "{}"), r.portal),
+					r.branches,
+				)
 			except ValueError:
 				continue
 	return needed
@@ -768,7 +1166,7 @@ def _sync_user_roles(user, previously_needed):
 		doc.save(ignore_permissions=True)
 
 
-PERM_CACHE = "people_portal_perms_v2"
+PERM_CACHE = "people_portal_perms_v4"
 
 
 def _user_portal_perms(user):
@@ -777,7 +1175,7 @@ def _user_portal_perms(user):
 	if cached is not None:
 		return cached
 	rows = frappe.get_all(ACCESS_DT, filters={"login_user": user}, fields=["portal", "permissions", "active", "employee", "branches"])
-	portals, employee, care, aes = {}, None, None, None
+	portals, employee, care, aes, crm = {}, None, None, None, None
 	for r in rows:
 		if r.portal not in PORTALS:
 			continue
@@ -787,6 +1185,8 @@ def _user_portal_perms(user):
 			care = {"employee": r.employee, "branches": _parse_branches(r.branches)}
 		if r.portal == "aesthetics" and cint(r.active):
 			aes = {"employee": r.employee, "branches": _parse_branches(r.branches)}
+		if r.portal == "crm" and cint(r.active):
+			crm = {"employee": r.employee, "branches": _parse_crm_categories(r.branches)}
 		if not cint(r.active):
 			portals[r.portal] = {m: "none" for m in PORTALS[r.portal]["modules"]}
 			continue
@@ -794,7 +1194,7 @@ def _user_portal_perms(user):
 			portals[r.portal] = _parse_perms(json.loads(r.permissions or "{}"), r.portal)
 		except ValueError:
 			portals[r.portal] = {m: "none" for m in PORTALS[r.portal]["modules"]}
-	value = {"managed": bool(rows), "portals": portals, "employee": employee, "care": care, "aes": aes}
+	value = {"managed": bool(rows), "portals": portals, "employee": employee, "care": care, "aes": aes, "crm": crm}
 	frappe.cache().hset(PERM_CACHE, user, value)
 	return value
 
@@ -829,13 +1229,51 @@ def my_permissions():
 	user_doc = frappe.db.get_value("User", user, ["full_name", "user_image"], as_dict=True) or {}
 	care = info.get("care")
 	aes = info.get("aes")
-	emp = info.get("employee") or (aes and aes.get("employee")) or (care and care.get("employee"))
+	crm = info.get("crm")
+	emp = info.get("employee") or (aes and aes.get("employee")) or (care and care.get("employee")) or (crm and crm.get("employee"))
+	if not emp:
+		emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
 	if not aes and emp:
 		aes = {"employee": emp, "branches": []}
+	photo = cstr(user_doc.get("user_image") or "").strip()
+	# Gravatar d=404 is a deliberate miss — treat as empty so Employee photo can win.
+	if photo and "gravatar.com" in photo.lower() and "d=404" in photo.lower():
+		photo = ""
+	if not photo and emp and frappe.db.exists("Employee", emp):
+		try:
+			photo = cstr(frappe.db.get_value("Employee", emp, "image") or "").strip()
+		except Exception:
+			photo = ""
+		# Keep User.user_image in sync so every portal sees the HR photo.
+		if photo and user not in (None, "", "Guest"):
+			try:
+				frappe.db.set_value("User", user, "user_image", photo, update_modified=False)
+			except Exception:
+				pass
+	user_roles = [r for r in frappe.get_roles(user) if r not in ("All", "Guest")]
+	crm_perms = (info["portals"].get("crm") or {}) if crm else {}
+	if crm and user not in (None, "", "Guest") and not exempt:
+		try:
+			crm_perms = _reconcile_crm_manager_elevation(user, crm_perms, crm.get("branches") or [], user_roles)
+			info["portals"]["crm"] = crm_perms
+			user_roles = [r for r in frappe.get_roles(user) if r not in ("All", "Guest")]
+		except Exception:
+			pass
+	settings_mgr = bool(crm and _crm_is_manager(crm_perms))
+	crm_mgr = exempt or bool({"System Manager", "Administrator"} & set(user_roles)) or settings_mgr
+	if crm_mgr:
+		crm_categories = {"all": True, "ids": [c["id"] for c in CRM_CATEGORIES], "source": "admin" if exempt else "manager"}
+	elif crm:
+		crm_categories = crm_scope(crm.get("branches") or [])
+		if settings_mgr and (not crm_categories["ids"] or crm_categories["all"]):
+			crm_categories = {"all": True, "ids": [c["id"] for c in CRM_CATEGORIES], "source": "manager"}
+	else:
+		crm_categories = None
 	return {
 		"user": user,
 		"full_name": user_doc.get("full_name") or user,
-		"roles": [r for r in frappe.get_roles(user) if r not in ("All", "Guest")],
+		"user_image": photo,
+		"roles": user_roles,
 		"exempt": exempt,
 		"managed": bool(info["managed"]) and not exempt,
 		"portals": portals,
@@ -844,6 +1282,9 @@ def my_permissions():
 		"always_paths": ["/people/profile"],
 		"care_branches": {"all": True, "ids": [], "source": "admin"} if exempt else (care_scope(care["employee"], care["branches"]) if care else None),
 		"aes_branches": {"all": True, "ids": [], "source": "admin"} if exempt else (aes_scope(aes["employee"], aes["branches"]) if aes else None),
+		"crm_categories": crm_categories,
+		# Manager = admin / Settings→Manage only — not module-level Manage or stale CRM Manager role.
+		"crm_role": "Manager" if crm_mgr else ("Executive" if crm else None),
 	}
 
 
@@ -1393,14 +1834,66 @@ def _arg(name, value):
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def get_employee_portal_access(employee=None, sid=None):
+	_heal_crm_catalog_if_stale()
 	denied, _roles = _guard(sid)
 	if denied:
 		return denied
 	return _run(access_state, cstr(_arg("employee", employee)))
 
 
+def _heal_crm_catalog_if_stale():
+	"""If a deploy/restart restored an old site-packages copy, reload mother-module catalog."""
+	try:
+		if "WhatsApp Centre" in CRM_MODULE_PATHS and "Service Lead" in CRM_MODULE_PATHS and callable(globals().get("_checked_crm_categories")):
+			return False
+	except Exception:
+		pass
+	import importlib.util
+	import os
+	import sys
+
+	candidates = [
+		"/home/frappe/frappe-bench/crm_clinical_people_access.GOOD.py",
+		"/home/frappe/frappe-bench/apps/health_ecosystem_core/health_ecosystem_core/health_ecosystem_core/clinical_people_access.py",
+	]
+	for path in candidates:
+		if not os.path.isfile(path):
+			continue
+		try:
+			with open(path, encoding="utf-8") as fh:
+				text = fh.read()
+			if "WhatsApp Centre" not in text or "Service Lead" not in text:
+				continue
+			spec = importlib.util.spec_from_file_location("_crm_people_access_good", path)
+			mod = importlib.util.module_from_spec(spec)
+			spec.loader.exec_module(mod)
+			# Hot-patch this module's catalog + helpers used by save/load.
+			g = globals()
+			for name in (
+				"CRM_MODULE_PATHS",
+				"CRM_CATEGORIES",
+				"PORTALS",
+				"PORTAL_ROLES",
+				"_parse_crm_categories",
+				"_checked_crm_categories",
+				"_infer_crm_categories",
+				"_crm_is_manager",
+				"crm_scope",
+				"_parse_perms",
+			):
+				if hasattr(mod, name):
+					g[name] = getattr(mod, name)
+			# Keep sys.modules entry consistent for later imports.
+			sys.modules[__name__] = sys.modules.get(__name__)
+			return True
+		except Exception:
+			continue
+	return False
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def save_employee_portal_access(employee=None, access=None, sid=None):
+	_heal_crm_catalog_if_stale()
 	denied, roles = _guard(sid)
 	if denied:
 		return denied
@@ -1474,8 +1967,8 @@ def list_crm_portal_assignees():
 			}
 		)
 
-	# Also include active users with CRM Staff / CRM Manager roles (portal login roles)
-	for role in ("CRM Staff", "CRM Manager"):
+	# Also include active users with CRM Executive / CRM Staff / CRM Manager roles
+	for role in ("CRM Executive", "CRM Staff", "CRM Manager"):
 		for has in frappe.get_all("Has Role", filters={"role": role, "parenttype": "User"}, fields=["parent"], limit_page_length=500):
 			user = cstr(has.parent or "").strip()
 			if not user or user in ("Guest", "Administrator"):

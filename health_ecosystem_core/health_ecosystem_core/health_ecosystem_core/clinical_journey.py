@@ -158,18 +158,28 @@ th {{ background: #f5f5f5; }}
 
 def generate_lab_report_pdf(journey_name):
     from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import (
+        _existing_lab_report,
         journey_pdf_payload,
         render_nabl_lab_report_html,
     )
     from health_ecosystem_core.health_ecosystem_core.clinical_phase6 import render_branded_lab_report_html
-    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import html_to_lab_report_pdf
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import (
+        html_to_lab_report_pdf,
+        resolve_remedium_report_chrome,
+    )
 
     payload = journey_pdf_payload(journey_name)
+    lab_report = _existing_lab_report(payload.get("trf_id")) if payload.get("trf_id") else None
+    mode = resolve_remedium_report_chrome(
+        requested="nabl",
+        lab_report=lab_report,
+        payload=payload.get("nabl_report") or payload,
+    )
     if payload.get("nabl_report"):
-        html = render_nabl_lab_report_html(payload["nabl_report"], chrome_mode="nabl", for_pdf=1)
+        html = render_nabl_lab_report_html(payload["nabl_report"], chrome_mode=mode, for_pdf=1)
     else:
-        html = render_branded_lab_report_html(payload)
-    pdf_content = html_to_lab_report_pdf(html, chrome_mode="nabl")
+        html = render_branded_lab_report_html(payload, chrome_mode=mode)
+    pdf_content = html_to_lab_report_pdf(html, chrome_mode=mode, brand="remedium")
     file_doc = frappe.get_doc(
         {
             "doctype": "File",
@@ -335,8 +345,18 @@ def authorize_lab_report(journey_id=None, pathologist_notes=None, report_pdf=Non
     if frappe.session.user == "Guest":
         return _error(_("Not authenticated"), 401)
     roles = set(frappe.get_roles())
-    if "Pathologist" not in roles and "Health System Admin" not in roles and "System Manager" not in roles:
-        return _error(_("Only pathologists can authorize reports"), 403)
+    sign_roles = {
+        "Lab Manager",
+        "Quality Control Manager",
+        "Pathologist",
+        "Health System Admin",
+        "System Manager",
+    }
+    if not (set(roles) & sign_roles):
+        return _error(
+            _("Only Lab Manager or Quality Control Manager can sign and finalize reports"),
+            403,
+        )
 
     journey_id = _parse_request_value("journey_id", journey_id)
     if not journey_id or not frappe.db.exists("Patient Care Journey", journey_id):
@@ -388,6 +408,14 @@ def authorize_lab_report(journey_id=None, pathologist_notes=None, report_pdf=Non
             if notes:
                 updates["comments"] = notes
             frappe.db.set_value("Lab Report", lab_report, updates)
+            try:
+                from health_ecosystem_core.health_ecosystem_core.clinical_phase8 import (
+                    stamp_lab_report_approved_by,
+                )
+
+                stamp_lab_report_approved_by(lab_report, frappe.session.user)
+            except Exception:
+                frappe.log_error(title="stamp_approved_by", message=frappe.get_traceback())
     if journey.customer_trf:
         from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
             on_report_authorized,

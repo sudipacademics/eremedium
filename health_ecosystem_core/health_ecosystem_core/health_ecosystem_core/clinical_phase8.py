@@ -9,7 +9,263 @@ import os
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, get_datetime, now_datetime
+from frappe.utils import cint, cstr, flt, get_datetime, now_datetime
+
+
+# Never print these as Typed by / Approved by — not result-entry staff.
+_ATTRIBUTION_SYSTEM_USERS = frozenset(
+    {
+        "administrator",
+        "guest",
+        "admin",
+        "system",
+    }
+)
+
+
+def ensure_lab_report_attribution_fields():
+    """Typed by / Approved by audit fields for printed report footer."""
+    from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+    if not frappe.db.exists("DocType", "Lab Report"):
+        return
+    meta = frappe.get_meta("Lab Report")
+    if meta.has_field("typed_by_name") and meta.has_field("approved_by_name"):
+        return
+    create_custom_fields(
+        {
+            "Lab Report": [
+                {
+                    "fieldname": "typed_by_user",
+                    "label": "Typed By (User)",
+                    "fieldtype": "Link",
+                    "options": "User",
+                    "insert_after": "section_signoff",
+                    "read_only": 1,
+                },
+                {
+                    "fieldname": "typed_by_name",
+                    "label": "Typed By",
+                    "fieldtype": "Data",
+                    "insert_after": "typed_by_user",
+                    "read_only": 1,
+                },
+                {
+                    "fieldname": "approved_by_user",
+                    "label": "Approved By (User)",
+                    "fieldtype": "Link",
+                    "options": "User",
+                    "insert_after": "typed_by_name",
+                    "read_only": 1,
+                },
+                {
+                    "fieldname": "approved_by_name",
+                    "label": "Approved By",
+                    "fieldtype": "Data",
+                    "insert_after": "approved_by_user",
+                    "read_only": 1,
+                },
+            ]
+        },
+        ignore_validate=True,
+        update=True,
+    )
+    frappe.clear_cache(doctype="Lab Report")
+
+
+def _is_system_attribution_user(user):
+    u = cstr(user or "").strip()
+    if not u:
+        return True
+    low = u.lower()
+    if low in _ATTRIBUTION_SYSTEM_USERS:
+        return True
+    if low.split("@", 1)[0] in _ATTRIBUTION_SYSTEM_USERS:
+        return True
+    return False
+
+
+def _is_valid_attribution_label(label):
+    text = cstr(label or "").strip()
+    if not text:
+        return False
+    return text.lower() not in _ATTRIBUTION_SYSTEM_USERS
+
+
+def portal_employee_display(user=None):
+    """Employee name for a portal login (Employee.user_id → employee_name).
+
+    System accounts (Administrator / Guest) never resolve to a printable name.
+    """
+    user = cstr(user or "").strip()
+    if _is_system_attribution_user(user):
+        return ""
+    try:
+        if frappe.db.exists("DocType", "Employee"):
+            emp_name = frappe.db.get_value("Employee", {"user_id": user}, "employee_name")
+            emp_name = cstr(emp_name or "").strip()
+            if emp_name and _is_valid_attribution_label(emp_name):
+                return emp_name
+    except Exception:
+        frappe.log_error(title="portal_employee_display", message=frappe.get_traceback())
+    full = cstr(frappe.db.get_value("User", user, "full_name") or "").strip()
+    if full and _is_valid_attribution_label(full):
+        return full
+    if "@" in user:
+        local = user.split("@", 1)[0].strip()
+        return local if _is_valid_attribution_label(local) else ""
+    return user if _is_valid_attribution_label(user) else ""
+
+
+def infer_typed_by_user_from_history(lab_report_name):
+    """Who actually entered results — Version trail of parameter edits (never system users)."""
+    name = cstr(lab_report_name or "").strip()
+    if not name:
+        return ""
+    try:
+        versions = frappe.get_all(
+            "Version",
+            filters={"ref_doctype": "Lab Report", "docname": name},
+            fields=["owner", "creation", "data"],
+            order_by="creation asc",
+            limit_page_length=80,
+        )
+    except Exception:
+        versions = []
+    last_param_editor = ""
+    last_any_editor = ""
+    for row in versions:
+        owner = cstr(row.get("owner") or "").strip()
+        if _is_system_attribution_user(owner):
+            continue
+        last_any_editor = owner
+        blob = cstr(row.get("data") or "")
+        if any(
+            token in blob
+            for token in (
+                '"parameters"',
+                "result_value",
+                "report_status",
+                "abnormal_flag",
+            )
+        ):
+            last_param_editor = owner
+    if last_param_editor:
+        return last_param_editor
+    if last_any_editor:
+        return last_any_editor
+    # Fallback: document owner / modified_by if they are real portal users
+    try:
+        meta = frappe.db.get_value(
+            "Lab Report",
+            name,
+            ["owner", "modified_by"],
+            as_dict=True,
+        ) or {}
+    except Exception:
+        meta = {}
+    for candidate in (meta.get("owner"), meta.get("modified_by")):
+        if candidate and not _is_system_attribution_user(candidate):
+            return cstr(candidate).strip()
+    return ""
+
+
+def stamp_lab_report_typed_by(doc, user=None):
+    """Record the LabTech portal employee who entered / saved results.
+
+    Never stamps Administrator/Guest. A real employee save replaces a bad
+    system stamp; a system session never overwrites a real employee stamp.
+    """
+    ensure_lab_report_attribution_fields()
+    user = cstr(user or frappe.session.user or "").strip()
+    if _is_system_attribution_user(user):
+        return ""
+    label = portal_employee_display(user)
+    if not _is_valid_attribution_label(label):
+        return ""
+    existing_user = cstr(getattr(doc, "typed_by_user", None) or "").strip()
+    if existing_user and not _is_system_attribution_user(existing_user) and _is_system_attribution_user(user):
+        return cstr(getattr(doc, "typed_by_name", None) or "")
+    if hasattr(doc, "typed_by_user"):
+        doc.typed_by_user = user
+    if hasattr(doc, "typed_by_name"):
+        doc.typed_by_name = label
+    return label
+
+
+def stamp_lab_report_approved_by(lab_report_name, user=None):
+    """Record the pathologist / portal employee who authorized (released) the report."""
+    ensure_lab_report_attribution_fields()
+    user = cstr(user or frappe.session.user or "").strip()
+    if _is_system_attribution_user(user) or not lab_report_name:
+        return ""
+    label = portal_employee_display(user)
+    if not _is_valid_attribution_label(label):
+        return ""
+    updates = {}
+    meta = frappe.get_meta("Lab Report")
+    if meta.has_field("approved_by_user"):
+        updates["approved_by_user"] = user
+    if meta.has_field("approved_by_name"):
+        updates["approved_by_name"] = label
+    if updates:
+        frappe.db.set_value("Lab Report", lab_report_name, updates, update_modified=False)
+    return label
+
+
+def resolve_lab_report_attribution(doc):
+    """Typed by / Approved by for print — employee who entered / released only.
+
+    Never returns Administrator. Bad stored stamps are healed from Version history.
+    """
+    ensure_lab_report_attribution_fields()
+    typed = cstr(getattr(doc, "typed_by_name", None) or "").strip()
+    typed_user = cstr(getattr(doc, "typed_by_user", None) or "").strip()
+    approved = cstr(getattr(doc, "approved_by_name", None) or "").strip()
+    approved_user = cstr(getattr(doc, "approved_by_user", None) or "").strip()
+
+    if _is_system_attribution_user(typed_user) or not _is_valid_attribution_label(typed):
+        inferred = infer_typed_by_user_from_history(getattr(doc, "name", None))
+        typed = portal_employee_display(inferred) if inferred else ""
+        typed_user = inferred if inferred else ""
+        # Heal bad stamp so reprints stay correct
+        if (
+            typed_user
+            and _is_valid_attribution_label(typed)
+            and getattr(doc, "name", None)
+            and frappe.db.exists("Lab Report", doc.name)
+        ):
+            try:
+                frappe.db.set_value(
+                    "Lab Report",
+                    doc.name,
+                    {"typed_by_user": typed_user, "typed_by_name": typed},
+                    update_modified=False,
+                )
+                doc.typed_by_user = typed_user
+                doc.typed_by_name = typed
+            except Exception:
+                frappe.log_error(title="heal_typed_by", message=frappe.get_traceback())
+
+    if _is_system_attribution_user(approved_user) or not _is_valid_attribution_label(approved):
+        pathologist = ""
+        journey = cstr(getattr(doc, "care_journey", None) or "").strip()
+        if journey and frappe.db.exists("Patient Care Journey", journey):
+            pathologist = cstr(frappe.db.get_value("Patient Care Journey", journey, "pathologist") or "")
+        candidate = approved_user if not _is_system_attribution_user(approved_user) else pathologist
+        if _is_system_attribution_user(candidate):
+            candidate = ""
+        if not candidate and cstr(getattr(doc, "report_status", "") or "") in ("Authorized", "Printed"):
+            mod = cstr(getattr(doc, "modified_by", None) or "")
+            if not _is_system_attribution_user(mod):
+                candidate = mod
+        approved = portal_employee_display(candidate) if candidate else ""
+
+    if not _is_valid_attribution_label(typed):
+        typed = ""
+    if not _is_valid_attribution_label(approved):
+        approved = ""
+    return {"typed_by": typed, "approved_by": approved}
 
 DEPT_REPORT_TITLES = {
     "Biochemistry": ("REPORT ON BIOCHEMISTRY", "REPORT ON EXAMINATION OF BLOOD"),
@@ -813,6 +1069,7 @@ def finalize_lab_report(lab_report=None, confirm_password=None):
     doc.report_date = now_datetime()
     if not doc.dispatch_date:
         doc.dispatch_date = now_datetime()
+    stamp_lab_report_typed_by(doc)
     doc.save(ignore_permissions=True)
     sync_lab_report_to_results(doc.name)
 
@@ -948,12 +1205,27 @@ def get_lab_report_preview_html(lab_report=None, letterhead_plain=0):
     from frappe.utils import cint
 
     from health_ecosystem_core.health_ecosystem_core.api import _parse_request_value
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import (
+        resolve_remedium_report_chrome,
+    )
 
+    ensure_lab_report_attribution_fields()
     lab_report = _parse_request_value("lab_report", lab_report)
     if not lab_report:
         return ""
     plain = cint(_parse_request_value("letterhead_plain", letterhead_plain) or 0)
-    return render_nabl_lab_report_html(lab_report_print_payload(lab_report), letterhead_plain=plain)
+    payload = lab_report_print_payload(lab_report)
+    # Headerless uses Remedium without_header template; otherwise NABL vs Non-NABL from Test Master.
+    chrome = (
+        "remedium_without_header"
+        if plain
+        else resolve_remedium_report_chrome(requested="nabl", lab_report=lab_report, payload=payload)
+    )
+    return render_nabl_lab_report_html(
+        payload,
+        letterhead_plain=1 if plain else 0,
+        chrome_mode=chrome,
+    )
 
 
 def _preview_sample_value(param_row):
@@ -1192,6 +1464,11 @@ def complete_nabl_pdf_for_trf(trf_id=None, fill_sample=1, authorize=1):
             doc.report_date = now_datetime()
         if hasattr(doc, "dispatch_date") and not doc.dispatch_date:
             doc.dispatch_date = now_datetime()
+        stamp_lab_report_typed_by(doc)
+        if hasattr(doc, "approved_by_user"):
+            doc.approved_by_user = frappe.session.user
+        if hasattr(doc, "approved_by_name"):
+            doc.approved_by_name = portal_employee_display(frappe.session.user)
         doc.save(ignore_permissions=True)
         from health_ecosystem_core.health_ecosystem_core.clinical_phase126_partner_tiers import (
             on_report_authorized,
@@ -1202,16 +1479,20 @@ def complete_nabl_pdf_for_trf(trf_id=None, fill_sample=1, authorize=1):
         on_report_authorized(trf_id)
 
     payload = lab_report_print_payload(lab_report)
-    html = render_nabl_lab_report_html(payload, chrome_mode="nabl", for_pdf=1)
+    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import (
+        html_to_lab_report_pdf,
+        resolve_remedium_report_chrome,
+    )
+
+    mode = resolve_remedium_report_chrome(requested="nabl", lab_report=lab_report, payload=payload)
+    html = render_nabl_lab_report_html(payload, chrome_mode=mode, for_pdf=1)
     if not html:
         err = _error("NABL HTML empty")
         err["data"] = {"lab_report": lab_report, "trf_id": trf_id}
         return err
 
-    from health_ecosystem_core.health_ecosystem_core.clinical_report_format import html_to_lab_report_pdf
-
-    pdf_content = html_to_lab_report_pdf(html, chrome_mode="nabl")
-    fname = f"NABL_Report_{trf_id}.pdf"
+    pdf_content = html_to_lab_report_pdf(html, chrome_mode=mode, brand="remedium")
+    fname = f"Lab_Report_{trf_id}_{mode}.pdf"
     file_doc = frappe.get_doc(
         {
             "doctype": "File",
@@ -1531,6 +1812,8 @@ def save_lab_report_parameters(lab_report=None, parameters=None, comments=None, 
         doc.report_note = report_note
     if doc.report_status in ("Draft",) or not doc.report_status:
         doc.report_status = "In Progress"
+    if changed or comments is not None or report_note is not None:
+        stamp_lab_report_typed_by(doc)
     doc.save(ignore_permissions=True)
     frappe.db.commit()
     return _success(
