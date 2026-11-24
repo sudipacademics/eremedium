@@ -21,7 +21,8 @@ import './people-payroll.css';
 import './people-performance.css';
 
 type Tab = 'overview' | 'leaderboard' | 'departments' | 'individual' | 'feedback';
-type Draft = { rating: number; remarks: string };
+type Draft = { rating: number; remarks: string; recommendation: string };
+const RECOMMENDATIONS = ['Promote', 'Retain', 'Develop further', 'Needs improvement', 'Transfer', 'Not recommended'];
 
 const BANDS: PeoplePerformanceBand[] = ['Top Performer', 'High Performer', 'Good Performer', 'Average', 'Needs Improvement', 'No Data'];
 const BAND_TONE: Record<PeoplePerformanceBand, string> = {
@@ -104,12 +105,16 @@ function PerformanceDetail({
   deptAvg,
   orgAvg,
   onRate,
+  onDownloadReport,
+  downloading,
 }: {
   row: PeoplePerformanceRow;
   board: PeoplePerformanceBoard;
   deptAvg: Record<PeoplePerformanceComponent | 'score', number | null>;
   orgAvg: Record<PeoplePerformanceComponent | 'score', number | null>;
   onRate: () => void;
+  onDownloadReport?: () => void;
+  downloading?: boolean;
 }) {
   const history = board.reviews[row.id] || [];
   const change = row.score != null && row.prev_score != null ? row.score - row.prev_score : null;
@@ -178,7 +183,7 @@ function PerformanceDetail({
                 <b>
                   {fmtMonth(h.period)} · <Stars value={h.rating} size={13} /> {h.rating.toFixed(1)}
                 </b>
-                <span>{h.remarks || 'No remarks'}</span>
+                <span>{[h.recommendation, h.remarks].filter(Boolean).join(' · ') || 'No remarks'}</span>
               </li>
             ))
           ) : (
@@ -188,11 +193,18 @@ function PerformanceDetail({
           )}
         </ul>
       </div>
-      {board.feedback_available ? (
-        <button type="button" className="emp-btn primary pf-rate-btn" onClick={onRate}>
-          <HrmsIcon name="career" size={15} /> Rate for {fmtMonth(board.review_period)}
-        </button>
-      ) : null}
+      <div className="pf-detail-actions">
+        {onDownloadReport ? (
+          <button type="button" className="emp-btn outline pf-rate-btn" onClick={onDownloadReport} disabled={downloading}>
+            <HrmsIcon name="download" size={15} /> {downloading ? 'Preparing PDF…' : 'Download Performance Report'}
+          </button>
+        ) : null}
+        {board.feedback_available ? (
+          <button type="button" className="emp-btn primary pf-rate-btn" onClick={onRate}>
+            <HrmsIcon name="career" size={15} /> Rate for {fmtMonth(board.review_period)}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -218,11 +230,37 @@ function PerformanceManager() {
   const [viewId, setViewId] = useState<string | null>(null);
   const [individualId, setIndividualId] = useState('');
   const [rateFor, setRateFor] = useState<PeoplePerformanceRow | null>(null);
-  const [rateDraft, setRateDraft] = useState<Draft>({ rating: 0, remarks: '' });
+  const [rateDraft, setRateDraft] = useState<Draft>({ rating: 0, remarks: '', recommendation: '' });
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saving, setSaving] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const downloadReport = async (employeeId: string) => {
+    setDownloadingReport(true);
+    setSaveError(null);
+    try {
+      const res = await api.downloadPeoplePerformanceReport({ employee: employeeId, period: fromDate });
+      const raw = res.data.data;
+      const bin = atob(raw);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.data.file_name || `performance-report-${employeeId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setNotice('Performance Report downloaded');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not download the Performance Report');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   const load = useCallback(async (from: string, to: string) => {
     setLoading(true);
@@ -396,7 +434,7 @@ function PerformanceManager() {
   const openRate = (row: PeoplePerformanceRow) => {
     setMenuFor(null);
     const cur = currentReview(row.id);
-    setRateDraft({ rating: cur?.rating ? Math.round(cur.rating) : 0, remarks: cur?.remarks || '' });
+    setRateDraft({ rating: cur?.rating ? Math.round(cur.rating) : 0, remarks: cur?.remarks || '', recommendation: cur?.recommendation || '' });
     setSaveError(null);
     setRateFor(row);
   };
@@ -410,7 +448,13 @@ function PerformanceManager() {
     setSaving(true);
     setSaveError(null);
     try {
-      await api.savePeoplePerformanceReview({ employee: rateFor.id, period: board.review_period, rating: rateDraft.rating, remarks: rateDraft.remarks.trim() });
+      await api.savePeoplePerformanceReview({
+        employee: rateFor.id,
+        period: board.review_period,
+        rating: rateDraft.rating,
+        remarks: rateDraft.remarks.trim(),
+        recommendation: rateDraft.recommendation,
+      });
       setNotice(`Rating saved for ${rateFor.name}`);
       setRateFor(null);
       await load(fromDate, toDate);
@@ -424,7 +468,12 @@ function PerformanceManager() {
   const dirtyIds = Object.keys(drafts).filter((id) => {
     const cur = currentReview(id);
     const d = drafts[id];
-    return d.rating > 0 && (d.rating !== Math.round(cur?.rating || 0) || d.remarks.trim() !== (cur?.remarks || ''));
+    return (
+      d.rating > 0 &&
+      (d.rating !== Math.round(cur?.rating || 0) ||
+        d.remarks.trim() !== (cur?.remarks || '') ||
+        d.recommendation !== (cur?.recommendation || ''))
+    );
   });
 
   const saveDrafts = async (ids: string[]) => {
@@ -434,7 +483,13 @@ function PerformanceManager() {
     const failed: string[] = [];
     for (const id of ids) {
       try {
-        await api.savePeoplePerformanceReview({ employee: id, period: board.review_period, rating: drafts[id].rating, remarks: drafts[id].remarks.trim() });
+        await api.savePeoplePerformanceReview({
+          employee: id,
+          period: board.review_period,
+          rating: drafts[id].rating,
+          remarks: drafts[id].remarks.trim(),
+          recommendation: drafts[id].recommendation,
+        });
       } catch (err) {
         failed.push(`${rows.find((r) => r.id === id)?.name || id}: ${err instanceof Error ? err.message : 'failed'}`);
       }
@@ -456,7 +511,7 @@ function PerformanceManager() {
   const draftOf = (row: PeoplePerformanceRow): Draft => {
     if (drafts[row.id]) return drafts[row.id];
     const cur = currentReview(row.id);
-    return { rating: cur?.rating ? Math.round(cur.rating) : 0, remarks: cur?.remarks || '' };
+    return { rating: cur?.rating ? Math.round(cur.rating) : 0, remarks: cur?.remarks || '', recommendation: cur?.recommendation || '' };
   };
   const setDraft = (row: PeoplePerformanceRow, patch: Partial<Draft>) => setDrafts((prev) => ({ ...prev, [row.id]: { ...draftOf(row), ...patch } }));
 
@@ -476,8 +531,8 @@ function PerformanceManager() {
   const exportFeedback = () =>
     downloadCsv(
       `manager-feedback-${board?.review_period?.slice(0, 7)}.csv`,
-      ['Employee ID', 'Employee', 'Department', 'Month', 'Rating', 'Remarks', 'Reviewer', 'Updated'],
-      rows.flatMap((r) => (board?.reviews[r.id] || []).map((h) => [r.id, r.name, r.department, h.period.slice(0, 7), h.rating, h.remarks, h.reviewer, h.modified])),
+      ['Employee ID', 'Employee', 'Department', 'Month', 'Rating', 'Recommendation', 'Remarks', 'Reviewer', 'Updated'],
+      rows.flatMap((r) => (board?.reviews[r.id] || []).map((h) => [r.id, r.name, r.department, h.period.slice(0, 7), h.rating, h.recommendation, h.remarks, h.reviewer, h.modified])),
     );
 
   const headDelta = k && k.prev_employees ? Math.round(((k.employees - k.prev_employees) / k.prev_employees) * 100) : null;
@@ -1100,6 +1155,8 @@ function PerformanceManager() {
                   deptAvg={deptComponentAvg(individual.department)}
                   orgAvg={orgAvg}
                   onRate={() => openRate(individual)}
+                  onDownloadReport={() => void downloadReport(individual.id)}
+                  downloading={downloadingReport}
                 />
               </div>
             ) : (
@@ -1131,6 +1188,7 @@ function PerformanceManager() {
                     <th>Employee</th>
                     <th>Department</th>
                     <th>Rating ({reviewMonth})</th>
+                    <th>Recommendation</th>
                     <th>Remarks</th>
                     <th>Last Updated</th>
                     <th className="emp-col-actions">Save</th>
@@ -1147,6 +1205,22 @@ function PerformanceManager() {
                         <td className="lv-dept">{r.department || '—'}</td>
                         <td>
                           <Stars value={d.rating} onChange={board?.feedback_available ? (v) => setDraft(r, { rating: v }) : undefined} />
+                        </td>
+                        <td>
+                          <select
+                            className="pf-remark"
+                            value={d.recommendation}
+                            onChange={(e) => setDraft(r, { recommendation: e.target.value })}
+                            aria-label={`Recommendation for ${r.name}`}
+                            disabled={!board?.feedback_available}
+                          >
+                            <option value="">Choose…</option>
+                            {RECOMMENDATIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <input
@@ -1169,7 +1243,7 @@ function PerformanceManager() {
                       </tr>
                     );
                   })}
-                  {!pageRows.length ? emptyRow(6) : null}
+                  {!pageRows.length ? emptyRow(7) : null}
                 </tbody>
               </table>
             </div>
@@ -1202,6 +1276,8 @@ function PerformanceManager() {
               deptAvg={deptComponentAvg(viewRow.department)}
               orgAvg={orgAvg}
               onRate={() => openRate(viewRow)}
+              onDownloadReport={() => void downloadReport(viewRow.id)}
+              downloading={downloadingReport}
             />
           </aside>
         </div>
@@ -1215,6 +1291,17 @@ function PerformanceManager() {
               Manager feedback for <b>{reviewMonth}</b> · {rateFor.designation || rateFor.department || rateFor.id}
             </p>
             <Stars value={rateDraft.rating} onChange={(v) => setRateDraft((d) => ({ ...d, rating: v }))} size={30} />
+            <label>
+              <span>Recommendation</span>
+              <select value={rateDraft.recommendation} onChange={(e) => setRateDraft((d) => ({ ...d, recommendation: e.target.value }))}>
+                <option value="">Choose…</option>
+                {RECOMMENDATIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>
               <span>Remarks (optional)</span>
               <textarea rows={3} value={rateDraft.remarks} onChange={(e) => setRateDraft((d) => ({ ...d, remarks: e.target.value }))} />

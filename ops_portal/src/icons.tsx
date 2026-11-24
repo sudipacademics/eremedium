@@ -41,7 +41,27 @@ export type IconName =
   | 'download'
   | 'wrench'
   | 'info'
-  | 'ban';
+  | 'ban'
+  | 'eye'
+  | 'edit'
+  | 'more'
+  | 'star'
+  | 'phone'
+  | 'tag'
+  | 'upload'
+  | 'filter'
+  | 'left'
+  | 'right'
+  | 'file'
+  | 'card'
+  | 'history'
+  | 'cart'
+  | 'users'
+  | 'snow'
+  | 'pause'
+  | 'xcircle'
+  | 'wallet'
+  | 'trash';
 
 const paths: Record<IconName, ReactElement> = {
   dashboard: (
@@ -285,6 +305,99 @@ const paths: Record<IconName, ReactElement> = {
     <>
       <circle cx="12" cy="12" r="8" />
       <path d="M7 17 17 7" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2.8 12S6.2 5.5 12 5.5 21.2 12 21.2 12 17.8 18.5 12 18.5 2.8 12 2.8 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+      <path d="M13.5 6.5l4 4" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="12" cy="5.5" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="12" cy="18.5" r="1.2" />
+    </>
+  ),
+  star: <path d="M12 3.8l2.5 5.1 5.6.8-4 3.9 1 5.6-5.1-2.7-5 2.7 1-5.6-4.1-3.9 5.6-.8L12 3.8z" />,
+  phone: <path d="M6.5 3.8h3l1.5 4-2 1.3a10.5 10.5 0 0 0 5.9 5.9l1.3-2 4 1.5v3a1.8 1.8 0 0 1-1.9 1.8C11.4 18.9 5.1 12.6 4.7 5.7a1.8 1.8 0 0 1 1.8-1.9z" />,
+  tag: (
+    <>
+      <path d="M3.8 12.2V4.6a.8.8 0 0 1 .8-.8h7.6l8 8a1.6 1.6 0 0 1 0 2.2l-6 6a1.6 1.6 0 0 1-2.2 0l-8.2-7.8z" />
+      <circle cx="8.3" cy="8.3" r="1.4" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M12 16V4.5" />
+      <path d="M7.8 8.5 12 4.3l4.2 4.2" />
+      <path d="M5 15.5V19h14v-3.5" />
+    </>
+  ),
+  filter: <path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8L4 5z" />,
+  left: <path d="M14.5 6l-6 6 6 6" />,
+  right: <path d="M9.5 6l6 6-6 6" />,
+  file: (
+    <>
+      <path d="M6.5 3.5h7l4 4v13h-11z" />
+      <path d="M13.5 3.5v4h4M9 12.5h6M9 16h6" />
+    </>
+  ),
+  card: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3 10h18M7 15h4" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9" />
+      <path d="M4.5 4.5V9H9M12 8v4.3l3 1.8" />
+    </>
+  ),
+  cart: (
+    <>
+      <path d="M3.5 4.5h2.2l2.2 10.2h10l2-7.2H6.6" />
+      <circle cx="9.5" cy="18.8" r="1.4" />
+      <circle cx="16.5" cy="18.8" r="1.4" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="9" cy="8.5" r="3.2" />
+      <path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" />
+      <path d="M15.5 5.6a3.1 3.1 0 0 1 0 5.8M17.6 14.2c1.6.6 2.6 2.2 2.9 4.8" />
+    </>
+  ),
+  snow: <path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6.5l2.5-2M9.5 19.5 12 17.5l2.5 2" />,
+  pause: (
+    <>
+      <circle cx="12" cy="12" r="8.2" />
+      <path d="M10 9v6M14 9v6" />
+    </>
+  ),
+  xcircle: (
+    <>
+      <circle cx="12" cy="12" r="8.2" />
+      <path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" />
+    </>
+  ),
+  wallet: (
+    <>
+      <path d="M4 7.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 18V7.5z" />
+      <path d="M4 7.5 15.5 4.5V7.5M16 13.5h.1" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13" />
     </>
   ),
 };

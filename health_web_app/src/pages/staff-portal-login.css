@@ -23,12 +23,14 @@
   --spl-teal: #0d9488;
 }
 
-.spl-page[data-portal='people'] {
+.spl-page[data-portal='people'],
+.spl-page[data-portal='labtech'] {
   --spl-bg: #0b3a3b;
   --spl-teal: #17a37a;
   --spl-muted: #64748b;
   --spl-ink: #142033;
   --spl-line: #d5e1de;
+  /* Same Care / Aesthetic backend gate background */
   background:
     radial-gradient(circle at 20% 10%, #17a37a33, transparent 40%),
     linear-gradient(135deg, #0b3a3b, #0e5a52);

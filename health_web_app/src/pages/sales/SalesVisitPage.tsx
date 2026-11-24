@@ -25,6 +25,7 @@ export function SalesVisitPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const [visitId, setVisitId] = useState('');
   const [leadId, setLeadId] = useState('');
@@ -55,27 +56,68 @@ export function SalesVisitPage() {
 
   useEffect(() => {
     void load();
-    void captureSalesGps()
-      .then((pos) => {
-        setLatitude(pos.latitude);
-        setLongitude(pos.longitude);
-      })
-      .catch(() => undefined);
   }, []);
 
-  function selectAssigned(visit: SalesVisit) {
+  function resetFormFields() {
+    setNotes('');
+    setOutcome('');
+    setLeadStatus('');
+    setVisitId('');
+    setLeadId('');
+    setPurpose(PURPOSES[0]);
+    setDuration('30');
+    setPhotoBase64('');
+    setPhotoName('');
+  }
+
+  async function openNewVisit() {
+    resetFormFields();
+    setError(null);
+    setShowForm(true);
+    try {
+      const pos = await captureSalesGps();
+      setLatitude(pos.latitude);
+      setLongitude(pos.longitude);
+      setMessage(pos.note ? `GPS ready (${pos.note})` : 'GPS ready');
+    } catch {
+      setLatitude(null);
+      setLongitude(null);
+      setMessage(null);
+      setError('GPS is required — allow location and tap Refresh GPS');
+    }
+  }
+
+  async function selectAssigned(visit: SalesVisit) {
     setVisitId(visit.name);
     setLeadId(visit.lead || '');
     setPurpose(visit.purpose || PURPOSES[0]);
     setNotes(visit.notes || '');
+    setOutcome('');
+    setPhotoBase64('');
+    setPhotoName('');
     setLeadStatus(visit.lead_status && visit.lead_status !== 'New' ? visit.lead_status : 'Contacted');
+    setError(null);
     setMessage(`Completing assigned visit ${visit.name}${visit.lead_name ? ` · ${visit.lead_name}` : ''}`);
+    setShowForm(true);
+    try {
+      const pos = await captureSalesGps();
+      setLatitude(pos.latitude);
+      setLongitude(pos.longitude);
+    } catch {
+      setLatitude(null);
+      setLongitude(null);
+      setError('GPS is required — allow location and tap Refresh GPS');
+    }
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (latitude == null || longitude == null) {
-      setError('GPS location required — tap Refresh GPS');
+      setError('GPS location is mandatory — tap Refresh GPS');
+      return;
+    }
+    if (!photoBase64) {
+      setError('Visit photo is mandatory — capture or upload a photo');
       return;
     }
     setSubmitting(true);
@@ -92,15 +134,12 @@ export function SalesVisitPage() {
         duration_minutes: duration,
         notes,
         ...(leadStatus ? { lead_status: leadStatus } : {}),
-        ...(photoBase64 ? { photo_base64: photoBase64, photo_filename: photoName || 'visit.jpg' } : {}),
+        photo_base64: photoBase64,
+        photo_filename: photoName || 'visit.jpg',
       });
-      setMessage(visitId ? 'Assigned Log Visit completed and synced to FFMS' : 'Visit logged with GPS — synced to FFMS');
-      setNotes('');
-      setOutcome('');
-      setLeadStatus('');
-      setVisitId('');
-      setPhotoBase64('');
-      setPhotoName('');
+      setMessage(visitId ? 'Assigned Log Visit completed and synced to FFMS' : 'Visit logged with GPS & photo — synced to FFMS');
+      resetFormFields();
+      setShowForm(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Log failed');
@@ -114,12 +153,20 @@ export function SalesVisitPage() {
       <div className="reach-page-head">
         <div>
           <h1>Log field visit</h1>
-          <p>Assigned visits from FFMS appear here instantly. Complete them with GPS, remarks and an optional photo — they sync back to FFMS Log Visit.</p>
+          <p>
+            Assigned visits from FFMS appear here. Complete them or add a new entry with mandatory GPS and visit photo —
+            they sync back to FFMS Log Visit.
+          </p>
+        </div>
+        <div className="reach-page-actions">
+          <button type="button" className="reach-btn" onClick={() => void openNewVisit()}>
+            Log visit entry
+          </button>
         </div>
       </div>
 
       {message ? <div className="reach-alert ok">{message}</div> : null}
-      {error ? <div className="reach-alert err">{error}</div> : null}
+      {error && !showForm ? <div className="reach-alert err">{error}</div> : null}
 
       {assignedVisits.length ? (
         <section className="reach-panel" style={{ marginBottom: 16 }}>
@@ -151,7 +198,7 @@ export function SalesVisitPage() {
                     <td>{v.purpose || 'Meet Lead'}</td>
                     <td>{v.assigned_from || 'FFMS'}</td>
                     <td>
-                      <button type="button" className="reach-btn secondary" onClick={() => selectAssigned(v)}>
+                      <button type="button" className="reach-btn secondary" onClick={() => void selectAssigned(v)}>
                         Complete
                       </button>
                     </td>
@@ -163,128 +210,173 @@ export function SalesVisitPage() {
         </section>
       ) : null}
 
-      <form className="reach-card" onSubmit={onSubmit}>
-        <div className="reach-card-head">
-          <div className="reach-card-icon" aria-hidden>
-            ⌖
-          </div>
-          <div>
-            <h2>{visitId ? 'Complete assigned visit' : 'Visit details'}</h2>
-            <p>{visitId ? `Updating ${visitId}` : 'Link a lead when relevant, note purpose and outcome, then save with your current location.'}</p>
-          </div>
-        </div>
+      {showForm ? (
+        <div
+          className="reach-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <form
+            className="reach-card reach-modal"
+            onSubmit={onSubmit}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reach-visit-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="reach-card-head">
+              <div className="reach-card-icon" aria-hidden>
+                ⌖
+              </div>
+              <div>
+                <h2 id="reach-visit-title">{visitId ? 'Complete assigned visit' : 'Visit details'}</h2>
+                <p>
+                  {visitId
+                    ? `Updating ${visitId} — GPS and photo are required.`
+                    : 'Link a lead when relevant. GPS and visit photo are mandatory.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="reach-modal-close"
+                aria-label="Close"
+                onClick={() => setShowForm(false)}
+              >
+                ×
+              </button>
+            </div>
 
-        <div className="reach-form-grid">
-          <label className="reach-field">
-            Lead (optional)
-            <select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
-              <option value="">— General visit —</option>
-              {leads
-                .filter((l) => !['Won', 'Lost'].includes(l.status))
-                .map((l) => (
-                  <option key={l.name} value={l.name}>
-                    {l.lead_name} ({l.status})
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="reach-field">
-            Purpose
-            <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-              {PURPOSES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="reach-field">
-            Outcome
-            <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
-              <option value="">—</option>
-              {OUTCOMES.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </label>
-          {leadId ? (
-            <label className="reach-field">
-              Update lead status
-              <select value={leadStatus} onChange={(e) => setLeadStatus(e.target.value)}>
-                <option value="">No change</option>
-                {['Contacted', 'Meeting Done', 'Qualified', 'Negotiation', 'Won', 'Lost'].map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="reach-field">
-            Duration (minutes)
-            <input type="number" min={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
-          </label>
-          <label className="reach-field">
-            Visit photo (optional)
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) {
-                  setPhotoBase64('');
-                  setPhotoName('');
-                  return;
-                }
-                void fileToBase64(file)
-                  .then(({ base64, filename }) => {
-                    setPhotoBase64(base64);
-                    setPhotoName(filename);
-                  })
-                  .catch(() => setError('Unable to read visit photo'));
-              }}
-            />
-          </label>
-          <label className="reach-field span-2">
-            Notes
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="What was discussed, next step, objections…" />
-          </label>
-        </div>
+            {error ? <div className="reach-alert err">{error}</div> : null}
 
-        <div className="reach-form-footer">
-          <div className="reach-gps">
-            <button
-              type="button"
-              className="reach-btn secondary"
-              onClick={() =>
-                void captureSalesGps().then((pos) => {
-                  setLatitude(pos.latitude);
-                  setLongitude(pos.longitude);
-                  setMessage(pos.note ? `GPS updated (${pos.note})` : 'GPS updated');
-                })
-              }
-            >
-              Refresh GPS
-            </button>
-            {latitude != null ? (
-              <code>
-                {latitude.toFixed(5)}, {longitude?.toFixed(5)}
-              </code>
-            ) : (
-              <span className="reach-alert err" style={{ margin: 0, padding: '6px 10px' }}>
-                Waiting for GPS…
-              </span>
-            )}
-            {photoName ? <small>Photo ready: {photoName}</small> : null}
-          </div>
-          <button type="submit" className="reach-btn" disabled={submitting}>
-            {submitting ? 'Saving…' : visitId ? 'Complete & sync' : 'Log visit'}
-          </button>
+            <div className="reach-form-grid">
+              <label className="reach-field">
+                Lead (optional)
+                <select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
+                  <option value="">— General visit —</option>
+                  {leads
+                    .filter((l) => !['Won', 'Lost'].includes(l.status))
+                    .map((l) => (
+                      <option key={l.name} value={l.name}>
+                        {l.lead_name} ({l.status})
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                Purpose
+                <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+                  {PURPOSES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                Outcome
+                <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+                  <option value="">—</option>
+                  {OUTCOMES.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {leadId ? (
+                <label className="reach-field">
+                  Update lead status
+                  <select value={leadStatus} onChange={(e) => setLeadStatus(e.target.value)}>
+                    <option value="">No change</option>
+                    {['Contacted', 'Meeting Done', 'Qualified', 'Negotiation', 'Won', 'Lost'].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="reach-field">
+                Duration (minutes)
+                <input type="number" min={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
+              </label>
+              <label className="reach-field">
+                Visit photo *
+                <input
+                  required
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) {
+                      setPhotoBase64('');
+                      setPhotoName('');
+                      return;
+                    }
+                    void fileToBase64(file)
+                      .then(({ base64, filename }) => {
+                        setPhotoBase64(base64);
+                        setPhotoName(filename);
+                      })
+                      .catch(() => setError('Unable to read visit photo'));
+                  }}
+                />
+              </label>
+              <label className="reach-field span-2">
+                Notes
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="What was discussed, next step, objections…"
+                />
+              </label>
+            </div>
+
+            <div className="reach-form-footer">
+              <div className="reach-gps">
+                <button
+                  type="button"
+                  className="reach-btn secondary"
+                  onClick={() =>
+                    void captureSalesGps()
+                      .then((pos) => {
+                        setLatitude(pos.latitude);
+                        setLongitude(pos.longitude);
+                        setMessage(pos.note ? `GPS updated (${pos.note})` : 'GPS updated');
+                        setError(null);
+                      })
+                      .catch(() => setError('GPS failed — allow location access'))
+                  }
+                >
+                  Refresh GPS *
+                </button>
+                {latitude != null ? (
+                  <code>
+                    {latitude.toFixed(5)}, {longitude?.toFixed(5)}
+                  </code>
+                ) : (
+                  <span className="reach-alert err" style={{ margin: 0, padding: '6px 10px' }}>
+                    GPS required
+                  </span>
+                )}
+                {photoName ? <small>Photo ready: {photoName}</small> : <small>Photo required</small>}
+              </div>
+              <div className="reach-modal-actions">
+                <button type="button" className="reach-btn secondary" onClick={() => setShowForm(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="reach-btn" disabled={submitting}>
+                  {submitting ? 'Saving…' : visitId ? 'Complete & sync' : 'Log visit'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
-      </form>
+      ) : null}
 
       <section className="reach-panel" style={{ marginTop: 16 }}>
         <div className="reach-panel-head">

@@ -35,10 +35,15 @@ export function SalesPortalPage() {
 
   return (
     <>
-      <h1>Field sales portal</h1>
-      <p className="muted">
-        {rep?.designation} · {rep?.territory_region || 'Territory'} · Code {rep?.rep_code}
-      </p>
+      <div className="reach-page-head">
+        <div>
+          <h1>Reach Portal Dashboard</h1>
+          <p className="muted">
+            {rep?.designation} · {rep?.territory_region || 'Territory'} · Code {rep?.rep_code}. Field
+            activity, leads, visits and team performance.
+          </p>
+        </div>
+      </div>
 
       <label className="toggle-row" style={{ margin: '12px 0' }}>
         <input type="checkbox" checked={onDuty} onChange={(e) => setOnDuty(e.target.checked)} />
@@ -83,8 +88,8 @@ export function SalesPortalPage() {
       ) : null}
 
       <div className="toolbar" style={{ marginTop: 24 }}>
-        <Link className="btn" to="/sales/profile">
-          My profile
+        <Link className="btn" to="/sales/my-hr">
+          My HR Profile
         </Link>
         <Link className="btn secondary" to="/sales/leads">
           New lead

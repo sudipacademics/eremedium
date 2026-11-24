@@ -16,6 +16,8 @@ const CORE = 'health_ecosystem_core.health_ecosystem_core';
 
 export const API_MODULES = {
   main: `${CORE}.api`,
+  leaveAttach: `${CORE}.clinical_people_leave_attach`,
+  peopleMyTeam: `${CORE}.clinical_people_my_team`,
   journey: `${CORE}.clinical_journey`,
   journeyOps: `${CORE}.clinical_phase33_journey_ops`,
   prescriptions: `${CORE}.clinical_prescriptions`,

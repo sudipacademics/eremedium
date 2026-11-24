@@ -339,7 +339,6 @@ export function PathologistPage({ signedOnly = false }: { signedOnly?: boolean }
 
   const splitOpen = Boolean(selected);
   const signedLocked =
-    signedOnly ||
     selected?.stage === 'signed' ||
     LOCKED_STATUSES.has(detail?.report_status || '') ||
     LOCKED_STATUSES.has(selected?.report_status || '');
@@ -349,8 +348,7 @@ export function PathologistPage({ signedOnly = false }: { signedOnly?: boolean }
       {error ? <p className="po-error">{error}</p> : null}
       {notice ? <p className="po-empty" style={{ background: '#ecfdf5', color: '#047857' }}>{notice}</p> : null}
 
-      {!signedOnly ? (
-        <div className="po-kpis">
+      <div className="po-kpis">
           <button type="button" className={`po-kpi tone-mint${tab === 'pending_review' ? ' is-active' : ''}`} onClick={() => setTab('pending_review')}>
             <span className="po-kpi-icon">
               <Icon>
@@ -408,23 +406,17 @@ export function PathologistPage({ signedOnly = false }: { signedOnly?: boolean }
             <span className="po-kpi-go">›</span>
           </button>
         </div>
-      ) : null}
 
       <div className="po-toolbar">
         <div className="po-tabs" role="tablist">
-          {(signedOnly
-            ? [
-                ['signed', `All Signed (${counts?.signed ?? 0})`],
-                ['signed_today', `Signed Today (${counts?.signed_today ?? 0})`],
-              ]
-            : [
-                ['pending_review', `Pending Review (${counts?.pending_review ?? 0})`],
-                ['ready_for_sign', `Ready for Sign (${counts?.ready_for_sign ?? 0})`],
-                ['signed_today', `Signed (Today)`],
-                ['sent_back', `Sent Back (${counts?.sent_back ?? 0})`],
-                ['all', 'All Reports'],
-              ]
-          ).map(([id, label]) => (
+          {[
+            ['pending_review', `Pending Review (${counts?.pending_review ?? 0})`],
+            ['ready_for_sign', `Ready for Sign (${counts?.ready_for_sign ?? 0})`],
+            ['signed', `All Signed (${counts?.signed ?? 0})`],
+            ['signed_today', `Signed Today (${counts?.signed_today ?? 0})`],
+            ['sent_back', `Sent Back (${counts?.sent_back ?? 0})`],
+            ['all', 'All Reports'],
+          ].map(([id, label]) => (
             <button key={id} type="button" role="tab" className={`po-tab${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id as Tab)}>
               {label}
             </button>
@@ -587,20 +579,6 @@ export function PathologistPage({ signedOnly = false }: { signedOnly?: boolean }
                   <span>{Math.round(zoom * 100)}%</span>
                   <button type="button" onClick={() => setZoom((z) => Math.min(1.4, z + 0.1))}>+</button>
                   <span style={{ marginLeft: 'auto', fontSize: '0.78rem' }}>Page 1</span>
-                  {detail?.lab_report ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const win = window.open('', '_blank');
-                        if (win) {
-                          win.document.write(previewHtml || document.querySelector('.po-report')?.outerHTML || '');
-                          win.document.close();
-                        }
-                      }}
-                    >
-                      Open
-                    </button>
-                  ) : null}
                 </div>
                 <div className="po-preview-frame">
                   {previewHtml ? (

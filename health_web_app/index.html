@@ -10,8 +10,15 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>Remedium Health</title>
+    <style>
+      html[data-lt-hold="settings"] .layout-labtech main.staff-page,
+      html[data-lt-hold="test-master"] .layout-labtech main.staff-page { display: none !important; }
+    </style>
     <script>
       (function () {
+        var holdPath = location.pathname || '';
+        if (holdPath === '/dashboard/settings') document.documentElement.setAttribute('data-lt-hold', 'settings');
+        if (holdPath === '/dashboard/test-master') document.documentElement.setAttribute('data-lt-hold', 'test-master');
         if (location.hostname === 'aesthetics.e-remedium.in') {
           var mark = document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]');
           for (var n = 0; n < mark.length; n++) {
@@ -22,7 +29,7 @@
         if (location.hostname === 'people.e-remedium.in') {
           var peopleMark = document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]');
           for (var p = 0; p < peopleMark.length; p++) {
-            peopleMark[p].href = '/brand/smilecure-icon.png?v=5';
+            peopleMark[p].href = '/brand/smilecure-icon.png?v=6';
             if (peopleMark[p].rel === 'icon') peopleMark[p].type = 'image/png';
           }
           var theme = document.querySelector('meta[name="theme-color"]');
@@ -30,6 +37,18 @@
           var appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
           if (appTitle) appTitle.setAttribute('content', 'People Management - SLPL');
           document.title = 'People Management - SLPL';
+        }
+        if (location.hostname === 'labtech.e-remedium.in') {
+          var labMark = document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]');
+          for (var q = 0; q < labMark.length; q++) {
+            labMark[q].href = '/brand/smilecure-icon.png?v=6';
+            if (labMark[q].rel === 'icon') labMark[q].type = 'image/png';
+          }
+          var labTheme = document.querySelector('meta[name="theme-color"]');
+          if (labTheme) labTheme.setAttribute('content', '#0b3a3b');
+          var labTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (labTitle) labTitle.setAttribute('content', 'Lab Tech - Smilecure');
+          document.title = 'Lab Tech - Smilecure';
         }
         // People HRMS is host-only — bounce /people off www before the SPA boots.
         (function () {
@@ -74,19 +93,23 @@
     <script src="/qrcode-generator.js"></script>
     <script src="/people-user-menu.js" defer></script>
     <script src="/employee-id-card.js?v=13" defer></script>
-    <link rel="stylesheet" href="/people-access.css?v=23" />
-    <script src="/people-access.js?v=24" defer></script>
-    <script src="/people-org.js?v=34" defer></script>
+    <link rel="stylesheet" href="/people-access.css?v=18" />
+    <script src="/people-access.js?v=46" defer></script>
+    <script src="/people-org.js?v=36" defer></script>
     <script src="/people-geofence.js?v=2" defer></script>
     <link rel="stylesheet" href="/people-assets.css?v=11" />
     <script src="/people-assets.js?v=11" defer></script>
     <link rel="stylesheet" href="/people-announce.css?v=2" />
     <script src="/people-announce.js?v=2" defer></script>
-    <link rel="stylesheet" href="/people-login-shell.css?v=14" />
-    <script src="/people-login-shell.js?v=16" defer></script>
+    <link rel="stylesheet" href="/people-login-shell.css?v=15" />
+    <script src="/people-login-shell.js?v=17" defer></script>
     <script src="/people-host.js?v=1"></script>
-    <link rel="stylesheet" href="/lab-test-master.css?v=1" />
-    <script src="/lab-test-master.js?v=2" defer></script>
+    <link rel="stylesheet" href="/lab-test-master.css?v=3" />
+    <script src="/lab-test-master.js?v=8" defer></script>
+    <link rel="stylesheet" href="/labtech-settings.css?v=23" />
+    <script src="/labtech-settings.js?v=24" defer></script>
+    <link rel="stylesheet" href="/report-lifecycle.css?v=3" />
+    <script src="/report-lifecycle.js?v=3" defer></script>
     <link rel="stylesheet" href="/reach-team-perf.css?v=9" />
     <script src="/reach-team-perf.js?v=9" defer></script>
     <link rel="stylesheet" href="/reach-portal-ui.css?v=10" />

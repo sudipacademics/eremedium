@@ -109,6 +109,12 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M4 21c.8-4.2 4-6.5 8-6.5s7.2 2.3 8 6.5" />
     </>
   ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </>
+  ),
 };
 
 function SideLink({ to, icon, children, end }: { to: string; icon: string; children: ReactNode; end?: boolean }) {
@@ -198,10 +204,13 @@ export function LabTechSidebarNav({
       <SideLink to="/dashboard/pathologist" icon="pathologist" end>
         Pathologist
       </SideLink>
-      <SideLink to="/dashboard/pathologist/signed" icon="signed">
-        Reports (Signed)
+      <SideLink to="/dashboard/test-master" icon="accession">
+        Test Master
       </SideLink>
       <span className="sidebar-section">Account</span>
+      <SideLink to="/dashboard/settings" icon="settings">
+        Settings
+      </SideLink>
       <SideLink to="/dashboard/profile" icon="profile">
         My Profile
       </SideLink>
@@ -219,10 +228,12 @@ const PAGE_LABELS: Array<[string, string]> = [
   ['/dashboard/lab-tech', 'Barcode bench'],
   ['/dashboard/reagents', 'Reagents'],
   ['/dashboard/inventory', 'Inventory Management'],
-  ['/dashboard/pathologist/signed', 'Reports (Signed)'],
+  ['/dashboard/pathologist/signed', 'All Signed'],
+  ['/dashboard/test-master', 'Test Master'],
   ['/dashboard/pathologist', 'Pathologist'],
   ['/dashboard/lab-reports', 'Result entry'],
   ['/dashboard/all-bookings', 'All bookings'],
+  ['/dashboard/settings', 'Settings'],
   ['/dashboard/profile/hrms', 'My Profile · People HRMS'],
   ['/dashboard/profile/training', 'My Profile · Training & Appraisal'],
   ['/dashboard/profile/hr', 'My Profile · HR Self-Service'],
@@ -244,11 +255,13 @@ function formatNow(d: Date) {
 
 export function LabTechTopbar({
   name,
+  image,
   roleLabel,
   onLogout,
   hideAlerts,
 }: {
   name: string;
+  image?: string;
   roleLabel: string;
   onLogout: () => void;
   hideAlerts?: boolean;
@@ -291,7 +304,7 @@ export function LabTechTopbar({
   const pathologistMode = pathname.startsWith('/dashboard/pathologist');
   const signedMode = pathname.startsWith('/dashboard/pathologist/signed');
   const pageLabel = PAGE_LABELS.find(([prefix]) => pathname.startsWith(prefix))?.[1];
-  const crumbNow = signedMode ? 'Reports (Signed)' : pathologistMode ? 'Pending Reports' : pageLabel;
+  const crumbNow = signedMode ? 'All Signed' : pathologistMode ? 'Pending Reports' : pageLabel;
 
   return (
     <header className="staff-topbar lt-topbar">
@@ -348,8 +361,10 @@ export function LabTechTopbar({
         )}
         <div className="lt-user" ref={menuRef}>
           <button type="button" className="lt-user-btn" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen}>
-            <span className="lt-avatar">{initials(name)}</span>
-            <span className="lt-user-name">{roleLabel}</span>
+            <span className="lt-avatar">
+              {image ? <img className="lt-avatar-img" src={image} alt="" /> : initials(name || roleLabel)}
+            </span>
+            <span className="lt-user-name">{name || roleLabel}</span>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M6 9l6 6 6-6" />
             </svg>

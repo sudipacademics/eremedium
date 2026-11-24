@@ -77,6 +77,8 @@ const LABTECH_PATHS = [
   '/dashboard/inventory',
   '/dashboard/pathologist',
   '/dashboard/pf-inbox',
+  '/dashboard/settings',
+  '/dashboard/test-master',
 ];
 
 /** phlebofirst.com: public site plus the PhleboFirst app (`/login`, `/app/*`) for every PhleboFirst role. */

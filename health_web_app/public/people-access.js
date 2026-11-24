@@ -19,7 +19,20 @@
       credentials: 'include',
       headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-Site-Name': 'health.localhost' },
       body: body,
-    }).then(function (r) { return r.json(); }).then(function (json) {
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        var json = null;
+        try { json = text ? JSON.parse(text) : {}; } catch (e) {
+          var snippet = String(text || '').replace(/\s+/g, ' ').slice(0, 160);
+          throw new Error('Server error while saving (HTTP ' + r.status + '). ' + (snippet.indexOf('<html') !== -1 ? 'Please retry in a few seconds.' : snippet));
+        }
+        if (!r.ok) {
+          var errMsg = (json && json.message && (json.message.message || json.message)) || ('Request failed (' + r.status + ')');
+          throw new Error(String(errMsg).replace(/<[^>]+>/g, ''));
+        }
+        return json;
+      });
+    }).then(function (json) {
       var m = json && json.message && typeof json.message === 'object' ? json.message : json;
       if (!m || m.status === 'error') throw new Error(String((m && m.message) || 'Request failed').replace(/<[^>]+>/g, ''));
       return m.data !== undefined ? m.data : m;
@@ -131,11 +144,16 @@
           levels.map(function (l) { return '<option value="' + l.value + '">' + esc(l.label) + '</option>'; }).join('') + '</select></th></tr></thead><tbody>' +
           portalModules(p).map(function (m) {
             var org = (p.org_modules || []).indexOf(m) !== -1;
-            return '<tr><td>' + esc(m) + (org ? ' <span class="pa-tag">HR menu</span>' : '') + '</td><td><select data-pa-module="' + esc(m) + '">' + levels.map(function (l) {
+            var meta = (p.module_meta && p.module_meta[m]) || {};
+            var indent = meta.indent ? ' class="pa-mod-sub"' : '';
+            var mark = meta.indent ? '<span class="pa-mod-indent">↳ </span>' : '';
+            return '<tr' + indent + '><td>' + mark + esc(m) + (org ? ' <span class="pa-tag">HR menu</span>' : '') + '</td><td><select data-pa-module="' + esc(m) + '">' + levels.map(function (l) {
               return '<option value="' + l.value + '"' + ((r.permissions[m] || 'none') === l.value ? ' selected' : '') + '>' + esc(l.label) + '</option>';
             }).join('') + '</select></td></tr>';
           }).join('') + '</tbody></table>' +
           (k === 'care' || k === 'aesthetics' ? portalBranchesHtml(r, k) : '') +
+          (k === 'crm' ? portalCrmCategoriesHtml(r, p) : '') +
+          (k === 'labtech' ? portalLabtechUserTypeHtml(r, p) : '') +
           '<p class="pa-summary" data-pa-summary="' + esc(k) + '">' + summaryText(p, r) + '</p></div>';
       }).join('');
       accessBox.innerHTML = '<div class="pa-ms"><button type="button" class="pa-ms-btn" data-pa-toggle>' + chips + '<span class="pa-caret">▾</span></button>' + menu + '</div>' +
@@ -155,10 +173,118 @@
       return (r.permissions.Settings || 'none') !== 'none';
     }
 
+    /* Mother modules only — grant covers all CRM sidebar submodules. */
+    var CRM_MODULES_FALLBACK = [
+      'Dashboard',
+      'Service Lead',
+      'Franchise Lead',
+      'Contacts',
+      'Accounts',
+      'Deals',
+      'Service Followup',
+      'Franchise Followup',
+      'WhatsApp Centre',
+      'Bookings',
+      'Franchise (FFMS/RFMS)',
+      'Partner Unit Bookings',
+      'Campaigns',
+      'Reports & Analytics',
+      'Settings',
+    ];
+
     function portalModules(p) {
       var mods = (p && p.modules) || [];
       if (p && p.key === 'aesthetics') mods = mods.filter(function (m) { return m !== 'Employees'; });
+      if (p && p.key === 'crm') {
+        var stale = !mods.length || mods.indexOf('Leads') !== -1 || mods.indexOf('Service Lead · Aesthetic') !== -1 || mods.indexOf('Service Lead') === -1;
+        if (stale) {
+          p.modules = CRM_MODULES_FALLBACK.slice();
+          p.module_meta = {};
+          mods = p.modules;
+        }
+        var r = state.rows && state.rows.crm;
+        if (r && r.permissions) {
+          var perms = r.permissions;
+          function lift(from, toList) {
+            var lvl = perms[from];
+            if (!lvl || lvl === 'none') return;
+            toList.forEach(function (name) {
+              if (!perms[name] || perms[name] === 'none') perms[name] = lvl;
+            });
+          }
+          lift('Leads', ['Service Lead', 'Franchise Lead']);
+          lift('Activities', ['Service Followup', 'Franchise Followup']);
+          lift('Franchise', ['Franchise (FFMS/RFMS)']);
+          lift('Partner Bookings', ['Partner Unit Bookings']);
+          lift('Reports', ['Reports & Analytics']);
+        }
+      }
       return mods;
+    }
+
+    function crmManager(r) {
+      var perms = (r && r.permissions) || {};
+      return Object.keys(perms).some(function (m) { return perms[m] === 'manage'; });
+    }
+
+    function portalCrmCategoriesHtml(r, p) {
+      var opts = (p && p.category_options) || state.access.crm_categories || [
+        { id: 'service', name: 'Service', hint: 'Lab / Aesthetic / Care' },
+        { id: 'franchise', name: 'Franchise', hint: 'Lab / Aesthetic / Care / NexiLab' },
+      ];
+      var picked = r.branches || [];
+      var every = picked.indexOf('*') !== -1;
+      var manager = crmManager(r);
+      var roleHint = (p && p.role_labels && p.role_labels.hint) ||
+        'Manager = Manage on any module (sees all activity in selected modules). Executive = only assigned modules and categories.';
+      var roleLabel = manager ? 'Manager' : 'Executive';
+      var allBox = manager
+        ? '<label class="pa-branch' + (every ? ' on' : '') + '"><input type="checkbox" data-pa-crm-cat="*"' + (every ? ' checked' : '') + ' /> All categories <small>(Service + Franchise)</small></label>'
+        : '';
+      return '<div class="pa-branches"><div class="pa-branches-head"><b>CRM role &amp; categories</b><small>Role: <b>' + esc(roleLabel) + '</b> · ' + esc(roleHint) + '</small></div>' +
+        '<div class="pa-branch-list">' + allBox +
+        opts.map(function (c) {
+          var on = !every && picked.indexOf(c.id) !== -1;
+          return '<label class="pa-branch' + (on ? ' on' : '') + '"><input type="checkbox" data-pa-crm-cat="' + esc(c.id) + '"' + (on ? ' checked' : '') + (every ? ' disabled' : '') + ' /> ' +
+            esc(c.name) + (c.hint ? ' <small>' + esc(c.hint) + '</small>' : '') + '</label>';
+        }).join('') + '</div>' +
+        '<p class="pa-muted">Executives only see WhatsApp chats for their assigned categories. Managers with Manage access see all chats for the modules you enable above.</p></div>';
+    }
+
+    var LABTECH_USER_TYPES_FALLBACK = [
+      { id: 'lab_manager', name: 'Lab Manager', hint: 'Full lab operations · can sign & finalize reports', can_sign: 1 },
+      { id: 'qc_manager', name: 'Quality Control Manager', hint: 'QC / NABL oversight · can sign & finalize reports', can_sign: 1 },
+      { id: 'lab_technician', name: 'Lab Technician', hint: 'Result entry & bench work · cannot sign reports', can_sign: 0 },
+      { id: 'accessor', name: 'Accessor', hint: 'Sample accession & bookings · cannot sign reports', can_sign: 0 },
+    ];
+
+    function labtechUserType(r) {
+      var picked = (r && r.branches) || [];
+      var known = LABTECH_USER_TYPES_FALLBACK.map(function (t) { return t.id; });
+      for (var i = 0; i < picked.length; i++) {
+        if (known.indexOf(picked[i]) !== -1) return picked[i];
+      }
+      return '';
+    }
+
+    function portalLabtechUserTypeHtml(r, p) {
+      var opts = (p && p.user_types && p.user_types.length) ? p.user_types : LABTECH_USER_TYPES_FALLBACK;
+      var chosen = labtechUserType(r);
+      var hint = (p && p.role_labels && p.role_labels.hint) ||
+        'Pick one LabTech user type. Only Lab Manager and Quality Control Manager can sign & finalize reports.';
+      var chosenLabel = '';
+      opts.forEach(function (t) { if (t.id === chosen) chosenLabel = t.name; });
+      return '<div class="pa-branches"><div class="pa-branches-head"><b>LabTech user type</b><small>' +
+        (chosenLabel ? 'Selected: <b>' + esc(chosenLabel) + '</b> · ' : '') + esc(hint) + '</small></div>' +
+        '<div class="pa-branch-list pa-labtech-types">' +
+        opts.map(function (t) {
+          var on = chosen === t.id;
+          var sign = Number(t.can_sign) ? ' <em class="pa-tag">Sign &amp; finalize</em>' : '';
+          return '<label class="pa-branch' + (on ? ' on' : '') + '"><input type="radio" name="pa-labtech-type" data-pa-labtech-type="' +
+            esc(t.id) + '"' + (on ? ' checked' : '') + ' /> <span><b>' + esc(t.name) + '</b>' + sign +
+            (t.hint ? '<small>' + esc(t.hint) + '</small>' : '') + '</span></label>';
+        }).join('') + '</div>' +
+        '<p class="pa-muted">Pathologist sign &amp; finalize is allowed only for Lab Manager and Quality Control Manager.</p></div>';
     }
 
     function portalBranchesHtml(r, portal) {
@@ -195,7 +321,20 @@
       var hr = on.some(function (m) { return (p.org_modules || []).indexOf(m) !== -1; }) ||
         on.some(function (m) { return ['approve', 'manage'].indexOf(r.permissions[m]) !== -1; });
       var menu = p.key === 'people' ? (hr ? ' · gets the HR menu' : ' · gets the employee self-service menu') : '';
-      return '<b>' + on.length + ' of ' + listed.length + '</b> modules enabled' + menu + (r.active ? '' : ' · portal disabled');
+      var crmRole = '';
+      if (p.key === 'crm') {
+        var mgr = on.some(function (m) { return r.permissions[m] === 'manage'; });
+        var cats = (r.branches || []).filter(function (x) { return x === '*' || x === 'service' || x === 'franchise'; });
+        var catText = cats.indexOf('*') !== -1 ? 'all categories' : (cats.length ? cats.join(' + ') : 'no category');
+        crmRole = ' · ' + (mgr ? 'Manager' : 'Executive') + ' · ' + catText;
+      }
+      var labType = '';
+      if (p.key === 'labtech') {
+        var tid = labtechUserType(r);
+        var trow = LABTECH_USER_TYPES_FALLBACK.filter(function (t) { return t.id === tid; })[0];
+        labType = trow ? ' · ' + trow.name : ' · no user type';
+      }
+      return '<b>' + on.length + ' of ' + listed.length + '</b> modules enabled' + menu + crmRole + labType + (r.active ? '' : ' · portal disabled');
     }
 
     function markDirty() {
@@ -217,11 +356,57 @@
       markDirty();
     }
 
+    function inferCrmCategories(r) {
+      var perms = (r && r.permissions) || {};
+      var cats = [];
+      var has = function (m) { return (perms[m] || 'none') !== 'none'; };
+      if (has('Service Lead') || has('Service Followup') || has('Bookings')) cats.push('service');
+      if (has('Franchise Lead') || has('Franchise Followup') || has('Franchise (FFMS/RFMS)') || has('Franchise')) cats.push('franchise');
+      if (!cats.length && (has('Contacts') || has('Accounts') || has('Deals') || has('WhatsApp Centre') || has('Dashboard'))) {
+        cats = ['service', 'franchise'];
+      }
+      if (crmManager(r) && cats.length === 2) return ['*'];
+      if (crmManager(r) && !cats.length) return ['*'];
+      return cats;
+    }
+
+    function crmPermissionsForSave(r) {
+      var perms = Object.assign({}, (r && r.permissions) || {});
+      var rank = { none: 0, view: 1, create: 2, edit: 3, approve: 4, manage: 5 };
+      var best = function () {
+        var lvl = 'none', i, n, args = arguments;
+        for (i = 0; i < args.length; i++) {
+          n = perms[args[i]] || 'none';
+          if ((rank[n] || 0) > (rank[lvl] || 0)) lvl = n;
+        }
+        return lvl;
+      };
+      // Dual-write legacy keys so a stale backend cannot wipe the assignment.
+      perms.Leads = best('Leads', 'Service Lead', 'Franchise Lead');
+      perms.Activities = best('Activities', 'Service Followup', 'Franchise Followup');
+      perms.Franchise = best('Franchise', 'Franchise (FFMS/RFMS)');
+      perms['Partner Bookings'] = best('Partner Bookings', 'Partner Unit Bookings');
+      perms.Reports = best('Reports', 'Reports & Analytics');
+      return perms;
+    }
+
     function accessPayload() {
       return Object.keys(state.rows).map(function (k) {
         var r = state.rows[k];
-        var out = { portal: k, login_id: r.login_id, password: r.password || '', permissions: r.permissions, active: r.active ? 1 : 0 };
-        if (k === 'care' || k === 'aesthetics') out.branches = r.branches || [];
+        if (k === 'crm') {
+          var cats = (r.branches || []).filter(function (x) { return x === '*' || x === 'service' || x === 'franchise'; });
+          if (!cats.length) {
+            r.branches = inferCrmCategories(r);
+          }
+        }
+        var out = {
+          portal: k,
+          login_id: r.login_id,
+          password: r.password || '',
+          permissions: k === 'crm' ? crmPermissionsForSave(r) : r.permissions,
+          active: r.active ? 1 : 0,
+        };
+        if (k === 'care' || k === 'aesthetics' || k === 'crm' || k === 'labtech') out.branches = r.branches || [];
         return out;
       });
     }
@@ -238,26 +423,35 @@
     function saveAccessNow() {
       var status = accessBox.querySelector('[data-pa-status]');
       var btn = accessBox.querySelector('[data-pa-save]');
+      if (!status) return;
       var invalid = validateAccess();
       if (invalid) {
         status.textContent = invalid;
         status.className = 'pa-save-status error';
+        try { status.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
         return;
       }
       btn.disabled = true;
       btn.textContent = 'Saving…';
-      call('save_employee_portal_access', { employee: employeeId, access: JSON.stringify(accessPayload()) }).then(function (res) {
+      status.textContent = 'Saving…';
+      status.className = 'pa-save-status dirty';
+      var payload = accessPayload();
+      call('save_employee_portal_access', { employee: employeeId, access: JSON.stringify(payload) }).then(function (res) {
         applySavedState(res.state);
         drawAccess();
         var s = accessBox.querySelector('[data-pa-status]');
+        if (!s) return;
         s.textContent = 'Saved. The employee sees the new access the next time their portal loads.';
         s.className = 'pa-save-status ok';
         s.setAttribute('data-saved', '1');
+        var saveBtn = accessBox.querySelector('[data-pa-save]');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save portal access'; }
       }).catch(function (e) {
         btn.disabled = false;
         btn.textContent = 'Save portal access';
         status.textContent = (e && e.message) || 'Could not save portal access';
         status.className = 'pa-save-status error';
+        try { status.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (err) {}
       });
     }
 
@@ -274,6 +468,22 @@
         if (keys[i] === 'aesthetics' && ((r.branches || []).indexOf('*') !== -1 || (r.branches || []).length > 1) && !aesManager(r)) {
           return label + ': only staff with Settings access can work in more than one branch';
         }
+        if (keys[i] === 'crm') {
+          var cats = (r.branches || []).filter(function (x) { return x === '*' || x === 'service' || x === 'franchise'; });
+          if (!cats.length) {
+            cats = inferCrmCategories(r);
+            r.branches = cats;
+          }
+          if (!cats.length) {
+            return label + ': tick Service and/or Franchise under CRM role & categories, then Save';
+          }
+          if (cats.indexOf('*') !== -1 && !crmManager(r)) {
+            return label + ': only a CRM Manager (Manage on any module) can have all categories';
+          }
+        }
+        if (keys[i] === 'labtech' && !labtechUserType(r)) {
+          return label + ': pick a LabTech user type (Lab Manager, Quality Control Manager, Lab Technician, or Accessor)';
+        }
       }
       return '';
     }
@@ -288,7 +498,14 @@
             var perms = {};
             portalModules(p).forEach(function (m) { perms[m] = (p.defaults && p.defaults[m]) || 'none'; });
             var shared = Object.keys(state.rows).map(function (x) { return state.rows[x].login_id; }).filter(Boolean)[0];
-            state.rows[k] = { login_id: shared || state.access.default_login || '', permissions: perms, active: 1, password: '', password2: '', branches: [] };
+            state.rows[k] = {
+              login_id: shared || state.access.default_login || '',
+              permissions: perms,
+              active: 1,
+              password: '',
+              password2: '',
+              branches: k === 'crm' ? ['service', 'franchise'] : (k === 'labtech' ? ['lab_technician'] : []),
+            };
           } else {
             delete state.rows[k];
           }
@@ -331,6 +548,11 @@
               drawAccess();
               return;
             }
+            if (k === 'crm') {
+              if (!crmManager(r) && (r.branches || []).indexOf('*') !== -1) r.branches = ['service', 'franchise'];
+              drawAccess();
+              return;
+            }
             refreshSummaries();
           });
         });
@@ -345,6 +567,35 @@
               if (cb.checked) list.push(id);
             }
             r.branches = list;
+            drawAccess();
+          });
+        });
+        card.querySelectorAll('[data-pa-crm-cat]').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            var v = cb.getAttribute('data-pa-crm-cat');
+            var list = (r.branches || []).filter(function (x) { return x !== '*'; });
+            if (v === '*') list = cb.checked ? ['*'] : [];
+            else {
+              list = list.filter(function (x) { return x !== v; });
+              if (cb.checked) list.push(v);
+            }
+            r.branches = list;
+            drawAccess();
+          });
+        });
+        card.querySelectorAll('[data-pa-labtech-type]').forEach(function (rb) {
+          rb.addEventListener('change', function () {
+            if (!rb.checked) return;
+            var tid = rb.getAttribute('data-pa-labtech-type');
+            r.branches = tid ? [tid] : [];
+            // Managers get the Pathologist module, which includes signed reports.
+            var signers = { lab_manager: 1, qc_manager: 1 };
+            if (signers[tid]) {
+              if ((r.permissions.Pathologist || 'none') === 'none') r.permissions.Pathologist = 'approve';
+              if ((r.permissions['Report lifecycle'] || 'none') === 'none') r.permissions['Report lifecycle'] = 'approve';
+            } else {
+              r.permissions.Pathologist = 'none';
+            }
             drawAccess();
           });
         });
@@ -564,6 +815,7 @@
         applyGate();
         applyAestheticGate();
         applyLabGate();
+        paintLabProfile();
       }).catch(function () { if (gateSid === sid) { gate = {}; gateLoading = false; } });
       return false;
     }
@@ -676,12 +928,61 @@
     return best;
   }
 
+  function profileName() {
+    var session = {};
+    try { session = JSON.parse(localStorage.getItem('hec_web_session') || 'null') || {}; } catch (e) {}
+    var name = String((gate && gate.full_name) || session.fullName || session.full_name || '').trim();
+    if (!name || name.indexOf('@') !== -1) {
+      var alt = String(session.fullName || session.full_name || '').trim();
+      if (alt && alt.indexOf('@') === -1) name = alt;
+    }
+    return name.indexOf('@') === -1 ? name : '';
+  }
+
+  function profilePhoto() {
+    var raw = String((gate && gate.user_image) || '').trim();
+    if (!raw || /gravatar\.com/i.test(raw)) return '';
+    if (/^https?:\/\//i.test(raw) || raw.charAt(0) === '/') return raw;
+    return '/' + raw;
+  }
+
+  function paintLabProfile() {
+    if ((location.hostname || '').toLowerCase() !== 'labtech.e-remedium.in' || embedded) return;
+    ensureGate();
+    var name = profileName();
+    var photo = profilePhoto();
+    if (name) {
+      document.querySelectorAll('.lt-user-name, .lt-user-menu-name, .layout-labtech .sidebar-user').forEach(function (el) {
+        if (el.textContent !== name) el.textContent = name;
+      });
+    }
+    if (!photo) return;
+    document.querySelectorAll('.lt-avatar').forEach(function (el) {
+      var img = el.querySelector('img.lt-avatar-img');
+      if (!img) {
+        el.textContent = '';
+        img = document.createElement('img');
+        img.className = 'lt-avatar-img';
+        img.alt = '';
+        img.addEventListener('error', function () {
+          img.remove();
+          if (!el.textContent) el.textContent = (name || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(function (p) { return p.charAt(0); }).join('').toUpperCase();
+        });
+        el.appendChild(img);
+      }
+      if (img.getAttribute('src') !== photo) img.setAttribute('src', photo);
+    });
+  }
+
   function applyLabGate() {
     if (location.hostname !== 'labtech.e-remedium.in' || embedded) return;
     if (!ensureGate() || !gate.managed) return;
     var mods = (gate.portal_modules || {}).labtech;
     if (!mods) return;
     function allowed(path) {
+      // Report Template and Test Master stay on their own address after refresh.
+      if (path === '/dashboard/settings' || path.indexOf('/dashboard/settings/') === 0) return true;
+      if (path === '/dashboard/test-master' || path.indexOf('/dashboard/test-master/') === 0) return true;
       var m = matchModule(mods, path);
       return !m || mods[m].level !== 'none';
     }
@@ -700,6 +1001,7 @@
 
   var hrp = { open: false };
   var PEOPLE_ORIGIN = 'https://people.e-remedium.in';
+  var PEOPLE_EMBED_PROFILE = PEOPLE_ORIGIN + '/people/profile?pa_embed=1&tab=hr';
   var USER_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>';
 
   function fitFrame() {
@@ -730,8 +1032,8 @@
     if (!panel.querySelector('.pa-hrp-frame')) {
       panel.innerHTML =
         '<iframe class="pa-hrp-frame" title="My HR Workspace" src="' +
-        PEOPLE_ORIGIN +
-        '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
+        PEOPLE_EMBED_PROFILE +
+        '" allow="geolocation *"></iframe>';
     }
     window.scrollTo(0, 0);
     fitFrame();
@@ -821,53 +1123,76 @@
         roles: Array.isArray(s.roles) ? s.roles.map(String) : [],
         franchisee: null,
       }));
-      location.replace('/people/profile?pa_embed=1');
+      location.replace('/people/profile?pa_embed=1&tab=hr');
     });
     window.parent.postMessage({ type: 'pa-embed-ready' }, embedParent());
   }
 
+  function applyProfileTabFromQuery() {
+    if (!/\/people\/profile\/?$/.test(location.pathname)) return;
+    var tab = '';
+    try { tab = new URLSearchParams(location.search).get('tab') || ''; } catch (e) { tab = ''; }
+    if (!tab || tab === 'profile') return;
+    var labels = {
+      hr: /hr\s*self\s*service/i,
+      training: /training/i,
+      assets: /assets/i,
+      announce: /announce/i,
+      settings: /settings/i,
+      team: /my\s*team/i,
+    };
+    var re = labels[tab];
+    if (!re) return;
+    var buttons = document.querySelectorAll('.me-tabs button, [data-me-tabs] button, .me-subnav button');
+    var btn = null;
+    for (var i = 0; i < buttons.length; i++) {
+      if (re.test(buttons[i].textContent || '')) { btn = buttons[i]; break; }
+    }
+    if (!btn || btn.classList.contains('on') || btn.getAttribute('aria-current') === 'page') return;
+    if (btn.getAttribute('data-pa-tab-applied') === tab) return;
+    btn.setAttribute('data-pa-tab-applied', tab);
+    try { btn.click(); } catch (err) { /* ignore */ }
+  }
+
+  function unifySelfHrNav() {
+    /* Only in portal embeds: fold self-service pills into Profile. Never rewrite native People sidebar
+       (employee My attendance / My leave, or HR Attendance / Leave Management directory). */
+    if (!embedded) return;
+    var side = document.querySelector('.hrms-sidebar nav');
+    if (!side) return;
+    var links = side.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var label = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!/^My attendance$/i.test(label) && !/^My leave$/i.test(label) &&
+          !/^Expenses$/i.test(label) && !/^Payslips$/i.test(label)) continue;
+      a.setAttribute('href', '/people/profile?pa_embed=1&tab=hr');
+    }
+  }
+
   function embedTabs() {
     if (!embedded) return;
-    if (!/^\/(people|login)(\/|$)/.test(location.pathname)) {
-      location.replace('/people/profile?pa_embed=1');
+    /* Portal embeds: one Profile workspace (no separate attendance/leave chrome). Native People keeps full pages. */
+    var path = cleanPath(location.pathname);
+    if (path !== '/people/profile' && path !== '/login') {
+      var keepTab = '';
+      try { keepTab = new URLSearchParams(location.search).get('tab') || ''; } catch (e) { keepTab = ''; }
+      if (!keepTab) {
+        if (path.indexOf('/people/attendance') === 0 || path.indexOf('/people/leave') === 0 ||
+            path.indexOf('/people/expenses') === 0 || path.indexOf('/people/payslips') === 0) keepTab = 'hr';
+      }
+      location.replace('/people/profile?pa_embed=1' + (keepTab ? '&tab=' + encodeURIComponent(keepTab) : '&tab=hr'));
       return;
     }
-    /* Force-hide People Management chrome even if CSS arrives late */
     document.documentElement.classList.add('pa-embed');
     var side = document.querySelector('.hrms-sidebar');
     if (side) side.setAttribute('hidden', '');
     var top = document.querySelector('.hrms-topbar');
     if (top) top.setAttribute('hidden', '');
-    var content = document.querySelector('.hrms-content');
-    if (!content) return;
-    var group = Array.prototype.filter.call(document.querySelectorAll('.hrms-sidebar .hrms-nav-group'), function (g) {
-      return g.querySelector('a[href="/people/profile"]');
-    })[0];
-    var items = (group ? Array.prototype.slice.call(group.querySelectorAll('a[href]')) : [])
-      .filter(function (a) { return a.style.display !== 'none'; })
-      .map(function (a) { return { href: a.getAttribute('href'), label: a.textContent.trim() }; });
-    if (!items.length) items = [{ href: '/people/profile', label: 'Profile' }];
-    var path = cleanPath(location.pathname);
-    var sig = JSON.stringify(items) + path;
+    /* Drop the old fragmented Profile / My attendance / My leave embed pills — Profile page has its own tabs. */
     var bar = document.querySelector('.pa-embed-tabs');
-    if (bar && bar.getAttribute('data-sig') === sig && bar.nextElementSibling === content) return;
-    if (!bar) {
-      bar = document.createElement('nav');
-      bar.className = 'pa-embed-tabs';
-      bar.setAttribute('aria-label', 'My HR workspace');
-      bar.addEventListener('click', function (e) {
-        var a = e.target.closest('a[href]');
-        if (!a) return;
-        e.preventDefault();
-        navTo(a.getAttribute('href'));
-      });
-    }
-    bar.setAttribute('data-sig', sig);
-    bar.innerHTML = items.map(function (it) {
-      var on = path === it.href || path.indexOf(it.href + '/') === 0;
-      return '<a href="' + esc(it.href) + '"' + (on ? ' class="on" aria-current="page"' : '') + '>' + esc(it.label) + '</a>';
-    }).join('');
-    content.parentNode.insertBefore(bar, content);
+    if (bar) bar.remove();
+    applyProfileTabFromQuery();
   }
 
   /* ------------------------------------------------------------ My Profile in the lab / collection portals */
@@ -882,11 +1207,11 @@
     if (embedded || location.origin === PEOPLE_ORIGIN) return;
     var page = document.querySelector('.mp2-page');
     if (!page || !currentSid()) return;
-    if (page.querySelector('.pa-ws')) return;
+    if (page.querySelector('.pa-ws, .pa-ws-frame, iframe[title="My HR Workspace"]')) return;
     page.classList.add('pa-ws-on');
     var box = document.createElement('div');
     box.className = 'pa-ws';
-    box.innerHTML = '<iframe class="pa-ws-frame" title="My Profile" src="' + PEOPLE_ORIGIN + '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
+    box.innerHTML = '<iframe class="pa-ws-frame" title="My HR Workspace" src="' + PEOPLE_EMBED_PROFILE + '" allow="geolocation *"></iframe>';
     page.appendChild(box);
     fitWorkspace();
   }
@@ -922,7 +1247,250 @@
     host.parentNode.insertBefore(card, host.nextSibling);
   }
 
-  function tick() { profileBanner(); applyGate(); applyAestheticGate(); applyLabGate(); aestheticProfileLink(); embedTabs(); profileWorkspace(); portalsCard(); }
+  function fitReportFrame() {
+    var frame = document.querySelector('.po-split.is-open .po-preview-frame iframe');
+    if (!frame) return;
+    frame.setAttribute('scrolling', 'no');
+    if (frame.getAttribute('data-po-fit') !== '1') {
+      frame.setAttribute('data-po-fit', '1');
+      frame.addEventListener('load', fitReportFrame);
+    }
+    try {
+      var doc = frame.contentDocument;
+      if (!doc || !doc.documentElement) return;
+      if (!doc.getElementById('po-fit-style')) {
+        var st = doc.createElement('style');
+        st.id = 'po-fit-style';
+        st.textContent = 'html,body{overflow:hidden !important;height:auto !important;margin:0;}'
+          + '#print-toolbar{display:none !important;}'
+          + 'body.letterhead-plain .chrome-art,body.letterhead-plain .header-banner,body.letterhead-plain .footer-banner,body.letterhead-plain .header-table,body.letterhead-plain .nabl-strip,body.letterhead-plain .footer-fallback{display:none !important;}'
+          + 'body.letterhead-plain .report-chrome-header,body.letterhead-plain .report-chrome-footer{display:none !important;height:0 !important;min-height:0 !important;}'
+          + 'body.letterhead-plain .report-sheet{padding-top:4mm !important;padding-bottom:4mm !important;}'
+          + 'body.po-awaiting-sign .sig-table{display:none !important;}';
+        (doc.head || doc.documentElement).appendChild(st);
+      }
+      if (doc.body) {
+        doc.body.classList.add('letterhead-plain');
+        var signed = !!document.querySelector('.po-workspace .po-badge.tone-green');
+        doc.body.classList.toggle('po-awaiting-sign', !signed);
+      }
+      var bar = doc.getElementById('print-toolbar');
+      if (bar) bar.style.setProperty('display', 'none', 'important');
+      var h = Math.max(doc.body ? doc.body.scrollHeight : 0, doc.documentElement.scrollHeight || 0);
+      var scale = 1;
+      var match = /scale\(([\d.]+)\)/.exec(frame.style.transform || '');
+      if (match) scale = parseFloat(match[1]) || 1;
+      if (h > 40) {
+        frame.style.height = Math.ceil(h + 12) + 'px';
+        frame.style.marginBottom = scale < 1 ? '0' : Math.ceil(h * (scale - 1) + 8) + 'px';
+      }
+    } catch (err) {}
+  }
+
+  function mountPathologistPopup() {
+    var ws = document.querySelector('.po-split.is-open .po-workspace');
+    var x = document.querySelector('.po-pop-x');
+    if (!ws) {
+      if (x) x.remove();
+      document.documentElement.classList.remove('po-review-open');
+      return;
+    }
+    document.documentElement.classList.add('po-review-open');
+    document.querySelectorAll('.po-preview-tools button').forEach(function (btn) {
+      if ((btn.textContent || '').trim() === 'Open') btn.hidden = true;
+    });
+    if (!x) {
+      x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'po-pop-x';
+      x.textContent = 'Close';
+      x.setAttribute('aria-label', 'Close review');
+      x.addEventListener('click', function () {
+        var close = document.querySelector('.po-split.is-open .po-workspace .po-actions .po-btn.ghost');
+        if (close) close.click();
+      });
+      document.body.appendChild(x);
+    }
+    fitReportFrame();
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest || !document.querySelector('.po-split.is-open .po-workspace')) return;
+    if (t.closest('.po-preview-tools')) setTimeout(fitReportFrame, 40);
+    if (t.closest('.po-workspace, .po-modal, .po-pop-x, .po-table, .po-review')) return;
+    var close = document.querySelector('.po-split.is-open .po-workspace .po-actions .po-btn.ghost');
+    if (close && /^close$/i.test((close.textContent || '').trim())) close.click();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || document.querySelector('.po-modal')) return;
+    var close = document.querySelector('.po-split.is-open .po-workspace .po-actions .po-btn.ghost');
+    if (close && /^close$/i.test((close.textContent || '').trim())) close.click();
+  });
+
+  function bookingApi(moduleName, method, extra) {
+    var body = new URLSearchParams(extra || {});
+    try {
+      var s = JSON.parse(localStorage.getItem('hec_web_session') || 'null');
+      if (s && s.sid) body.set('sid', s.sid);
+    } catch (e) {}
+    return fetch('/api/method/health_ecosystem_core.health_ecosystem_core.' + moduleName + '.' + method, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-Site-Name': 'health.localhost' },
+      body: body,
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        var json = null;
+        try { json = text ? JSON.parse(text) : {}; } catch (err) {
+          throw new Error('Could not save patient details. Please retry.');
+        }
+        if (!r.ok) {
+          var errMsg = (json && json.message && (json.message.message || json.message)) || ('Request failed (' + r.status + ')');
+          throw new Error(String(errMsg).replace(/<[^>]+>/g, ''));
+        }
+        return json;
+      });
+    }).then(function (json) {
+      var m = json && json.message && typeof json.message === 'object' ? json.message : json;
+      if (!m || m.status === 'error') throw new Error(String((m && m.message) || 'Request failed').replace(/<[^>]+>/g, ''));
+      return m.data !== undefined ? m.data : m;
+    });
+  }
+
+  function bookingAgeText(years, months, days, gender) {
+    var bits = [];
+    years = Number(years) || 0;
+    months = Number(months) || 0;
+    days = Number(days) || 0;
+    if (years) bits.push(years + (years === 1 ? ' Year' : ' Years'));
+    if (months) bits.push(months + (months === 1 ? ' Month' : ' Months'));
+    if (days) bits.push(days + (days === 1 ? ' Day' : ' Days'));
+    if (!bits.length) bits.push('0 Years');
+    var mark = gender ? String(gender).charAt(0).toUpperCase() : '';
+    return bits.join(' ') + (mark ? ' / ' + mark : '');
+  }
+
+  function paintBookingPatient(trfId, saved) {
+    var sub = bookingAgeText(saved.age, saved.age_months, saved.age_days, saved.gender);
+    if (saved.patient_phone) sub += ' · ' + saved.patient_phone;
+    var drawer = document.querySelector('.ab2-drawer');
+    if (drawer) {
+      var dd = drawer.querySelector('.ab2-facts div dd');
+      if (dd) dd.innerHTML = esc(saved.patient_name) + '<small>' + esc(sub) + '</small>';
+    }
+    document.querySelectorAll('.ab2-table tbody tr').forEach(function (tr) {
+      var id = tr.querySelector('.lt-trf');
+      if (!id || (id.textContent || '').trim() !== trfId) return;
+      var cell = tr.children[1];
+      if (!cell) return;
+      var strong = cell.querySelector('.ab2-strong');
+      var line = cell.querySelector('.ab2-sub');
+      if (strong) strong.textContent = saved.patient_name;
+      if (line) line.textContent = sub;
+    });
+  }
+
+  function closeBookingEditor() {
+    var box = document.querySelector('.abp-editor');
+    if (box) box.remove();
+  }
+
+  function openBookingEditor(trfId) {
+    if (document.querySelector('.abp-editor')) return;
+    var box = document.createElement('div');
+    box.className = 'abp-editor';
+    box.innerHTML = '<form class="abp-card"><h3>Edit patient details</h3><p class="abp-note">Saving updates this booking and the partner portal.</p><p class="abp-status">Loading…</p></form>';
+    document.body.appendChild(box);
+    var form = box.querySelector('form');
+    box.addEventListener('click', function (e) {
+      if (e.target === box) closeBookingEditor();
+    });
+    bookingApi('clinical_phase123_booking_lifecycle', 'get_booking_lifecycle_detail', { trf_id: trfId }).then(function (data) {
+      var b = (data && data.booking) || {};
+      form.innerHTML = ''
+        + '<h3>Edit patient details</h3>'
+        + '<p class="abp-note">Saving updates this booking and the partner portal.</p>'
+        + '<label>Patient name<input name="patient_name" required value="' + esc(b.patient_name || '') + '"></label>'
+        + '<label>Phone<input name="patient_phone" inputmode="tel" value="' + esc(b.patient_phone || '') + '"></label>'
+        + '<div class="abp-age">'
+        + '<label>Years<input name="age" type="number" min="0" max="130" value="' + esc(b.age || 0) + '"></label>'
+        + '<label>Months<input name="age_months" type="number" min="0" max="11" value="' + esc(b.age_months || 0) + '"></label>'
+        + '<label>Days<input name="age_days" type="number" min="0" max="31" value="' + esc(b.age_days || 0) + '"></label>'
+        + '</div>'
+        + '<label>Gender<select name="gender">'
+        + ['Male', 'Female', 'Other'].map(function (g) {
+          return '<option' + (b.gender === g ? ' selected' : '') + '>' + g + '</option>';
+        }).join('')
+        + '</select></label>'
+        + '<p class="abp-err"></p>'
+        + '<div class="abp-actions"><button type="button" class="abp-cancel">Cancel</button><button type="submit" class="abp-save">Save</button></div>';
+      form.querySelector('.abp-cancel').addEventListener('click', closeBookingEditor);
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var err = form.querySelector('.abp-err');
+        var save = form.querySelector('.abp-save');
+        err.textContent = '';
+        save.disabled = true;
+        save.textContent = 'Saving…';
+        bookingApi('clinical_booking_patient', 'update_booking_patient', {
+          trf_id: trfId,
+          patient_name: form.patient_name.value,
+          patient_phone: form.patient_phone.value,
+          age: form.age.value,
+          age_months: form.age_months.value,
+          age_days: form.age_days.value,
+          gender: form.gender.value,
+        }).then(function (saved) {
+          paintBookingPatient(trfId, saved || {});
+          closeBookingEditor();
+        }).catch(function (ex) {
+          err.textContent = (ex && ex.message) || 'Could not save patient details';
+          save.disabled = false;
+          save.textContent = 'Save';
+        });
+      });
+    }).catch(function (ex) {
+      form.querySelector('.abp-status').textContent = (ex && ex.message) || 'Could not load patient details';
+    });
+  }
+
+  function mountBookingPatientEdit() {
+    if (location.pathname.indexOf('/dashboard/all-bookings') !== 0) {
+      closeBookingEditor();
+      return;
+    }
+    var drawer = document.querySelector('.ab2-drawer');
+    if (!drawer) return;
+    var facts = drawer.querySelector('.ab2-facts');
+    var patient = facts && facts.querySelector('div');
+    if (!patient || patient.querySelector('[data-ab-edit]')) return;
+    var title = drawer.querySelector('h3');
+    var trfId = title ? (title.textContent || '').trim() : '';
+    if (!trfId) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'abp-edit';
+    btn.setAttribute('data-ab-edit', '1');
+    btn.textContent = 'Edit patient details';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openBookingEditor(trfId);
+    });
+    patient.appendChild(btn);
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !document.querySelector('.abp-editor')) return;
+    e.stopPropagation();
+    closeBookingEditor();
+  }, true);
+
+  function tick() {
+    profileBanner(); applyGate(); applyAestheticGate(); applyLabGate(); paintLabProfile(); mountPathologistPopup(); mountBookingPatientEdit(); aestheticProfileLink();
+    embedTabs(); unifySelfHrNav(); applyProfileTabFromQuery(); profileWorkspace(); portalsCard();
+  }
   new MutationObserver(tick).observe(document.body, { childList: true, subtree: true });
   tick();
   window.addEventListener('load', tick);

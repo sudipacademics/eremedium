@@ -40,10 +40,14 @@ cp -f "$APPS/clinical_crm_tracking.py" "$SP/clinical_crm_tracking.py"
 from health_ecosystem_core.health_ecosystem_core import api as a
 from health_ecosystem_core.health_ecosystem_core import clinical_crm_tracking as t
 assert hasattr(a, "transfer_crm_ownership") and hasattr(a, "list_crm_ownership")
+assert hasattr(a, "list_crm_transfer_history") and hasattr(a, "list_crm_transfer_notices")
 assert hasattr(t, "transfer_crm_ownership") and hasattr(t, "list_crm_ownership")
+assert hasattr(t, "list_crm_transfer_history") and hasattr(t, "ensure_crm_transfer_history_doctype")
 print("CRM_OWNERSHIP_IMPORT_OK")
 PY
 bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking.ensure_crm_ownership_doctype
+bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking.ensure_crm_transfer_history_doctype
+bench --site health.localhost execute health_ecosystem_core.health_ecosystem_core.clinical_crm_tracking.ensure_crm_transfer_notice_doctype
 bench --site health.localhost clear-cache || true
 '
 

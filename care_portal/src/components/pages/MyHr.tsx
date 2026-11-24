@@ -29,7 +29,7 @@ export function MyHrPage() {
       <iframe
         ref={frame}
         title="My HR Workspace"
-        src={`${PEOPLE}/people/profile?pa_embed=1`}
+        src={`${PEOPLE}/people/profile?pa_embed=1&tab=hr`}
         allow="geolocation *"
       />
     </div>

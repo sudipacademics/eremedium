@@ -117,8 +117,7 @@ LAB_MODULE_PATHS = {
 	"All bookings": ["/dashboard/all-bookings"],
 	"Reagents": ["/dashboard/reagents"],
 	"Inventory Management": ["/dashboard/inventory"],
-	"Pathologist": ["/dashboard/pathologist"],
-	"Reports (Signed)": ["/dashboard/pathologist/signed"],
+	"Pathologist": ["/dashboard/pathologist", "/dashboard/pathologist/signed"],
 	"Test Master": ["/dashboard/test-master"],
 	"Settings": ["/dashboard/settings"],
 }
@@ -126,7 +125,7 @@ LAB_MODULE_PATHS = {
 LAB_LEGACY_MODULES = {
 	"Samples": ["Accession", "PhleboFirst inbox", "Barcode bench", "All bookings"],
 	"Results": ["Result entry", "Mother lab bill", "Report lifecycle", "Critical alerts"],
-	"Reports": ["Pathologist", "Reports (Signed)"],
+	"Reports": ["Pathologist"],
 	"Inventory": ["Inventory Management", "Reagents"],
 	"Quality Control": ["IQC / NABL QC", "QMS"],
 }

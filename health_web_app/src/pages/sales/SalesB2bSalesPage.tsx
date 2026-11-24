@@ -118,111 +118,144 @@ export function SalesB2bSalesPage() {
           <button
             type="button"
             className="reach-btn"
-            onClick={() => setShowForm((v) => !v)}
-            disabled={!centres.length && !showForm}
+            onClick={() => {
+              if (!showForm) resetForm();
+              setShowForm(true);
+            }}
+            disabled={!centres.length}
           >
-            {showForm ? 'Cancel' : '+ Add sales entry'}
+            + Add sales entry
           </button>
         </div>
       </div>
 
       {message ? <div className="reach-alert ok">{message}</div> : null}
-      {error ? <div className="reach-alert err">{error}</div> : null}
+      {error && !showForm ? <div className="reach-alert err">{error}</div> : null}
       {!centres.length ? (
         <div className="reach-alert err">Register a B2B centre first before logging sales.</div>
       ) : null}
 
       {showForm ? (
-        <form className="reach-card" onSubmit={onSubmit}>
-          <div className="reach-card-head">
-            <div className="reach-card-icon" aria-hidden>
-              +
-            </div>
-            <div>
-              <h2>New daily sales entry</h2>
-              <p>Record samples and business value for one B2B collection centre.</p>
-            </div>
-          </div>
-
-          <div className="reach-form-grid">
-            <label className="reach-field span-2">
-              B2B collection centre *
-              <select
-                required
-                value={centreId}
-                onChange={(e) => {
-                  setCentreId(e.target.value);
-                  setLogisticsPerson('');
-                }}
+        <div
+          className="reach-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <form
+            className="reach-card reach-modal"
+            onSubmit={onSubmit}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reach-b2b-sales-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="reach-card-head">
+              <div className="reach-card-icon" aria-hidden>
+                +
+              </div>
+              <div>
+                <h2 id="reach-b2b-sales-title">New daily sales entry</h2>
+                <p>Record samples and business value for one B2B collection centre.</p>
+              </div>
+              <button
+                type="button"
+                className="reach-modal-close"
+                aria-label="Close"
+                onClick={() => setShowForm(false)}
               >
-                <option value="">Select centre</option>
-                {centres.map((centre) => (
-                  <option key={centre.name} value={centre.name}>
-                    {centre.centre_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="reach-field">
-              Date *
-              <input required type="date" value={salesDate} onChange={(e) => setSalesDate(e.target.value)} />
-            </label>
-            <label className="reach-field">
-              Number of samples *
-              <input
-                required
-                type="number"
-                min={0}
-                value={samples}
-                onChange={(e) => setSamples(e.target.value)}
-                placeholder="0"
-              />
-            </label>
-            <label className="reach-field">
-              Business value *
-              <input
-                required
-                type="number"
-                min={0}
-                value={businessValue}
-                onChange={(e) => setBusinessValue(e.target.value)}
-                placeholder="0"
-              />
-            </label>
-            <label className="reach-field">
-              Assigned logistics person
-              <select value={logisticsPerson} onChange={(e) => setLogisticsPerson(e.target.value)}>
-                <option value="">Select logistics person</option>
-                {logisticsOptions.map((row) => (
-                  <option key={row.person_name} value={row.person_name}>
-                    {row.person_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="reach-field full">
-              Remarks
-              <textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                rows={2}
-                placeholder="Context for closing / Admin review"
-              />
-            </label>
-          </div>
+                ×
+              </button>
+            </div>
 
-          <div className="reach-form-footer">
-            <span className="muted" style={{ fontSize: 13 }}>
-              Synced entries appear in Closing for expense upload.
-            </span>
-            <button type="submit" className="reach-btn" disabled={submitting || !centres.length}>
-              {submitting ? 'Submitting…' : 'Submit sales'}
-            </button>
-          </div>
-        </form>
+            {error ? <div className="reach-alert err">{error}</div> : null}
+
+            <div className="reach-form-grid">
+              <label className="reach-field span-2">
+                B2B collection centre *
+                <select
+                  required
+                  value={centreId}
+                  onChange={(e) => {
+                    setCentreId(e.target.value);
+                    setLogisticsPerson('');
+                  }}
+                >
+                  <option value="">Select centre</option>
+                  {centres.map((centre) => (
+                    <option key={centre.name} value={centre.name}>
+                      {centre.centre_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                Date *
+                <input required type="date" value={salesDate} onChange={(e) => setSalesDate(e.target.value)} />
+              </label>
+              <label className="reach-field">
+                Number of samples *
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  value={samples}
+                  onChange={(e) => setSamples(e.target.value)}
+                  placeholder="0"
+                />
+              </label>
+              <label className="reach-field">
+                Business value *
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  value={businessValue}
+                  onChange={(e) => setBusinessValue(e.target.value)}
+                  placeholder="0"
+                />
+              </label>
+              <label className="reach-field">
+                Assigned logistics person
+                <select value={logisticsPerson} onChange={(e) => setLogisticsPerson(e.target.value)}>
+                  <option value="">Select logistics person</option>
+                  {logisticsOptions.map((row) => (
+                    <option key={row.person_name} value={row.person_name}>
+                      {row.person_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field full">
+                Remarks
+                <textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={2}
+                  placeholder="Context for closing / Admin review"
+                />
+              </label>
+            </div>
+
+            <div className="reach-form-footer">
+              <span className="muted" style={{ fontSize: 13 }}>
+                Synced entries appear in Closing for expense upload.
+              </span>
+              <div className="reach-modal-actions">
+                <button type="button" className="reach-btn secondary" onClick={() => setShowForm(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="reach-btn" disabled={submitting || !centres.length}>
+                  {submitting ? 'Submitting…' : 'Submit sales'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       ) : null}
 
-      <section className="reach-panel" style={{ marginTop: showForm ? 16 : 0 }}>
+      <section className="reach-panel">
         <div className="reach-panel-head">
           <h2>Sales activity</h2>
           <span>

@@ -15,6 +15,7 @@
     "is_nabl",
     "nabl_discipline",
     "machine_method",
+    "tat_days",
     "section_collection",
     "primary_tube",
     "specimen_material",
@@ -71,6 +72,7 @@
       "options": "\nClinical Biochemistry\nHaematology\nClinical Pathology\nMicrobiology\nSerology and Immunology\nHistopathology\nCytopathology\nMolecular Diagnostics\nGenetics\nOther"
     },
     {"fieldname": "machine_method", "fieldtype": "Data", "label": "Default Method Summary", "description": "Optional section-level method line on PDF. Prefer per-parameter Method + Machine Name on the parameters table."},
+    {"default": "0", "description": "Turnaround time in days. 0 means Same day. Each number is one day.", "fieldname": "tat_days", "fieldtype": "Int", "label": "TAT (days)", "non_negative": 1},
     {
       "fieldname": "section_collection",
       "fieldtype": "Section Break",

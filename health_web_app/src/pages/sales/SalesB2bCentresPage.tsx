@@ -121,26 +121,56 @@ export function SalesB2bCentresPage() {
               ))}
             </select>
           </label>
-          <button type="button" className="reach-btn" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : '+ Register centre'}
+          <button
+            type="button"
+            className="reach-btn"
+            onClick={() => {
+              if (!showForm) resetForm();
+              setShowForm(true);
+            }}
+          >
+            + Register centre
           </button>
         </div>
       </div>
 
       {message ? <div className="reach-alert ok">{message}</div> : null}
-      {error ? <div className="reach-alert err">{error}</div> : null}
+      {error && !showForm ? <div className="reach-alert err">{error}</div> : null}
 
       {showForm ? (
-        <form className="reach-card" onSubmit={onSubmit}>
-          <div className="reach-card-head">
-            <div className="reach-card-icon" aria-hidden>
-              +
+        <div
+          className="reach-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <form
+            className="reach-card reach-modal"
+            onSubmit={onSubmit}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reach-b2b-centre-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="reach-card-head">
+              <div className="reach-card-icon" aria-hidden>
+                +
+              </div>
+              <div>
+                <h2 id="reach-b2b-centre-title">Register centre</h2>
+                <p>Capture wallet, deposit, address and logistics so FFMS can track the B2B partnership.</p>
+              </div>
+              <button
+                type="button"
+                className="reach-modal-close"
+                aria-label="Close"
+                onClick={() => setShowForm(false)}
+              >
+                ×
+              </button>
             </div>
-            <div>
-              <h2>Register centre</h2>
-              <p>Capture wallet, deposit, address and logistics so FFMS can track the B2B partnership.</p>
-            </div>
-          </div>
+            {error ? <div className="reach-alert err">{error}</div> : null}
 
           <div className="reach-form-grid">
             <label className="reach-field span-2">
@@ -280,14 +310,20 @@ export function SalesB2bCentresPage() {
             >
               + Add logistics person
             </button>
-            <button type="submit" className="reach-btn" disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save centre'}
-            </button>
+            <div className="reach-modal-actions">
+              <button type="button" className="reach-btn secondary" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="reach-btn" disabled={submitting}>
+                {submitting ? 'Saving…' : 'Save centre'}
+              </button>
+            </div>
           </div>
-        </form>
+          </form>
+        </div>
       ) : null}
 
-      <section className="reach-panel" style={{ marginTop: showForm ? 16 : 0 }}>
+      <section className="reach-panel">
         <div className="reach-panel-head">
           <h2>Centre directory</h2>
           <span>

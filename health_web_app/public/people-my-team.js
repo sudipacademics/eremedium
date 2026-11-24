@@ -1,8 +1,22 @@
 /* People HRMS: My team — weekly Saturday feedback, monthly roll-up, HR Feedback & Development report. */
 (function () {
   var API = '/api/method/health_ecosystem_core.health_ecosystem_core.clinical_people_my_team.';
-  var state = { data: null, loading: false, drafts: {}, saving: {}, el: null };
+  var state = { data: null, loading: false, drafts: {}, saving: {}, el: null, activeId: null };
   var report = { open: false, loading: false, data: null, period: '', employee: '' };
+
+  function reviewRoot() {
+    return document.getElementById('pmt-review-modal') || state.el;
+  }
+
+  function contactOf(row) {
+    return String((row && (row.phone || row.mobile || row.cell_number)) || '').trim();
+  }
+
+  function photoHtml(row) {
+    return row.photo
+      ? '<img class="pmt-avatar" src="' + esc(row.photo) + '" alt="" />'
+      : '<span class="pmt-avatar" aria-hidden="true">' + esc(initials(row.name)) + '</span>';
+  }
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -86,9 +100,10 @@
   }
 
   function refreshSave(id) {
-    if (!state.el) return;
+    var root = reviewRoot();
+    if (!root) return;
     var row = ((state.data && state.data.team) || []).find(function (t) { return t.id === id; });
-    var btn = state.el.querySelector('[data-save="' + id + '"]');
+    var btn = root.querySelector('[data-save="' + id + '"]');
     if (!row || !btn) return;
     var d = draftOf(row);
     btn.disabled = !dirty(row) || !d.rating || !!state.saving[id];
@@ -100,7 +115,8 @@
     state.drafts[id] = Object.assign({}, draftOf(row), patch);
     if (redraw === false) {
       refreshSave(id);
-      var stars = state.el && state.el.querySelectorAll('[data-rate="' + id + '"]');
+      var root = reviewRoot();
+      var stars = root && root.querySelectorAll('[data-rate="' + id + '"]');
       if (stars && patch.rating != null) {
         stars.forEach(function (btn) {
           var n = Number(btn.getAttribute('data-stars'));
@@ -237,25 +253,305 @@
     }).join('');
   }
 
+  var LEAVE_ATTACH = '/api/method/health_ecosystem_core.health_ecosystem_core.clinical_people_leave_attach.';
+
+  function leaveAttachCall(method, params) {
+    var body = new URLSearchParams();
+    Object.keys(params || {}).forEach(function (k) {
+      if (params[k] != null && params[k] !== '') body.set(k, String(params[k]));
+    });
+    try {
+      var s = JSON.parse(localStorage.getItem('hec_web_session') || 'null');
+      if (s && s.sid) body.set('sid', s.sid);
+    } catch (e) {}
+    return fetch(LEAVE_ATTACH + method, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'X-Frappe-Site-Name': 'health.localhost' },
+      body: body,
+    }).then(function (r) { return r.json(); }).then(function (json) {
+      var m = json && json.message && typeof json.message === 'object' ? json.message : json;
+      if (!m || m.status === 'error') throw new Error(String((m && m.message) || 'Request failed').replace(/<[^>]+>/g, ''));
+      return m.data !== undefined ? m.data : m;
+    });
+  }
+
+  function loadLeaveAttachments(leaveId, host) {
+    if (!host || !leaveId) return;
+    host.innerHTML = '<span class="pmt-muted">Loading attachments…</span>';
+    leaveAttachCall('get_people_leave_attachments', { leave: leaveId }).then(function (data) {
+      var rows = (data && data.attachments) || [];
+      if (!rows.length) {
+        host.innerHTML = '<span class="pmt-muted">No attachment uploaded with this leave.</span>';
+        return;
+      }
+      host.innerHTML = '<ul class="pmt-leave-files">' + rows.map(function (f) {
+        var label = String(f.file_name || 'file').replace(leaveId + '-', '');
+        return '<li><button type="button" class="pmt-link" data-leave-file="' + esc(f.id) + '">' + esc(label) + '</button></li>';
+      }).join('') + '</ul>';
+    }).catch(function () {
+      host.innerHTML = '<span class="pmt-muted">Attachments unavailable.</span>';
+    });
+  }
+
+  function openLeaveAttachment(fileId) {
+    leaveAttachCall('open_people_leave_attachment', { file: fileId }).then(function (data) {
+      var bytes = atob(data.data || '');
+      var arr = new Uint8Array(bytes.length);
+      for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([arr], { type: data.mime || 'application/octet-stream' }));
+      var win = window.open(url, '_blank');
+      if (!win) {
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = data.file_name || 'attachment';
+        a.click();
+      }
+    }).catch(function (e) {
+      toast((e && e.message) || 'Could not open attachment', true);
+    });
+  }
+
+  function attendanceLeaveSummaryHtml(row) {
+    var att = row.attendance || {};
+    var bals = row.leave_balances || [];
+    var balHtml = bals.length
+      ? '<ul class="pmt-bal-list">' + bals.map(function (b) {
+          return '<li><b>' + esc(b.leave_type) + '</b><span>' + Number(b.balance || 0).toFixed(1) +
+            ' left · ' + Number(b.taken || 0).toFixed(1) + ' used / ' + Number(b.allocated || 0).toFixed(1) + '</span></li>';
+        }).join('') + '</ul>'
+      : '<p class="pmt-muted">No leave balance on file yet — allocations are created automatically.</p>';
+    var last = att.last_checkin;
+    return '<div class="pmt-hr-summary">' +
+      '<div class="pmt-att-block"><h4>Attendance (this month)</h4>' +
+      '<div class="pmt-kpi-row">' +
+      '<article><small>Today</small><b>' + esc(att.today_status || '—') + '</b></article>' +
+      '<article><small>Present days</small><b>' + esc(att.present_days != null ? att.present_days : '—') + '</b></article>' +
+      '<article><small>Check-ins</small><b>' + esc(att.checkins_mtd != null ? att.checkins_mtd : '—') + '</b></article>' +
+      '</div>' +
+      (last ? '<p class="pmt-muted">Last ' + esc(last.log_type) + ' · ' + esc(String(last.time || '').slice(0, 16).replace('T', ' ')) + '</p>' : '') +
+      '</div>' +
+      '<div class="pmt-bal-block"><h4>Leave balance</h4>' +
+      '<p class="pmt-muted">' + Number(row.leave_balance_total || 0).toFixed(1) + ' days available across types</p>' +
+      balHtml +
+      '</div></div>';
+  }
+
+  function leaveCardsHtml(row) {
+    var leaves = row.leaves || [];
+    var pending = leaves.filter(function (l) { return l.stage === 'Manager Review'; });
+    var others = leaves.filter(function (l) { return l.stage !== 'Manager Review'; }).slice(0, 6);
+    var html = '<div class="pmt-leave-block"><h4>Leave applications</h4>';
+    if (!leaves.length) {
+      return html + '<p class="pmt-muted">No leave applications on file for this employee.</p></div>';
+    }
+    function card(lv, canAct) {
+      var decided = lv.manager_decision === 'Recommended' || lv.manager_decision === 'Rejected';
+      var decisionLabel = lv.manager_decision === 'Recommended'
+        ? 'Manager decision: Approved'
+        : (lv.manager_decision === 'Rejected' ? 'Manager decision: Rejected' : 'Manager decision: not set yet');
+      return '<article class="pmt-leave-card" data-leave="' + esc(lv.id) + '">' +
+        '<div><b>' + esc(lv.leave_type) + '</b> · <span class="pmt-meta">' + esc(lv.stage) + ' · ' + esc(lv.status) + '</span>' +
+        '<small>' + esc(lv.from_date) + ' → ' + esc(lv.to_date) + ' · ' + esc(lv.days) + ' day(s)</small>' +
+        (lv.reason ? '<small>' + esc(lv.reason) + '</small>' : '') +
+        (lv.original_from && (lv.original_from !== lv.from_date || lv.original_to !== lv.to_date)
+          ? '<small>Originally requested ' + esc(lv.original_from) + ' → ' + esc(lv.original_to) + '</small>' : '') +
+        ((lv.unauthorized_dates || []).length ? '<small class="pmt-unauth">Unauthorised days: ' + esc(lv.unauthorized_dates.join(', ')) + '</small>' : '') +
+        (canAct || decided ? '<small class="pmt-leave-decision' + (decided ? ' on' : '') + '">' + esc(decisionLabel) +
+          (lv.manager_remark ? ' · ' + esc(lv.manager_remark) : '') + '</small>' : '') +
+        '</div>' +
+        '<div class="pmt-leave-attach" data-leave-attach="' + esc(lv.id) + '"><span class="pmt-muted">Attachments…</span></div>' +
+        (canAct
+          ? '<div class="pmt-leave-edit">' +
+            '<label>Customise from<input type="date" data-leave-from="' + esc(lv.id) + '" value="' + esc(lv.from_date) + '" /></label>' +
+            '<label>Customise to<input type="date" data-leave-to="' + esc(lv.id) + '" value="' + esc(lv.to_date) + '" /></label>' +
+            '<label>Remark<textarea data-leave-remark="' + esc(lv.id) + '" rows="2" placeholder="Optional note for HR…"></textarea></label>' +
+            '<div class="pmt-leave-actions">' +
+            '<button type="button" class="pmt-btn primary pmt-leave-approve" data-leave-act="recommend" data-leave-id="' + esc(lv.id) + '" style="background:#1d6f72;border-color:#1d6f72;color:#fff">1. Approve</button>' +
+            '<button type="button" class="pmt-btn danger" data-leave-act="decide_reject" data-leave-id="' + esc(lv.id) + '">2. Reject</button>' +
+            '<button type="button" class="pmt-btn send" data-leave-act="forward" data-leave-id="' + esc(lv.id) + '"' +
+            (decided ? '' : ' disabled title="Approve or reject first"') + '>3. Send to HR</button>' +
+            '</div>' +
+            (decided ? '' : '<p class="pmt-leave-hint">Approve or reject first, then send to HR.</p>') +
+            '</div>'
+          : '') +
+        '</article>';
+    }
+    html += pending.length
+      ? '<p class="pmt-muted">Awaiting your review</p>' + pending.map(function (l) { return card(l, true); }).join('')
+      : '<p class="pmt-muted">Nothing waiting for your review.</p>';
+    if (others.length) {
+      html += '<p class="pmt-muted" style="margin-top:10px">Other applications</p>' + others.map(function (l) { return card(l, false); }).join('');
+    }
+    return html + '</div>';
+  }
+
+  function reviewFormHtml(row, d) {
+    var draft = draftOf(row);
+    var isDirty = dirty(row);
+    var saving = !!state.saving[row.id];
+    var monthly = row.review;
+    var recs = (d && d.recommendations) || [];
+    var recOpts = '<option value="">Choose…</option>' + recs.map(function (r) {
+      return '<option value="' + esc(r) + '"' + (draft.recommendation === r ? ' selected' : '') + '>' + esc(r) + '</option>';
+    }).join('');
+    var phone = contactOf(row);
+    return '<div class="pmt-form" data-id="' + esc(row.id) + '">' +
+      '<div class="pmt-person pmt-person-modal">' + photoHtml(row) + '<div><b>' + esc(row.name) + '</b>' +
+      (phone ? '<small class="pmt-phone">' + esc(phone) + '</small>' : '') +
+      '<small>' + esc(row.id) + (row.designation ? ' · ' + esc(row.designation) : '') + '</small>' +
+      (row.department ? '<small>' + esc(row.department) + '</small>' : '') +
+      '<small class="pmt-rollup">Month so far: ' + (monthly && monthly.rating != null ? ('★ ' + Number(monthly.rating).toFixed(1) + ' from ' + (row.weeks_rated || 0) + ' week' + ((row.weeks_rated || 0) === 1 ? '' : 's')) : 'no weekly reviews yet') + '</small>' +
+      '</div></div>' +
+      attendanceLeaveSummaryHtml(row) +
+      leaveCardsHtml(row) +
+      '<label>Stars for this Saturday ' + starsHtml(draft.rating, row.id) + '</label>' +
+      '<label>Recommendation<select data-rec="' + esc(row.id) + '">' + recOpts + '</select></label>' +
+      '<label>Weekly feedback<textarea data-remarks="' + esc(row.id) + '" rows="3" placeholder="What went well this week, what to improve…">' + esc(draft.remarks) + '</textarea></label>' +
+      '<div class="pmt-crm-target">' +
+      '<label>CRM sales target (₹ / month)<input type="number" min="0" step="1000" data-crm-target="' + esc(row.id) + '" value="' + esc(row.crm_target_amount != null ? row.crm_target_amount : '') + '" placeholder="e.g. 200000" /></label>' +
+      '<div class="pmt-crm-ach"><span>Achievement (synced bills)</span><b>₹ ' + Number(row.crm_achievement_amount || 0).toLocaleString("en-IN") + '</b></div>' +
+      '<button type="button" class="pmt-btn" data-save-crm-target="' + esc(row.id) + '">Save CRM target</button>' +
+      '</div>' +
+      '<div class="pmt-actions"><span class="pmt-meta">' + (row.week && row.week.modified ? 'Last saved ' + esc(String(row.week.modified).slice(0, 16).replace('T', ' ')) : 'Not rated this week') + '</span>' +
+      '<button type="button" class="pmt-btn primary" data-save="' + esc(row.id) + '"' + (saving || !isDirty || !draft.rating ? ' disabled' : '') + '>' + (saving ? 'Saving…' : 'Save weekly review') + '</button></div>' +
+      '</div>';
+  }
+
+  function actLeave(leaveId, action) {
+    var root = reviewRoot();
+    if (!root) return;
+    var fromEl = root.querySelector('[data-leave-from="' + leaveId + '"]');
+    var toEl = root.querySelector('[data-leave-to="' + leaveId + '"]');
+    var remarkEl = root.querySelector('[data-leave-remark="' + leaveId + '"]');
+    var btn = root.querySelector('[data-leave-act="' + action + '"][data-leave-id="' + leaveId + '"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Working…';
+    }
+    call('act_my_team_leave_api', {
+      name: leaveId,
+      action: action,
+      remark: remarkEl ? remarkEl.value : '',
+      from_date: fromEl ? fromEl.value : '',
+      to_date: toEl ? toEl.value : '',
+    }).then(function () {
+      var msg = {
+        recommend: 'Marked approved — now click Send to HR',
+        decide_reject: 'Marked rejected — now click Send to HR',
+        forward: 'Sent to HR for final review',
+        manager_reject: 'Rejected and sent to HR',
+      }[action] || 'Leave updated';
+      toast(msg);
+      return load({ period: state.data && state.data.period, week_ending: state.data && state.data.week_ending });
+    }).catch(function (e) {
+      toast((e && e.message) || 'Could not update leave', true);
+    }).then(function () {
+      if (state.activeId) drawReviewModal();
+    });
+  }
+
+  function closeReview() {
+    state.activeId = null;
+    var box = document.getElementById('pmt-review-modal');
+    if (box) box.remove();
+  }
+
+  function openReview(id) {
+    if (!id) return;
+    state.activeId = id;
+    drawReviewModal();
+  }
+
+  function drawReviewModal() {
+    var id = state.activeId;
+    if (!id) {
+      closeReview();
+      return;
+    }
+    var d = state.data;
+    var row = ((d && d.team) || []).find(function (t) { return t.id === id; });
+    if (!row || !d || d.error) {
+      closeReview();
+      return;
+    }
+    var box = document.getElementById('pmt-review-modal');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'pmt-review-modal';
+      box.className = 'pmt-backdrop';
+      box.addEventListener('click', function (e) {
+        if (e.target === box || e.target.closest('[data-close-review]')) {
+          closeReview();
+          return;
+        }
+        var star = e.target.closest('[data-stars]');
+        if (star) {
+          setDraft(star.getAttribute('data-rate'), { rating: Number(star.getAttribute('data-stars')) }, false);
+          return;
+        }
+        var saveCrm = e.target.closest('[data-save-crm-target]');
+        if (saveCrm) {
+          saveCrmTarget(saveCrm.getAttribute('data-save-crm-target'));
+          return;
+        }
+        var leaveFile = e.target.closest('[data-leave-file]');
+        if (leaveFile) {
+          openLeaveAttachment(leaveFile.getAttribute('data-leave-file'));
+          return;
+        }
+        var leaveAct = e.target.closest('[data-leave-act]');
+        if (leaveAct) {
+          actLeave(leaveAct.getAttribute('data-leave-id'), leaveAct.getAttribute('data-leave-act'));
+          return;
+        }
+        var saveBtn = e.target.closest('[data-save]');
+        if (saveBtn) save(saveBtn.getAttribute('data-save'));
+      });
+      box.addEventListener('change', function (e) {
+        var rec = e.target.closest('[data-rec]');
+        if (rec) setDraft(rec.getAttribute('data-rec'), { recommendation: rec.value }, false);
+      });
+      box.addEventListener('input', function (e) {
+        var remarks = e.target.closest('[data-remarks]');
+        if (remarks) setDraft(remarks.getAttribute('data-remarks'), { remarks: remarks.value }, false);
+      });
+      document.body.appendChild(box);
+    }
+    var pendingLeaves = (row.leaves || []).filter(function (l) { return l.stage === 'Manager Review'; }).length;
+    box.innerHTML = '<div class="pmt-modal" role="dialog" aria-modal="true" aria-labelledby="pmt-review-title">' +
+      '<header><div><h2 id="pmt-review-title">Team member</h2>' +
+      '<p class="pmt-muted">Week: <b>' + esc(d.week_label || '') + '</b> · ' + esc(d.period_label || '') +
+      (pendingLeaves ? ' · <b>' + pendingLeaves + ' leave awaiting review</b>' : '') + '</p></div>' +
+      '<button type="button" class="pmt-x" data-close-review aria-label="Close">✕</button></header>' +
+      '<div class="pmt-body">' + reviewFormHtml(row, d) + '</div>' +
+      '<footer><button type="button" class="pmt-btn" data-close-review>Close</button></footer></div>';
+    box.querySelectorAll('[data-leave-attach]').forEach(function (host) {
+      loadLeaveAttachments(host.getAttribute('data-leave-attach'), host);
+    });
+  }
+
   function draw() {
     if (!state.el) return;
     var d = state.data;
     if (state.loading && !d) {
       state.el.innerHTML = '<p class="pmt-muted">Loading your team…</p>';
+      closeReview();
       return;
     }
     if (!d) {
       state.el.innerHTML = '<p class="pmt-muted">Unable to load your team.</p>';
+      closeReview();
       return;
     }
     if (d.error) {
       state.el.innerHTML = '<div class="pmt-alert">' + esc(d.error) + '</div>';
+      closeReview();
       return;
     }
     var team = d.team || [];
-    var recs = d.recommendations || [];
     state.el.innerHTML =
-      '<div class="pmt-head"><div><h3>My team</h3><p>Give weekly feedback every Saturday. Set CRM sales targets for the month — achievement comes from Care / Aesthetic bills synced to Smilecure CRM. Stars roll into People → Performance (' + esc(String((d.weights && d.weights.feedback) || 40)) + '% of the score).</p></div>' +
+      '<div class="pmt-head"><div><h3>My team</h3><p>Select a team member to give weekly feedback and set CRM sales targets. Stars roll into People → Performance (' + esc(String((d.weights && d.weights.feedback) || 40)) + '% of the score).</p></div>' +
       '<div class="pmt-tools">' +
       '<label>Month<select data-month>' + monthSelect(d) + '</select></label>' +
       '<label>Saturday week<select data-week>' + weekSelect(d) + '</select></label>' +
@@ -264,36 +560,18 @@
       '</div></div>' +
       '<div class="pmt-note">Week: <b>' + esc(d.week_label || '') + '</b> · Monthly roll-up for <b>' + esc(d.period_label || '') + '</b></div>' +
       (team.length
-        ? '<ul class="pmt-list">' + team.map(function (row) {
-            var draft = draftOf(row);
-            var isDirty = dirty(row);
-            var saving = !!state.saving[row.id];
-            var monthly = row.review;
-            var recOpts = '<option value="">Choose…</option>' + recs.map(function (r) {
-              return '<option value="' + esc(r) + '"' + (draft.recommendation === r ? ' selected' : '') + '>' + esc(r) + '</option>';
-            }).join('');
-            var photo = row.photo
-              ? '<img class="pmt-avatar" src="' + esc(row.photo) + '" alt="" />'
-              : '<span class="pmt-avatar" aria-hidden="true">' + esc(initials(row.name)) + '</span>';
-            return '<li class="pmt-card" data-id="' + esc(row.id) + '">' +
-              '<div class="pmt-person">' + photo + '<div><b>' + esc(row.name) + '</b><small>' + esc(row.id) + (row.designation ? ' · ' + esc(row.designation) : '') + '</small>' +
-              (row.department ? '<small>' + esc(row.department) + '</small>' : '') +
-              '<small class="pmt-rollup">Month so far: ' + (monthly && monthly.rating != null ? ('★ ' + Number(monthly.rating).toFixed(1) + ' from ' + (row.weeks_rated || 0) + ' week' + ((row.weeks_rated || 0) === 1 ? '' : 's')) : 'no weekly reviews yet') + '</small>' +
-              '</div></div>' +
-              '<div class="pmt-form">' +
-              '<label>Stars for this Saturday ' + starsHtml(draft.rating, row.id) + '</label>' +
-              '<label>Recommendation<select data-rec="' + esc(row.id) + '">' + recOpts + '</select></label>' +
-              '<label>Weekly feedback<textarea data-remarks="' + esc(row.id) + '" rows="3" placeholder="What went well this week, what to improve…">' + esc(draft.remarks) + '</textarea></label>' +
-              '<div class="pmt-crm-target">' +
-              '<label>CRM sales target (₹ / month)<input type="number" min="0" step="1000" data-crm-target="' + esc(row.id) + '" value="' + esc(row.crm_target_amount != null ? row.crm_target_amount : '') + '" placeholder="e.g. 200000" /></label>' +
-              '<div class="pmt-crm-ach"><span>Achievement (synced bills)</span><b>₹ ' + Number(row.crm_achievement_amount || 0).toLocaleString("en-IN") + '</b></div>' +
-              '<button type="button" class="pmt-btn" data-save-crm-target="' + esc(row.id) + '">Save CRM target</button>' +
-              '</div>' +
-              '<div class="pmt-actions"><span class="pmt-meta">' + (row.week && row.week.modified ? 'Last saved ' + esc(String(row.week.modified).slice(0, 16).replace('T', ' ')) : 'Not rated this week') + '</span>' +
-              '<button type="button" class="pmt-btn primary" data-save="' + esc(row.id) + '"' + (saving || !isDirty || !draft.rating ? ' disabled' : '') + '>' + (saving ? 'Saving…' : 'Save weekly review') + '</button></div>' +
-              '</div></li>';
+        ? '<ul class="pmt-list pmt-member-list">' + team.map(function (row) {
+            var phone = contactOf(row);
+            var pendingLeave = (row.leaves || []).filter(function (l) { return l.stage === 'Manager Review'; }).length;
+            return '<li class="pmt-card pmt-member" data-open-member="' + esc(row.id) + '" role="button" tabindex="0">' +
+              '<div class="pmt-person">' + photoHtml(row) + '<div><b>' + esc(row.name) + '</b>' +
+              '<small class="pmt-phone">' + (phone ? esc(phone) : 'No contact number') + '</small>' +
+              (pendingLeave ? '<span class="pmt-leave-badge">' + pendingLeave + ' leave to review</span>' : '') +
+              '</div></div></li>';
           }).join('') + '</ul>'
         : '<p class="pmt-muted">No active employees report to you right now.</p>');
+    if (state.activeId) drawReviewModal();
+    else closeReview();
   }
 
   function load(opts) {
@@ -319,14 +597,15 @@
 
   function saveCrmTarget(id) {
     var row = ((state.data && state.data.team) || []).find(function (t) { return t.id === id; });
-    if (!row || !state.data || !state.el) return;
-    var input = state.el.querySelector('[data-crm-target="' + id + '"]');
+    var root = reviewRoot();
+    if (!row || !state.data || !root) return;
+    var input = root.querySelector('[data-crm-target="' + id + '"]');
     var amount = input ? Number(input.value) : NaN;
     if (!Number.isFinite(amount) || amount < 0) {
       toast('Enter a valid CRM sales target amount (₹).', true);
       return;
     }
-    var btn = state.el.querySelector('[data-save-crm-target="' + id + '"]');
+    var btn = root.querySelector('[data-save-crm-target="' + id + '"]');
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Saving…';
@@ -480,12 +759,14 @@
     if (!onOwnProfile() || !signedIn()) {
       ptabs.drop('my-team');
       state.el = null;
+      closeReview();
       return;
     }
     var team = state.data && state.data.team;
     if (state.data && !state.data.error && (!team || !team.length)) {
       ptabs.drop('my-team');
       state.el = null;
+      closeReview();
       return;
     }
     if (!state.el) {
@@ -497,18 +778,17 @@
           openReport({ period: state.data && state.data.period });
           return;
         }
-        var star = e.target.closest('[data-stars]');
-        if (star) {
-          setDraft(star.getAttribute('data-rate'), { rating: Number(star.getAttribute('data-stars')) }, false);
-          return;
+        var member = e.target.closest('[data-open-member]');
+        if (member) {
+          openReview(member.getAttribute('data-open-member'));
         }
-        var saveCrm = e.target.closest('[data-save-crm-target]');
-        if (saveCrm) {
-          saveCrmTarget(saveCrm.getAttribute('data-save-crm-target'));
-          return;
-        }
-        var saveBtn = e.target.closest('[data-save]');
-        if (saveBtn) save(saveBtn.getAttribute('data-save'));
+      });
+      state.el.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var member = e.target.closest('[data-open-member]');
+        if (!member) return;
+        e.preventDefault();
+        openReview(member.getAttribute('data-open-member'));
       });
       state.el.addEventListener('change', function (e) {
         var month = e.target.closest('[data-month]');
@@ -519,14 +799,7 @@
         var week = e.target.closest('[data-week]');
         if (week) {
           load({ week_ending: week.value, period: state.data && state.data.period });
-          return;
         }
-        var rec = e.target.closest('[data-rec]');
-        if (rec) setDraft(rec.getAttribute('data-rec'), { recommendation: rec.value }, false);
-      });
-      state.el.addEventListener('input', function (e) {
-        var remarks = e.target.closest('[data-remarks]');
-        if (remarks) setDraft(remarks.getAttribute('data-remarks'), { remarks: remarks.value }, false);
       });
     }
     if (state.data && (state.data.error || (team && team.length))) {

@@ -19,9 +19,8 @@ export const AESTHETIC_ADMIN_NAV: AdminNavGroup[] = [
     icon: 'calendar',
     items: [
       { to: '/aesthetic-admin/bookings', label: 'All Bookings' },
+      { to: '/aesthetic-admin/bookings/patients', label: 'Patient Directory' },
       { to: '/aesthetic-admin/bookings/calendar', label: 'Calendar View' },
-      { to: '/aesthetic-admin/bookings/new', label: 'New Booking' },
-      { to: '/aesthetic-admin/bookings/walk-in', label: 'Walk-in Booking' },
       { to: '/aesthetic-admin/bookings/reviews', label: 'Ratings & Reviews' },
     ],
   },
@@ -30,7 +29,7 @@ export const AESTHETIC_ADMIN_NAV: AdminNavGroup[] = [
     label: 'Services',
     icon: 'sparkle',
     items: [
-      { to: '/aesthetic-admin/services', label: 'Service List' },
+      { to: '/aesthetic-admin/services', label: 'Service Management' },
       { to: '/aesthetic-admin/services/sessions', label: 'Session Management' },
       { to: '/aesthetic-admin/services/plans', label: 'Treatment Plans' },
       { to: '/aesthetic-admin/services/categories', label: 'Service Categories' },
@@ -41,22 +40,14 @@ export const AESTHETIC_ADMIN_NAV: AdminNavGroup[] = [
     label: 'Products',
     icon: 'box',
     items: [
-      { to: '/aesthetic-admin/products', label: 'Sales Products' },
-      { to: '/aesthetic-admin/products/procedure', label: 'Procedure Products' },
-      { to: '/aesthetic-admin/products/categories', label: 'Categories' },
       { to: '/aesthetic-admin/products/inventory', label: 'Inventory' },
-      { to: '/aesthetic-admin/products/purchase', label: 'Purchase & Stock' },
     ],
   },
   {
     id: 'machines',
     label: 'Machines',
     icon: 'machine',
-    items: [
-      { to: '/aesthetic-admin/machines', label: 'Machine List' },
-      { to: '/aesthetic-admin/machines/service', label: 'Service & Maintenance' },
-      { to: '/aesthetic-admin/machines/amc', label: 'AMC Tracking' },
-    ],
+    to: '/aesthetic-admin/machines',
   },
   {
     id: 'invoices',
@@ -65,7 +56,6 @@ export const AESTHETIC_ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { to: '/aesthetic-admin/invoices', label: 'Invoice List' },
       { to: '/aesthetic-admin/invoices/new', label: 'Create Invoice' },
-      { to: '/aesthetic-admin/invoices/payments', label: 'Payment Records' },
     ],
   },
   {

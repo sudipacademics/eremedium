@@ -17,10 +17,11 @@ import './people-designations.css';
 import './people-grades.css';
 import './people-attendance.css';
 
-function readGps(): Promise<{ latitude: number; longitude: number }> {
+function readGps(required = true): Promise<{ latitude?: number; longitude?: number; warn?: string }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not available in this browser'));
+      if (required) reject(new Error('Geolocation is not available in this browser'));
+      else resolve({ warn: 'Geolocation is not available in this browser' });
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -30,7 +31,11 @@ function readGps(): Promise<{ latitude: number; longitude: number }> {
           longitude: pos.coords.longitude,
         }),
       (err) => {
-        const msg = err && err.message ? String(err.message) : '';
+        const msg = err && err.message ? String(err.message) : 'Unable to read GPS location';
+        if (!required) {
+          resolve({ warn: msg });
+          return;
+        }
         if (/permissions policy/i.test(msg)) {
           reject(
             new Error(
@@ -39,7 +44,7 @@ function readGps(): Promise<{ latitude: number; longitude: number }> {
           );
           return;
         }
-        reject(new Error(msg || 'Unable to read GPS location'));
+        reject(new Error(msg));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
     );
@@ -56,16 +61,20 @@ function MyAttendancePanel({ data, onChanged }: { data: PeopleHrmsDashboard; onC
     setError(null);
     setMessage(null);
     try {
-      const loc = await readGps();
-      const res = await api.submitEmployeeCheckin(logType, loc);
+      const geoRequired = !!Number(data.attendance?.geofence_required || 0);
+      const loc = await readGps(geoRequired);
+      const coords =
+        loc.latitude != null && loc.longitude != null
+          ? { latitude: loc.latitude, longitude: loc.longitude }
+          : undefined;
+      const res = await api.submitEmployeeCheckin(logType, coords);
       const geo = res.data.checkin?.geofence;
-      setMessage(
-        geo?.override
-          ? `${res.message || logType} · geofencing temporarily disabled by HR${geo.override_until ? ` until ${geo.override_until}` : ''}`
-          : geo
-            ? `${res.message || logType} · ${geo.distance_m}m from ${geo.label || 'site'} (limit ${geo.radius_m}m)`
-            : res.message || `${logType} recorded`,
-      );
+      const base = geo?.override
+        ? `${res.message || logType} · geofencing temporarily disabled by HR${geo.override_until ? ` until ${geo.override_until}` : ''}`
+        : geo
+          ? `${res.message || logType} · ${geo.distance_m}m from ${geo.label || 'site'} (limit ${geo.radius_m}m)`
+          : res.message || `${logType} recorded`;
+      setMessage(base + (coords ? ' · location saved' : loc.warn ? ' · location unavailable' : ''));
       await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not record attendance');
@@ -90,7 +99,9 @@ function MyAttendancePanel({ data, onChanged }: { data: PeopleHrmsDashboard; onC
       </header>
 
       <p className="muted" style={{ marginTop: 0 }}>
-        Check-in uses your device GPS and must be inside your assigned work geofence.
+        {Number(att.geofence_required || 0)
+          ? 'Check-in uses your device GPS and must be inside your assigned work geofence.'
+          : 'Geofencing is off for your profile. Check-in still captures your current location when the browser allows it.'}
       </p>
 
       {!att.checkin_available ? (

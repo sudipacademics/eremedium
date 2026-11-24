@@ -1,32 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  DEAL_STAGES,
   FOLLOW_UP_OUTCOMES,
   FOLLOW_UP_TYPES,
+  LEAD_STATUSES,
+  LOST_REASONS,
+  franchiseVerticalLabel,
+  leadStatusToDealStage,
+  normalizeLeadStatus,
   wingById,
   type CrmActivity,
   type DealStage,
   type FollowUpOutcome,
   type FollowUpType,
+  type LeadStatus,
+  type LostReason,
 } from '../data';
+import { sendCrmWhatsApp, syncCrmLeadStatusToReach } from '../crmApi';
 import { Icon } from '../icons';
+import { loadMessageTemplates } from '../settingsData';
 import { useCrm } from '../store';
 import { ScheduleFollowUpForm } from './Forms';
 import { WingPill } from './ui';
 
-type PanelMode = 'view' | 'edit' | 'update' | 'deal';
+type PanelMode = 'view' | 'edit' | 'update' | 'deal' | 'whatsapp';
 
 function defaultCloseDate() {
   return new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
 }
 
 function stageFromLead(stage?: string): DealStage {
-  if (stage === 'Ready to Proceed') return 'Ready for Conversion';
-  if (stage === 'Proposal Required') return 'Proposal Shared';
-  if (stage === 'Discussion Ongoing' || stage === 'Interested') return 'Discussion';
-  if (stage === 'Qualified') return 'Opportunity Created';
-  if (stage === 'Won' || stage === 'Lost') return stage;
-  return 'Opportunity Created';
+  return leadStatusToDealStage(stage || 'New') || 'Opportunity Created';
 }
 
 function fmtWhen(iso: string) {
@@ -36,6 +39,27 @@ function fmtWhen(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function whatsappChannelForWing(wing?: string): 'franchise' | 'service' {
+  return wing === 'franchise' || wing === 'nexilab' ? 'franchise' : 'service';
+}
+
+function defaultWhatsAppBody(leadName: string, wing?: string, serviceRequired?: string) {
+  const name = leadName.split(' ')[0] || leadName;
+  if (whatsappChannelForWing(wing) === 'franchise') {
+    return `Hi ${name}, this is Smilecure following up on your franchise enquiry. When is a good time to connect?`;
+  }
+  const service =
+    serviceRequired?.trim() ||
+    (wing === 'aesthetic'
+      ? 'aesthetic consultation'
+      : wing === 'care'
+        ? 'care consultation'
+        : wing === 'lab'
+          ? 'lab enquiry'
+          : 'consultation');
+  return `Hi ${name}, this is Smilecure following up on your ${service}. When is a good time to connect?`;
 }
 
 export function FollowUpDetailModal({
@@ -65,6 +89,11 @@ export function FollowUpDetailModal({
     product: '',
     probability: '50',
   });
+  const [lostReason, setLostReason] = useState<LostReason | ''>('');
+  const [lostNote, setLostNote] = useState('');
+  const [pendingLost, setPendingLost] = useState(false);
+  const [waBody, setWaBody] = useState('');
+  const [waSending, setWaSending] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -74,11 +103,88 @@ export function FollowUpDetailModal({
     setUpdateOutcome('');
     setUpdateType((FOLLOW_UP_TYPES.includes(selected.type as FollowUpType) ? selected.type : 'Call') as FollowUpType);
     setUpdateNextDue(selected.dueAt ? selected.dueAt.slice(0, 16) : '');
+    setWaSending(false);
+    if (initialMode === 'whatsapp') {
+      const lead = selected.leadId
+        ? crm.leads.find((l) => l.id === selected.leadId)
+        : crm.leads.find(
+            (l) => l.name === selected.leadName && (!selected.mobile || l.mobile === selected.mobile),
+          );
+      setWaBody(defaultWhatsAppBody(selected.leadName, selected.wing, lead?.serviceRequired));
+    } else {
+      setWaBody('');
+    }
     if (initialMode === 'deal') openDealForm(selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityId]);
 
+  const waTemplates = useMemo(() => {
+    const wing = selected?.wing || 'franchise';
+    return loadMessageTemplates().filter(
+      (t) => t.status === 'active' && (t.wing === 'all' || t.wing === wing),
+    );
+  }, [selected?.wing]);
+
+  const linkedLead = useMemo(() => {
+    if (!selected) return null;
+    if (selected.leadId) return crm.leads.find((l) => l.id === selected.leadId) || null;
+    return (
+      crm.leads.find(
+        (l) => l.name === selected.leadName && (!selected.mobile || l.mobile === selected.mobile),
+      ) || null
+    );
+  }, [crm.leads, selected]);
+
   if (!selected) return null;
+
+  const currentLeadStatus = normalizeLeadStatus(linkedLead?.status || selected.leadStage || 'New');
+
+  const applyLeadStatus = (next: LeadStatus) => {
+    const updated = crm.setLeadStatusFromFollowUp(selected.id, next);
+    const lead = updated || linkedLead;
+    if (lead && (lead.reachLeadId || lead.reachAssignedAt)) {
+      void syncCrmLeadStatusToReach(lead.id, next).catch(() => {
+        /* soft */
+      });
+    }
+    if (!updated && !selected.leadId && !selected.mobile) {
+      crm.pushToast('Could not link this follow-up to a lead — status saved on follow-up only', 'err');
+      return;
+    }
+    crm.pushToast(`Lead status → ${next}`);
+  };
+
+  const changeLeadStatus = (next: LeadStatus) => {
+    if (next === currentLeadStatus) return;
+    if (next === 'Lost' || next === 'Not Interested') {
+      setPendingLost(true);
+      setLostReason('');
+      setLostNote('');
+      return;
+    }
+    setPendingLost(false);
+    applyLeadStatus(next);
+  };
+
+  const confirmLostFromPanel = () => {
+    if (!lostReason) {
+      crm.pushToast('Lost reason is mandatory', 'err');
+      return;
+    }
+    const leadId = linkedLead?.id || selected.leadId;
+    if (leadId) {
+      crm.closeLeadLost(leadId, lostReason, lostNote);
+      const lead = linkedLead || crm.leads.find((l) => l.id === leadId);
+      if (lead && (lead.reachLeadId || lead.reachAssignedAt)) {
+        void syncCrmLeadStatusToReach(lead.id, 'Lost').catch(() => {
+          /* soft */
+        });
+      }
+    }
+    crm.setLeadStatusFromFollowUp(selected.id, 'Lost');
+    setPendingLost(false);
+    crm.pushToast(`Lead status → Lost · ${lostReason}`);
+  };
 
   function openDealForm(a: CrmActivity) {
     const linked = a.leadId ? crm.leads.find((l) => l.id === a.leadId) : undefined;
@@ -119,15 +225,59 @@ export function FollowUpDetailModal({
       outcome: updateOutcome,
     });
     if (!updated) return;
+    if (updateOutcome === 'Not interested') {
+      setPendingLost(true);
+      setLostReason('');
+      setLostNote(updateNote.trim());
+      crm.pushToast('Select a lost reason — deal will sync as Lost from this follow-up');
+      return;
+    }
     if (updateOutcome === 'Ready to proceed') {
       crm.pushToast(`Ready to proceed — create a Deal for ${selected.leadName}`);
       openDealForm(selected);
       return;
     }
-    crm.pushToast(`Follow-up outcome: ${updateOutcome}`);
+    crm.pushToast(`Follow-up outcome: ${updateOutcome} · deal stage synced`);
     setUpdateNote('');
     setUpdateOutcome('');
     setPanelMode('view');
+  };
+
+  const sendWhatsApp = async () => {
+    const mobile = selected.mobile || linkedLead?.mobile || '';
+    if (!mobile) {
+      crm.pushToast('No mobile number on this follow-up', 'err');
+      return;
+    }
+    const body = waBody.trim();
+    if (!body) {
+      crm.pushToast('Enter a WhatsApp message', 'err');
+      return;
+    }
+    const channel = whatsappChannelForWing(selected.wing);
+    setWaSending(true);
+    try {
+      await sendCrmWhatsApp({
+        phone: mobile,
+        message: body,
+        contactName: selected.leadName,
+        crmLeadId: selected.leadId || linkedLead?.id,
+        wing: selected.wing || linkedLead?.wing || (channel === 'franchise' ? 'franchise' : 'lab'),
+        channel,
+      });
+      crm.logActivityUpdate(selected.id, {
+        message: `WhatsApp sent · ${body.slice(0, 180)}`,
+        type: 'WhatsApp',
+        outcome: 'Discussion ongoing',
+      });
+      crm.pushToast(`WhatsApp sent to ${selected.leadName}`);
+      setWaBody('');
+      setPanelMode('view');
+    } catch (err) {
+      crm.pushToast(err instanceof Error ? err.message : 'WhatsApp send failed', 'err');
+    } finally {
+      setWaSending(false);
+    }
   };
 
   const saveAsDeal = () => {
@@ -173,8 +323,21 @@ export function FollowUpDetailModal({
               {selected.leadId ? ` · ${selected.leadId}` : ''}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <WingPill wing={selected.wing} />
+            <select
+              className="inline-select"
+              value={currentLeadStatus}
+              aria-label="Lead status"
+              title="Change lead status"
+              onChange={(e) => changeLeadStatus(e.target.value as LeadStatus)}
+            >
+              {LEAD_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
             {crm.isManager && onRequestTransfer ? (
               <button
                 type="button"
@@ -184,6 +347,31 @@ export function FollowUpDetailModal({
                 onClick={() => onRequestTransfer(selected.id)}
               >
                 <Icon name="accounts" size={16} />
+              </button>
+            ) : null}
+            {crm.isManager ? (
+              <button
+                type="button"
+                className="icon-btn"
+                title="Delete follow-up"
+                aria-label="Delete"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Delete follow-up for ${selected.leadName}? This cannot be undone.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  const { deleted } = crm.deleteActivities([selected.id]);
+                  crm.pushToast(
+                    deleted ? 'Follow-up deleted' : 'Could not delete follow-up',
+                    deleted ? 'ok' : 'err',
+                  );
+                  if (deleted) onClose();
+                }}
+              >
+                <Icon name="xcircle" size={16} />
               </button>
             ) : null}
             <button type="button" className="icon-btn" title="Close" aria-label="Close" onClick={onClose}>
@@ -197,14 +385,71 @@ export function FollowUpDetailModal({
             <button type="button" className="fu-tab" onClick={() => setPanelMode('view')}>
               ← Back
             </button>
-            <button type="button" className="fu-tab active">
-              {panelMode === 'update' ? 'Follow-up update' : panelMode === 'deal' ? 'Mark as Deal' : 'Edit follow-up'}
+              <button type="button" className="fu-tab active">
+              {panelMode === 'update'
+                ? 'Follow-up update'
+                : panelMode === 'deal'
+                  ? 'Mark as Deal'
+                  : panelMode === 'whatsapp'
+                    ? 'WhatsApp'
+                    : 'Edit follow-up'}
             </button>
           </div>
         ) : null}
 
         <div className="detail-popup-body">
-          {panelMode === 'edit' ? (
+          {panelMode === 'whatsapp' ? (
+            <div className="fu-update-form">
+              <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.82rem' }}>
+                {whatsappChannelForWing(selected.wing) === 'franchise'
+                  ? 'Franchise WhatsApp (shared Meta number).'
+                  : 'Service WhatsApp (Settings → WhatsApp API → Service).'}{' '}
+                To: <strong style={{ color: 'var(--ink)' }}>{selected.mobile || linkedLead?.mobile || '—'}</strong>
+              </p>
+              {waTemplates.length ? (
+                <label className="field" style={{ marginBottom: 10 }}>
+                  <span>Template</span>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const tpl = waTemplates.find((t) => t.id === e.target.value);
+                      if (!tpl) return;
+                      const name = selected.leadName.split(' ')[0] || selected.leadName;
+                      setWaBody(
+                        tpl.body
+                          .replace(/\{\{\s*name\s*\}\}/gi, name)
+                          .replace(
+                            /\{\{\s*service\s*\}\}/gi,
+                            linkedLead?.serviceRequired ||
+                              franchiseVerticalLabel(linkedLead?.franchiseVertical) ||
+                              wingById(selected.wing).name ||
+                              'enquiry',
+                          )
+                          .replace(/\{\{\s*branch\s*\}\}/gi, selected.branch || linkedLead?.city || 'our team'),
+                      );
+                    }}
+                  >
+                    <option value="">Choose a message template…</option>
+                    {waTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="field" style={{ marginBottom: 10 }}>
+                <span>Message *</span>
+                <textarea
+                  rows={5}
+                  value={waBody}
+                  onChange={(e) => setWaBody(e.target.value)}
+                  placeholder="Hi … following up on your enquiry…"
+                  autoFocus
+                />
+              </label>
+            </div>
+          ) : panelMode === 'edit' ? (
             <ScheduleFollowUpForm
               key={`fu-edit-${selected.id}`}
               formId="fu-popup-edit-form"
@@ -227,17 +472,8 @@ export function FollowUpDetailModal({
                 />
               </label>
               <label className="field" style={{ marginBottom: 10 }}>
-                <span>Stage *</span>
-                <select
-                  value={dealForm.stage}
-                  onChange={(e) => setDealForm((f) => ({ ...f, stage: e.target.value as DealStage }))}
-                >
-                  {DEAL_STAGES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <span>Stage (from follow-up)</span>
+                <input value={dealForm.stage} readOnly />
               </label>
               <label className="field" style={{ marginBottom: 10 }}>
                 <span>Product / service / model</span>
@@ -351,8 +587,22 @@ export function FollowUpDetailModal({
             <>
               <div className="meta-stats" style={{ marginBottom: 12 }}>
                 <div>
-                  <span>Lead stage</span>
-                  <strong>{selected.leadStage || '—'}</strong>
+                  <span>Lead status</span>
+                  <strong>
+                    <select
+                      className="inline-select"
+                      value={currentLeadStatus}
+                      aria-label="Lead status"
+                      onChange={(e) => changeLeadStatus(e.target.value as LeadStatus)}
+                      style={{ marginTop: 4, maxWidth: '100%' }}
+                    >
+                      {LEAD_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </strong>
                 </div>
                 <div>
                   <span>Follow-up type</span>
@@ -367,6 +617,41 @@ export function FollowUpDetailModal({
                   <strong>{selected.owner}</strong>
                 </div>
               </div>
+
+              {pendingLost ? (
+                <div className="fu-update-form" style={{ marginBottom: 12 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    Select a lost reason to close this lead.
+                  </p>
+                  <label className="field" style={{ marginBottom: 8 }}>
+                    <span>Lost reason *</span>
+                    <select
+                      value={lostReason}
+                      onChange={(e) => setLostReason(e.target.value as LostReason | '')}
+                      autoFocus
+                    >
+                      <option value="">Select reason…</option>
+                      {LOST_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field" style={{ marginBottom: 8 }}>
+                    <span>Note (optional)</span>
+                    <input value={lostNote} onChange={(e) => setLostNote(e.target.value)} placeholder="Extra context…" />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn-ghost" onClick={() => setPendingLost(false)}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={confirmLostFromPanel} disabled={!lostReason}>
+                      Mark Lost
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {selected.branch ? (
                 <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: '0.82rem' }}>
@@ -404,7 +689,22 @@ export function FollowUpDetailModal({
         </div>
 
         <div className="detail-popup-actions">
-          {panelMode === 'edit' ? (
+          {panelMode === 'whatsapp' ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPanelMode('view')}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                disabled={waSending}
+                onClick={() => void sendWhatsApp()}
+              >
+                {waSending ? 'Sending…' : 'Send WhatsApp'}
+              </button>
+            </div>
+          ) : panelMode === 'edit' ? (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPanelMode('view')}>
                 Cancel
@@ -452,6 +752,25 @@ export function FollowUpDetailModal({
                   <Icon name="plus" size={15} /> Update
                 </button>
               </div>
+              {selected.mobile || linkedLead?.mobile ? (
+                <button
+                  type="button"
+                  className="btn lm-wa"
+                  style={{ width: '100%', marginBottom: 8 }}
+                  onClick={() => {
+                    setWaBody(
+                      defaultWhatsAppBody(
+                        selected.leadName,
+                        selected.wing,
+                        linkedLead?.serviceRequired,
+                      ),
+                    );
+                    setPanelMode('whatsapp');
+                  }}
+                >
+                  <Icon name="whatsapp" size={15} /> WhatsApp follow-up
+                </button>
+              ) : null}
               {selected.dealId ? (
                 <div className="status Qualified" style={{ justifyContent: 'center', padding: '8px', marginBottom: 8 }}>
                   Linked deal {selected.dealId}

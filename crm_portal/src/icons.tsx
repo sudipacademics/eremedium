@@ -31,7 +31,23 @@ export type IconName =
   | 'users'
   | 'filter'
   | 'edit'
-  | 'whatsapp';
+  | 'whatsapp'
+  | 'sparkle'
+  | 'badge'
+  | 'file'
+  | 'handshake'
+  | 'trophy'
+  | 'alarm'
+  | 'funnel'
+  | 'layers'
+  | 'refresh'
+  | 'xcircle'
+  | 'download'
+  | 'bolt'
+  | 'send'
+  | 'timer'
+  | 'smile'
+  | 'paperclip';
 
 const paths: Record<IconName, ReactElement> = {
   dashboard: (
@@ -188,6 +204,103 @@ const paths: Record<IconName, ReactElement> = {
       <path d="M9.2 9.8c.3-.6.5-.6.8-.6h.6c.2 0 .4 0 .5.4l.7 1.7c.1.3 0 .5-.2.7l-.4.4a5.8 5.8 0 0 0 2.5 2.5l.4-.4c.2-.2.4-.3.7-.2l1.7.7c.3.1.4.3.4.5v.6c0 .3 0 .5-.6.8a6.5 6.5 0 0 1-3-.6 8 8 0 0 1-3.4-3.4 6.5 6.5 0 0 1-.6-3z" />
     </>
   ),
+  sparkle: (
+    <>
+      <path d="M12 3l1.2 4.2L17.5 8.5 13.2 9.8 12 14l-1.2-4.2L6.5 8.5l4.3-1.3L12 3z" />
+      <path d="M18.5 14l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3z" />
+      <path d="M5 15l.5 1.6L7 17l-1.5.4L5 19l-.5-1.6L3 17l1.5-.4L5 15z" />
+    </>
+  ),
+  badge: (
+    <>
+      <circle cx="12" cy="10" r="6" />
+      <path d="M9 14.5 8 21l4-2 4 2-1-6.5" />
+      <path d="M9.5 10l1.8 1.8L15 8.5" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6z" />
+      <path d="M14 3v6h6M9 13h6M9 17h4" />
+    </>
+  ),
+  handshake: (
+    <>
+      <path d="M4 14l3.5-3.5a2 2 0 0 1 2.8 0L12 12" />
+      <path d="M20 14l-3.5-3.5a2 2 0 0 0-2.8 0L12 12" />
+      <path d="M8 16.5 10 18a2 2 0 0 0 2.8 0l.7-.7" />
+      <path d="M16 16.5 14 18a2 2 0 0 1-1.4.6" />
+      <path d="M3 11.5 5.5 9a2 2 0 0 1 2.5-.2L9.5 10" />
+      <path d="M21 11.5 18.5 9a2 2 0 0 0-2.5-.2L14.5 10" />
+    </>
+  ),
+  trophy: (
+    <>
+      <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z" />
+      <path d="M7 6H5a2 2 0 0 0 0 4h2M17 6h2a2 2 0 0 1 0 4h-2" />
+    </>
+  ),
+  alarm: (
+    <>
+      <circle cx="12" cy="13" r="7" />
+      <path d="M12 10v3.5l2 1.5M5.5 5.5 3 8M18.5 5.5 21 8" />
+    </>
+  ),
+  funnel: (
+    <>
+      <path d="M4 5h16l-6 7.5V19l-4 2v-8.5L4 5z" />
+    </>
+  ),
+  layers: (
+    <>
+      <path d="M12 3 3 8l9 5 9-5-9-5z" />
+      <path d="M3 12l9 5 9-5" />
+      <path d="M3 16l9 5 9-5" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M21 12a9 9 0 1 1-2.6-6.3" />
+      <path d="M21 3v6h-6" />
+    </>
+  ),
+  xcircle: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M5 21h14" />
+    </>
+  ),
+  bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />,
+  send: (
+    <>
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+    </>
+  ),
+  timer: (
+    <>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 1.5M10 2h4" />
+    </>
+  ),
+  smile: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 10h.01M15.5 10h.01M8.2 14.2a4.2 4.2 0 0 0 7.6 0" />
+    </>
+  ),
+  paperclip: (
+    <>
+      <path d="M21.4 11.6 12.1 20.9a5.2 5.2 0 0 1-7.4-7.4l9.9-9.9a3.4 3.4 0 0 1 4.8 4.8l-9.9 9.9a1.6 1.6 0 1 1-2.3-2.3l8.5-8.5" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 18, className }: { name: IconName; size?: number; className?: string }) {
@@ -210,17 +323,3 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
   );
 }
 
-export function LogoMark() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 3l7.5 4.3v9.4L12 21l-7.5-4.3V7.3L12 3z" fill="url(#crmg)" />
-      <path d="M12 8.2l3.8 2.2v4.4L12 17l-3.8-2.2v-4.4L12 8.2z" fill="#fff" opacity="0.92" />
-      <defs>
-        <linearGradient id="crmg" x1="4" y1="3" x2="20" y2="21">
-          <stop stopColor="#3b82f6" />
-          <stop offset="1" stopColor="#1d4ed8" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}

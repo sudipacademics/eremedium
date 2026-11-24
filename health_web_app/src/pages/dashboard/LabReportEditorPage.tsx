@@ -1362,6 +1362,8 @@ export function LabReportEditorPage() {
   const commentEditorRef = useRef<CommentRichEditorHandle | null>(null);
 
   const canAuthorize = hasAnyRole(user?.roles || [], [
+    ROLES.LAB_MANAGER,
+    ROLES.QC_MANAGER,
     ROLES.PATHOLOGIST,
     ROLES.ADMIN,
     ROLES.SYSTEM_MANAGER,

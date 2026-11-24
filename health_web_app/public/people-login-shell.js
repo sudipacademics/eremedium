@@ -4,11 +4,14 @@
   window.__peopleLoginShell = true;
 
   var LOGO = '/brand/smilecure-lifestyle.png?v=12';
-  var ICON = '/brand/smilecure-icon.png?v=5';
+  var ICON = '/brand/smilecure-icon.png?v=6';
   var AES_LOGO = '/aesthetic-logo.png?v=2';
   var AES_ICON = '/aesthetic-icon.png?v=1';
+  var LAB_LOGO = '/brand/labtech-smilecure-logo.png?v=1';
+  var LAB_ICON = '/brand/smilecure-icon.png?v=6';
   var PEOPLE_NAME = 'People Management - SLPL';
   var AES_NAME = 'Remedium Aesthetic';
+  var LAB_NAME = 'Lab Tech - Smilecure';
 
   var HOSTS = {
     'people.e-remedium.in': {
@@ -48,6 +51,20 @@
       brandSub: 'Clinic console',
       foot: 'Access is managed by HR in People HRMS → Portal Access → Aesthetic Backend.',
       theme: '#0f766e',
+    },
+    'labtech.e-remedium.in': {
+      kind: 'labtech',
+      title: LAB_NAME,
+      kicker: LAB_NAME,
+      subtitle: 'Sign in with your lab email and the password issued by your administrator.',
+      brand: true,
+      favicon: true,
+      logo: LAB_LOGO,
+      icon: LAB_ICON,
+      brandAlt: 'Smilecure',
+      brandSub: LAB_NAME,
+      foot: 'Access is managed by HR in People HRMS → Portal Access → Lab Technician.',
+      theme: '#0b3a3b',
     },
   };
 
@@ -126,7 +143,7 @@
         (m.brandSub || PEOPLE_NAME) +
         '</p>';
     } else {
-      var mark = m.kind === 'reach' ? 'RP' : 'CR';
+      var mark = m.kind === 'reach' ? 'RP' : m.kind === 'labtech' ? 'LT' : 'CR';
       brand.innerHTML =
         '<div class="pls-brand-mark" aria-hidden="true">' +
         mark +
@@ -197,12 +214,56 @@
       '<span class="pls-hrms-label">' + PEOPLE_NAME + '</span>';
   }
 
+  function paintLabSidebar() {
+    var m = meta();
+    if (!m || m.kind !== 'labtech') return;
+    var link = document.querySelector('.layout-labtech a.sidebar-brand, .layout-labtech a.brand');
+    if (!link) return;
+    var logo = link.querySelector('img.pls-lt-logo');
+    var label = (link.querySelector('.pls-lt-name') || {}).textContent || '';
+    if (logo && label === LAB_NAME && link.getAttribute('data-pls-logo') === '1') return;
+    link.setAttribute('data-pls-logo', '1');
+    link.classList.add('pls-lt-brand');
+    link.innerHTML =
+      '<img class="pls-lt-logo" src="' +
+      (m.logo || LAB_LOGO) +
+      '" alt="Smilecure" />' +
+      '<span class="pls-lt-name">' +
+      LAB_NAME +
+      '</span>';
+  }
+
+  function paintDedicatedCard(m) {
+    var card = document.querySelector('.spl-card');
+    if (!card || !m || !m.brand) return;
+    var brand = card.querySelector('.spl-brand');
+    if (brand && !brand.querySelector('img.pls-logo')) {
+      brand.setAttribute('data-pls-logo', '1');
+      brand.className = 'spl-brand pls-brand-logo';
+      brand.innerHTML =
+        '<div class="pls-logo-wrap">' +
+        '<img class="pls-logo" src="' +
+        (m.logo || LAB_LOGO) +
+        '" alt="' +
+        (m.brandAlt || 'Smilecure') +
+        '" />' +
+        '</div>' +
+        '<p class="pls-brand-sub">' +
+        (m.brandSub || m.title) +
+        '</p>';
+    }
+    var kicker = card.querySelector('.spl-kicker');
+    if (kicker) kicker.hidden = true;
+    var muted = card.querySelector('.spl-muted');
+    if (muted && m.subtitle) muted.textContent = m.subtitle;
+  }
   function paint() {
     var m = meta();
     applyFavicon();
     paintSidebarBrand();
+    paintLabSidebar();
 
-    if (m && (m.kind === 'people' || m.kind === 'aesthetics')) {
+    if (m && (m.kind === 'people' || m.kind === 'aesthetics' || m.kind === 'labtech')) {
       var wantTitle = isAuthPath() ? m.title + ' · Sign in' : m.title;
       if (document.title !== wantTitle) document.title = wantTitle;
     }
@@ -212,6 +273,7 @@
     document.documentElement.classList.toggle('pls-people', on && m && m.kind === 'people');
     document.documentElement.classList.toggle('pls-reach', on && m && m.kind === 'reach');
     document.documentElement.classList.toggle('pls-aesthetics', on && m && m.kind === 'aesthetics');
+    document.documentElement.classList.toggle('pls-labtech', on && m && m.kind === 'labtech');
     if (!on) return;
 
     var kicker = document.querySelector('.auth-kicker');
@@ -229,6 +291,7 @@
     var panel = document.querySelector('.auth-panel');
     ensureBrand(panel, m);
     ensureFoot(panel, m);
+    paintDedicatedCard(m);
 
     /* Staff-only: hide patient Google / OTP chrome that the shared LoginPage still paints. */
     document.querySelectorAll(
@@ -270,7 +333,17 @@
   setInterval(function () {
     var want = !!(meta() && isAuthPath());
     if (document.documentElement.classList.contains('pls-auth') !== want) paint();
-    else paintSidebarBrand();
+    else {
+      paintSidebarBrand();
+      paintLabSidebar();
+      var m = meta();
+      if (m && m.kind === 'labtech') {
+        applyFavicon();
+        var wantTitle = isAuthPath() ? m.title + ' · Sign in' : m.title;
+        if (document.title !== wantTitle) document.title = wantTitle;
+        if (want) paintDedicatedCard(m);
+      }
+    }
   }, 800);
   applyFavicon();
   paint();

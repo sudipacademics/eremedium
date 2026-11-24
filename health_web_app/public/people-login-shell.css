@@ -196,6 +196,20 @@ html.pls-auth.pls-reach {
   --pls-teal: #0d9488;
 }
 
+/* Lab Technician — same Care / Aesthetic backend login background + centred card */
+html.pls-auth.pls-labtech {
+  --pls-bg: #0b3a3b;
+  --pls-teal: #17a37a;
+}
+
+html.pls-auth.pls-labtech body,
+html.pls-auth.pls-labtech .layout,
+html.pls-auth.pls-labtech .layout-public {
+  background:
+    radial-gradient(circle at 20% 10%, #17a37a33, transparent 40%),
+    linear-gradient(135deg, #0b3a3b, #0e5a52) !important;
+}
+
 /* Aesthetic clinic console login */
 html.pls-auth.pls-aesthetics {
   --pls-bg: #0f3d3a;
@@ -205,6 +219,41 @@ html.pls-auth.pls-aesthetics {
 
 html.pls-auth.pls-aesthetics .pls-logo {
   max-width: 280px;
+}
+
+html.pls-auth.pls-labtech .pls-logo {
+  max-width: 240px;
+  background: #fff;
+}
+
+html.pls-labtech .auth-visual,
+html.pls-auth.pls-labtech .auth-visual {
+  display: none !important;
+}
+
+.layout-labtech a.sidebar-brand.pls-lt-brand {
+  display: grid !important;
+  gap: 8px;
+  padding: 4px 8px 14px !important;
+  text-decoration: none;
+}
+
+.layout-labtech .pls-lt-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.layout-labtech .pls-lt-name {
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
 }
 
 html.pls-auth.pls-aesthetics .auth-modes,

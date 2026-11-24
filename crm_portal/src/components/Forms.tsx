@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AESTHETIC_BRANCHES,
   CARE_BRANCHES,
+  DEAL_STAGES,
   FOLLOW_UP_TYPES,
   FRANCHISE_UNITS,
+  FRANCHISE_VERTICALS,
   LEAD_SOURCES,
   LEAD_STATUSES,
   WINGS,
@@ -13,11 +16,341 @@ import {
   nextId,
   type CrmActivity,
   type CrmLead,
+  type FranchiseVerticalId,
+  type DealStage,
   type FollowUpType,
   type LeadSource,
   type LeadStatus,
   type WingId,
 } from '../data';
+import { leadMatchesModule, leadModulePath, parseModuleParams, wingIdForModule } from '../crmModules';
+import { DISTRICTS_BY_STATE, INDIA_STATES, subdivisionsForDistrict } from '../indiaGeo';
+
+export type FranchiseModel = 'FOFO' | 'FOCO' | 'Other' | '';
+export type FranchiseVertical = FranchiseVerticalId;
+
+function FranchiseVerticalSelect({
+  value,
+  onChange,
+  disabled,
+  required = true,
+}: {
+  value: FranchiseVertical;
+  onChange: (e: { target: { value: string } }) => void;
+  disabled?: boolean;
+  required?: boolean;
+}) {
+  return (
+    <select value={value} onChange={onChange} required={required} disabled={disabled}>
+      {FRANCHISE_VERTICALS.map((v) => (
+        <option key={v.id} value={v.id}>
+          {v.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Business wing options for lead create/edit (service wings + Franchise + NexiLab). */
+function businessWingOptions(opts?: { moduleWing?: WingId | null; allowFranchise?: boolean }) {
+  const allowFranchise = opts?.allowFranchise !== false;
+  if (opts?.moduleWing === 'lab') {
+    return WINGS.filter((w) => w.id === 'lab' || w.id === 'nexilab' || (allowFranchise && w.id === 'franchise'));
+  }
+  if (opts?.moduleWing) {
+    return WINGS.filter((w) => w.id === opts.moduleWing || (allowFranchise && w.id === 'franchise' && opts.moduleWing !== 'nexilab'));
+  }
+  return allowFranchise ? [...WINGS] : WINGS.filter((w) => w.id !== 'franchise');
+}
+
+function verticalFromWing(wing: WingId, fallback: FranchiseVertical = 'lab'): FranchiseVertical {
+  if (wing === 'lab' || wing === 'care' || wing === 'aesthetic') return wing;
+  return fallback;
+}
+
+export type FranchiseFormFields = {
+  alternateMobile: string;
+  franchiseVertical: FranchiseVertical;
+  franchiseModel: FranchiseModel;
+  propertyOwnership: string;
+  investmentCapacity: string;
+  timeline: string;
+  owner: string;
+  state: string;
+  district: string;
+  subdivision: string;
+  village: string;
+  pinCode: string;
+  preferredLocation: string;
+  googleMapUrl: string;
+  territory: string;
+};
+
+function FranchiseApplicantFields({
+  form,
+  set,
+  onStateChange,
+  onDistrictChange,
+  ownerDisabled,
+  owners,
+  verticalLocked,
+  hideVertical,
+  entryDate,
+  onEntryDate,
+  source,
+  onSource,
+  name,
+  onName,
+  mobile,
+  onMobile,
+  email,
+  onEmail,
+  includeIdentity = true,
+}: {
+  form: FranchiseFormFields;
+  set: (key: keyof FranchiseFormFields) => (e: { target: { value: string } }) => void;
+  onStateChange: (state: string) => void;
+  onDistrictChange: (district: string) => void;
+  ownerDisabled?: boolean;
+  owners: string[];
+  verticalLocked?: boolean;
+  /** When true, vertical is shown beside Business wing instead. */
+  hideVertical?: boolean;
+  entryDate?: string;
+  onEntryDate?: (e: { target: { value: string } }) => void;
+  source?: string;
+  onSource?: (e: { target: { value: string } }) => void;
+  name?: string;
+  onName?: (e: { target: { value: string } }) => void;
+  mobile?: string;
+  onMobile?: (e: { target: { value: string } }) => void;
+  email?: string;
+  onEmail?: (e: { target: { value: string } }) => void;
+  /** When false, only business + location fields (edit form already has identity). */
+  includeIdentity?: boolean;
+}) {
+  const districts = form.state ? DISTRICTS_BY_STATE[form.state] || [] : [];
+  const subdivisions = form.district ? subdivisionsForDistrict(form.district) : [];
+  return (
+    <>
+      {includeIdentity ? (
+        <>
+          <Field label="Applicant name *">
+            <input value={name || ''} onChange={onName} required autoFocus placeholder="Applicant name" />
+          </Field>
+          <Field label="Mobile number *">
+            <input value={mobile || ''} onChange={onMobile} required inputMode="tel" placeholder="10-digit mobile" />
+          </Field>
+          <Field label="Alternate mobile">
+            <input
+              value={form.alternateMobile}
+              onChange={set('alternateMobile')}
+              inputMode="tel"
+              placeholder="Optional 10-digit"
+            />
+          </Field>
+          <Field label="Email">
+            <input type="email" value={email || ''} onChange={onEmail} placeholder="email@example.com" />
+          </Field>
+          <Field label="Lead source *">
+            <select value={source || ''} onChange={onSource} required>
+              {LEAD_SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {!hideVertical ? (
+            <Field label="Which franchise *">
+              <FranchiseVerticalSelect
+                value={form.franchiseVertical}
+                onChange={set('franchiseVertical')}
+                disabled={verticalLocked}
+              />
+            </Field>
+          ) : null}
+          <Field label="Franchise model *">
+            <select value={form.franchiseModel} onChange={set('franchiseModel')} required>
+              <option value="">Select model</option>
+              <option value="FOFO">FOFO</option>
+              <option value="FOCO">FOCO</option>
+              <option value="Other">Other</option>
+            </select>
+          </Field>
+          <Field label="Property ownership">
+            <select value={form.propertyOwnership} onChange={set('propertyOwnership')}>
+              <option value="">Select</option>
+              <option value="own_shop">Own shop</option>
+              <option value="rental_shop">Rental shop</option>
+            </select>
+          </Field>
+          <Field label="Investment capacity">
+            <input
+              value={form.investmentCapacity}
+              onChange={set('investmentCapacity')}
+              placeholder="e.g. 2,00,000"
+            />
+          </Field>
+          <Field label="Timeline">
+            <select value={form.timeline} onChange={set('timeline')}>
+              <option value="">Select</option>
+              <option value="7_days">7 days</option>
+              <option value="15_days">15 days</option>
+              <option value="30_days">30 days</option>
+              <option value="6_month">6 months</option>
+            </select>
+          </Field>
+          <Field label="Lead owner *">
+            <input
+              list="franchise-lead-owners"
+              value={form.owner}
+              onChange={set('owner')}
+              required
+              disabled={ownerDisabled}
+              title={ownerDisabled ? 'Auto-assigned to you — managers can transfer later' : undefined}
+            />
+            <datalist id="franchise-lead-owners">
+              {owners.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          </Field>
+        </>
+      ) : (
+        <>
+          {!hideVertical ? (
+            <Field label="Which franchise *">
+              <FranchiseVerticalSelect
+                value={form.franchiseVertical}
+                onChange={set('franchiseVertical')}
+                disabled={verticalLocked}
+              />
+            </Field>
+          ) : null}
+          <Field label="Franchise model *">
+            <select value={form.franchiseModel} onChange={set('franchiseModel')} required>
+              <option value="">Select model</option>
+              <option value="FOFO">FOFO</option>
+              <option value="FOCO">FOCO</option>
+              <option value="Other">Other</option>
+            </select>
+          </Field>
+          <Field label="Property ownership">
+            <select value={form.propertyOwnership} onChange={set('propertyOwnership')}>
+              <option value="">Select</option>
+              <option value="own_shop">Own shop</option>
+              <option value="rental_shop">Rental shop</option>
+            </select>
+          </Field>
+          <Field label="Investment capacity">
+            <input
+              value={form.investmentCapacity}
+              onChange={set('investmentCapacity')}
+              placeholder="e.g. 2,00,000"
+            />
+          </Field>
+          <Field label="Timeline">
+            <select value={form.timeline} onChange={set('timeline')}>
+              <option value="">Select</option>
+              <option value="7_days">7 days</option>
+              <option value="15_days">15 days</option>
+              <option value="30_days">30 days</option>
+              <option value="6_month">6 months</option>
+            </select>
+          </Field>
+          <Field label="Lead owner *">
+            <input
+              list="franchise-lead-owners-edit"
+              value={form.owner}
+              onChange={set('owner')}
+              required
+              disabled={ownerDisabled}
+            />
+            <datalist id="franchise-lead-owners-edit">
+              {owners.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          </Field>
+        </>
+      )}
+      <Field label="State *">
+        <select value={form.state} onChange={(e) => onStateChange(e.target.value)} required>
+          <option value="">Select state</option>
+          {INDIA_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="District *">
+        <select
+          value={form.district}
+          onChange={(e) => onDistrictChange(e.target.value)}
+          required
+          disabled={!form.state}
+        >
+          <option value="">{form.state ? 'Select district' : 'Select state first'}</option>
+          {districts.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Subdivision">
+        <input
+          list={`subdiv-${form.district || 'none'}`}
+          value={form.subdivision}
+          onChange={set('subdivision')}
+          placeholder="Select or type subdivision"
+          disabled={!form.district}
+        />
+        <datalist id={`subdiv-${form.district || 'none'}`}>
+          {subdivisions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </Field>
+      <Field label="City / Village">
+        <input value={form.village} onChange={set('village')} placeholder="City or village" />
+      </Field>
+      <Field label="PIN code">
+        <input
+          value={form.pinCode}
+          onChange={set('pinCode')}
+          inputMode="numeric"
+          maxLength={6}
+          pattern="\d{6}"
+          placeholder="6 digits"
+        />
+      </Field>
+      {includeIdentity && entryDate != null && onEntryDate ? (
+        <Field label="Entry date *">
+          <input type="date" value={entryDate} onChange={onEntryDate} required />
+        </Field>
+      ) : null}
+      <Field label="Preferred location *" span={2}>
+        <textarea
+          rows={2}
+          value={form.preferredLocation}
+          onChange={set('preferredLocation')}
+          required
+          placeholder="Full address / preferred site"
+        />
+      </Field>
+      <Field label="Google Map location" span={2}>
+        <input
+          value={form.googleMapUrl}
+          onChange={set('googleMapUrl')}
+          placeholder="Optional maps URL or pin link"
+        />
+      </Field>
+    </>
+  );
+}
 import {
   assignCrmLeadToReach,
   createAestheticBooking,
@@ -31,11 +364,13 @@ import {
   listCarePhysios,
   listCrmPortalAssignees,
   listCrmReachReps,
+  sendCrmWhatsApp,
   syncCrmLeadStatusToReach,
   type CareDoctor,
   type ClinicBranch,
   type ReachRep,
 } from '../crmApi';
+import { loadMessageTemplates } from '../settingsData';
 import { useCrm } from '../store';
 import { Field, Modal } from './ui';
 
@@ -49,18 +384,90 @@ function nextSlot() {
   return d.toTimeString().slice(0, 5);
 }
 
-export function AddLeadModal({ onClose }: { onClose: () => void }) {
+function todayInputDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Parse CSV / form entry dates → ISO. Accepts YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY. */
+export function parseEntryDate(raw: string): string | null {
+  const s = (raw || '').trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(`${s.slice(0, 10)}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 12, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+export function AddLeadModal({
+  onClose,
+  defaults,
+}: {
+  onClose: () => void;
+  defaults?: Partial<{
+    name: string;
+    mobile: string;
+    email: string;
+    wing: WingId;
+    city: string;
+    notes: string;
+  }>;
+}) {
   const crm = useCrm();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const moduleFromRoute = useMemo(() => {
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'leads' || parts[0] === 'activities') {
+      return parseModuleParams(parts[1], parts[2]);
+    }
+    return null;
+  }, [location.pathname]);
+  const defaultWing =
+    defaults?.wing ||
+    (moduleFromRoute
+      ? wingIdForModule(moduleFromRoute.domain, moduleFromRoute.wing)
+      : ('aesthetic' as WingId));
+
+  const owners = useMemo(() => {
+    const set = new Set<string>([crm.userName, ...crm.leads.map((l) => l.owner)].filter(Boolean));
+    return Array.from(set);
+  }, [crm.leads, crm.userName]);
+
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    name: '',
-    mobile: '',
-    email: '',
-    wing: 'aesthetic' as WingId,
+    name: defaults?.name || '',
+    mobile: defaults?.mobile || '',
+    email: defaults?.email || '',
+    wing: defaultWing,
     source: 'Telecaller' as LeadSource,
-    city: '',
-    notes: '',
-    franchiseModel: '' as '' | 'FOFO' | 'FOCO',
+    city: defaults?.city || '',
+    notes: defaults?.notes || '',
+    entryDate: todayInputDate(),
+    franchiseModel: '' as FranchiseModel,
+    franchiseVertical: (moduleFromRoute?.domain === 'franchise' &&
+    moduleFromRoute.wing !== 'nexilab'
+      ? moduleFromRoute.wing
+      : 'lab') as FranchiseVertical,
+    propertyOwnership: '',
+    investmentCapacity: '',
+    timeline: '',
+    alternateMobile: '',
+    owner: crm.userName,
+    state: 'West Bengal',
+    district: '',
+    subdivision: '',
+    village: '',
+    pinCode: '',
+    preferredLocation: '',
+    googleMapUrl: '',
     territory: '',
     pushRfms: true,
   });
@@ -76,6 +483,18 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
       setForm((f) => ({ ...f, [key]: value }));
     };
 
+  const onFranchiseState = (state: string) => {
+    setForm((f) => ({ ...f, state, district: '', subdivision: '', territory: state }));
+  };
+  const onFranchiseDistrict = (district: string) => {
+    setForm((f) => ({
+      ...f,
+      district,
+      subdivision: '',
+      territory: [f.state, district].filter(Boolean).join(' · '),
+    }));
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const mobile = form.mobile.replace(/\D/g, '').slice(-10);
@@ -83,11 +502,44 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
       crm.pushToast('Enter a valid 10-digit mobile number', 'err');
       return;
     }
+    const alt = form.alternateMobile.replace(/\D/g, '').slice(-10);
+    if (form.alternateMobile.trim() && !/^\d{10}$/.test(alt)) {
+      crm.pushToast('Alternate mobile must be 10 digits', 'err');
+      return;
+    }
+    if (!form.source) {
+      crm.pushToast('Lead source is mandatory', 'err');
+      return;
+    }
+    const createdAt = parseEntryDate(form.entryDate);
+    if (!createdAt) {
+      crm.pushToast('Entry date is required', 'err');
+      return;
+    }
+    if (form.wing === 'franchise') {
+      if (!form.franchiseModel || !form.franchiseVertical) {
+        crm.pushToast('Which franchise and franchise model are required', 'err');
+        return;
+      }
+      if (!form.state || !form.district || !form.preferredLocation.trim()) {
+        crm.pushToast('State, district and preferred location are required', 'err');
+        return;
+      }
+      if (form.pinCode.trim() && !/^\d{6}$/.test(form.pinCode.trim())) {
+        crm.pushToast('PIN code must be 6 digits', 'err');
+        return;
+      }
+    }
+    const territory =
+      form.wing === 'franchise'
+        ? [form.state, form.district, form.subdivision, form.village].filter(Boolean).join(' · ') ||
+          form.preferredLocation.trim()
+        : form.city.trim();
     setBusy(true);
     let rfmsLeadId = '';
     if (form.wing === 'franchise' && form.pushRfms) {
-      if (!form.email || !form.franchiseModel || !form.territory.trim()) {
-        crm.pushToast('Franchise leads need email, FOFO/FOCO and territory for FFMS/RFMS', 'err');
+      if (!form.email.trim()) {
+        crm.pushToast('Email is required to push to FFMS/RFMS', 'err');
         setBusy(false);
         return;
       }
@@ -96,9 +548,11 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
           name: form.name.trim(),
           email: form.email.trim(),
           mobile,
-          franchise_model: form.franchiseModel,
-          territory_query: form.territory.trim(),
-          notes: form.notes.trim() || 'Added by Smilecure CRM telecaller',
+          franchise_model: form.franchiseModel === 'Other' ? 'FOFO' : form.franchiseModel || 'FOFO',
+          territory_query: territory,
+          notes:
+            form.notes.trim() ||
+            `CRM franchise · ${form.franchiseVertical} · ${form.franchiseModel} · ${form.preferredLocation.trim()}`,
         });
         rfmsLeadId = res.leadId;
         crm.pushToast(res.message);
@@ -108,6 +562,7 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
         return;
       }
     }
+    const owner = form.owner.trim() || crm.userName;
     const lead = crm.addLead({
       name: form.name.trim(),
       mobile,
@@ -115,12 +570,37 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
       wing: form.wing,
       source: form.source,
       status: 'New',
-      owner: crm.userName,
-      city: form.city.trim(),
+      owner,
+      city: form.wing === 'franchise' ? form.village.trim() || form.district : form.city.trim(),
       notes: form.notes.trim(),
-      franchiseModel: form.franchiseModel,
-      territory: form.territory.trim(),
+      franchiseModel: form.wing === 'franchise' ? form.franchiseModel : '',
+      franchiseVertical: form.wing === 'franchise' ? form.franchiseVertical : undefined,
+      propertyOwnership: form.wing === 'franchise' ? form.propertyOwnership.trim() || undefined : undefined,
+      investmentCapacity: form.wing === 'franchise' ? form.investmentCapacity.trim() || undefined : undefined,
+      timeline: form.wing === 'franchise' ? form.timeline.trim() || undefined : undefined,
+      alternateMobile: form.wing === 'franchise' && alt ? alt : undefined,
+      state: form.wing === 'franchise' ? form.state : undefined,
+      district: form.wing === 'franchise' ? form.district : undefined,
+      subdivision: form.wing === 'franchise' ? form.subdivision.trim() : undefined,
+      village: form.wing === 'franchise' ? form.village.trim() : undefined,
+      pinCode: form.wing === 'franchise' ? form.pinCode.trim() : undefined,
+      preferredLocation: form.wing === 'franchise' ? form.preferredLocation.trim() : undefined,
+      googleMapUrl:
+        form.wing === 'franchise'
+          ? (() => {
+              const raw = form.googleMapUrl.trim();
+              if (!raw) return undefined;
+              try {
+                const u = new URL(raw);
+                return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
+              } catch {
+                return undefined;
+              }
+            })()
+          : undefined,
+      territory,
       rfmsLeadId,
+      createdAt,
     });
     if (form.wing === 'franchise') {
       crm.addDeal({
@@ -129,28 +609,36 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
         wing: 'franchise',
         stage: 'Opportunity Created',
         value: form.franchiseModel === 'FOCO' ? 350000 : 550000,
-        owner: crm.userName,
+        owner,
         closeDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       });
       crm.addActivity({
         type: 'Franchise',
         title: `Follow up franchise lead — ${lead.name}`,
         leadName: lead.name,
+        leadId: lead.id,
+        mobile,
         wing: 'franchise',
         dueAt: new Date(Date.now() + 2 * 3600000).toISOString(),
         done: false,
-        owner: crm.userName,
+        owner,
+        leadStage: 'New',
       });
     }
-    if (!rfmsLeadId) crm.pushToast(`Lead ${lead.id} created`);
+    if (!rfmsLeadId) crm.pushToast(`Lead ${lead.id} saved · synced to Leads`);
     setBusy(false);
     onClose();
+    /* Land in the Franchise submodule that matches Which franchise. */
+    navigate(leadModulePath({ wing: form.wing, franchiseVertical: form.franchiseVertical }));
   };
+
+  const isFranchise = form.wing === 'franchise';
 
   return (
     <Modal
-      title="Add Lead"
+      title={isFranchise ? 'Add Franchise Lead' : 'Add Lead'}
       onClose={onClose}
+      size={isFranchise ? 'lg' : 'md'}
       actions={
         <>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
@@ -163,59 +651,142 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
       }
     >
       <form id="add-lead-form" className="form-grid" onSubmit={submit}>
-        <Field label="Full name *">
-          <input value={form.name} onChange={set('name')} required autoFocus placeholder="Lead name" />
-        </Field>
-        <Field label="Mobile *">
-          <input value={form.mobile} onChange={set('mobile')} required inputMode="tel" placeholder="10-digit mobile" />
-        </Field>
-        <Field label="Email">
-          <input type="email" value={form.email} onChange={set('email')} placeholder="email@example.com" />
-        </Field>
-        <Field label="City">
-          <input value={form.city} onChange={set('city')} placeholder="City / locality" />
-        </Field>
-        <Field label="Business wing *">
-          <select value={form.wing} onChange={set('wing')}>
-            {WINGS.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Source">
-          <select value={form.source} onChange={set('source')}>
-            {LEAD_SOURCES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {form.wing === 'franchise' ? (
+        {isFranchise ? (
           <>
-            <Field label="Franchise model *">
-              <select value={form.franchiseModel} onChange={set('franchiseModel')} required>
-                <option value="">Select FOFO / FOCO</option>
-                <option value="FOFO">FOFO</option>
-                <option value="FOCO">FOCO</option>
+            <Field label="Business wing *">
+              <select
+                value={form.wing}
+                disabled={moduleFromRoute?.domain === 'franchise' && moduleFromRoute.wing !== 'nexilab'}
+                title={
+                  moduleFromRoute?.domain === 'franchise' && moduleFromRoute.wing !== 'nexilab'
+                    ? 'Wing locked to Franchise for this module'
+                    : undefined
+                }
+                onChange={(e) => {
+                  const wing = e.target.value as WingId;
+                  setForm((f) => ({
+                    ...f,
+                    wing,
+                    franchiseVertical:
+                      wing === 'franchise'
+                        ? verticalFromWing(f.wing, f.franchiseVertical || 'lab')
+                        : f.franchiseVertical,
+                    franchiseModel: wing === 'franchise' && !f.franchiseModel ? 'FOFO' : f.franchiseModel,
+                  }));
+                }}
+              >
+                {(moduleFromRoute?.domain === 'franchise' && moduleFromRoute.wing !== 'nexilab'
+                  ? WINGS.filter((w) => w.id === 'franchise')
+                  : businessWingOptions({
+                      moduleWing: moduleFromRoute ? wingIdForModule(moduleFromRoute.domain, moduleFromRoute.wing) : null,
+                      allowFranchise: true,
+                    })
+                ).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
               </select>
             </Field>
-            <Field label="Preferred territory *">
-              <input value={form.territory} onChange={set('territory')} required placeholder="e.g. North 24 Parganas" />
+            <Field label="Which franchise *">
+              <FranchiseVerticalSelect
+                value={form.franchiseVertical}
+                onChange={set('franchiseVertical')}
+                disabled={moduleFromRoute?.domain === 'franchise' && moduleFromRoute.wing !== 'nexilab'}
+              />
             </Field>
+            <FranchiseApplicantFields
+              form={form}
+              set={set as (key: keyof FranchiseFormFields) => (e: { target: { value: string } }) => void}
+              onStateChange={onFranchiseState}
+              onDistrictChange={onFranchiseDistrict}
+              owners={owners}
+              ownerDisabled={!crm.isManager}
+              verticalLocked={moduleFromRoute?.domain === 'franchise'}
+              hideVertical
+              entryDate={form.entryDate}
+              onEntryDate={set('entryDate')}
+              source={form.source}
+              onSource={set('source')}
+              name={form.name}
+              onName={set('name')}
+              mobile={form.mobile}
+              onMobile={set('mobile')}
+              email={form.email}
+              onEmail={set('email')}
+            />
             <Field label="Push to FFMS / RFMS" span={2}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
                 <input type="checkbox" checked={form.pushRfms} onChange={set('pushRfms')} />
                 Create lead in franchise admin CRM (FFMS/RFMS)
               </label>
             </Field>
+            <Field label="Notes" span={2}>
+              <textarea rows={2} value={form.notes} onChange={set('notes')} placeholder="Call notes, interest, budget…" />
+            </Field>
           </>
-        ) : null}
-        <Field label="Notes" span={2}>
-          <textarea rows={3} value={form.notes} onChange={set('notes')} placeholder="Call notes, interest, budget…" />
-        </Field>
+        ) : (
+          <>
+            <Field label="Full name *">
+              <input value={form.name} onChange={set('name')} required autoFocus placeholder="Lead name" />
+            </Field>
+            <Field label="Mobile number *">
+              <input value={form.mobile} onChange={set('mobile')} required inputMode="tel" placeholder="10-digit mobile" />
+            </Field>
+            <Field label="Email">
+              <input type="email" value={form.email} onChange={set('email')} placeholder="email@example.com" />
+            </Field>
+            <Field label="City">
+              <input value={form.city} onChange={set('city')} placeholder="City / locality" />
+            </Field>
+            <Field label="Business wing *">
+              <select
+                value={form.wing}
+                disabled={Boolean(moduleFromRoute) && moduleFromRoute?.domain === 'service'}
+                title={moduleFromRoute?.domain === 'service' ? 'Wing locked to current module' : undefined}
+                onChange={(e) => {
+                  const wing = e.target.value as WingId;
+                  setForm((f) => ({
+                    ...f,
+                    wing,
+                    franchiseVertical:
+                      wing === 'franchise'
+                        ? verticalFromWing(f.wing, f.franchiseVertical || 'lab')
+                        : f.franchiseVertical,
+                    franchiseModel: wing === 'franchise' && !f.franchiseModel ? 'FOFO' : f.franchiseModel,
+                  }));
+                }}
+              >
+                {businessWingOptions({
+                  moduleWing:
+                    moduleFromRoute?.domain === 'service'
+                      ? wingIdForModule(moduleFromRoute.domain, moduleFromRoute.wing)
+                      : null,
+                  allowFranchise: true,
+                }).map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Lead source *">
+              <select value={form.source} onChange={set('source')} required>
+                {LEAD_SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Entry date *">
+              <input type="date" value={form.entryDate} onChange={set('entryDate')} required />
+            </Field>
+            <Field label="Notes" span={2}>
+              <textarea rows={3} value={form.notes} onChange={set('notes')} placeholder="Call notes, interest, budget…" />
+            </Field>
+          </>
+        )}
       </form>
     </Modal>
   );
@@ -223,6 +794,7 @@ export function AddLeadModal({ onClose }: { onClose: () => void }) {
 
 export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () => void }) {
   const crm = useCrm();
+  const navigate = useNavigate();
   const owners = useMemo(() => {
     const set = new Set<string>([crm.userName, ...crm.leads.map((l) => l.owner)].filter(Boolean));
     return Array.from(set);
@@ -237,33 +809,34 @@ export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () =>
     city: lead.city || '',
     wing: lead.wing,
     source: lead.source,
-    status: lead.status,
     owner: lead.owner,
     notes: lead.notes || '',
     value: lead.value != null ? String(lead.value) : '',
     nextFollowUp: lead.nextFollowUp ? lead.nextFollowUp.slice(0, 16) : '',
-    franchiseModel: (lead.franchiseModel || '') as '' | 'FOFO' | 'FOCO',
+    franchiseModel: (lead.franchiseModel || '') as FranchiseModel,
+    franchiseVertical: (lead.franchiseVertical || 'lab') as FranchiseVertical,
+    propertyOwnership: lead.propertyOwnership || '',
+    investmentCapacity: lead.investmentCapacity || '',
+    timeline: lead.timeline || '',
+    alternateMobile: lead.alternateMobile || '',
+    state: lead.state || '',
+    district: lead.district || '',
+    subdivision: lead.subdivision || '',
+    village: lead.village || lead.city || '',
+    pinCode: lead.pinCode || '',
+    preferredLocation: lead.preferredLocation || '',
+    googleMapUrl: lead.googleMapUrl || '',
     territory: lead.territory || '',
   });
 
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const quickStatus = (status: LeadStatus) => {
-    crm.updateLead(lead.id, { status }, `Quick status → ${status}`);
-    if (status === 'Won' || status === 'Qualified') {
-      crm.addActivity({
-        type: 'Follow-up',
-        title: `${status}: follow up — ${lead.name}`,
-        leadName: lead.name,
-        wing: lead.wing,
-        dueAt: new Date(Date.now() + 24 * 3600000).toISOString(),
-        done: false,
-        owner: crm.userName,
-      });
-    }
-    crm.pushToast(`${lead.id} marked ${status}`);
-    setForm((f) => ({ ...f, status }));
+  const onFranchiseState = (state: string) => {
+    setForm((f) => ({ ...f, state, district: '', subdivision: '' }));
+  };
+  const onFranchiseDistrict = (district: string) => {
+    setForm((f) => ({ ...f, district, subdivision: '' }));
   };
 
   const submit = (e: FormEvent) => {
@@ -273,45 +846,102 @@ export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () =>
       crm.pushToast('Enter a valid 10-digit mobile number', 'err');
       return;
     }
+    const alt = form.alternateMobile.replace(/\D/g, '').slice(-10);
+    if (form.alternateMobile.trim() && !/^\d{10}$/.test(alt)) {
+      crm.pushToast('Alternate mobile must be 10 digits', 'err');
+      return;
+    }
+    if (form.wing === 'franchise') {
+      if (!form.source || !form.franchiseModel || !form.franchiseVertical) {
+        crm.pushToast('Source, which franchise and franchise model are required', 'err');
+        return;
+      }
+      if (!form.state || !form.district || !form.preferredLocation.trim()) {
+        crm.pushToast('State, district and preferred location are required for Franchise leads', 'err');
+        return;
+      }
+      if (form.pinCode.trim() && !/^\d{6}$/.test(form.pinCode.trim())) {
+        crm.pushToast('PIN code must be 6 digits', 'err');
+        return;
+      }
+    }
     setBusy(true);
+    const territory =
+      form.wing === 'franchise'
+        ? [form.state, form.district, form.subdivision, form.village].filter(Boolean).join(' · ')
+        : form.territory.trim();
     const patch: Partial<CrmLead> = {
       name: form.name.trim(),
       mobile,
       email: form.email.trim(),
-      city: form.city.trim(),
+      city: form.wing === 'franchise' ? form.village.trim() || form.district : form.city.trim(),
       wing: form.wing,
       source: form.source,
-      status: form.status as LeadStatus,
       owner: form.owner.trim() || crm.userName,
       notes: form.notes.trim(),
       value: form.value ? Number(form.value) || undefined : undefined,
       nextFollowUp: form.nextFollowUp ? new Date(form.nextFollowUp).toISOString() : undefined,
       franchiseModel: form.wing === 'franchise' ? form.franchiseModel : '',
-      territory: form.wing === 'franchise' ? form.territory.trim() : '',
+      franchiseVertical: form.wing === 'franchise' ? form.franchiseVertical : undefined,
+      propertyOwnership: form.wing === 'franchise' ? form.propertyOwnership.trim() || undefined : undefined,
+      investmentCapacity: form.wing === 'franchise' ? form.investmentCapacity.trim() || undefined : undefined,
+      timeline: form.wing === 'franchise' ? form.timeline.trim() || undefined : undefined,
+      alternateMobile: form.wing === 'franchise' && alt ? alt : undefined,
+      state: form.wing === 'franchise' ? form.state : undefined,
+      district: form.wing === 'franchise' ? form.district : undefined,
+      subdivision: form.wing === 'franchise' ? form.subdivision.trim() : undefined,
+      village: form.wing === 'franchise' ? form.village.trim() : undefined,
+      pinCode: form.wing === 'franchise' ? form.pinCode.trim() : undefined,
+      preferredLocation: form.wing === 'franchise' ? form.preferredLocation.trim() : undefined,
+      googleMapUrl:
+        form.wing === 'franchise'
+          ? (() => {
+              const raw = form.googleMapUrl.trim();
+              if (!raw) return undefined;
+              try {
+                const u = new URL(raw);
+                return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
+              } catch {
+                return undefined;
+              }
+            })()
+          : undefined,
+      territory: form.wing === 'franchise' ? territory : '',
     };
     crm.updateLead(lead.id, patch, logNote.trim() || undefined);
     if (form.nextFollowUp) {
       crm.addActivity({
         type: 'Follow-up',
         title: `Follow up — ${patch.name}`,
+        leadId: lead.id,
         leadName: patch.name || lead.name,
+        mobile: patch.mobile || lead.mobile,
         wing: patch.wing || lead.wing,
         dueAt: new Date(form.nextFollowUp).toISOString(),
         done: false,
         owner: patch.owner || crm.userName,
+        leadStage: patch.status || lead.status,
       });
     }
-    crm.pushToast(`${lead.id} updated`);
+    crm.pushToast(`${lead.id} updated · synced to Leads`);
     setBusy(false);
     onClose();
+    /* Distribute into Franchise submodule from Which franchise (or Service / NexiLab wing). */
+    navigate(
+      leadModulePath({
+        wing: patch.wing || lead.wing,
+        franchiseVertical: patch.franchiseVertical ?? lead.franchiseVertical,
+      }),
+    );
   };
 
   const history = lead.history || [];
 
   return (
     <Modal
-      title={`Manage lead · ${lead.id}`}
+      title={form.wing === 'franchise' ? `Edit Franchise Lead · ${lead.id}` : `Manage lead · ${lead.id}`}
       onClose={onClose}
+      size={form.wing === 'franchise' ? 'lg' : 'md'}
       actions={
         <>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
@@ -323,33 +953,53 @@ export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () =>
         </>
       }
     >
-      <div className="chip-row" style={{ marginBottom: 4 }}>
-        {LEAD_STATUSES.map((s) => (
-          <button
-            key={s}
-            type="button"
-            className={`chip${form.status === s ? ' active' : ''}`}
-            onClick={() => quickStatus(s)}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: '0.78rem' }}>
+        Status: <strong style={{ color: 'var(--ink)' }}>{lead.status}</strong>
+        {' · '}
+        Change from Follow-up Check → open the lead panel
+      </p>
       <form id="edit-lead-form" className="form-grid" onSubmit={submit}>
-        <Field label="Full name *">
+        <Field label={form.wing === 'franchise' ? 'Applicant name *' : 'Full name *'}>
           <input value={form.name} onChange={set('name')} required />
         </Field>
-        <Field label="Mobile *">
+        <Field label="Mobile number *">
           <input value={form.mobile} onChange={set('mobile')} required inputMode="tel" />
         </Field>
+        {form.wing === 'franchise' ? (
+          <Field label="Alternate mobile">
+            <input value={form.alternateMobile} onChange={set('alternateMobile')} inputMode="tel" placeholder="Optional 10-digit" />
+          </Field>
+        ) : null}
         <Field label="Email">
           <input type="email" value={form.email} onChange={set('email')} />
         </Field>
-        <Field label="City">
-          <input value={form.city} onChange={set('city')} />
-        </Field>
+        {form.wing !== 'franchise' ? (
+          <Field label="City">
+            <input value={form.city} onChange={set('city')} />
+          </Field>
+        ) : null}
         <Field label="Business wing *">
-          <select value={form.wing} onChange={set('wing')}>
+          <select
+            value={form.wing}
+            onChange={(e) => {
+              const wing = e.target.value as WingId;
+              setForm((f) => ({
+                ...f,
+                wing,
+                franchiseVertical:
+                  wing === 'franchise'
+                    ? f.wing === 'franchise'
+                      ? f.franchiseVertical
+                      : verticalFromWing(f.wing, f.franchiseVertical || 'lab')
+                    : f.franchiseVertical,
+                franchiseModel: wing === 'franchise' && !f.franchiseModel ? 'FOFO' : f.franchiseModel,
+                state: wing === 'franchise' ? f.state || 'West Bengal' : f.state,
+                preferredLocation:
+                  wing === 'franchise' && !f.preferredLocation.trim() ? f.city.trim() : f.preferredLocation,
+                village: wing === 'franchise' && !f.village.trim() ? f.city.trim() : f.village,
+              }));
+            }}
+          >
             {WINGS.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -357,8 +1007,13 @@ export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () =>
             ))}
           </select>
         </Field>
-        <Field label="Source">
-          <select value={form.source} onChange={set('source')}>
+        {form.wing === 'franchise' ? (
+          <Field label="Which franchise *">
+            <FranchiseVerticalSelect value={form.franchiseVertical} onChange={set('franchiseVertical')} />
+          </Field>
+        ) : null}
+        <Field label="Lead source *">
+          <select value={form.source} onChange={set('source')} required>
             {LEAD_SOURCES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -367,40 +1022,49 @@ export function EditLeadModal({ lead, onClose }: { lead: CrmLead; onClose: () =>
             {!LEAD_SOURCES.includes(form.source as LeadSource) ? <option value={form.source}>{form.source}</option> : null}
           </select>
         </Field>
-        <Field label="Status *">
-          <select value={form.status} onChange={set('status')}>
-            {LEAD_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Owner *">
-          <input list="crm-owners" value={form.owner} onChange={set('owner')} required />
-          <datalist id="crm-owners">
-            {owners.map((o) => (
-              <option key={o} value={o} />
-            ))}
-          </datalist>
-        </Field>
-        <Field label="Deal value (₹)">
-          <input type="number" min={0} value={form.value} onChange={set('value')} placeholder="Optional" />
-        </Field>
-        <Field label="Next follow-up">
-          <input type="datetime-local" value={form.nextFollowUp} onChange={set('nextFollowUp')} />
-        </Field>
+        {form.wing !== 'franchise' ? (
+          <>
+            <Field label="Owner *">
+              <input
+                list="crm-owners"
+                value={form.owner}
+                onChange={set('owner')}
+                required
+                disabled={!crm.isManager}
+                title={crm.isManager ? undefined : 'Only CRM Managers can change lead ownership — use Transfer Lead'}
+              />
+              <datalist id="crm-owners">
+                {owners.map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Deal value (₹)">
+              <input type="number" min={0} value={form.value} onChange={set('value')} placeholder="Optional" />
+            </Field>
+            <Field label="Next follow-up">
+              <input type="datetime-local" value={form.nextFollowUp} onChange={set('nextFollowUp')} />
+            </Field>
+          </>
+        ) : (
+          <FranchiseApplicantFields
+            form={form}
+            set={set as (key: keyof FranchiseFormFields) => (e: { target: { value: string } }) => void}
+            onStateChange={onFranchiseState}
+            onDistrictChange={onFranchiseDistrict}
+            owners={owners}
+            ownerDisabled={!crm.isManager}
+            includeIdentity={false}
+            hideVertical
+          />
+        )}
         {form.wing === 'franchise' ? (
           <>
-            <Field label="Franchise model">
-              <select value={form.franchiseModel} onChange={set('franchiseModel')}>
-                <option value="">Select</option>
-                <option value="FOFO">FOFO</option>
-                <option value="FOCO">FOCO</option>
-              </select>
+            <Field label="Deal value (₹)">
+              <input type="number" min={0} value={form.value} onChange={set('value')} placeholder="Optional" />
             </Field>
-            <Field label="Territory">
-              <input value={form.territory} onChange={set('territory')} />
+            <Field label="Next follow-up">
+              <input type="datetime-local" value={form.nextFollowUp} onChange={set('nextFollowUp')} />
             </Field>
           </>
         ) : null}
@@ -452,13 +1116,27 @@ export function ScheduleFollowUpForm({
   compact?: boolean;
 }) {
   const crm = useCrm();
+  const location = useLocation();
+  const moduleFromRoute = useMemo(() => {
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'leads' || parts[0] === 'activities') {
+      return parseModuleParams(parts[1], parts[2]);
+    }
+    return null;
+  }, [location.pathname]);
   const editing = Boolean(initial?.id);
+  const defaultFuWing = lockedLead?.wing || initial?.wing || (moduleFromRoute
+    ? wingIdForModule(moduleFromRoute.domain, moduleFromRoute.wing)
+    : 'aesthetic');
   const [form, setForm] = useState({
     leadId: lockedLead?.id || initial?.leadId || '',
     leadName: lockedLead?.name || initial?.leadName || '',
     mobile: lockedLead?.mobile || initial?.mobile || '',
-    wing: (lockedLead?.wing || initial?.wing || 'aesthetic') as WingId,
-    branch: lockedLead?.city || initial?.branch || '',
+    wing: defaultFuWing as WingId,
+    branch:
+      (lockedLead?.wing || initial?.wing) === 'franchise'
+        ? ''
+        : lockedLead?.city || initial?.branch || '',
     type: (initial?.type && FOLLOW_UP_TYPES.includes(initial.type as FollowUpType)
       ? initial.type
       : 'Call') as FollowUpType,
@@ -488,7 +1166,7 @@ export function ScheduleFollowUpForm({
       mobile: lead.mobile,
       wing: lead.wing,
       leadStage: lead.status,
-      branch: lead.city || f.branch,
+      branch: lead.wing === 'franchise' ? '' : lead.city || f.branch,
     }));
   };
 
@@ -499,6 +1177,7 @@ export function ScheduleFollowUpForm({
       return;
     }
     const dueAt = new Date(form.dueAt).toISOString();
+    const franchise = form.wing === 'franchise';
     const payload = {
       type: form.type,
       title: `${form.type} — ${form.leadName.trim()}`,
@@ -506,7 +1185,7 @@ export function ScheduleFollowUpForm({
       leadId: form.leadId || undefined,
       mobile: form.mobile.replace(/\D/g, '').slice(-10) || undefined,
       wing: form.wing,
-      branch: form.branch.trim() || undefined,
+      branch: franchise ? undefined : form.branch.trim() || undefined,
       dueAt,
       done: false,
       owner: form.owner.trim() || crm.userName,
@@ -515,10 +1194,16 @@ export function ScheduleFollowUpForm({
     };
     if (editing && initial) {
       crm.updateActivity(initial.id, payload);
-      crm.pushToast(`Follow-up ${initial.id} updated`);
+      if (form.leadStage) {
+        crm.setLeadStatusFromFollowUp(initial.id, form.leadStage as LeadStatus);
+      }
+      crm.pushToast(`Follow-up ${initial.id} updated · synced to Follow-ups`);
     } else {
       const created = crm.addActivity(payload);
-      crm.pushToast(`Follow-up ${created.id} scheduled`);
+      if (form.leadStage) {
+        crm.setLeadStatusFromFollowUp(created.id, form.leadStage as LeadStatus);
+      }
+      crm.pushToast(`Follow-up ${created.id} scheduled · synced to Follow-ups`);
     }
     if (form.leadId) {
       crm.updateLead(form.leadId, { nextFollowUp: dueAt }, `Follow-up scheduled (${form.type})`);
@@ -531,9 +1216,12 @@ export function ScheduleFollowUpForm({
       ? CARE_BRANCHES
       : form.wing === 'aesthetic'
         ? AESTHETIC_BRANCHES
-        : form.wing === 'franchise'
-          ? ['Bongaon', 'Barasat', 'Hasnabad']
-          : ['Central Hub', 'Barasat', 'Howrah'];
+        : form.wing === 'nexilab'
+          ? ['Central Hub', 'Barasat', 'Howrah']
+          : form.wing === 'lab'
+            ? FRANCHISE_UNITS.map((u) => u.name)
+            : [];
+  const showBranch = form.wing !== 'franchise';
 
   return (
     <form id={formId} className={`form-grid${compact ? ' form-grid-compact' : ''}`} onSubmit={submit}>
@@ -541,11 +1229,15 @@ export function ScheduleFollowUpForm({
         <Field label="Link to lead">
           <select value={form.leadId} onChange={(e) => pickLead(e.target.value)}>
             <option value="">Manual entry</option>
-            {crm.leads.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.id} · {l.name}
-              </option>
-            ))}
+            {crm.leads
+              .filter((l) =>
+                moduleFromRoute ? leadMatchesModule(l, moduleFromRoute.domain, moduleFromRoute.wing) : true,
+              )
+              .map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.id} · {l.name}
+                </option>
+              ))}
           </select>
         </Field>
       ) : null}
@@ -567,7 +1259,17 @@ export function ScheduleFollowUpForm({
             <input value={form.mobile} onChange={set('mobile')} inputMode="tel" placeholder="10-digit mobile" />
           </Field>
           <Field label="Business wing *">
-            <select value={form.wing} onChange={set('wing')}>
+            <select
+              value={form.wing}
+              onChange={(e) => {
+                const wing = e.target.value as WingId;
+                setForm((f) => ({
+                  ...f,
+                  wing,
+                  branch: wing === 'franchise' ? '' : f.branch,
+                }));
+              }}
+            >
               {WINGS.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name}
@@ -577,23 +1279,33 @@ export function ScheduleFollowUpForm({
           </Field>
         </>
       ) : null}
-      <Field label="Branch">
-        <select value={form.branch} onChange={set('branch')}>
-          <option value="">Select branch</option>
-          {branchOptions.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {showBranch ? (
+        <Field label="Branch">
+          <select value={form.branch} onChange={set('branch')}>
+            <option value="">Select branch</option>
+            {branchOptions.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : (
+        <Field label="Territory / area">
+          <input
+            value={lockedLead?.territory || lockedLead?.city || form.branch || '—'}
+            readOnly
+            title="Franchise leads use territory, not clinic branch"
+          />
+        </Field>
+      )}
       <Field label="Date & time *">
         <input type="datetime-local" value={form.dueAt} onChange={set('dueAt')} required autoFocus={Boolean(lockedLead)} />
       </Field>
       <Field label="Assigned to *">
         <input value={form.owner} onChange={set('owner')} required />
       </Field>
-      <Field label="Lead stage">
+      <Field label="Lead status">
         <select value={form.leadStage} onChange={set('leadStage')}>
           {LEAD_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -611,9 +1323,11 @@ export function ScheduleFollowUpForm({
 
 export function ScheduleFollowUpModal({
   initial,
+  lockedLead,
   onClose,
 }: {
   initial?: CrmActivity | null;
+  lockedLead?: CrmLead | null;
   onClose: () => void;
 }) {
   const editing = Boolean(initial?.id);
@@ -632,7 +1346,110 @@ export function ScheduleFollowUpModal({
         </>
       }
     >
-      <ScheduleFollowUpForm initial={initial} onClose={onClose} />
+      <ScheduleFollowUpForm initial={initial} lockedLead={lockedLead} onClose={onClose} />
+    </Modal>
+  );
+}
+
+export function CreateDealModal({
+  lead,
+  onClose,
+}: {
+  lead?: CrmLead | null;
+  onClose: () => void;
+}) {
+  const crm = useCrm();
+  const [form, setForm] = useState({
+    title: lead ? `${lead.name} · opportunity` : '',
+    leadId: lead?.id || '',
+    leadName: lead?.name || '',
+    wing: (lead?.wing || 'aesthetic') as WingId,
+    stage: 'Opportunity Created' as DealStage,
+    value: lead?.value ? String(lead.value) : '',
+    owner: lead?.owner || crm.userName,
+    closeDate: todayInputDate(),
+    product: '',
+  });
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      crm.pushToast('Enter deal title', 'err');
+      return;
+    }
+    const deal = crm.addDeal({
+      title: form.title.trim(),
+      leadId: form.leadId || undefined,
+      leadName: form.leadName.trim() || undefined,
+      wing: form.wing,
+      stage: form.stage,
+      value: Number(form.value) || 0,
+      owner: form.owner.trim() || crm.userName,
+      closeDate: form.closeDate || todayInputDate(),
+      product: form.product.trim() || undefined,
+    });
+    if (form.leadId) {
+      crm.updateLead(form.leadId, {}, `Deal ${deal.id} created`);
+    }
+    crm.pushToast(`Deal ${deal.id} saved · synced to Deals`);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title="Create Deal"
+      onClose={onClose}
+      actions={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" form="wa-create-deal-form" className="btn btn-primary">
+            Save deal
+          </button>
+        </>
+      }
+    >
+      <form id="wa-create-deal-form" className="form-grid" onSubmit={submit}>
+        <Field label="Title *">
+          <input value={form.title} onChange={set('title')} required autoFocus placeholder="Deal title" />
+        </Field>
+        <Field label="Lead">
+          <input value={form.leadName || '—'} readOnly />
+        </Field>
+        <Field label="Wing *">
+          <select value={form.wing} onChange={set('wing')}>
+            {WINGS.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Stage *">
+          <select value={form.stage} onChange={set('stage')}>
+            {DEAL_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Value (₹)">
+          <input type="number" min={0} value={form.value} onChange={set('value')} placeholder="0" />
+        </Field>
+        <Field label="Expected close">
+          <input type="date" value={form.closeDate} onChange={set('closeDate')} />
+        </Field>
+        <Field label="Owner *">
+          <input value={form.owner} onChange={set('owner')} required />
+        </Field>
+        <Field label="Product / package">
+          <input value={form.product} onChange={set('product')} placeholder="Optional" />
+        </Field>
+      </form>
     </Modal>
   );
 }
@@ -866,26 +1683,33 @@ function parseLeadCsv(text: string) {
   const iOwner = idx(['owner', 'assigned_to']);
   const iNotes = idx(['notes', 'remark', 'comments']);
   const iValue = idx(['value', 'deal_value', 'amount']);
-  if (iName < 0 || iMobile < 0) return [];
+  const iEntry = idx(['entry_date', 'entrydate', 'created_at', 'createdat', 'date', 'lead_date']);
+  if (iName < 0 || iMobile < 0 || iEntry < 0) return [];
 
-  return rows.map((cells) => {
-    const statusRaw = iStatus >= 0 ? cells[iStatus] || 'New' : 'New';
-    const status = (LEAD_STATUSES as readonly string[]).includes(statusRaw) ? (statusRaw as (typeof LEAD_STATUSES)[number]) : 'New';
-    const sourceRaw = iSource >= 0 ? cells[iSource] || 'Telecaller' : 'Telecaller';
-    const valueRaw = iValue >= 0 ? Number(String(cells[iValue] || '').replace(/,/g, '')) : undefined;
-    return {
-      name: cells[iName] || '',
-      mobile: cells[iMobile] || '',
-      email: iEmail >= 0 ? cells[iEmail] || '' : '',
-      wing: wingFromCsv(iWing >= 0 ? cells[iWing] || 'lab' : 'lab'),
-      source: sourceRaw,
-      status,
-      city: iCity >= 0 ? cells[iCity] || undefined : undefined,
-      owner: iOwner >= 0 ? cells[iOwner] || undefined : undefined,
-      notes: iNotes >= 0 ? cells[iNotes] || undefined : undefined,
-      value: valueRaw !== undefined && Number.isFinite(valueRaw) ? valueRaw : undefined,
-    };
-  });
+  return rows
+    .map((cells) => {
+      const statusRaw = iStatus >= 0 ? cells[iStatus] || 'New' : 'New';
+      const status = (LEAD_STATUSES as readonly string[]).includes(statusRaw)
+        ? (statusRaw as (typeof LEAD_STATUSES)[number])
+        : 'New';
+      const sourceRaw = iSource >= 0 ? cells[iSource] || 'Telecaller' : 'Telecaller';
+      const valueRaw = iValue >= 0 ? Number(String(cells[iValue] || '').replace(/,/g, '')) : undefined;
+      const createdAt = parseEntryDate(cells[iEntry] || '');
+      return {
+        name: cells[iName] || '',
+        mobile: cells[iMobile] || '',
+        email: iEmail >= 0 ? cells[iEmail] || '' : '',
+        wing: wingFromCsv(iWing >= 0 ? cells[iWing] || 'lab' : 'lab'),
+        source: sourceRaw,
+        status,
+        city: iCity >= 0 ? cells[iCity] || undefined : undefined,
+        owner: iOwner >= 0 ? cells[iOwner] || undefined : undefined,
+        notes: iNotes >= 0 ? cells[iNotes] || undefined : undefined,
+        value: valueRaw !== undefined && Number.isFinite(valueRaw) ? valueRaw : undefined,
+        createdAt: createdAt || undefined,
+      };
+    })
+    .filter((r) => Boolean(r.createdAt));
 }
 
 export function ImportLeadsModal({ onClose }: { onClose: () => void }) {
@@ -906,7 +1730,9 @@ export function ImportLeadsModal({ onClose }: { onClose: () => void }) {
     const text = await file.text();
     const parsed = parseLeadCsv(text);
     if (!parsed.length) {
-      setError('Could not read rows. Use headers: name, mobile, email, wing, source, status, city, owner, notes, value');
+      setError(
+        'Could not read rows. Entry date is required. Use headers: name, mobile, entry_date, email, wing, source, status, city, owner, notes, value',
+      );
       return;
     }
     setRows(parsed);
@@ -923,9 +1749,9 @@ export function ImportLeadsModal({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  const sampleCsv = `name,mobile,email,wing,source,status,city,owner,notes,value
-Riya Sen,9876501234,riya.sen@example.com,aesthetic,Meta Ads,New,Barasat,Snehasish Ganguly,HydraFacial interest,45000
-Amit Pal,9830012345,amit.pal@example.com,lab,Website,Qualified,Kolkata,Priya Sen,Corporate package,18500`;
+  const sampleCsv = `name,mobile,entry_date,email,wing,source,status,city,owner,notes,value
+Riya Sen,9876501234,2026-11-21,riya.sen@example.com,aesthetic,Meta Ads,New,Barasat,Snehasish Ganguly,HydraFacial interest,45000
+Amit Pal,9830012345,21/11/2026,amit.pal@example.com,lab,Website,Qualified,Kolkata,Priya Sen,Corporate package,18500`;
 
   return (
     <Modal
@@ -944,7 +1770,9 @@ Amit Pal,9830012345,amit.pal@example.com,lab,Website,Qualified,Kolkata,Priya Sen
     >
       <form id="import-leads-form" onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
         <p style={{ margin: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>
-          Upload a CSV with columns <code>name, mobile, email, wing, source, status, city, owner, notes, value</code>. Duplicate name + mobile rows are skipped.
+          Upload a CSV with columns{' '}
+          <code>name, mobile, entry_date, email, wing, source, status, city, owner, notes, value</code>.{' '}
+          <strong>entry_date</strong> is required (YYYY-MM-DD or DD/MM/YYYY). Duplicate name + mobile rows are skipped.
         </p>
         <label className="field">
           <span>CSV file *</span>
@@ -964,6 +1792,7 @@ Amit Pal,9830012345,amit.pal@example.com,lab,Website,Qualified,Kolkata,Priya Sen
                 <tr>
                   <th>Name</th>
                   <th>Mobile</th>
+                  <th>Entry date</th>
                   <th>Wing</th>
                   <th>Status</th>
                 </tr>
@@ -973,6 +1802,7 @@ Amit Pal,9830012345,amit.pal@example.com,lab,Website,Qualified,Kolkata,Priya Sen
                   <tr key={`${r.mobile}-${i}`}>
                     <td>{r.name}</td>
                     <td>{r.mobile}</td>
+                    <td>{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '—'}</td>
                     <td>{r.wing}</td>
                     <td>{r.status}</td>
                   </tr>
@@ -1174,9 +2004,27 @@ export function TransferOwnershipModal({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [portalOwners, crm.userName, ownersLoading]);
 
+  const derivedLeadIds = useMemo(() => {
+    const ids = new Set<string>(presetLeadIds || []);
+    for (const aid of presetActivityIds || []) {
+      const a = crm.activities.find((x) => x.id === aid);
+      const lid = a?.leadId?.trim();
+      if (lid) ids.add(lid);
+      else if (a?.leadName) {
+        const hit = crm.leads.find(
+          (l) =>
+            l.name === a.leadName &&
+            (!a.mobile || String(l.mobile || '').replace(/\D/g, '').slice(-10) === String(a.mobile).replace(/\D/g, '').slice(-10)),
+        );
+        if (hit) ids.add(hit.id);
+      }
+    }
+    return Array.from(ids);
+  }, [presetLeadIds, presetActivityIds, crm.activities, crm.leads]);
+
   const presetFrom =
-    (presetLeadIds?.length
-      ? crm.leads.find((l) => l.id === presetLeadIds[0])?.owner
+    (derivedLeadIds.length
+      ? crm.leads.find((l) => l.id === derivedLeadIds[0])?.owner
       : undefined) ||
     (presetActivityIds?.length
       ? crm.activities.find((a) => a.id === presetActivityIds[0])?.owner
@@ -1185,34 +2033,54 @@ export function TransferOwnershipModal({
 
   const [fromOwner, setFromOwner] = useState('');
   const [toOwner, setToOwner] = useState('');
-  const [scope, setScope] = useState<'leads' | 'followups' | 'both'>(defaultScope);
+  const [scope, setScope] = useState<'leads' | 'followups' | 'both'>(
+    derivedLeadIds.length ? 'both' : defaultScope,
+  );
   const [note, setNote] = useState('');
-  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>(presetLeadIds || []);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>(derivedLeadIds);
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>(presetActivityIds || []);
 
   useEffect(() => {
-    if (!owners.length) return;
-    const preferredFrom = owners.includes(presetFrom) ? presetFrom : owners.find((o) => o === crm.userName) || owners[0];
-    setFromOwner((cur) => (cur && owners.includes(cur) ? cur : preferredFrom));
+    if (!owners.length && !presetFrom) return;
+    const preferredFrom =
+      presetFrom ||
+      (owners.includes(crm.userName) ? crm.userName : owners[0] || '');
+    setFromOwner((cur) => (presetFrom ? presetFrom : cur && (owners.includes(cur) || cur === preferredFrom) ? cur : preferredFrom));
     setToOwner((cur) => {
       if (cur && owners.includes(cur) && cur !== preferredFrom) return cur;
       return owners.find((o) => o !== preferredFrom) || '';
     });
   }, [owners, presetFrom, crm.userName]);
 
-  const fromLeads = useMemo(
-    () => crm.leads.filter((l) => l.owner === fromOwner),
-    [crm.leads, fromOwner],
-  );
-  const fromFollowups = useMemo(
-    () => crm.activities.filter((a) => a.owner === fromOwner && !a.done),
-    [crm.activities, fromOwner],
-  );
+  const fromLeads = useMemo(() => {
+    if (derivedLeadIds.length) {
+      const preset = crm.leads.filter((l) => derivedLeadIds.includes(l.id));
+      if (preset.length) return preset;
+    }
+    return crm.leads.filter((l) => l.owner === fromOwner);
+  }, [crm.leads, fromOwner, derivedLeadIds]);
+  const fromFollowups = useMemo(() => {
+    const open = crm.activities.filter((a) => a.owner === fromOwner && !a.done);
+    if (derivedLeadIds.length) {
+      const linked = open.filter((a) => a.leadId && derivedLeadIds.includes(a.leadId));
+      if (linked.length || (presetActivityIds?.length && !open.length)) return linked;
+    }
+    return open;
+  }, [crm.activities, fromOwner, derivedLeadIds, presetActivityIds]);
 
   useEffect(() => {
-    if (!presetLeadIds?.length) setSelectedLeadIds([]);
-    if (!presetActivityIds?.length) setSelectedActivityIds([]);
-  }, [fromOwner, presetLeadIds, presetActivityIds]);
+    if (derivedLeadIds.length) {
+      setSelectedLeadIds(derivedLeadIds);
+      setScope('both');
+    } else if (!presetLeadIds?.length) {
+      setSelectedLeadIds([]);
+    }
+    if (presetActivityIds?.length) {
+      setSelectedActivityIds(presetActivityIds.filter((id) => crm.activities.some((a) => a.id === id && !a.done)));
+    } else {
+      setSelectedActivityIds([]);
+    }
+  }, [fromOwner, derivedLeadIds, presetLeadIds, presetActivityIds, crm.activities]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -1221,15 +2089,19 @@ export function TransferOwnershipModal({
       return;
     }
     if (!fromOwner || !toOwner) {
-      crm.pushToast('Select from and to CRM owners', 'err');
+      crm.pushToast('Select the new CRM executive', 'err');
       return;
     }
-    if (!owners.includes(fromOwner) || !owners.includes(toOwner)) {
-      crm.pushToast('Both owners must have CRM Portal access (People → Portal Access)', 'err');
+    if (!owners.includes(toOwner)) {
+      crm.pushToast('Destination must have CRM Portal access (People → Portal Access)', 'err');
       return;
     }
     if (fromOwner === toOwner) {
       crm.pushToast('Choose a different destination owner', 'err');
+      return;
+    }
+    if (!note.trim()) {
+      crm.pushToast('Transfer remarks are required', 'err');
       return;
     }
     const result = await crm.transferOwnership({
@@ -1238,14 +2110,14 @@ export function TransferOwnershipModal({
       scope,
       leadIds: selectedLeadIds.length ? selectedLeadIds : undefined,
       activityIds: selectedActivityIds.length ? selectedActivityIds : undefined,
-      note,
+      note: note.trim(),
     });
     if (!result) {
       crm.pushToast('Transfer failed', 'err');
       return;
     }
     crm.pushToast(
-      `Transferred ${result.leads} lead(s), ${result.followups} follow-up(s)${result.deals ? `, ${result.deals} deal(s)` : ''} → ${toOwner}`,
+      `Transferred ${result.leads} lead(s), ${result.followups} pending follow-up(s)${result.deals ? `, ${result.deals} deal(s)` : ''} → ${toOwner}`,
     );
     onClose();
   };
@@ -1255,39 +2127,47 @@ export function TransferOwnershipModal({
   const toggleActivity = (id: string) =>
     setSelectedActivityIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
+  const singleLead = presetLeadIds?.length === 1;
+  const title = singleLead || (presetLeadIds?.length || 0) > 0 ? 'Transfer Lead' : 'Transfer ownership';
+
   return (
     <Modal
-      title="Transfer ownership"
+      title={title}
       onClose={onClose}
       actions={
         <>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" form="transfer-owner-form" className="btn btn-primary">
-            Transfer
+          <button type="submit" form="transfer-owner-form" className="btn btn-primary" disabled={ownersLoading || !owners.length}>
+            Confirm transfer
           </button>
         </>
       }
     >
       <form id="transfer-owner-form" className="form-grid" onSubmit={submit}>
         <p className="span-2" style={{ margin: 0, color: 'var(--muted)', fontSize: '0.8rem' }}>
-          Owners are employees with active <strong>People → Portal Access → CRM Portal</strong>
+          Select a CRM executive with active <strong>People → Portal Access → CRM Portal</strong>. Pending follow-ups
+          move with the lead; completed follow-ups stay, but the linked lead still transfers.
           {ownersLoading ? ' · loading…' : ownersError ? ` · ${ownersError}` : ` · ${owners.length} assigned`}.
+          {derivedLeadIds.length
+            ? ` · ${derivedLeadIds.length} lead(s) selected from follow-up.`
+            : ''}
         </p>
-        <Field label="From CRM owner *">
-          <select value={fromOwner} onChange={(e) => setFromOwner(e.target.value)} required disabled={ownersLoading || !owners.length}>
+        <Field label="Current owner *">
+          <select value={fromOwner} onChange={(e) => setFromOwner(e.target.value)} required disabled={ownersLoading || !owners.length || !!presetLeadIds?.length}>
             <option value="">{ownersLoading ? 'Loading CRM assignees…' : 'Select owner'}</option>
             {owners.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
             ))}
+            {fromOwner && !owners.includes(fromOwner) ? <option value={fromOwner}>{fromOwner}</option> : null}
           </select>
         </Field>
-        <Field label="To CRM owner *">
+        <Field label="New employee (CRM executive) *">
           <select value={toOwner} onChange={(e) => setToOwner(e.target.value)} required disabled={ownersLoading || !owners.length}>
-            <option value="">{ownersLoading ? 'Loading CRM assignees…' : 'Select owner'}</option>
+            <option value="">{ownersLoading ? 'Loading CRM assignees…' : 'Select employee'}</option>
             {owners.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -1295,15 +2175,23 @@ export function TransferOwnershipModal({
             ))}
           </select>
         </Field>
-        <Field label="Transfer scope *" span={2}>
-          <select value={scope} onChange={(e) => setScope(e.target.value as 'leads' | 'followups' | 'both')}>
-            <option value="both">Leads + Follow-ups</option>
-            <option value="leads">Leads only (linked follow-ups move too)</option>
-            <option value="followups">Follow-ups only</option>
-          </select>
-        </Field>
-        <Field label="Reason / note" span={2}>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Workload balance · territory handoff" />
+        {!presetLeadIds?.length && !presetActivityIds?.length ? (
+          <Field label="Transfer scope *" span={2}>
+            <select value={scope} onChange={(e) => setScope(e.target.value as 'leads' | 'followups' | 'both')}>
+              <option value="both">Leads + pending follow-ups</option>
+              <option value="leads">Leads (pending follow-ups move too)</option>
+              <option value="followups">Pending follow-ups only</option>
+            </select>
+          </Field>
+        ) : null}
+        <Field label="Transfer remarks *" span={2}>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            required
+            rows={3}
+            placeholder="Why is this lead being transferred?"
+          />
         </Field>
         {(scope === 'leads' || scope === 'both') && fromLeads.length ? (
           <div className="span-2" style={{ display: 'grid', gap: 8 }}>
@@ -2166,5 +3054,109 @@ export function AssignReachForm({
         </div>
       ) : null}
     </form>
+  );
+}
+
+/** Service-channel WhatsApp compose (separate Meta number from Franchise WA Centre). */
+export function ServiceWhatsAppModal({ lead, onClose }: { lead: CrmLead; onClose: () => void }) {
+  const crm = useCrm();
+  const templates = useMemo(
+    () => loadMessageTemplates().filter((t) => t.status === 'active' && (t.wing === 'all' || t.wing === lead.wing)),
+    [lead.wing],
+  );
+  const defaultBody = useMemo(() => {
+    const name = lead.name.split(' ')[0] || lead.name;
+    const service =
+      lead.serviceRequired?.trim() ||
+      (lead.wing === 'aesthetic'
+        ? 'aesthetic consultation'
+        : lead.wing === 'care'
+          ? 'care consultation'
+          : lead.wing === 'lab'
+            ? 'lab enquiry'
+            : 'consultation');
+    return `Hi ${name}, this is Smilecure following up on your ${service}. When is a good time to connect?`;
+  }, [lead.name, lead.serviceRequired, lead.wing]);
+  const [body, setBody] = useState(defaultBody);
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    const phone = (lead.mobile || '').trim();
+    if (!phone) {
+      crm.pushToast('No mobile number on this lead', 'err');
+      return;
+    }
+    const message = body.trim();
+    if (!message) {
+      crm.pushToast('Enter a WhatsApp message', 'err');
+      return;
+    }
+    setBusy(true);
+    try {
+      await sendCrmWhatsApp({
+        phone,
+        message,
+        contactName: lead.name,
+        crmLeadId: lead.id,
+        wing: lead.wing || 'lab',
+        channel: 'service',
+      });
+      crm.pushToast(`Service WhatsApp sent to ${lead.name}`);
+      onClose();
+    } catch (err) {
+      crm.pushToast(err instanceof Error ? err.message : 'WhatsApp send failed', 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Service WhatsApp"
+      onClose={onClose}
+      actions={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => void send()} disabled={busy}>
+            {busy ? 'Sending…' : 'Send WhatsApp'}
+          </button>
+        </>
+      }
+    >
+      <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.82rem' }}>
+        Uses the Service Meta number (Settings → WhatsApp API → Service). To:{' '}
+        <strong style={{ color: 'var(--ink)' }}>{lead.mobile || '—'}</strong>
+      </p>
+      {templates.length ? (
+        <Field label="Template">
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const tpl = templates.find((t) => t.id === e.target.value);
+              if (!tpl) return;
+              const name = lead.name.split(' ')[0] || lead.name;
+              setBody(
+                tpl.body
+                  .replace(/\{\{\s*name\s*\}\}/gi, name)
+                  .replace(/\{\{\s*service\s*\}\}/gi, lead.serviceRequired || 'enquiry')
+                  .replace(/\{\{\s*branch\s*\}\}/gi, lead.city || 'our team'),
+              );
+            }}
+          >
+            <option value="">Choose a message template…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      <Field label="Message *">
+        <textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} autoFocus />
+      </Field>
+    </Modal>
   );
 }

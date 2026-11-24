@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import {
-  FUNNEL,
-  KPI,
-  WING_SHARE,
   WINGS,
   executiveCodeFromName,
   formatINR,
   formatNumber,
   wingById,
+  type CrmActivity,
+  type CrmLead,
+  type LeadStatus,
   type WingId,
 } from '../data';
+import { loadCampaigns, type CrmSheetCampaign } from '../campaignData';
 import { getCrmTargetAchievement, listCrmSalesCloses, type CrmTargetAchievement } from '../crmApi';
 import { Icon } from '../icons';
 import { useCrm } from '../store';
@@ -52,10 +53,81 @@ function fmtFollowWhen(iso: string, mode: 'today' | 'upcoming') {
   });
 }
 
-function monthBounds(d = new Date()) {
-  const start = new Date(d.getFullYear(), d.getMonth(), 1);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { start, end };
+function startOfMonth(d = new Date()) {
+  const x = startOfDay(d);
+  x.setDate(1);
+  return x;
+}
+
+function endOfMonth(d = new Date()) {
+  const x = endOfDay(d);
+  x.setMonth(x.getMonth() + 1, 0);
+  return x;
+}
+
+function monthKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function fmtRangeLabel(from: Date, to: Date) {
+  const opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
+  return `${from.toLocaleDateString('en-GB', opts)} – ${to.toLocaleDateString('en-GB', opts)}`;
+}
+
+function monthOptions(count = 12) {
+  const now = new Date();
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return { key: monthKey(d), from: startOfMonth(d), to: endOfMonth(d) };
+  });
+}
+
+function monthBoundsFromKey(key: string) {
+  const [y, m] = key.split('-').map(Number);
+  if (!y || !m) {
+    return { start: startOfMonth(), end: endOfMonth() };
+  }
+  const d = new Date(y, m - 1, 1);
+  return { start: startOfMonth(d), end: endOfMonth(d) };
+}
+
+function parseWhen(iso?: string) {
+  if (!iso) return NaN;
+  const raw = String(iso).trim();
+  if (!raw) return NaN;
+  const t = new Date(raw).getTime();
+  if (!Number.isNaN(t)) return t;
+  /* Sheet / UI dates like 13 Nov 2026 */
+  const m = raw.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return NaN;
+  const months: Record<string, number> = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11,
+  };
+  const mi = months[m[2].slice(0, 3).toLowerCase()];
+  if (mi === undefined) return NaN;
+  const d = new Date(Number(m[3]), mi, Number(m[1]), m[4] ? Number(m[4]) : 12, m[5] ? Number(m[5]) : 0, 0, 0);
+  return d.getTime();
+}
+
+function inRange(iso: string | undefined, from: Date, to: Date) {
+  const t = parseWhen(iso);
+  if (Number.isNaN(t)) return false;
+  return t >= from.getTime() && t <= to.getTime();
+}
+
+function leadWhen(lead: CrmLead) {
+  return lead.createdAt || lead.updatedAt || '';
 }
 
 function closesMatchExecutive(
@@ -85,37 +157,253 @@ function inMonth(iso: string | undefined, start: Date, end: Date) {
   return at >= start && at <= end;
 }
 
+/** Pipeline depth for conversion matrix (Lost / Not Interested do not advance). */
+function funnelRank(status: LeadStatus): number {
+  switch (status) {
+    case 'Won':
+      return 6;
+    case 'Ready to Proceed':
+      return 5;
+    case 'Proposal Required':
+    case 'Discussion Ongoing':
+      return 4;
+    case 'Qualified':
+      return 3;
+    case 'Interested':
+      return 2;
+    case 'Contacted':
+    case 'Connected':
+    case 'Not Reachable':
+      return 1;
+    case 'New':
+      return 0;
+    case 'Lost':
+    case 'Not Interested':
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+function pct(part: number, whole: number) {
+  if (!whole) return 0;
+  return Math.round((part / whole) * 1000) / 10;
+}
+
+function buildFunnel(rows: CrmLead[]) {
+  const total = rows.length;
+  const qualified = rows.filter((l) => funnelRank(l.status) >= 3).length;
+  const proposal = rows.filter((l) => funnelRank(l.status) >= 4).length;
+  const won = rows.filter((l) => l.status === 'Won').length;
+  return [
+    { from: 'Leads', to: 'Qualified', rate: pct(qualified, total), count: qualified, base: total, tone: 'blue' as const },
+    { from: 'Qualified', to: 'Proposal', rate: pct(proposal, qualified), count: proposal, base: qualified, tone: 'green' as const },
+    { from: 'Proposal', to: 'Won', rate: pct(won, proposal), count: won, base: proposal, tone: 'purple' as const },
+  ];
+}
+
+function buildWingShare(rows: CrmLead[]) {
+  const total = rows.length;
+  const counts = new Map<WingId, number>();
+  for (const w of WINGS) counts.set(w.id, 0);
+  for (const l of rows) counts.set(l.wing, (counts.get(l.wing) || 0) + 1);
+  const parts = WINGS.map((w) => ({
+    wing: w.id,
+    count: counts.get(w.id) || 0,
+    pct: pct(counts.get(w.id) || 0, total),
+  })).filter((r) => r.count > 0 || total === 0);
+  /* Keep every wing visible when empty so the legend still makes sense. */
+  return total === 0
+    ? WINGS.map((w) => ({ wing: w.id, count: 0, pct: 0 }))
+    : parts.sort((a, b) => b.pct - a.pct);
+}
+
+function donutGradient(rows: Array<{ wing: WingId; pct: number }>) {
+  if (!rows.length || rows.every((r) => r.pct <= 0)) {
+    return 'conic-gradient(#e2e8f0 0 100%)';
+  }
+  let acc = 0;
+  const stops: string[] = [];
+  for (const row of rows) {
+    const start = acc;
+    acc += row.pct;
+    const color = wingById(row.wing).color;
+    stops.push(`${color} ${start}% ${acc}%`);
+  }
+  if (acc < 100) stops.push(`#e2e8f0 ${acc}% 100%`);
+  return `conic-gradient(${stops.join(', ')})`;
+}
+
 export function Dashboard() {
   const crm = useCrm();
   const { openModal } = useOutletContext<OutletCtx>();
   const [localWing, setLocalWing] = useState<WingId | 'all'>(crm.wingFilter);
+  const months = useMemo(() => monthOptions(12), []);
+  /* Default = this month so Total Leads matches Reports & Analytics for the same period. */
+  const [month, setMonth] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('crm_kpi_period_v1');
+      if (saved === 'all' || (saved && /^\d{4}-\d{2}$/.test(saved))) return saved;
+    } catch {
+      /* ignore */
+    }
+    return monthKey();
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('crm_kpi_period_v1', month);
+    } catch {
+      /* ignore */
+    }
+  }, [month]);
+  const range = useMemo(() => {
+    if (month === 'all') {
+      return {
+        from: new Date(0),
+        to: endOfDay(new Date(8640000000000000)),
+        label: 'All dates',
+        all: true as const,
+        key: 'all',
+      };
+    }
+    const hit = months.find((m) => m.key === month) || months[0];
+    return { from: hit.from, to: hit.to, label: fmtRangeLabel(hit.from, hit.to), all: false as const, key: hit.key };
+  }, [month, months]);
   const [targetCard, setTargetCard] = useState<CrmTargetAchievement | null>(null);
   const [targetLoading, setTargetLoading] = useState(true);
   const [targetError, setTargetError] = useState('');
   const [followUpId, setFollowUpId] = useState<string | null>(null);
+  const [sheetCampaigns, setSheetCampaigns] = useState<CrmSheetCampaign[]>(() => loadCampaigns());
+  const [campPerfMode, setCampPerfMode] = useState<'leads' | 'conversions'>('leads');
 
-  const leads = useMemo(
-    () => (localWing === 'all' ? crm.leads : crm.leads.filter((l) => l.wing === localWing)),
-    [crm.leads, localWing],
-  );
+  useEffect(() => {
+    const sync = () => setSheetCampaigns(loadCampaigns());
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener('focus', sync);
+    const timer = window.setInterval(sync, 4000);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('focus', sync);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const leads = useMemo(() => {
+    const filtered = crm.leads.filter((l) => {
+      if (localWing !== 'all' && l.wing !== localWing) return false;
+      if (range.all) return true;
+      const when = leadWhen(l);
+      /* Keep undated leads visible so dashboard stays in sync with lead boards. */
+      if (!when || Number.isNaN(parseWhen(when))) return true;
+      return inRange(when, range.from, range.to);
+    });
+    return [...filtered].sort((a, b) => parseWhen(leadWhen(b)) - parseWhen(leadWhen(a)));
+  }, [crm.leads, localWing, range]);
+
+  const recentLeads = useMemo(() => leads.slice(0, 8), [leads]);
+
+  const leadsViewAllTo =
+    localWing === 'franchise'
+      ? '/leads/franchise/lab'
+      : localWing === 'all'
+        ? '/leads/service/aesthetic'
+        : `/leads/service/${localWing}`;
+
+  const followupsViewAllTo =
+    localWing === 'franchise'
+      ? '/activities/franchise/lab'
+      : localWing === 'all'
+        ? '/activities/service/aesthetic'
+        : `/activities/service/${localWing}`;
+
+  /** Same wing performance numbers as Campaigns page → Campaign performance. */
+  const wingCampPerf = useMemo(() => {
+    return WINGS.map((w) => {
+      const imported =
+        crm.leads.filter((l) => l.wing === w.id && l.campaignId).length ||
+        sheetCampaigns.filter((c) => c.wing === w.id).reduce((s, c) => s + (c.stats.imported || 0), 0);
+      const converted = crm.leads.filter((l) => l.wing === w.id && l.status === 'Won' && l.campaignId).length;
+      return { id: w.id, imported, converted, color: w.color, short: w.short };
+    });
+  }, [crm.leads, sheetCampaigns]);
+
+  const campPerfMax = useMemo(() => {
+    const vals = wingCampPerf.map((w) => (campPerfMode === 'leads' ? w.imported : w.converted));
+    return Math.max(...vals, 1);
+  }, [wingCampPerf, campPerfMode]);
+
+  const funnel = useMemo(() => buildFunnel(leads), [leads]);
+  const wingShare = useMemo(() => buildWingShare(leads), [leads]);
+  const donutBg = useMemo(() => donutGradient(wingShare), [wingShare]);
+
+  const kpi = useMemo(() => {
+    const totalLeads = leads.length;
+    const qualified = leads.filter((l) => funnelRank(l.status) >= 3).length;
+    const opportunities = leads.filter((l) => funnelRank(l.status) >= 4).length;
+    const dealsWon = leads.filter((l) => l.status === 'Won').length;
+    const dealValue = crm.deals
+      .filter((d) => {
+        if (d.stage !== 'Won') return false;
+        if (!range.all) {
+          const when = d.closeDate || d.createdAt;
+          if (!inRange(when, range.from, range.to)) return false;
+        }
+        if (localWing === 'all') return true;
+        const lead = crm.leads.find((l) => l.id === d.leadId);
+        return lead?.wing === localWing;
+      })
+      .reduce((sum, d) => sum + (d.value || 0), 0);
+    return {
+      totalLeads,
+      qualified,
+      opportunities,
+      dealsWon,
+      dealValue,
+      conversion: pct(dealsWon, totalLeads),
+    };
+  }, [leads, crm.deals, crm.leads, localWing, range]);
 
   const { todayFollowUps, upcomingFollowUps } = useMemo(() => {
     const eod = endOfDay().getTime();
-    const open = crm.activities
-      .filter((a) => !a.done)
-      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+    const acts = crm.activities.filter((a) => {
+      if (a.done) return false;
+      if (localWing !== 'all' && a.wing !== localWing) return false;
+      return !Number.isNaN(parseWhen(a.dueAt));
+    });
+    const covered = new Set(acts.map((a) => a.leadId).filter(Boolean) as string[]);
+    const extras: CrmActivity[] = [];
+    for (const l of crm.leads) {
+      if (localWing !== 'all' && l.wing !== localWing) continue;
+      if (!l.nextFollowUp || Number.isNaN(parseWhen(l.nextFollowUp))) continue;
+      if (l.id && covered.has(l.id)) continue;
+      extras.push({
+        id: `lead-fu-${l.id}`,
+        type: 'Follow-up',
+        title: `Follow-up · ${l.name}`,
+        leadName: l.name,
+        leadId: l.id,
+        mobile: l.mobile,
+        wing: l.wing,
+        dueAt: l.nextFollowUp,
+        done: false,
+        owner: l.owner,
+      });
+    }
+    const open = [...acts, ...extras].sort((a, b) => parseWhen(a.dueAt) - parseWhen(b.dueAt));
     return {
-      todayFollowUps: open.filter((a) => new Date(a.dueAt).getTime() <= eod),
-      upcomingFollowUps: open.filter((a) => new Date(a.dueAt).getTime() > eod).slice(0, 20),
+      todayFollowUps: open.filter((a) => parseWhen(a.dueAt) <= eod),
+      upcomingFollowUps: open.filter((a) => parseWhen(a.dueAt) > eod).slice(0, 20),
     };
-  }, [crm.activities]);
+  }, [crm.activities, crm.leads, localWing]);
   const first = crm.userName.split(/\s+/)[0] || 'there';
 
   useEffect(() => {
     let cancelled = false;
     setTargetLoading(true);
     setTargetError('');
-    const { start, end } = monthBounds();
+    const { start, end } =
+      month === 'all' ? { start: startOfMonth(), end: endOfMonth() } : monthBoundsFromKey(month);
     const period = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
     const myCode = executiveCodeFromName(crm.userName);
 
@@ -155,7 +443,7 @@ export function Dashboard() {
         const achievement = Math.max(Number(api?.achievement_amount) || 0, syncedAmt, bookingAmt);
         const closesCount = Math.max(Number(api?.closes_count) || 0, uniqueSynced.length, closedBookings.length);
         const target = Number(api?.target_amount) || 0;
-        const pct = target > 0 ? Math.round((achievement / target) * 1000) / 10 : achievement > 0 ? 100 : 0;
+        const pctVal = target > 0 ? Math.round((achievement / target) * 1000) / 10 : achievement > 0 ? 100 : 0;
         setTargetCard({
           period: api?.period || period,
           period_label: api?.period_label || start.toLocaleString('en-IN', { month: 'long', year: 'numeric' }),
@@ -164,7 +452,7 @@ export function Dashboard() {
           target_amount: target,
           achievement_amount: achievement,
           remaining_amount: Math.max(target - achievement, 0),
-          percent: Math.min(pct, 999),
+          percent: Math.min(pctVal, 999),
           closes_count: closesCount,
           set_by: api?.set_by || '',
           has_target: Boolean(api?.has_target && target > 0),
@@ -183,7 +471,7 @@ export function Dashboard() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crm.userName]);
+  }, [crm.userName, month]);
 
   const targetPct = Math.min(Math.max(targetCard?.percent || 0, 0), 100);
   const overTarget = (targetCard?.percent || 0) > 100;
@@ -198,7 +486,7 @@ export function Dashboard() {
           <button type="button" className={`chip${localWing === 'all' ? ' active' : ''}`} onClick={() => setLocalWing('all')}>
             All Business Wings
           </button>
-          {WINGS.filter((w) => w.id !== 'franchise').map((w) => (
+          {WINGS.map((w) => (
             <button
               key={w.id}
               type="button"
@@ -209,10 +497,22 @@ export function Dashboard() {
             </button>
           ))}
         </div>
-        <div className="date-chip">
+        <label className="date-chip" title={`Filters KPIs, funnel, and target · ${range.label}`}>
           <Icon name="calendar" size={14} />
-          01 Oct 2026 – 31 Oct 2026
-        </div>
+          <select
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            aria-label="Dashboard date range"
+          >
+            <option value="all">All dates</option>
+            {months.map((m) => (
+              <option key={m.key} value={m.key}>
+                {fmtRangeLabel(m.from, m.to)}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevron" size={14} />
+        </label>
       </div>
 
       <div className="quick-grid">
@@ -306,33 +606,37 @@ export function Dashboard() {
       <div className="kpi-grid">
         <div className="kpi">
           <span>Total Leads</span>
-          <strong>{formatNumber(KPI.totalLeads)}</strong>
-          <em>+{KPI.deltas.totalLeads}%</em>
+          <strong>{formatNumber(kpi.totalLeads)}</strong>
+          <em>
+            {localWing === 'all' ? 'All wings' : wingById(localWing).short}
+            {' · '}
+            {range.all ? 'All dates' : range.label}
+          </em>
         </div>
         <div className="kpi">
           <span>Qualified Leads</span>
-          <strong>{formatNumber(KPI.qualified)}</strong>
-          <em>+{KPI.deltas.qualified}%</em>
+          <strong>{formatNumber(kpi.qualified)}</strong>
+          <em>{pct(kpi.qualified, kpi.totalLeads)}% of leads</em>
         </div>
         <div className="kpi">
           <span>Opportunities</span>
-          <strong>{formatNumber(KPI.opportunities)}</strong>
-          <em>+{KPI.deltas.opportunities}%</em>
+          <strong>{formatNumber(kpi.opportunities)}</strong>
+          <em>Proposal+</em>
         </div>
         <div className="kpi">
           <span>Deals Won</span>
-          <strong>{formatNumber(KPI.dealsWon)}</strong>
-          <em>+{KPI.deltas.dealsWon}%</em>
+          <strong>{formatNumber(kpi.dealsWon)}</strong>
+          <em>{pct(kpi.dealsWon, kpi.totalLeads)}% win rate</em>
         </div>
         <div className="kpi">
           <span>Deal Value</span>
-          <strong>{formatINR(KPI.dealValue)}</strong>
-          <em>+{KPI.deltas.dealValue}%</em>
+          <strong>{formatINR(kpi.dealValue)}</strong>
+          <em>Won deals</em>
         </div>
         <div className="kpi">
           <span>Conversion Rate</span>
-          <strong>{KPI.conversion}%</strong>
-          <em>+{KPI.deltas.conversion} pp</em>
+          <strong>{kpi.conversion}%</strong>
+          <em>Won / leads</em>
         </div>
       </div>
 
@@ -340,10 +644,16 @@ export function Dashboard() {
         <div className="card">
           <h3>Sales Funnel</h3>
           <div className="funnel">
-            {FUNNEL.map((step) => (
-              <div key={step.from} className="funnel-row">
-                <div className="funnel-bar">
+            {funnel.map((step) => (
+              <div key={`${step.from}-${step.to}`} className="funnel-row" data-tone={step.tone}>
+                <span className="funnel-label">
                   {step.from} → {step.to}
+                </span>
+                <div
+                  className="funnel-track"
+                  title={`${step.count} of ${step.base} · ${step.rate}%`}
+                >
+                  <span className="funnel-fill" style={{ width: `${Math.min(Math.max(step.rate, 0), 100)}%` }} />
                 </div>
                 <span className="funnel-rate">{step.rate}%</span>
               </div>
@@ -353,9 +663,9 @@ export function Dashboard() {
         <div className="card">
           <h3>Leads by Business Wing</h3>
           <div className="donut-wrap">
-            <div className="donut" aria-hidden="true" />
+            <div className="donut" aria-hidden="true" style={{ background: donutBg }} />
             <div className="legend">
-              {WING_SHARE.map((row) => {
+              {wingShare.map((row) => {
                 const w = wingById(row.wing);
                 return (
                   <div key={row.wing}>
@@ -370,30 +680,45 @@ export function Dashboard() {
         </div>
         <div className="card">
           <div className="card-head">
-            <h3>Campaign Performance</h3>
-            <span className="badge-pill">Meta Ads</span>
-          </div>
-          <div className="meta-stats">
-            <div>
-              <span>Ad Spend</span>
-              <strong>{formatINR(crm.campaigns[0]?.spend || 0)}</strong>
-            </div>
-            <div>
-              <span>Leads Generated</span>
-              <strong>{formatNumber(crm.campaigns[0]?.leads || 0)}</strong>
-            </div>
-            <div>
-              <span>CPL</span>
-              <strong>{formatINR(crm.campaigns[0]?.cpl || 0)}</strong>
-            </div>
-            <div>
-              <span>Channel</span>
-              <strong>{crm.campaigns[0]?.channel}</strong>
+            <h3>Campaign performance</h3>
+            <div className="camp-toggle" role="group" aria-label="Campaign performance mode">
+              <button
+                type="button"
+                className={campPerfMode === 'leads' ? 'active' : ''}
+                onClick={() => setCampPerfMode('leads')}
+              >
+                Leads
+              </button>
+              <button
+                type="button"
+                className={campPerfMode === 'conversions' ? 'active' : ''}
+                onClick={() => setCampPerfMode('conversions')}
+              >
+                Conversions
+              </button>
             </div>
           </div>
-          <div className="roi">
-            <span>ROI</span>
-            <strong>{crm.campaigns[0]?.roi || 0}x</strong>
+          <div className="camp-bars">
+            {wingCampPerf.map((w) => {
+              const val = campPerfMode === 'leads' ? w.imported : w.converted;
+              return (
+                <div key={w.id} className="camp-bar-row">
+                  <span>{w.short}</span>
+                  <div className="camp-bar-track">
+                    <div
+                      className="camp-bar-fill"
+                      style={{ width: `${(val / campPerfMax) * 100}%`, background: w.color }}
+                    />
+                  </div>
+                  <strong>{formatNumber(val)}</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className="card-head" style={{ marginTop: 12, marginBottom: 0 }}>
+            <Link to="/campaigns" className="btn btn-ghost" style={{ padding: '6px 10px' }}>
+              Open Campaigns
+            </Link>
           </div>
         </div>
       </div>
@@ -402,65 +727,73 @@ export function Dashboard() {
         <div className="card">
           <div className="card-head">
             <h3>Recent Leads</h3>
-            <Link to="/leads" className="btn btn-ghost" style={{ padding: '6px 10px' }}>
+            <Link to={leadsViewAllTo} className="btn btn-ghost" style={{ padding: '6px 10px' }}>
               View all
             </Link>
           </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Wing</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Owner</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.slice(0, 5).map((lead) => (
-                <tr key={lead.id}>
-                  <td>
-                    <strong>{lead.name}</strong>
-                  </td>
-                  <td>
-                    <WingPill wing={lead.wing} />
-                  </td>
-                  <td>{lead.source}</td>
-                  <td>
-                    <StatusPill value={lead.status} />
-                  </td>
-                  <td>
-                    <div className="owner-cell">
-                      <span className="avatar">{lead.ownerInitials}</span>
-                      {lead.owner.split(' ')[0]}
-                    </div>
-                  </td>
+          {recentLeads.length === 0 ? (
+            <div className="empty">No leads in this filter.</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Wing</th>
+                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Owner</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recentLeads.map((lead) => (
+                  <tr key={lead.id}>
+                    <td>
+                      <strong>{lead.name}</strong>
+                    </td>
+                    <td>
+                      <WingPill wing={lead.wing} />
+                    </td>
+                    <td>{lead.source}</td>
+                    <td>
+                      <StatusPill value={lead.status} />
+                    </td>
+                    <td>
+                      <div className="owner-cell">
+                        <span className="avatar">{lead.ownerInitials}</span>
+                        {lead.owner.split(' ')[0]}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
         <div className="card">
           <div className="card-head">
             <h3>Today&apos;s Follow-up</h3>
-            <Link to="/activities" className="btn btn-ghost" style={{ padding: '6px 10px' }}>
+            <Link to={followupsViewAllTo} className="btn btn-ghost" style={{ padding: '6px 10px' }}>
               View all
             </Link>
           </div>
           <div className="follow-list follow-list-scroll">
             {todayFollowUps.map((a) => {
-              const overdue = new Date(a.dueAt).getTime() < startOfDay().getTime();
+              const overdue = parseWhen(a.dueAt) < startOfDay().getTime();
+              const openable = !String(a.id).startsWith('lead-fu-');
               return (
                 <button
                   key={a.id}
                   type="button"
                   className="follow-item follow-item-click follow-item-main"
-                  onClick={() => setFollowUpId(a.id)}
+                  onClick={() => {
+                    if (openable) setFollowUpId(a.id);
+                  }}
                 >
                   <strong>{a.title}</strong>
                   <span>
                     {overdue ? 'Overdue · ' : ''}
                     {fmtFollowWhen(a.dueAt, 'today')} · {a.owner}
+                    {a.wing ? ` · ${wingById(a.wing).short}` : ''}
                   </span>
                 </button>
               );
@@ -471,24 +804,30 @@ export function Dashboard() {
         <div className="card">
           <div className="card-head">
             <h3>Upcoming Follow-up</h3>
-            <Link to="/activities" className="btn btn-ghost" style={{ padding: '6px 10px' }}>
+            <Link to={followupsViewAllTo} className="btn btn-ghost" style={{ padding: '6px 10px' }}>
               View all
             </Link>
           </div>
           <div className="follow-list follow-list-scroll">
-            {upcomingFollowUps.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                className="follow-item follow-item-click follow-item-main"
-                onClick={() => setFollowUpId(a.id)}
-              >
-                <strong>{a.title}</strong>
-                <span>
-                  {fmtFollowWhen(a.dueAt, 'upcoming')} · {a.owner}
-                </span>
-              </button>
-            ))}
+            {upcomingFollowUps.map((a) => {
+              const openable = !String(a.id).startsWith('lead-fu-');
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  className="follow-item follow-item-click follow-item-main"
+                  onClick={() => {
+                    if (openable) setFollowUpId(a.id);
+                  }}
+                >
+                  <strong>{a.title}</strong>
+                  <span>
+                    {fmtFollowWhen(a.dueAt, 'upcoming')} · {a.owner}
+                    {a.wing ? ` · ${wingById(a.wing).short}` : ''}
+                  </span>
+                </button>
+              );
+            })}
             {upcomingFollowUps.length === 0 ? <div className="empty">No upcoming follow-ups scheduled.</div> : null}
           </div>
         </div>

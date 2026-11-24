@@ -1,23 +1,23 @@
 /* Reach field sales (reach.e-remedium.in) â€” Leads + Log visit visual system */
 
 .sales-layout.reach-shell {
-  --reach-teal: #0b7d75;
-  --reach-teal-dark: #086660;
-  --reach-teal-soft: #e8f6f4;
-  --reach-teal-border: #b5ddd8;
-  --reach-ink: #123047;
-  --reach-muted: #657889;
-  --reach-line: #e2eaf0;
-  --reach-bg: #f3f7f9;
-  --reach-warn: #b45309;
+  --reach-teal: #0b6b57;
+  --reach-teal-dark: #084f41;
+  --reach-teal-soft: #e7f5f0;
+  --reach-teal-border: #b7d7cd;
+  --reach-ink: #0f2f2a;
+  --reach-muted: #5f746f;
+  --reach-line: #d7e4df;
+  --reach-bg: #f3f7f5;
+  --reach-warn: #b7791f;
   --reach-danger: #b91c1c;
-  --reach-ok: #047857;
+  --reach-ok: #0f7a4c;
   min-height: 100vh;
   background:
-    radial-gradient(1200px 420px at 8% -10%, rgba(11, 125, 117, 0.12), transparent 60%),
-    radial-gradient(900px 380px at 100% 0%, rgba(18, 48, 71, 0.06), transparent 55%),
+    linear-gradient(180deg, #eef6f3 0%, var(--reach-bg) 180px),
     var(--reach-bg);
   color: var(--reach-ink);
+  font-family: 'DM Sans', Manrope, sans-serif;
 }
 
 .sales-layout.reach-shell .b2b-header {
@@ -53,13 +53,15 @@
 }
 
 .sales-layout.reach-shell .b2b-nav a.active {
-  color: var(--reach-teal);
+  color: #fff;
+  background: var(--reach-teal);
   text-decoration: none;
-  box-shadow: inset 0 -2px 0 var(--reach-teal);
+  border-radius: 10px;
+  box-shadow: 0 8px 16px rgba(11, 107, 87, 0.22);
 }
 
 .sales-layout.reach-shell .b2b-main {
-  max-width: 1180px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 22px 20px 56px;
 }
@@ -836,4 +838,89 @@
     width: 100%;
     justify-content: center;
   }
+}
+
+/* My HR Profile — People embed */
+.rpu-hr-workspace {
+  margin: -22px -20px -56px;
+  min-height: calc(100vh - 120px);
+  background: #f5f8f7;
+}
+.rpu-hr-workspace iframe {
+  width: 100%;
+  height: calc(100vh - 118px);
+  min-height: 640px;
+  border: 0;
+  display: block;
+  background: #fff;
+}
+
+/* Add new lead — modal popup */
+.reach-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 47, 42, 0.48);
+  backdrop-filter: blur(2px);
+}
+.reach-modal {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 0 !important;
+  box-shadow: 0 28px 64px rgba(15, 47, 42, 0.22) !important;
+}
+.reach-modal .reach-card-head {
+  position: relative;
+  padding-right: 44px;
+}
+.reach-modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--reach-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--reach-muted);
+  font: 700 22px/1 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+.reach-modal-close:hover {
+  color: var(--reach-ink);
+  border-color: var(--reach-teal-border);
+}
+.reach-modal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+body:has(.reach-modal-backdrop) {
+  overflow: hidden;
+}
+
+/* Live SPA (pre-rebuild): promote inline Add lead form to popup */
+.reach-leads-page > form.reach-card:not(.reach-modal) {
+  position: fixed !important;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 121;
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 0 !important;
+  box-shadow: 0 28px 64px rgba(15, 47, 42, 0.22) !important;
+}
+.reach-leads-page:has(> form.reach-card:not(.reach-modal))::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(15, 47, 42, 0.48);
 }

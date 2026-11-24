@@ -263,7 +263,7 @@ export function AccountPage() {
             </Link>
           )}
           {isHrStaff(user.roles) && (
-            <Link className="btn secondary" to="/dashboard/hr">
+            <Link className="btn secondary" to="/dashboard/profile">
               HR self-service
             </Link>
           )}

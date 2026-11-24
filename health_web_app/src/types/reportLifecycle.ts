@@ -35,3 +35,21 @@ export type ReportLifecycleQueue = {
   };
   can_authorize: boolean;
 };
+
+export type ReportChromeTemplate =
+  | 'with_header'
+  | 'without_header'
+  | 'nabl'
+  | 'non_nabl'
+  | 'none'
+  | 'remedium_with_header'
+  | 'remedium_without_header'
+  | 'slpl_with_header'
+  | 'slpl_without_header';
+
+export type ReportWhatsAppResult = {
+  recipient?: string;
+  portal_account_created?: boolean;
+  portal_url?: string;
+  [key: string]: unknown;
+};

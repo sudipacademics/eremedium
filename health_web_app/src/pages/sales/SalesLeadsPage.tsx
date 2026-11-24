@@ -193,120 +193,148 @@ export function SalesLeadsPage() {
       ) : null}
 
       {showForm ? (
-        <form className="reach-card" onSubmit={onSubmit}>
-          <div className="reach-card-head">
-            <div className="reach-card-icon" aria-hidden>
-              +
-            </div>
-            <div>
-              <h2>Add new lead</h2>
-              <p>Enter contact details, territory and optional GPS so the team can follow up in the field.</p>
-            </div>
-          </div>
-
-          <div className="reach-form-grid">
-            <label className="reach-field">
-              Lead / clinic name *
-              <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Prospect or clinic name" />
-            </label>
-            <label className="reach-field">
-              Company name
-              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Legal / trade name" />
-            </label>
-            <label className="reach-field">
-              Contact person
-              <input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Decision maker" />
-            </label>
-            <label className="reach-field">
-              Phone *
-              <input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" />
-            </label>
-            <label className="reach-field">
-              Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
-            </label>
-            <label className="reach-field">
-              District
-              <select
-                value={district}
-                onChange={(e) => {
-                  setDistrict(e.target.value);
-                  setSubdivision('');
-                  setPincode('');
-                }}
+        <div
+          className="reach-modal-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <form
+            className="reach-card reach-modal"
+            onSubmit={onSubmit}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reach-add-lead-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="reach-card-head">
+              <div className="reach-card-icon" aria-hidden>
+                +
+              </div>
+              <div>
+                <h2 id="reach-add-lead-title">Add new lead</h2>
+                <p>Enter contact details, territory and optional GPS so the team can follow up in the field.</p>
+              </div>
+              <button
+                type="button"
+                className="reach-modal-close"
+                aria-label="Close"
+                onClick={() => setShowForm(false)}
               >
-                <option value="">Select district</option>
-                {districts.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="reach-field">
-              Subdivision
-              <select
-                value={subdivision}
-                onChange={(e) => {
-                  setSubdivision(e.target.value);
-                  setPincode('');
-                }}
-                disabled={!district}
-              >
-                <option value="">{district ? 'Select subdivision' : 'Choose district first'}</option>
-                {subdivisions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="reach-field">
-              PIN code
-              <select value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={!district}>
-                <option value="">{district ? 'Select PIN' : 'Choose district first'}</option>
-                {pincodes.map((pin) => (
-                  <option key={pin} value={pin}>
-                    {pin}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="reach-field">
-              City / Corporation
-              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional free-text city" />
-            </label>
-            <label className="reach-field span-2">
-              Address
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, landmark, locality" />
-            </label>
-            <label className="reach-field full">
-              Notes
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Context for the next follow-up" />
-            </label>
-          </div>
-
-          <div className="reach-form-footer">
-            <div className="reach-gps">
-              <button type="button" className="reach-btn secondary" onClick={() => void captureGps()}>
-                Capture GPS
+                ×
               </button>
-              {latitude != null ? (
-                <code>
-                  {latitude.toFixed(5)}, {longitude?.toFixed(5)}
-                </code>
-              ) : (
-                <span>Optional — attach current location</span>
-              )}
             </div>
-            <button type="submit" className="reach-btn" disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save lead'}
-            </button>
-          </div>
-        </form>
+
+            <div className="reach-form-grid">
+              <label className="reach-field">
+                Lead / clinic name *
+                <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Prospect or clinic name" />
+              </label>
+              <label className="reach-field">
+                Company name
+                <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Legal / trade name" />
+              </label>
+              <label className="reach-field">
+                Contact person
+                <input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Decision maker" />
+              </label>
+              <label className="reach-field">
+                Phone *
+                <input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" />
+              </label>
+              <label className="reach-field">
+                Email
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+              </label>
+              <label className="reach-field">
+                District
+                <select
+                  value={district}
+                  onChange={(e) => {
+                    setDistrict(e.target.value);
+                    setSubdivision('');
+                    setPincode('');
+                  }}
+                >
+                  <option value="">Select district</option>
+                  {districts.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                Subdivision
+                <select
+                  value={subdivision}
+                  onChange={(e) => {
+                    setSubdivision(e.target.value);
+                    setPincode('');
+                  }}
+                  disabled={!district}
+                >
+                  <option value="">{district ? 'Select subdivision' : 'Choose district first'}</option>
+                  {subdivisions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                PIN code
+                <select value={pincode} onChange={(e) => setPincode(e.target.value)} disabled={!district}>
+                  <option value="">{district ? 'Select PIN' : 'Choose district first'}</option>
+                  {pincodes.map((pin) => (
+                    <option key={pin} value={pin}>
+                      {pin}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="reach-field">
+                City / Corporation
+                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional free-text city" />
+              </label>
+              <label className="reach-field span-2">
+                Address
+                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, landmark, locality" />
+              </label>
+              <label className="reach-field full">
+                Notes
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Context for the next follow-up" />
+              </label>
+            </div>
+
+            <div className="reach-form-footer">
+              <div className="reach-gps">
+                <button type="button" className="reach-btn secondary" onClick={() => void captureGps()}>
+                  Capture GPS
+                </button>
+                {latitude != null ? (
+                  <code>
+                    {latitude.toFixed(5)}, {longitude?.toFixed(5)}
+                  </code>
+                ) : (
+                  <span>Optional — attach current location</span>
+                )}
+              </div>
+              <div className="reach-modal-actions">
+                <button type="button" className="reach-btn secondary" onClick={() => setShowForm(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="reach-btn" disabled={submitting}>
+                  {submitting ? 'Saving…' : 'Save lead'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       ) : null}
 
-      <section className="reach-panel" style={{ marginTop: showForm ? 16 : 0 }}>
+      <section className="reach-panel">
         <div className="reach-panel-head">
           <h2>Lead pipeline</h2>
           <span>

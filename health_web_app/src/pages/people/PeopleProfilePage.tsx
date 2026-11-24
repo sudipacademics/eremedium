@@ -108,16 +108,21 @@ function fileToBase64(file: File) {
   });
 }
 
-function readGps(): Promise<{ latitude: number; longitude: number }> {
+function readGps(required = true): Promise<{ latitude?: number; longitude?: number; warn?: string }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not available in this browser'));
+      if (required) reject(new Error('Geolocation is not available in this browser'));
+      else resolve({ warn: 'Geolocation is not available in this browser' });
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
       (err) => {
-        const msg = err && err.message ? String(err.message) : '';
+        const msg = err && err.message ? String(err.message) : 'Unable to read GPS location';
+        if (!required) {
+          resolve({ warn: msg });
+          return;
+        }
         if (/permissions policy/i.test(msg)) {
           reject(
             new Error(
@@ -126,7 +131,7 @@ function readGps(): Promise<{ latitude: number; longitude: number }> {
           );
           return;
         }
-        reject(new Error(msg || 'Unable to read GPS location'));
+        reject(new Error(msg));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
     );
@@ -146,6 +151,16 @@ function FieldGrid({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
+function tabFromSearch(): Tab {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('tab') || '';
+    if (TABS.some((t) => t.id === raw)) return raw as Tab;
+  } catch {
+    /* ignore */
+  }
+  return 'profile';
+}
+
 export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview }) {
   const { user } = useAuth();
   const [dash, setDash] = useState<PeopleHrmsDashboard | null>(preview?.dash || null);
@@ -153,11 +168,29 @@ export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview 
   const [docs, setDocs] = useState<PeopleDocument[]>(preview?.documents || []);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!preview);
-  const [tab, setTab] = useState<Tab>('profile');
+  const [tab, setTab] = useState<Tab>(() => tabFromSearch());
   const [editOpen, setEditOpen] = useState(false);
   const [idOpen, setIdOpen] = useState(false);
   const [pwdOpen, setPwdOpen] = useState(false);
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    const onPop = () => setTab(tabFromSearch());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    try {
+      const url = new URL(window.location.href);
+      if (next === 'profile') url.searchParams.delete('tab');
+      else url.searchParams.set('tab', next);
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const load = useCallback(async () => {
     if (preview) {
@@ -309,7 +342,7 @@ export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview 
             role="tab"
             aria-selected={tab === t.id}
             className={tab === t.id ? 'on' : ''}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
           >
             {t.label}
           </button>
@@ -334,7 +367,7 @@ export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview 
                   <div>
                     <h2>Recent Activity</h2>
                   </div>
-                  <button type="button" className="me-link" onClick={() => setTab('settings')}>
+                  <button type="button" className="me-link" onClick={() => selectTab('settings')}>
                     View all
                   </button>
                 </div>
@@ -386,57 +419,27 @@ export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview 
                   <h2>Quick Actions</h2>
                 </div>
                 <div className="me-actions">
-                  {isManager ? (
-                    <button type="button" className="me-action" onClick={() => setTab('hr')}>
-                      <span className="me-action-icon violet">
-                        <HrmsIcon name="clock" size={16} />
-                      </span>
-                      <b>View Attendance</b>
-                      <small>Check-in / check-out history</small>
-                    </button>
-                  ) : (
-                    <Link className="me-action" to="/people/attendance">
-                      <span className="me-action-icon violet">
-                        <HrmsIcon name="clock" size={16} />
-                      </span>
-                      <b>View Attendance</b>
-                      <small>Check-in / check-out history</small>
-                    </Link>
-                  )}
-                  {isManager ? (
-                    <button type="button" className="me-action" onClick={() => setTab('hr')}>
-                      <span className="me-action-icon green">
-                        <HrmsIcon name="calendar" size={16} />
-                      </span>
-                      <b>Apply Leave</b>
-                      <small>Submit leave request</small>
-                    </button>
-                  ) : (
-                    <Link className="me-action" to="/people/leave">
-                      <span className="me-action-icon green">
-                        <HrmsIcon name="calendar" size={16} />
-                      </span>
-                      <b>Apply Leave</b>
-                      <small>Submit leave request</small>
-                    </Link>
-                  )}
-                  {isManager ? (
-                    <button type="button" className="me-action" onClick={() => setTab('hr')}>
-                      <span className="me-action-icon blue">
-                        <HrmsIcon name="wallet" size={16} />
-                      </span>
-                      <b>View Payslip</b>
-                      <small>Download payslip</small>
-                    </button>
-                  ) : (
-                    <Link className="me-action" to="/people/payslips">
-                      <span className="me-action-icon blue">
-                        <HrmsIcon name="wallet" size={16} />
-                      </span>
-                      <b>View Payslip</b>
-                      <small>Download payslip</small>
-                    </Link>
-                  )}
+                  <button type="button" className="me-action" onClick={() => selectTab('hr')}>
+                    <span className="me-action-icon violet">
+                      <HrmsIcon name="clock" size={16} />
+                    </span>
+                    <b>View Attendance</b>
+                    <small>Check-in / check-out history</small>
+                  </button>
+                  <button type="button" className="me-action" onClick={() => selectTab('hr')}>
+                    <span className="me-action-icon green">
+                      <HrmsIcon name="calendar" size={16} />
+                    </span>
+                    <b>Apply Leave</b>
+                    <small>Submit leave request</small>
+                  </button>
+                  <button type="button" className="me-action" onClick={() => selectTab('hr')}>
+                    <span className="me-action-icon blue">
+                      <HrmsIcon name="wallet" size={16} />
+                    </span>
+                    <b>View Payslip</b>
+                    <small>Download payslip</small>
+                  </button>
                   <button type="button" className="me-action" onClick={() => setEditOpen(true)}>
                     <span className="me-action-icon rose">
                       <HrmsIcon name="user" size={16} />
@@ -446,7 +449,7 @@ export function PeopleProfilePage({ preview }: { preview?: PeopleProfilePreview 
                   </button>
                 </div>
               </section>
-              <LeaveCard rows={dash.leave_balances} onOpen={isManager ? () => setTab('hr') : undefined} />
+              <LeaveCard rows={dash.leave_balances} onOpen={() => selectTab('hr')} />
               <TrainingCard rows={trainings} />
             </div>
           </div>
@@ -914,7 +917,9 @@ function HrSelfService({
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [reason, setReason] = useState('');
+  const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   async function punch(logType: 'IN' | 'OUT') {
     if (preview) {
@@ -923,9 +928,15 @@ function HrSelfService({
     }
     setBusy(true);
     try {
-      const loc = await readGps();
-      const res = await api.submitEmployeeCheckin(logType, loc);
-      onNotice(res.message || `${logType} recorded`);
+      const geoRequired = !!Number(att.geofence_required || 0);
+      const loc = await readGps(geoRequired);
+      const coords =
+        loc.latitude != null && loc.longitude != null
+          ? { latitude: loc.latitude, longitude: loc.longitude }
+          : undefined;
+      const res = await api.submitEmployeeCheckin(logType, coords);
+      const savedLoc = coords ? ' · location saved' : loc.warn ? ' · location unavailable' : '';
+      onNotice((res.message || `${logType} recorded`) + savedLoc);
       onReload();
     } catch (err) {
       onNotice(errMsg(err, 'Could not record attendance'));
@@ -941,6 +952,7 @@ function HrSelfService({
       return;
     }
     setLeaveBusy(true);
+    setLeaveError(null);
     try {
       const res = await api.submitLeaveApplication({
         leave_type: leaveType,
@@ -948,13 +960,24 @@ function HrSelfService({
         to_date: toDate,
         description: reason,
       });
-      onNotice(res.message || 'Leave submitted');
+      const leaveName = res.data?.leave_application?.name || '';
+      if (leaveFile && leaveName) {
+        const dataUrl = await fileToBase64(leaveFile);
+        await api.uploadPeopleLeaveAttachment(leaveName, leaveFile.name, dataUrl);
+        onNotice((res.message || 'Leave submitted') + ' · attachment uploaded');
+      } else {
+        onNotice(res.message || 'Leave submitted');
+      }
       setFromDate('');
       setToDate('');
       setReason('');
+      setLeaveFile(null);
+      setLeaveError(null);
       onReload();
     } catch (err) {
-      onNotice(errMsg(err, 'Could not submit leave'));
+      const msg = errMsg(err, 'Could not submit leave');
+      setLeaveError(msg);
+      onNotice(msg);
     } finally {
       setLeaveBusy(false);
     }
@@ -1006,6 +1029,94 @@ function HrSelfService({
         </div>
       </section>
 
+      <section className="emp-card me-card" data-phr-att-record="1">
+        <div className="me-card-head">
+          <div>
+            <h2>Attendance record</h2>
+            <p>Your check-in / check-out history this month</p>
+          </div>
+          <Link className="me-link" to="/people/attendance">
+            Open attendance
+          </Link>
+        </div>
+        {(att.records || []).length ? (
+          <table className="me-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(att.records || []).map((row) => (
+                <tr key={row.name}>
+                  <td>{fmtDate(row.date || row.time)}</td>
+                  <td>{fmtWhen(row.time)}</td>
+                  <td>
+                    <span className={`emp-pill ${row.log_type === 'OUT' ? 'muted' : 'green'}`}>
+                      {row.log_type || 'IN'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="lv-muted">No attendance punches recorded this month yet.</p>
+        )}
+      </section>
+
+      <section className="emp-card me-card" data-phr-leave-record="1">
+        <div className="me-card-head">
+          <div>
+            <h2>Leave record</h2>
+            <p>{(dash.leave_applications || []).length} application(s) on file</p>
+          </div>
+          <Link className="me-link" to="/people/leave">
+            Open leave
+          </Link>
+        </div>
+        {(dash.leave_applications || []).length ? (
+          <table className="me-table">
+            <thead>
+              <tr>
+                <th>Leave type</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Days</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(dash.leave_applications || []).map((lv) => (
+                <tr key={lv.name}>
+                  <td>{lv.leave_type}</td>
+                  <td>{fmtDate(lv.from_date)}</td>
+                  <td>{fmtDate(lv.to_date)}</td>
+                  <td>{lv.total_leave_days ?? '—'}</td>
+                  <td>
+                    <span
+                      className={`emp-pill ${
+                        /reject/i.test(lv.status || '')
+                          ? 'rose'
+                          : /approv/i.test(lv.status || '')
+                            ? 'green'
+                            : 'muted'
+                      }`}
+                    >
+                      {lv.status || 'Open'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="lv-muted">No leave applications yet.</p>
+        )}
+      </section>
+
       <div className="me-hub">
         <section className="emp-card me-card">
           <div className="me-card-head">
@@ -1039,24 +1150,23 @@ function HrSelfService({
               Reason
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional" />
             </label>
+            <label>
+              Attachment (proof)
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+                onChange={(e) => setLeaveFile(e.target.files?.[0] || null)}
+              />
+              <small style={{ color: '#64748b', fontWeight: 500 }}>
+                Optional · PDF, JPG or PNG up to 5 MB · visible to HR and your manager
+                {leaveFile ? ` · ${leaveFile.name}` : ''}
+              </small>
+            </label>
+            {leaveError ? <div className="people-alert err">{leaveError}</div> : null}
             <button type="submit" className="emp-btn primary" disabled={leaveBusy || !leaveType}>
               {leaveBusy ? 'Submitting…' : 'Submit request'}
             </button>
           </form>
-          {(dash.leave_applications || []).slice(0, 3).map((lv) => (
-            <div className="me-train" key={lv.name}>
-              <span className="me-train-icon">
-                <HrmsIcon name="calendar" size={16} />
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <b>{lv.leave_type}</b>
-                <small>
-                  {fmtDate(lv.from_date)} – {fmtDate(lv.to_date)}
-                </small>
-              </div>
-              <span className="emp-pill muted">{lv.status || 'Open'}</span>
-            </div>
-          ))}
         </section>
 
         <section className="emp-card me-card">

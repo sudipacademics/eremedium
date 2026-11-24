@@ -63,7 +63,7 @@ export function Empty({ text }: { text: string }) {
   return <div className="empty">{text}</div>;
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -75,7 +75,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   return (
     <div className="modal-root">
       <button type="button" className="modal-backdrop" aria-label="Close dialog" onClick={onClose} />
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <header>
           <h2 id="modal-title">{title}</h2>
           <button type="button" className="icon-btn small" onClick={onClose} aria-label="Close">

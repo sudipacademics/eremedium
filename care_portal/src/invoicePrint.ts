@@ -168,6 +168,108 @@ export function printSessionBill(bill: SessionBill, s: Settings, branch: Partial
   return openAndPrint(sessionBillHtml(bill, s, branch));
 }
 
+export type VoucherPrint = {
+  number: string;
+  voucher_date: string;
+  branch_name?: string;
+  category: string;
+  payee: string;
+  amount: number;
+  paid?: number;
+  balance?: number;
+  payment_mode?: string;
+  purpose: string;
+  notes?: string;
+  status: string;
+  wing?: string;
+  doctor_name?: string | null;
+  payments?: { amount: number; mode: string; paid_on: string; reference?: string }[];
+};
+
+const VOUCHER_PRINT_CSS = `
+@page { size: A5 landscape; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f2a2c; font-size: 9pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet { width: 210mm; height: 148mm; padding: 6mm 7mm; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
+@media screen { body { background: #e5ecee; padding: 16px; } .sheet { background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.15); margin: 0 auto; } }
+.head { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1.5px solid #17a37a; padding-bottom: 4px; }
+.head h1 { margin: 0; font-size: 13pt; color: #0b3a3b; }
+.head .logo { display: block; height: 18mm; width: auto; margin: 0 0 1mm -1mm; }
+.head .br { font-weight: 700; font-size: 9pt; color: #0b3a3b; }
+.head p { margin: 1px 0; color: #334155; font-size: 8pt; }
+.meta { text-align: right; }
+.meta h2 { margin: 0 0 2px; font-size: 11pt; letter-spacing: .12em; color: #0f7f5e; }
+.meta .no { font-family: Consolas, monospace; font-weight: 700; font-size: 10pt; }
+.tag { display: inline-block; border: 1px solid #94a3b8; border-radius: 3px; padding: 0 5px; font-size: 7.5pt; font-weight: 700; margin-left: 4px; }
+.tag.ok { border-color: #15803d; color: #15803d; }
+.tag.due { border-color: #b45309; color: #b45309; }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3mm 6mm; margin: 5mm 0 3mm; font-size: 9pt; }
+.grid .lbl { display: block; font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+.grid .val { font-weight: 700; font-size: 10pt; color: #0b3a3b; }
+.purpose { margin: 2mm 0; font-size: 9pt; }
+.purpose .lbl { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+.words { font-weight: 600; font-size: 8.5pt; margin: 2mm 0 4mm; }
+.foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; padding-top: 4mm; gap: 8mm; }
+.note { font-size: 7.5pt; color: #64748b; max-width: 95mm; }
+.sign { text-align: center; min-width: 58mm; font-size: 8pt; }
+.sign img { max-height: 14mm; max-width: 52mm; display: block; margin: 0 auto 1mm; }
+.sign .line { border-top: 1px solid #334155; padding-top: 2px; font-weight: 700; }
+.sign .space { height: 12mm; }
+`;
+
+function voucherPage(title: string, body: string) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${VOUCHER_PRINT_CSS}</style></head><body><div class="sheet">${body}</div></body></html>`;
+}
+
+function voucherHtml(v: VoucherPrint, s: Settings, branch: Partial<Branch> | null) {
+  const head = clinicHead(s, branch);
+  const managerName = s.signatory_name || branch?.manager || '';
+  const statusClass = v.status === 'Paid' || v.status === 'Approved' ? 'ok' : v.status === 'Pending' ? 'due' : '';
+  const paidLines = (v.payments || [])
+    .map((p) => `${esc(fmtDate(p.paid_on, false))} · ${esc(p.mode)}${p.reference ? ` · Ref ${esc(p.reference)}` : ''} · ${money(p.amount)}`)
+    .join('<br>');
+  return voucherPage(
+    v.number,
+    `<div class="head">
+  ${head.html}
+  <div class="meta">
+    <h2>PAYMENT VOUCHER</h2>
+    <div class="no">${esc(v.number)}</div>
+    <p>${esc(fmtDate(v.voucher_date))}</p>
+    <p><span class="tag">${esc(v.wing || 'Care')}</span><span class="tag ${statusClass}">${esc(v.status)}</span></p>
+  </div>
+</div>
+<div class="grid">
+  <div><span class="lbl">Category</span><span class="val">${esc(v.category)}</span></div>
+  <div><span class="lbl">Paid to</span><span class="val">${esc(v.payee)}</span></div>
+  <div><span class="lbl">Amount</span><span class="val">${money(v.amount)}</span></div>
+  ${v.doctor_name ? `<div><span class="lbl">Doctor</span><span class="val">${esc(v.doctor_name)}</span></div>` : ''}
+  <div><span class="lbl">Mode</span><span class="val">${esc(v.payment_mode || '—')}</span></div>
+  <div><span class="lbl">Branch</span><span class="val">${esc(v.branch_name || branch?.name || '—')}</span></div>
+  ${v.balance != null ? `<div><span class="lbl">Balance</span><span class="val">${money(v.balance)}</span></div>` : ''}
+</div>
+<div class="purpose"><div class="lbl">Purpose</div>${esc(v.purpose || '—')}</div>
+${v.notes ? `<div class="purpose"><div class="lbl">Notes</div>${esc(v.notes)}</div>` : ''}
+<div class="words">${esc(rupeesInWords(v.amount))}</div>
+${paidLines ? `<div class="purpose"><div class="lbl">Payments</div>${paidLines}</div>` : ''}
+<div class="foot">
+  <div class="note">${esc(s.invoice_footer || '')}<br><span style="color:#94a3b8">Computer-generated payment voucher · A5 landscape</span></div>
+  <div class="sign">
+    <div>For ${esc(s.clinic_name || F.brand)}</div>
+    ${s.invoice_signature ? `<img src="${esc(s.invoice_signature)}" alt="Branch Manager signature">` : '<div class="space"></div>'}
+    <div class="line">${esc(managerName || 'Branch Manager')}</div>
+    <div>${esc(managerName ? s.signatory_title || 'Branch Manager' : 'Branch Manager')}</div>
+  </div>
+</div>`,
+  );
+}
+
+/** A5 landscape voucher with Care billing letterhead and branch manager signature. Save as PDF from the print dialog. */
+export function printVoucher(v: VoucherPrint, s: Settings, branch: Partial<Branch> | null = null) {
+  return openAndPrint(voucherHtml(v, s, branch));
+}
+
 export function invoiceHtml(inv: Invoice & { items: InvoiceLine[] }, payments: Payment[], s: Settings, branch: Partial<Branch> | null, usage: PackageUsage | null = null) {
   const due = Math.max(inv.total - inv.paid, 0);
   const head = clinicHead(s, branch);

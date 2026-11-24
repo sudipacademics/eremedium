@@ -130,6 +130,53 @@ def _safe_create_custom_fields(mapping):
 		return ok
 
 
+def _ensure_department_signature_fields():
+	"""Create any missing signature image fields. A failed batch used to leave names without images."""
+	if not frappe.db.exists("DocType", "Health Ecosystem Settings"):
+		return
+	doctype = "Health Ecosystem Settings"
+	created = False
+	for label, key, _role in SIGNATORY_DEPARTMENTS:
+		fieldname = f"report_sig_{key}_image"
+		if frappe.get_meta(doctype).has_field(fieldname):
+			continue
+		if frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": fieldname}):
+			created = True
+			continue
+		meta = frappe.get_meta(doctype)
+		qual = f"report_sig_{key}_qual"
+		name = f"report_sig_{key}_name"
+		insert_after = qual if meta.has_field(qual) else (name if meta.has_field(name) else "")
+		payload = {
+			"doctype": "Custom Field",
+			"dt": doctype,
+			"fieldname": fieldname,
+			"label": f"Default {label} Signature Image",
+			"fieldtype": "Attach Image",
+		}
+		if insert_after:
+			payload["insert_after"] = insert_after
+		previous_user = frappe.session.user
+		frappe.set_user("Administrator")
+		try:
+			doc = frappe.get_doc(payload)
+			doc.flags.ignore_permissions = True
+			# Settings already has one duplicated section field, which makes a normal
+			# custom-field save reject every new field. Skip that check for these images.
+			doc.flags.ignore_validate = True
+			doc.insert(ignore_permissions=True)
+		finally:
+			frappe.set_user(previous_user)
+		created = True
+	if created:
+		frappe.db.commit()
+		cache = getattr(frappe.local, "meta_cache", None)
+		if isinstance(cache, dict):
+			cache.pop(doctype, None)
+		frappe.clear_cache(doctype=doctype)
+		frappe.get_meta(doctype)
+
+
 def ensure_labtech_settings_fields():
 	"""Custom fields for pathologist signature images + WhatsApp report defaults."""
 	_safe_create_custom_fields(
@@ -199,6 +246,7 @@ def ensure_labtech_settings_fields():
 		ensure_lab_report_branding()
 	except Exception:
 		frappe.log_error(title="labtech_settings_branding", message=frappe.get_traceback())
+	_ensure_department_signature_fields()
 	return True
 
 
@@ -485,6 +533,7 @@ def save_department_signature_default(
 	if not access["can_manage"]:
 		frappe.throw(_("Only Lab Managers can change department signature defaults"), frappe.PermissionError)
 	ensure_labtech_settings_fields()
+	_ensure_department_signature_fields()
 	key = cstr(department_key).strip()
 	allowed = {k for _label, k, _role in SIGNATORY_DEPARTMENTS}
 	if key not in allowed:
@@ -498,7 +547,9 @@ def save_department_signature_default(
 	img_field = f"report_sig_{key}_image"
 	if cint(clear_image):
 		frappe.db.set_single_value("Health Ecosystem Settings", img_field, "")
-	elif file_name and file_data not in (None, ""):
+	elif file_name or file_data not in (None, ""):
+		if file_data in (None, ""):
+			frappe.throw(_("The signature image did not upload. Choose a PNG, JPG or WEBP under 2 MB."))
 		url = _save_attach(
 			file_name,
 			file_data,
@@ -506,6 +557,15 @@ def save_department_signature_default(
 			attached_to_name="Health Ecosystem Settings",
 			attached_to_field=img_field,
 		)
+		if not url:
+			frappe.throw(_("The signature image was not stored."))
 		frappe.db.set_single_value("Health Ecosystem Settings", img_field, url)
+		stored = cstr(frappe.db.get_single_value("Health Ecosystem Settings", img_field) or "")
+		if not stored:
+			frappe.throw(_("The signature image was not stored."))
 	frappe.db.commit()
+	try:
+		frappe.clear_document_cache("Health Ecosystem Settings", "Health Ecosystem Settings")
+	except Exception:
+		pass
 	return get_labtech_settings(user)

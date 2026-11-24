@@ -1707,6 +1707,45 @@ def _print_range_from_master(row, master_doc, ctx):
     return label, flag
 
 
+def _unique_report_texts(values):
+    found = []
+    for value in values:
+        text = cstr(value or "").strip()
+        if text and text not in found:
+            found.append(text)
+    return found
+
+
+def _section_machine_and_method(master_doc, section):
+    """Machine and method for one test, taken from Test Master first."""
+    methods = []
+    machines = []
+    if master_doc:
+        for param in getattr(master_doc, "parameters", None) or []:
+            methods.extend(_unique_report_texts([getattr(param, "method", None)]))
+            machines.extend(_unique_report_texts([getattr(param, "machine_name", None)]))
+        methods = _unique_report_texts(methods)
+        machines = _unique_report_texts(machines)
+    rows = section.get("parameters") or []
+    if not methods:
+        methods = _unique_report_texts(row.get("method") for row in rows)
+    if not machines:
+        machines = _unique_report_texts(row.get("machine_name") for row in rows)
+    # The line under the result is this summary ("Enzymatic / Jaffe · EM200").
+    # Split that same text so Machine and Method beside Approved by match it.
+    summary = cstr(section.get("machine_method") or "").strip()
+    if not summary and master_doc:
+        summary = cstr(getattr(master_doc, "machine_method", None) or "").strip()
+    if summary and " · " in summary:
+        method_text, machine_text = summary.rsplit(" · ", 1)
+        methods = _unique_report_texts([method_text])
+        if not machines:
+            machines = _unique_report_texts([machine_text])
+    elif summary and not methods:
+        methods = _unique_report_texts([summary])
+    return ", ".join(machines), ", ".join(methods)
+
+
 def group_parameters_for_print(doc):
     groups = OrderedDict()
     range_ctx = _patient_range_context(doc)
@@ -1805,6 +1844,13 @@ def group_parameters_for_print(doc):
             (s.get("test_name") or "").lower(),
         )
     )
+    for section in sections:
+        machine, method = _section_machine_and_method(
+            master_docs.get(section.get("diagnostic_test")),
+            section,
+        )
+        section["test_machine"] = machine
+        section["test_method"] = method
     return sections
 
 
@@ -1936,7 +1982,7 @@ def _signature_img_html(url):
     """Opaque signature mark. wkhtmltopdf drops transparent PNG ink, so it looked blank."""
     raw = cstr(url or "").strip()
     if not raw:
-        return '<div class="sig-image empty">&nbsp;</div>'
+        return ""
     path = _local_letterhead_path(raw)
     src = _embed_report_image_url(raw) if raw else ""
     width, height = 100, 40
@@ -1964,20 +2010,19 @@ def _signature_img_html(url):
             frappe.log_error(title="signature_img_html", message=frappe.get_traceback())
             src = _embed_report_image_url(raw)
     src = escape(src)
-    top = max(0, slot - height)
     return (
-        f'<div class="sig-image" style="height:{slot}px">'
-        f'<img src="{src}" width="{width}" height="{height}" '
-        f'style="display:block;margin:{top}px auto 0 auto;width:{width}px;height:{height}px" alt="" />'
-        f"</div>"
+        f'<img class="sig-ink-img" src="{src}" width="{width}" height="{height}" '
+        f'style="display:block;margin:0 auto;width:{width}px;height:{height}px" alt="" />'
     )
 
 
-def render_report_attribution_html(payload, for_pdf=0):
-    """Barcode on the left; Approved by / Typed by beside it (table layout for wkhtmltopdf)."""
+def render_report_attribution_html(payload, for_pdf=0, machine="", method=""):
+    """Barcode on the left; Approved by / Typed by, then this test's machine and method."""
     barcode = cstr(payload.get("barcode") or "").strip()
     approved = cstr(payload.get("approved_by") or "").strip()
     typed = cstr(payload.get("typed_by") or "").strip()
+    machine = cstr(machine or "").strip()
+    method = cstr(method or "").strip()
     code_line = f'<div class="attr-barcode-code">* {escape(barcode)}</div>' if barcode else ""
     bar_line = ""
     if barcode:
@@ -1989,13 +2034,29 @@ def render_report_attribution_html(payload, for_pdf=0):
             svg = _report_barcode_svg(barcode)
             if svg:
                 bar_line = f'<div class="attr-barcode">{svg}</div>'
+    test_cell = ""
+    meta_width = "54%"
+    if machine or method:
+        machine_line = (
+            f'<div class="attr-line"><span class="attr-label">Machine :</span> <span class="attr-value">{escape(machine)}</span></div>'
+            if machine
+            else ""
+        )
+        method_line = (
+            f'<div class="attr-line"><span class="attr-label">Method :</span> <span class="attr-value">{escape(method)}</span></div>'
+            if method
+            else ""
+        )
+        test_cell = f'<td class="attr-test-col" width="27%" valign="bottom">{machine_line}{method_line}</td>'
+        meta_width = "27%"
     return f"""<table class="report-attribution" cellpadding="0" cellspacing="0">
   <tr>
-    <td class="attr-barcode-col" valign="bottom">{code_line}{bar_line}</td>
-    <td class="attr-meta-col" valign="bottom">
+    <td class="attr-barcode-col" width="46%" valign="bottom">{code_line}{bar_line}</td>
+    <td class="attr-meta-col" width="{meta_width}" valign="bottom">
       <div class="attr-line"><span class="attr-label">Approved by :</span> <span class="attr-value">{escape(approved)}</span></div>
       <div class="attr-line"><span class="attr-label">Typed by :</span> <span class="attr-value">{escape(typed)}</span></div>
     </td>
+    {test_cell}
   </tr>
 </table>"""
 
@@ -2400,7 +2461,14 @@ def render_remedium_lab_report_html(payload, letterhead_plain=0, chrome_mode=Non
             graph_html += "</div>"
         break_cls = " test-break" if section_index > 1 else ""
         # Last test: End Of Report sits under the interpretation, then the signatures.
+        # Every test then gets the barcode, Approved by, Typed by, machine, and method.
         close_mark = "<!--ENDSIG-->" if section_index == section_count else "<!--SIG-->"
+        attribution = render_report_attribution_html(
+            payload,
+            for_pdf=pdf_mode,
+            machine=section.get("test_machine") or "",
+            method=section.get("test_method") or "",
+        )
         sections_html += f"""
         <div class="test-section{break_cls}">
           <div class="category-bar">{category}</div>
@@ -2421,8 +2489,8 @@ def render_remedium_lab_report_html(payload, letterhead_plain=0, chrome_mode=Non
           {f"<div class='method-line'><strong>Method:</strong> {method}</div>" if method else ""}
           {f"<div class='interpretation-box'><div class='interpretation-title'>Interpretation</div><div class='interpretation-body'>{interpretation}</div></div>" if interpretation else ""}
           {close_mark}
-        </div>
-        """
+"""
+        sections_html += '          <div class="report-close">' + attribution + "</div>\n        </div>\n"
 
     comments = payload.get("comments") or ""
     report_note = escape(str(payload.get("report_note") or ""))
@@ -2448,34 +2516,48 @@ def render_remedium_lab_report_html(payload, letterhead_plain=0, chrome_mode=Non
             {"department": "Clinical Pathology", "role": "Clinical Pathologist", "name": "", "qualification": ""},
         ]
 
-    sig_cells = ""
+    ink_cells = []
+    line_cells = []
+    name_cells = []
+    qual_cells = []
+    role_cells = []
+    dept_cells = []
     sig_urls = []
     for sig in signatories[:5]:
         sig_urls.append(cstr(sig.get("signature_url") or "").strip())
-        sig_img = _signature_img_html(sig.get("signature_url"))
+        sig_img = _signature_img_html(sig.get("signature_url")) or "&nbsp;"
         name_html = escape(str(sig.get("name") or "").strip()) or "&nbsp;"
         qual_html = escape(str(sig.get("qualification") or "").strip()) or "&nbsp;"
-        # Always emit name/qual slots so the blue line and labels stay on one baseline.
-        sig_cells += f"""
-    <td class="sig-cell" width="20%">
-      {sig_img}
-      <div class="sig-line">&nbsp;</div>
-      <div class="sig-name">{name_html}</div>
-      <div class="sig-qual">{qual_html}</div>
-      <div class="sig-role">{escape(str(sig.get("role") or ""))}</div>
-      <div class="sig-dept">{escape(str(sig.get("department") or ""))}</div>
-    </td>"""
+        # One row per part. The blue lines share a row, so they stay level.
+        ink_cells.append(f'<td class="sig-ink" width="20%" height="46" valign="bottom">{sig_img}</td>')
+        line_cells.append('<td class="sig-line-cell" width="20%"><div class="sig-line">&nbsp;</div></td>')
+        name_cells.append(f'<td class="sig-name" width="20%" nowrap="nowrap">{name_html}</td>')
+        qual_cells.append(f'<td class="sig-qual" width="20%" nowrap="nowrap">{qual_html}</td>')
+        role_cells.append(
+            f'<td class="sig-role" width="20%" nowrap="nowrap">{escape(str(sig.get("role") or ""))}</td>'
+        )
+        dept_cells.append(
+            f'<td class="sig-dept" width="20%" nowrap="nowrap">{escape(str(sig.get("department") or ""))}</td>'
+        )
 
     sig_marker = ""
     if pdf_mode:
         # Invisible. The PDF stamper reads this if wkhtmltopdf drops the <img>.
         sig_marker = "<!--HEC-SIG-URLS:" + "|".join(sig_urls) + "-->" + _nabl_map_marker(test_sections)
-    sig_table_html = sig_marker + f'<table class="sig-table"><tr>{sig_cells}</tr></table>'
-    attribution_html = render_report_attribution_html(payload, for_pdf=pdf_mode)
+    sig_table_html = (
+        sig_marker
+        + '<table class="sig-table">'
+        + "<tr>" + "".join(ink_cells) + "</tr>"
+        + "<tr>" + "".join(line_cells) + "</tr>"
+        + "<tr>" + "".join(name_cells) + "</tr>"
+        + "<tr>" + "".join(qual_cells) + "</tr>"
+        + "<tr>" + "".join(role_cells) + "</tr>"
+        + "<tr>" + "".join(dept_cells) + "</tr>"
+        + "</table>"
+    )
     end_then_sig = (
         '<div class="end-report">*** End Of Report ***</div>'
         + sig_table_html
-        + f'<div class="report-close">{attribution_html}</div>'
     )
     if "<!--ENDSIG-->" in sections_html:
         sections_html = sections_html.replace("<!--ENDSIG-->", end_then_sig, 1)
@@ -2483,7 +2565,8 @@ def render_remedium_lab_report_html(payload, letterhead_plain=0, chrome_mode=Non
     elif "<!--SIG-->" in sections_html:
         sections_html = sections_html.replace("<!--SIG-->", sig_table_html)
     else:
-        sections_html += end_then_sig
+        attribution_html = render_report_attribution_html(payload, for_pdf=pdf_mode)
+        sections_html += end_then_sig + f'<div class="report-close">{attribution_html}</div>'
 
     title_line = f"<div class='report-title'>{report_title}</div>" if report_title else ""
     dept_line = f"<div class='dept-badge'>{department}</div>" if department else ""
@@ -2769,7 +2852,9 @@ body.pdf-mode .test-section {{ overflow: visible; }}
   font-family: "Times New Roman", Times, serif; color: #111; border-collapse: collapse;
 }}
 .attr-barcode-col {{ width: 46%; padding-right: 8px; vertical-align: middle; }}
-.attr-meta-col {{ width: 54%; vertical-align: middle; }}
+.attr-meta-col {{ vertical-align: middle; }}
+.attr-test-col {{ width: 27%; vertical-align: middle; padding-left: 8px; }}
+.attr-test-col .attr-line {{ white-space: normal; }}
 .attr-barcode-code {{
   font-family: "Courier New", Courier, monospace; font-size: 9px; letter-spacing: 0.3px;
   margin-bottom: 1px;
@@ -2782,15 +2867,14 @@ body.pdf-mode .test-section {{ overflow: visible; }}
 .attr-label {{ font-family: "Times New Roman", Times, serif; }}
 .attr-value {{ font-family: "Courier New", Courier, monospace; font-weight: 600; }}
 .sig-table {{ width: 100%; border-collapse: collapse; margin-top: 2px; margin-bottom: 1px; page-break-inside: avoid; page-break-before: avoid; table-layout: fixed; }}
-.sig-cell {{ text-align: center; vertical-align: top; padding: 0 3px; overflow: visible; }}
-.sig-image {{ height: 44px; display: block; text-align: center; margin: 0; overflow: visible; }}
-.sig-image img {{ display: block; }}
-.sig-image.empty {{ height: 44px; }}
-.sig-line {{ border-top: 2px solid {accent_safe}; margin: 0 4px 2px; height: 0; font-size: 1px; line-height: 1px; }}
-.sig-name {{ font-weight: 700; font-size: 9px; line-height: 1.2; word-wrap: break-word; overflow-wrap: anywhere; }}
-.sig-qual {{ font-size: 8px; color: #64748b; margin-top: 1px; line-height: 1.2; word-wrap: break-word; overflow-wrap: anywhere; white-space: normal; }}
-.sig-role {{ font-size: 8px; color: {accent_safe}; font-weight: 700; margin-top: 1px; line-height: 1.15; word-wrap: break-word; overflow-wrap: anywhere; }}
-.sig-dept {{ font-size: 7px; color: #94a3b8; margin-top: 1px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.15; word-wrap: break-word; overflow-wrap: anywhere; }}
+.sig-ink {{ height: 46px; text-align: center; vertical-align: bottom; padding: 0 2px 0; font-size: 1px; line-height: 1px; }}
+.sig-ink img {{ display: block; margin: 0 auto; }}
+.sig-line-cell {{ padding: 0; margin: 0; height: 3px; vertical-align: top; font-size: 0; line-height: 0; }}
+.sig-line {{ border-top: 2px solid {accent_safe}; margin: 0 8px; height: 0; font-size: 0; line-height: 0; padding: 0; }}
+.sig-name {{ font-weight: 700; font-size: 8px; line-height: 1.15; text-align: center; white-space: nowrap; padding: 1px 1px 0; }}
+.sig-qual {{ font-size: 6.5px; color: #64748b; line-height: 1.15; text-align: center; white-space: nowrap; padding: 0 1px; }}
+.sig-role {{ font-size: 7px; color: {accent_safe}; font-weight: 700; line-height: 1.15; text-align: center; white-space: nowrap; padding: 0 1px; }}
+.sig-dept {{ font-size: 6.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0; line-height: 1.15; text-align: center; white-space: nowrap; padding: 0 1px; }}
 .footer-fallback {{ text-align: center; font-size: 8px; color: #64748b; padding: 4px 8px; }}
 .legend {{ font-size: 9px; color: #64748b; text-align: right; margin: 6px 2px 0; }}
 .auth-cell {{ width: 110px; text-align: right; }}

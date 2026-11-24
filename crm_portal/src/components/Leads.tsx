@@ -1,31 +1,144 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   LEAD_PIPELINE,
-  LEAD_STATUSES,
+  LEAD_PIPELINE_GROUPS,
   LOST_REASONS,
   WINGS,
+  franchiseVerticalLabel,
   formatNumber,
   initials,
+  wingById,
   type CrmActivity,
   type CrmLead,
+  type LeadPipelineStage,
   type LeadStatus,
   type LostReason,
   type WingId,
 } from '../data';
-import { Icon } from '../icons';
+import {
+  leadMatchesModule,
+  moduleTitle,
+  parseModuleParams,
+  type CrmDomain,
+  type CrmModuleWing,
+} from '../crmModules';
+import { downloadCsv, exportPdfTable, stampFile } from '../exportData';
+import { Icon, type IconName } from '../icons';
+import { safeHttpUrl, safeTelHref } from '../security';
 import { useCrm } from '../store';
+import { ExportMenu } from './ExportMenu';
 import {
   AssignReachForm,
   EditLeadModal,
   ImportLeadsModal,
   ScheduleFollowUpForm,
+  ServiceWhatsAppModal,
   TransferOwnershipModal,
 } from './Forms';
-import { syncCrmLeadStatusToReach } from '../crmApi';
-import { Empty, WingPill } from './ui';
+import { whatsappCentrePathForLead } from './WhatsAppCentre';
+import {
+  countActiveFranchiseFilters,
+  EMPTY_FRANCHISE_FILTERS,
+  FranchiseFilterButton,
+  FranchiseFilterModal,
+  type FranchiseFilterValues,
+} from './FranchiseFilterModal';
+import { Empty, StatusPill, WingPill } from './ui';
 
-type DetailTab = 'overview' | 'followups' | 'activity' | 'notes' | 'documents';
-type TimeFilter = 'all' | 'today' | '7d' | '30d';
+type DetailTab = 'overview' | 'followups' | 'activity' | 'notes' | 'documents' | 'transfers';
+type OverviewFocus = 'all' | 'open' | 'progress' | 'won' | 'lost';
+
+function isReachAssigned(lead: CrmLead) {
+  return Boolean(lead.reachLeadId || lead.reachAssignedAt || lead.reachRepId || lead.reachRepName);
+}
+
+function reachTrackingTag(lead: CrmLead) {
+  if (!isReachAssigned(lead)) return '';
+  if (lead.reachLeadId) return lead.reachLeadId;
+  if (lead.reachRepName) return `REACH · ${lead.reachRepName.split(' ')[0]}`;
+  return 'REACH';
+}
+
+const IN_PROGRESS_STATUSES: LeadStatus[] = [
+  'Contacted',
+  'Connected',
+  'Interested',
+  'Qualified',
+  'Proposal Required',
+  'Discussion Ongoing',
+  'Ready to Proceed',
+];
+
+function startOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function endOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+function startOfMonth(d = new Date()) {
+  const x = startOfDay(d);
+  x.setDate(1);
+  return x;
+}
+function endOfMonth(d = new Date()) {
+  const x = endOfDay(d);
+  x.setMonth(x.getMonth() + 1, 0);
+  return x;
+}
+function monthKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function fmtRangeLabel(from: Date, to: Date) {
+  const opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
+  return `${from.toLocaleDateString('en-GB', opts)} – ${to.toLocaleDateString('en-GB', opts)}`;
+}
+function monthOptions(count = 12) {
+  const now = new Date();
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return { key: monthKey(d), from: startOfMonth(d), to: endOfMonth(d) };
+  });
+}
+function inRange(iso: string | undefined, from: Date, to: Date) {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return t >= from.getTime() && t <= to.getTime();
+}
+
+const OVERVIEW_CARDS: Array<{ id: OverviewFocus; label: string; tone: string; icon: IconName }> = [
+  { id: 'all', label: 'Total Leads', tone: 'total', icon: 'users' },
+  { id: 'open', label: 'Open Pipeline', tone: 'open', icon: 'layers' },
+  { id: 'progress', label: 'In Progress', tone: 'progress', icon: 'refresh' },
+  { id: 'won', label: 'Won / Converted', tone: 'won', icon: 'trophy' },
+  { id: 'lost', label: 'Lost / Closed', tone: 'lost', icon: 'xcircle' },
+];
+
+const PIPE_META: Record<LeadPipelineStage, { tone: string; icon: IconName }> = {
+  New: { tone: 'new', icon: 'sparkle' },
+  Contacted: { tone: 'contacted', icon: 'phone' },
+  Interested: { tone: 'interested', icon: 'users' },
+  Qualified: { tone: 'qualified', icon: 'badge' },
+  'Proposal Required': { tone: 'proposal', icon: 'file' },
+  'Ready to Proceed': { tone: 'ready', icon: 'handshake' },
+  Won: { tone: 'won', icon: 'trophy' },
+};
+
+function formatPipePct(count: number, total: number) {
+  if (!total) return '0%';
+  const pct = (count / total) * 100;
+  const rounded = Math.round(pct * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
+}
+
+function fmtEntryDate(iso?: string) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 function fmtWhen(iso?: string) {
   if (!iso) return '—';
@@ -96,13 +209,23 @@ function isSoon(iso?: string) {
   return t >= now - 3600000 && t <= now + 36 * 3600000;
 }
 
+function mobile10(v?: string) {
+  const d = String(v || '').replace(/\D/g, '').slice(-10);
+  return /^\d{10}$/.test(d) ? d : '';
+}
+
 export function LeadsPage() {
   const crm = useCrm();
+  const navigate = useNavigate();
+  const params = useParams<{ domain?: string; wing?: string }>();
+  const parsedModule = parseModuleParams(params.domain, params.wing);
+  const domain: CrmDomain = parsedModule?.domain ?? 'service';
+  const moduleWing: CrmModuleWing = parsedModule?.wing ?? 'aesthetic';
+
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('all');
-  const [wing, setWing] = useState<WingId | 'all'>(crm.wingFilter);
-  const [owner, setOwner] = useState('all');
-  const [time, setTime] = useState<TimeFilter>('all');
+  const [wing, setWing] = useState<WingId | 'all'>('all');
+  const [filters, setFilters] = useState<FranchiseFilterValues>(EMPTY_FRANCHISE_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
@@ -114,64 +237,212 @@ export function LeadsPage() {
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduleActivity, setScheduleActivity] = useState<CrmActivity | null>(null);
   const [assignReachMode, setAssignReachMode] = useState(false);
+  const [serviceWaLead, setServiceWaLead] = useState<CrmLead | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [lostReason, setLostReason] = useState<LostReason | ''>('');
   const [lostNote, setLostNote] = useState('');
+  const [pipeMenu, setPipeMenu] = useState<LeadPipelineStage | null>(null);
+  const [month, setMonth] = useState('all');
+  const [overviewFocus, setOverviewFocus] = useState<OverviewFocus>('all');
+  const pipelineRef = useRef<HTMLDivElement>(null);
+  const status = filters.status;
+  const setStatus = (next: string) => setFilters((f) => ({ ...f, status: next }));
+  const months = useMemo(() => monthOptions(12), []);
+  const range = useMemo(() => {
+    if (month === 'all') {
+      return { from: new Date(0), to: endOfDay(new Date(8640000000000000)), label: 'All entry dates', all: true as const };
+    }
+    const hit = months.find((m) => m.key === month) || months[0];
+    return { from: hit.from, to: hit.to, label: fmtRangeLabel(hit.from, hit.to), all: false as const };
+  }, [month, months]);
+
+  useEffect(() => {
+    setWing('all');
+    setSelectedId(null);
+    setDetailOpen(false);
+    setFilters(EMPTY_FRANCHISE_FILTERS);
+    setFilterOpen(false);
+  }, [domain, moduleWing]);
+
+  useEffect(() => {
+    if (!pipeMenu) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!pipelineRef.current?.contains(e.target as Node)) setPipeMenu(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [pipeMenu]);
 
   const owners = useMemo(() => {
     const set = new Set(crm.leads.map((l) => l.owner).filter(Boolean));
     return Array.from(set).sort();
   }, [crm.leads]);
 
+  const reachReps = useMemo(() => {
+    const set = new Set(
+      crm.leads
+        .map((l) => String(l.reachRepName || '').trim())
+        .filter(Boolean),
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [crm.leads]);
+
+  const isFranchise = domain === 'franchise';
+
   const resetFilters = () => {
     setQ('');
-    setStatus('all');
     setWing('all');
-    setOwner('all');
-    setTime('all');
+    setFilters(EMPTY_FRANCHISE_FILTERS);
+    setOverviewFocus('all');
+    setMonth('all');
   };
 
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const now = Date.now();
-    return crm.leads.filter((l) => {
-      if (wing !== 'all' && l.wing !== wing) return false;
-      if (status !== 'all' && l.status !== status) return false;
-      if (owner !== 'all' && l.owner !== owner) return false;
-      if (time !== 'all') {
-        const ts = new Date(l.updatedAt || l.createdAt).getTime();
-        const windowMs = time === 'today' ? 86400000 : time === '7d' ? 7 * 86400000 : 30 * 86400000;
-        if (now - ts > windowMs) return false;
+  const effectiveStatus = filters.status;
+  const effectiveOwner = filters.owner;
+  const effectiveEntryMonth = filters.entryMonth;
+  const effectiveEntryFrom = filters.entryFrom;
+  const effectiveEntryTo = filters.entryTo;
+  const effectiveReach = filters.reachFilter;
+
+  const entryFilterRange = useMemo(() => {
+    if (effectiveEntryFrom || effectiveEntryTo) {
+      const from = effectiveEntryFrom ? startOfDay(new Date(`${effectiveEntryFrom}T00:00:00`)) : new Date(0);
+      const to = effectiveEntryTo ? endOfDay(new Date(`${effectiveEntryTo}T00:00:00`)) : endOfDay(new Date());
+      return { from, to, active: true as const };
+    }
+    if (effectiveEntryMonth !== 'all') {
+      const hit = months.find((m) => m.key === effectiveEntryMonth);
+      if (hit) return { from: hit.from, to: hit.to, active: true as const };
+    }
+    return null;
+  }, [effectiveEntryFrom, effectiveEntryTo, effectiveEntryMonth, months]);
+
+  const matchesCommon = (l: CrmLead, needle: string) => {
+    if (!leadMatchesModule(l, domain, moduleWing)) return false;
+    if (wing !== 'all' && l.wing !== wing) return false;
+    if (effectiveOwner !== 'all' && l.owner !== effectiveOwner) return false;
+    const onReach = isReachAssigned(l);
+    if (effectiveReach === 'reach' && !onReach) return false;
+    if (effectiveReach === 'crm_only' && onReach) return false;
+    if (effectiveReach !== 'all' && effectiveReach !== 'reach' && effectiveReach !== 'crm_only') {
+      if (String(l.reachRepName || '') !== effectiveReach) return false;
+    }
+    if (isFranchise) {
+      if (filters.model !== 'all' && (l.franchiseModel || '') !== filters.model) return false;
+      if (
+        filters.propertyOwnership !== 'all'
+        && (l.propertyOwnership || '') !== filters.propertyOwnership
+      ) {
+        return false;
       }
-      if (!needle) return true;
-      return `${l.name} ${l.mobile} ${l.email} ${l.city} ${l.id} ${l.notes || ''} ${l.owner}`
-        .toLowerCase()
-        .includes(needle);
+      if (
+        filters.investmentCapacity !== 'all'
+        && !(l.investmentCapacity || '').includes(filters.investmentCapacity)
+      ) {
+        return false;
+      }
+      if (filters.timeline !== 'all' && (l.timeline || '') !== filters.timeline) return false;
+      if (filters.state && l.state !== filters.state) return false;
+      if (filters.district && l.district !== filters.district) return false;
+      if (
+        filters.subdivision.trim() &&
+        !(l.subdivision || '').toLowerCase().includes(filters.subdivision.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        filters.village.trim() &&
+        !`${l.village || ''} ${l.city || ''}`.toLowerCase().includes(filters.village.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (filters.pinCode.trim() && (l.pinCode || '') !== filters.pinCode.trim()) return false;
+    }
+    if (!needle) return true;
+    return `${l.name} ${l.mobile} ${l.email} ${l.city} ${l.id} ${l.notes || ''} ${l.owner} ${l.reachLeadId || ''} ${l.reachRepName || ''} ${l.reachRepId || ''} ${l.state || ''} ${l.district || ''} ${l.village || ''} ${l.pinCode || ''}`
+      .toLowerCase()
+      .includes(needle);
+  };
+
+  /**
+   * Single source for KPIs + table + pipeline.
+   * Date scope: franchise entry filter if set, else the overview month picker (incl. All).
+   */
+  const baseRows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return crm.leads.filter((l) => {
+      if (entryFilterRange) {
+        if (!inRange(l.createdAt, entryFilterRange.from, entryFilterRange.to)) return false;
+      } else if (!range.all && !inRange(l.createdAt, range.from, range.to)) {
+        return false;
+      }
+      return matchesCommon(l, needle);
     });
-  }, [crm.leads, q, status, wing, owner, time]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    crm.leads,
+    q,
+    wing,
+    effectiveOwner,
+    effectiveReach,
+    filters,
+    entryFilterRange,
+    range.from,
+    range.to,
+    range.all,
+    domain,
+    moduleWing,
+    isFranchise,
+  ]);
 
   const stats = useMemo(() => {
-    const total = rows.length;
-    const open = rows.filter((l) => l.status !== 'Won' && l.status !== 'Lost').length;
-    const inProgress = rows.filter((l) =>
-      ['Contacted', 'Connected', 'Interested', 'Qualified', 'Proposal Required', 'Discussion Ongoing', 'Ready to Proceed'].includes(
-        l.status,
-      ),
-    ).length;
-    const won = rows.filter((l) => l.status === 'Won').length;
-    const lost = rows.filter((l) => l.status === 'Lost' || l.status === 'Not Interested').length;
+    const total = baseRows.length;
+    const open = baseRows.filter((l) => l.status !== 'Won' && l.status !== 'Lost').length;
+    const inProgress = baseRows.filter((l) => IN_PROGRESS_STATUSES.includes(l.status)).length;
+    const won = baseRows.filter((l) => l.status === 'Won').length;
+    const lost = baseRows.filter((l) => l.status === 'Lost' || l.status === 'Not Interested').length;
     const wonPct = total ? Math.round((won / total) * 1000) / 10 : 0;
     return { total, open, inProgress, won, lost, wonPct };
-  }, [rows]);
+  }, [baseRows]);
 
-  const pipeline = useMemo(
-    () =>
-      LEAD_PIPELINE.map((stage) => ({
+  const rows = useMemo(() => {
+    return baseRows.filter((l) => {
+      if (effectiveStatus !== 'all' && l.status !== effectiveStatus) return false;
+      if (overviewFocus === 'open') return l.status !== 'Won' && l.status !== 'Lost';
+      if (overviewFocus === 'progress') return IN_PROGRESS_STATUSES.includes(l.status);
+      if (overviewFocus === 'won') return l.status === 'Won';
+      if (overviewFocus === 'lost') return l.status === 'Lost' || l.status === 'Not Interested';
+      return true;
+    });
+  }, [baseRows, effectiveStatus, overviewFocus]);
+
+  const overviewValue = (id: OverviewFocus) => {
+    if (id === 'all') return formatNumber(stats.total);
+    if (id === 'open') return formatNumber(stats.open);
+    if (id === 'progress') return formatNumber(stats.inProgress);
+    if (id === 'won') return formatNumber(stats.won);
+    return formatNumber(stats.lost);
+  };
+
+  const onOverviewCard = (id: OverviewFocus) => {
+    setStatus('all');
+    setOverviewFocus((cur) => (cur === id ? 'all' : id));
+  };
+
+  const pipeline = useMemo(() => {
+    const total = rows.length;
+    return LEAD_PIPELINE.map((stage) => {
+      const group = LEAD_PIPELINE_GROUPS[stage];
+      const count = rows.filter((l) => l.status === stage).length;
+      return {
         stage,
-        count: rows.filter((l) => l.status === stage).length,
-      })),
-    [rows],
-  );
+        count,
+        pct: formatPipePct(count, total),
+        meta: PIPE_META[stage],
+        options: group,
+      };
+    });
+  }, [rows]);
 
   const selected = useMemo(
     () => (selectedId ? crm.leads.find((l) => l.id === selectedId) || null : null),
@@ -181,6 +452,7 @@ export function LeadsPage() {
   const openLead = (lead: CrmLead, tab: DetailTab = 'overview') => {
     setSelectedId(lead.id);
     setDetailTab(tab);
+    crm.refreshTransferHistory(lead.id).catch(() => undefined);
     setScheduleMode(false);
     setScheduleActivity(null);
     setAssignReachMode(false);
@@ -193,6 +465,35 @@ export function LeadsPage() {
     setAssignReachMode(false);
     setScheduleMode(true);
     setScheduleActivity(activity || null);
+  };
+
+  const saveLeadAsContact = (lead: CrmLead) => {
+    const mobile = mobile10(lead.mobile);
+    if (!lead.name?.trim()) {
+      crm.pushToast('Lead name is required to save as contact', 'err');
+      return;
+    }
+    if (!mobile) {
+      crm.pushToast('Lead needs a valid 10-digit mobile to save as contact', 'err');
+      return;
+    }
+    const exists = (crm.contacts || []).some(
+      (c) => mobile10(c.mobile) === mobile || (c.name.trim().toLowerCase() === lead.name.trim().toLowerCase() && mobile10(c.mobile) === mobile),
+    );
+    if (exists) {
+      crm.pushToast(`${lead.name} is already in Contacts`, 'err');
+      return;
+    }
+    const contact = crm.addContact({
+      name: lead.name.trim(),
+      mobile,
+      email: (lead.email || '').trim(),
+      wing: lead.wing,
+      owner: lead.owner || crm.userName,
+      role: lead.wing === 'franchise' ? 'Franchise Applicant' : 'Lead',
+      account: lead.city || lead.territory || undefined,
+    });
+    crm.pushToast(`Saved to Contacts · ${contact.id}`);
   };
 
   const closeSchedule = () => {
@@ -247,27 +548,6 @@ export function LeadsPage() {
     ? syncedNextFollowUp(selected, crm.activities) || leadFollowUps.find((a) => !a.done)?.dueAt
     : undefined;
 
-  const quickStatus = (lead: CrmLead, next: LeadStatus, e?: ChangeEvent<HTMLSelectElement>) => {
-    e?.stopPropagation();
-    if (next === lead.status) return;
-    if (next === 'Lost') {
-      setSelectedId(lead.id);
-      setDetailOpen(true);
-      setDetailTab('overview');
-      setLostReason('');
-      setLostNote('');
-      crm.pushToast('Select a lost reason to close this lead');
-      return;
-    }
-    crm.updateLead(lead.id, { status: next }, `Status ${lead.status} → ${next}`);
-    crm.pushToast(`${lead.id} → ${next}`);
-    if (lead.reachLeadId || lead.reachAssignedAt) {
-      void syncCrmLeadStatusToReach(lead.id, next).catch(() => {
-        /* soft — REACH may be offline */
-      });
-    }
-  };
-
   const confirmLost = () => {
     if (!selected) return;
     if (!lostReason) {
@@ -288,14 +568,234 @@ export function LeadsPage() {
     crm.pushToast('Note saved');
   };
 
+  const pageHeading = moduleTitle(domain, 'lead', moduleWing);
+  const wingOptions =
+    domain === 'service'
+      ? WINGS.filter((w) => w.id === moduleWing)
+      : WINGS.filter((w) => (moduleWing === 'nexilab' ? w.id === 'nexilab' : w.id === 'franchise'));
+
+  const exportLeads = (kind: 'csv' | 'pdf') => {
+    const header = isFranchise
+      ? ['ID', 'Applicant', 'Mobile', 'Entry date', 'Business', 'Model', 'State', 'District', 'PIN', 'Status', 'Owner', 'Last follow-up', 'Next follow-up']
+      : ['ID', 'Name', 'Mobile', 'City', 'Entry date', 'Wing', 'Source', 'REACH tag', 'Status', 'Owner', 'Last follow-up', 'Next follow-up'];
+    const data = rows.map((lead) => {
+      const next = syncedNextFollowUp(lead, crm.activities);
+      const last = syncedLastFollowUp(lead, crm.activities);
+      const biz = franchiseVerticalLabel(lead.franchiseVertical);
+      if (isFranchise) {
+        return [
+          lead.id,
+          lead.name,
+          lead.mobile,
+          fmtEntryDate(lead.createdAt),
+          biz,
+          lead.franchiseModel || '',
+          lead.state || '',
+          lead.district || '',
+          lead.pinCode || '',
+          lead.status,
+          lead.owner,
+          fmtWhen(last),
+          fmtWhen(next),
+        ];
+      }
+      return [
+        lead.id,
+        lead.name,
+        lead.mobile,
+        lead.city || '',
+        fmtEntryDate(lead.createdAt),
+        wingById(lead.wing).short,
+        lead.source,
+        reachTrackingTag(lead) || '',
+        lead.status,
+        lead.owner,
+        fmtWhen(last),
+        fmtWhen(next),
+      ];
+    });
+    const file = stampFile(`crm-leads-${domain}-${moduleWing}`);
+    if (kind === 'csv') {
+      downloadCsv(file, header, data);
+      crm.pushToast(`Exported ${data.length} lead(s) to CSV`);
+      return;
+    }
+    exportPdfTable({
+      title: pageHeading,
+      subtitle: 'Smilecure CRM · filtered leads directory',
+      header,
+      rows: data,
+      fileHint: file,
+    });
+  };
+
+  if (!parsedModule) {
+    return <Navigate to="/leads/service/aesthetic" replace />;
+  }
+
   return (
     <div className="lm-page">
-      <header className="page-head">
+      <header className="page-head page-head-compact">
         <div>
-          <h1>Lead Management</h1>
-          <p>Capture, qualify and convert leads across Lab, Aesthetic, Care, NexiLab and Franchise.</p>
+          <h1>{pageHeading}</h1>
+          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '0.82rem' }}>
+            {domain === 'service' ? 'Service' : 'Franchise'} lead directory · {moduleWing} submodule
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      </header>
+
+      <section className="fu-check lo-overview" aria-label="Lead Overview">
+        <div className="fu-check-head">
+          <div className="fu-check-title">
+            <span className="fu-check-mark" aria-hidden="true">
+              <Icon name="funnel" size={20} />
+            </span>
+            <div>
+              <strong>Lead Overview</strong>
+              <p>Real-time status of your leads and sales pipeline.</p>
+            </div>
+          </div>
+          <label className="fu-check-range">
+            <Icon name="calendar" size={15} />
+            <select
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              aria-label="Lead entry date range"
+              title={`Filters overview, pipeline, and table · ${range.label}`}
+            >
+              <option value="all">All entry dates</option>
+              {months.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {fmtRangeLabel(m.from, m.to)}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevron" size={14} />
+          </label>
+        </div>
+        <div className="fu-check-grid">
+          {OVERVIEW_CARDS.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              className={`fu-check-card${overviewFocus === card.id && card.id !== 'all' ? ' on' : ''}`}
+              data-tone={card.tone}
+              onClick={() => onOverviewCard(card.id)}
+            >
+              <span className="fu-check-ico">
+                <Icon name={card.icon} size={16} />
+              </span>
+              <div>
+                <span>{card.label}</span>
+                <strong>
+                  {overviewValue(card.id)}
+                  {card.id === 'won' ? <span className="pipe-pct">{stats.wonPct}%</span> : null}
+                </strong>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="card lm-pipeline">
+        <div className="card-head">
+          <h3>Lead pipeline</h3>
+          <span className="badge-pill">Live funnel</span>
+        </div>
+        <div className="pipeline" ref={pipelineRef}>
+          {pipeline.map((p, i) => {
+            const active = p.options.includes(status as LeadStatus) || status === p.stage;
+            return (
+              <div
+                key={p.stage}
+                className={`pipe-step${active ? ' on' : ''}`}
+                data-tone={p.meta.tone}
+                style={{ zIndex: pipeMenu === p.stage ? 40 : pipeline.length - i }}
+              >
+                <div className="pipe-step-top">
+                  <Icon className="pipe-ico" name={p.meta.icon} size={15} />
+                  <button
+                    type="button"
+                    className="pipe-step-label"
+                    style={{
+                      border: 0,
+                      background: 'transparent',
+                      color: 'inherit',
+                      padding: 0,
+                      font: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      setPipeMenu(null);
+                      setStatus(status === p.stage ? 'all' : p.stage);
+                    }}
+                    title={`Filter ${p.stage}`}
+                  >
+                    {p.stage}
+                  </button>
+                  <button
+                    type="button"
+                    className={`pipe-step-caret${pipeMenu === p.stage ? ' open' : ''}`}
+                    aria-label={`${p.stage} statuses`}
+                    aria-expanded={pipeMenu === p.stage}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPipeMenu((cur) => (cur === p.stage ? null : p.stage));
+                    }}
+                  >
+                    <Icon name="chevron" size={14} />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="pipe-step-stats"
+                  style={{
+                    border: 0,
+                    background: 'transparent',
+                    color: 'inherit',
+                    padding: 0,
+                    font: 'inherit',
+                    width: '100%',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    setPipeMenu(null);
+                    setStatus(status === p.stage ? 'all' : p.stage);
+                  }}
+                >
+                  <b>{formatNumber(p.count)}</b>
+                  <span className="pipe-pct">{p.pct}</span>
+                </button>
+                {pipeMenu === p.stage ? (
+                  <div className="pipe-menu" role="menu">
+                    {p.options.map((opt) => {
+                      const n = rows.filter((l) => l.status === opt).length;
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          role="menuitem"
+                          className={status === opt ? 'active' : ''}
+                          onClick={() => {
+                            setStatus(status === opt ? 'all' : opt);
+                            setPipeMenu(null);
+                          }}
+                        >
+                          {opt} · {formatNumber(n)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="card lm-main">
+        <div className="fu-table-tools lm-table-tools">
           {crm.isManager ? (
             <button
               type="button"
@@ -305,110 +805,119 @@ export function LeadsPage() {
                 setTransferOpen(true);
               }}
             >
-              Transfer
+              Transfer Lead
+            </button>
+          ) : null}
+          {crm.isManager && checkedIds.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ color: 'var(--danger, #b91c1c)' }}
+              onClick={() => {
+                const n = checkedIds.length;
+                if (
+                  !window.confirm(
+                    `Delete ${n} selected lead${n === 1 ? '' : 's'}? This cannot be undone.`,
+                  )
+                ) {
+                  return;
+                }
+                const { deleted } = crm.deleteLeads(checkedIds);
+                if (selectedId && checkedIds.includes(selectedId)) {
+                  setSelectedId(null);
+                  setDetailOpen(false);
+                }
+                setCheckedIds([]);
+                crm.pushToast(
+                  deleted ? `Deleted ${deleted} lead${deleted === 1 ? '' : 's'}` : 'No leads deleted',
+                  deleted ? 'ok' : 'err',
+                );
+              }}
+            >
+              Delete ({checkedIds.length})
             </button>
           ) : null}
           <button type="button" className="btn btn-ghost" onClick={() => setImportOpen(true)}>
             Import Lead
           </button>
+          <div className="search fu-table-search">
+            <Icon name="search" size={15} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search leads…" aria-label="Search leads" />
+          </div>
+          {!isFranchise ? (
+            wingOptions.length > 1 ? (
+              <select value={wing} onChange={(e) => setWing(e.target.value as WingId | 'all')} aria-label="Wing filter">
+                <option value="all">All in module</option>
+                {wingOptions.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="badge-pill">{wingOptions[0]?.short || moduleWing}</span>
+            )
+          ) : null}
+          {!crm.isManager ? (
+            <span className="badge-pill" title="You only see leads assigned to you">
+              My leads · {crm.userName}
+            </span>
+          ) : null}
+          <FranchiseFilterButton
+            activeCount={countActiveFranchiseFilters(filters, {
+              includeModel: isFranchise,
+              includeGeo: isFranchise,
+            })}
+            onClick={() => setFilterOpen(true)}
+          />
+          <button type="button" className="btn btn-ghost" onClick={resetFilters}>
+            Reset
+          </button>
+          <ExportMenu onCsv={() => exportLeads('csv')} onPdf={() => exportLeads('pdf')} disabled={rows.length === 0} />
         </div>
-      </header>
-
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
-        <div className="kpi">
-          <span>Total Leads</span>
-          <strong>{formatNumber(stats.total)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Open Pipeline</span>
-          <strong>{formatNumber(stats.open)}</strong>
-        </div>
-        <div className="kpi">
-          <span>In Progress</span>
-          <strong>{formatNumber(stats.inProgress)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Won / Converted</span>
-          <strong>
-            {formatNumber(stats.won)} <em style={{ fontStyle: 'normal', fontSize: '0.75rem' }}>({stats.wonPct}%)</em>
-          </strong>
-        </div>
-        <div className="kpi">
-          <span>Lost / Closed</span>
-          <strong style={{ color: stats.lost ? '#b91c1c' : undefined }}>{formatNumber(stats.lost)}</strong>
-        </div>
-      </div>
-
-      <div className="card lm-pipeline">
-        <div className="card-head">
-          <h3>Lead pipeline</h3>
-          <span className="badge-pill">Live funnel</span>
-        </div>
-        <div className="pipeline">
-          {pipeline.map((p, i) => (
-            <button
-              key={p.stage}
-              type="button"
-              className={`pipe-step${status === p.stage ? ' on' : ''}`}
-              onClick={() => setStatus(status === p.stage ? 'all' : p.stage)}
-              style={{ zIndex: pipeline.length - i }}
-            >
-              <span>{p.stage}</span>
-              <b>{formatNumber(p.count)}</b>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="toolbar">
-        <div className="search" style={{ maxWidth: 280, flex: 1 }}>
-          <Icon name="search" size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search leads…" />
-        </div>
-        <select value={wing} onChange={(e) => setWing(e.target.value as WingId | 'all')}>
-          <option value="all">All wings</option>
-          {WINGS.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="all">All statuses</option>
-          {LEAD_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select value={owner} onChange={(e) => setOwner(e.target.value)}>
-          <option value="all">All owners</option>
-          {owners.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <select value={time} onChange={(e) => setTime(e.target.value as TimeFilter)}>
-          <option value="all">All time</option>
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-        </select>
-        <button type="button" className="btn btn-ghost" onClick={resetFilters}>
-          Reset
-        </button>
-      </div>
-
-      <div className="card lm-main">
         <table className="table">
           <thead>
             <tr>
-              {crm.isManager ? <th style={{ width: 36 }} /> : null}
+              {crm.isManager ? (
+                <th style={{ width: 36 }} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible leads"
+                    checked={rows.length > 0 && rows.every((l) => checkedIds.includes(l.id))}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          checkedIds.length > 0 && !rows.every((l) => checkedIds.includes(l.id));
+                      }
+                    }}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCheckedIds((ids) => Array.from(new Set([...ids, ...rows.map((l) => l.id)])));
+                      } else {
+                        const visible = new Set(rows.map((l) => l.id));
+                        setCheckedIds((ids) => ids.filter((id) => !visible.has(id)));
+                      }
+                    }}
+                  />
+                </th>
+              ) : null}
               <th>ID</th>
-              <th>Name</th>
-              <th>Wing</th>
-              <th>Source</th>
+              <th>{domain === 'franchise' ? 'Applicant' : 'Name'}</th>
+              <th>Entry date</th>
+              {domain === 'franchise' ? (
+                <>
+                  <th>Business</th>
+                  <th>Model</th>
+                  <th>District</th>
+                  <th>PIN</th>
+                </>
+              ) : (
+                <>
+                  <th>Wing</th>
+                  <th>Source</th>
+                  <th>REACH tag</th>
+                </>
+              )}
               <th>Status</th>
               <th>Owner</th>
               <th>Last follow-up</th>
@@ -421,6 +930,8 @@ export function LeadsPage() {
               const next = syncedNextFollowUp(lead, crm.activities);
               const last = syncedLastFollowUp(lead, crm.activities);
               const soon = isSoon(next);
+              const reachTag = reachTrackingTag(lead);
+              const biz = franchiseVerticalLabel(lead.franchiseVertical) || '—';
               return (
                 <tr
                   key={lead.id}
@@ -456,26 +967,47 @@ export function LeadsPage() {
                   <td>
                     <strong>{lead.name}</strong>
                     <div style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
-                      {lead.city || lead.mobile}
+                      {domain === 'franchise'
+                        ? [lead.mobile, lead.alternateMobile].filter(Boolean).join(' · ')
+                        : lead.city || lead.mobile}
                     </div>
                   </td>
+                  <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtEntryDate(lead.createdAt)}</td>
+                  {domain === 'franchise' ? (
+                    <>
+                      <td>{biz}</td>
+                      <td>{lead.franchiseModel || '—'}</td>
+                      <td style={{ fontSize: '0.78rem' }}>
+                        <strong>{lead.district || '—'}</strong>
+                        <div style={{ color: 'var(--muted)' }}>{lead.state || ''}</div>
+                      </td>
+                      <td>{lead.pinCode || '—'}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>
+                        <WingPill wing={lead.wing} />
+                      </td>
+                      <td>{lead.source}</td>
+                      <td>
+                        {reachTag ? (
+                          <span
+                            className="reach-tag"
+                            title={`Assigned to ${lead.reachRepName || lead.reachRepId || 'REACH'}${lead.reachAssignedAt ? ` · ${fmtWhen(lead.reachAssignedAt)}` : ''}`}
+                          >
+                            {reachTag}
+                            {lead.reachRepName ? (
+                              <em> · {lead.reachRepName.split(' ')[0]}</em>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>—</span>
+                        )}
+                      </td>
+                    </>
+                  )}
                   <td>
-                    <WingPill wing={lead.wing} />
-                  </td>
-                  <td>{lead.source}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <select
-                      className="inline-select"
-                      value={lead.status}
-                      aria-label={`Status for ${lead.name}`}
-                      onChange={(e) => quickStatus(lead, e.target.value as LeadStatus, e)}
-                    >
-                      {LEAD_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <StatusPill value={lead.status} />
                   </td>
                   <td>
                     <div className="owner-cell">
@@ -490,7 +1022,7 @@ export function LeadsPage() {
                   <td onClick={(e) => e.stopPropagation()}>
                     <div className="fu-actions">
                       {lead.mobile ? (
-                        <a className="icon-btn" href={`tel:${lead.mobile}`} title="Call" aria-label="Call">
+                        <a className="icon-btn" href={safeTelHref(lead.mobile) || undefined} title="Call" aria-label="Call">
                           <Icon name="phone" size={15} />
                         </a>
                       ) : null}
@@ -502,6 +1034,15 @@ export function LeadsPage() {
                         onClick={() => setEditing(lead)}
                       >
                         <Icon name="edit" size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Add to Contacts"
+                        aria-label="Add to Contacts"
+                        onClick={() => saveLeadAsContact(lead)}
+                      >
+                        <Icon name="leads" size={15} />
                       </button>
                       <button
                         type="button"
@@ -538,17 +1079,10 @@ export function LeadsPage() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
                   <WingPill wing={selected.wing} />
-                  <select
-                    className="inline-select"
-                    value={selected.status}
-                    onChange={(e) => quickStatus(selected, e.target.value as LeadStatus)}
-                  >
-                    {LEAD_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <StatusPill value={selected.status} />
+                  <span style={{ color: 'var(--muted)', fontSize: '0.68rem', textAlign: 'right', maxWidth: 140 }}>
+                    Change status from Follow-up Check
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -562,15 +1096,15 @@ export function LeadsPage() {
                 {crm.isManager ? (
                   <button
                     type="button"
-                    className="icon-btn"
-                    title="Transfer lead"
-                    aria-label="Transfer"
+                    className="btn btn-ghost"
+                    style={{ padding: '6px 10px' }}
+                    title="Transfer Lead"
                     onClick={() => {
                       setTransferLeadIds([selected.id]);
                       setTransferOpen(true);
                     }}
                   >
-                    <Icon name="accounts" size={16} />
+                    Transfer Lead
                   </button>
                 ) : null}
                 <button type="button" className="icon-btn" title="Close" aria-label="Close" onClick={closeDetail}>
@@ -606,6 +1140,7 @@ export function LeadsPage() {
                     ['followups', 'Follow-ups'],
                     ['activity', 'Activity'],
                     ['notes', 'Notes'],
+                    ['transfers', 'Transfers'],
                     ['documents', 'Documents'],
                   ] as [DetailTab, string][]
                 ).map(([id, label]) => (
@@ -679,6 +1214,101 @@ export function LeadsPage() {
                       <strong>{fmtWhen(selected.updatedAt || selected.createdAt)}</strong>
                     </div>
                   </div>
+
+                  {selected.wing === 'franchise' ? (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 8,
+                        marginBottom: 14,
+                        padding: 12,
+                        border: '1px solid var(--line)',
+                        borderRadius: 12,
+                      }}
+                    >
+                      <strong style={{ fontSize: '0.85rem' }}>Franchise applicant</strong>
+                      <div className="meta-stats" style={{ margin: 0 }}>
+                        <div>
+                          <span>Mobile</span>
+                          <strong>{selected.mobile}</strong>
+                        </div>
+                        <div>
+                          <span>Alternate</span>
+                          <strong>{selected.alternateMobile || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Which franchise</span>
+                          <strong>{franchiseVerticalLabel(selected.franchiseVertical) || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Model</span>
+                          <strong>{selected.franchiseModel || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Property ownership</span>
+                          <strong>
+                            {selected.propertyOwnership === 'own_shop'
+                              ? 'Own shop'
+                              : selected.propertyOwnership === 'rental_shop'
+                                ? 'Rental shop'
+                                : selected.propertyOwnership || '—'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Investment capacity</span>
+                          <strong>{selected.investmentCapacity || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Timeline</span>
+                          <strong>
+                            {selected.timeline === '7_days'
+                              ? '7 days'
+                              : selected.timeline === '15_days'
+                                ? '15 days'
+                                : selected.timeline === '30_days'
+                                  ? '30 days'
+                                  : selected.timeline === '6_month'
+                                    ? '6 months'
+                                    : selected.timeline || '—'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>State</span>
+                          <strong>{selected.state || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>District</span>
+                          <strong>{selected.district || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Subdivision</span>
+                          <strong>{selected.subdivision || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>City / Village</span>
+                          <strong>{selected.village || selected.city || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>PIN</span>
+                          <strong>{selected.pinCode || '—'}</strong>
+                        </div>
+                        <div>
+                          <span>Preferred location</span>
+                          <strong>{selected.preferredLocation || selected.territory || '—'}</strong>
+                        </div>
+                      </div>
+                      {safeHttpUrl(selected.googleMapUrl) ? (
+                        <a
+                          href={safeHttpUrl(selected.googleMapUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="link-btn"
+                        >
+                          Open Google Map
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div
                     style={{
@@ -880,6 +1510,36 @@ export function LeadsPage() {
                 </div>
               ) : null}
 
+              {!scheduleMode && !assignReachMode && detailTab === 'transfers' ? (
+                <div className="timeline" style={{ marginBottom: 12 }}>
+                  <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: '0.8rem' }}>
+                    Ownership history for {selected.id}. One active owner at a time — transfers do not duplicate the lead.
+                  </p>
+                  <div style={{ marginBottom: 12, padding: 10, border: '1px solid var(--line)', borderRadius: 10 }}>
+                    <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>Current owner</span>
+                    <strong style={{ display: 'block' }}>{selected.owner}</strong>
+                  </div>
+                  {(selected.transferHistory || []).length === 0 ? (
+                    <div className="empty">No transfers recorded for this lead.</div>
+                  ) : (
+                    (selected.transferHistory || []).map((t) => (
+                      <div key={t.id} className="tl-item">
+                        <span>
+                          {fmtWhen(t.transferredAt)} · by {t.transferredBy}
+                        </span>
+                        <strong>
+                          {t.previousOwner || '—'} → {t.newOwner}
+                        </strong>
+                        <p>
+                          {t.remarks || 'No remarks'}
+                          {t.followupsMoved ? ` · ${t.followupsMoved} pending follow-up(s) moved` : ''}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : null}
+
               {!scheduleMode && !assignReachMode && detailTab === 'documents' ? (
                 <div className="empty" style={{ marginBottom: 12 }}>
                   Documents attach in a later release. Use Notes for now.
@@ -907,8 +1567,8 @@ export function LeadsPage() {
               </div>
             ) : (
               <div className="lm-quick detail-slider-actions">
-                {selected.mobile ? (
-                  <a className="btn btn-primary" href={`tel:${selected.mobile}`}>
+                {safeTelHref(selected.mobile) ? (
+                  <a className="btn btn-primary" href={safeTelHref(selected.mobile)}>
                     <Icon name="phone" size={15} /> Call
                   </a>
                 ) : (
@@ -917,14 +1577,22 @@ export function LeadsPage() {
                   </button>
                 )}
                 {selected.mobile ? (
-                  <a
+                  <button
+                    type="button"
                     className="btn lm-wa"
-                    href={`https://wa.me/91${selected.mobile.replace(/\D/g, '').slice(-10)}`}
-                    target="_blank"
-                    rel="noreferrer"
+                    title={
+                      isFranchise
+                        ? 'Franchise WhatsApp (shared Meta number)'
+                        : 'Service WhatsApp (Settings → Service channel)'
+                    }
+                    onClick={() =>
+                      isFranchise
+                        ? navigate(whatsappCentrePathForLead(selected))
+                        : setServiceWaLead(selected)
+                    }
                   >
                     <Icon name="whatsapp" size={15} /> WhatsApp
-                  </a>
+                  </button>
                 ) : (
                   <button type="button" className="btn lm-wa" disabled>
                     WhatsApp
@@ -935,6 +1603,9 @@ export function LeadsPage() {
                 </button>
                 <button type="button" className="btn btn-ghost" onClick={() => setEditing(selected)}>
                   <Icon name="edit" size={15} /> Update
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => saveLeadAsContact(selected)}>
+                  <Icon name="leads" size={15} /> Add to Contact
                 </button>
                 <button type="button" className="btn btn-ghost" onClick={() => openAssignReach(selected)}>
                   <Icon name="users" size={15} /> REACH
@@ -948,6 +1619,12 @@ export function LeadsPage() {
       {editing ? (
         <EditLeadModal lead={crm.leads.find((l) => l.id === editing.id) || editing} onClose={() => setEditing(null)} />
       ) : null}
+      {serviceWaLead ? (
+        <ServiceWhatsAppModal
+          lead={crm.leads.find((l) => l.id === serviceWaLead.id) || serviceWaLead}
+          onClose={() => setServiceWaLead(null)}
+        />
+      ) : null}
       {importOpen ? <ImportLeadsModal onClose={() => setImportOpen(false)} /> : null}
       {transferOpen ? (
         <TransferOwnershipModal
@@ -960,6 +1637,21 @@ export function LeadsPage() {
           }}
         />
       ) : null}
+      <FranchiseFilterModal
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={filters}
+        onApply={setFilters}
+        owners={owners}
+        reachReps={reachReps}
+        months={months.map((m) => ({
+          key: m.key,
+          label: m.from.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
+        }))}
+        showOwner={crm.isManager}
+        showModel={isFranchise}
+        showGeo={isFranchise}
+      />
     </div>
   );
 }

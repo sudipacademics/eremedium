@@ -40,6 +40,8 @@ const NAV: NavItem[] = [
 function pageTitle(pathname: string) {
   if (pathname === '/') return 'Operations Dashboard';
   if (pathname === '/units') return 'Unit Operations';
+  if (pathname === '/inventory/pharmacy') return 'Pharmacy Stock';
+  if (pathname === '/inventory/aesthetic') return 'Aesthetic Stock';
   if (pathname.startsWith('/units/')) {
     const id = pathname.split('/')[2];
     return isUnitId(id) ? unitById(id).short : 'Unit Operations';

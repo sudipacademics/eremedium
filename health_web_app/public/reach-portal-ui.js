@@ -1280,7 +1280,7 @@
     panel = document.createElement('div');
     panel.className = 'rpu-hr-workspace';
     panel.setAttribute(HR_ATTR, '1');
-    panel.innerHTML = '<iframe title="My HR Profile" src="' + PEOPLE + '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
+    panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1&tab=hr" allow="geolocation *"></iframe>';
     main.appendChild(panel);
   }
 

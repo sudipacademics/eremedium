@@ -147,8 +147,10 @@ const STAGE_LABEL: Record<PeopleLeaveStage, string> = {
 };
 
 const ACTION_COPY: Record<PeopleLeaveAction, { title: string; verb: string; done: string; tone: 'primary' | 'danger'; remark: string }> = {
-  forward: { title: 'Forward to HR', verb: 'Forward', done: 'forwarded to HR', tone: 'primary', remark: 'Manager note (optional)' },
-  manager_reject: { title: 'Reject as manager', verb: 'Reject', done: 'rejected by manager and sent to HR', tone: 'danger', remark: 'Reason for rejection' },
+  recommend: { title: 'Approve as manager', verb: 'Approve', done: 'approved by manager (send to HR next)', tone: 'primary', remark: 'Manager note (optional)' },
+  decide_reject: { title: 'Reject as manager', verb: 'Reject', done: 'rejected by manager (send to HR next)', tone: 'danger', remark: 'Reason for rejection' },
+  forward: { title: 'Send to HR', verb: 'Send to HR', done: 'sent to HR for final review', tone: 'primary', remark: 'Manager note (optional)' },
+  manager_reject: { title: 'Reject & send to HR', verb: 'Reject → HR', done: 'rejected by manager and sent to HR', tone: 'danger', remark: 'Reason for rejection' },
   return: { title: 'Return to employee', verb: 'Return', done: 'returned to the employee', tone: 'primary', remark: 'What should the employee change?' },
   resubmit: { title: 'Resubmit for review', verb: 'Resubmit', done: 'resubmitted for manager review', tone: 'primary', remark: 'Note (optional)' },
   approve: { title: 'Approve leave', verb: 'Approve', done: 'approved', tone: 'primary', remark: 'HR remark (optional)' },
@@ -406,9 +408,13 @@ function LeaveManager() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [viewId, setViewId] = useState<string | null>(null);
+  const [viewAttachments, setViewAttachments] = useState<Array<{ id: string; file_name: string; uploaded_on: string }>>([]);
+  const [viewAttachBusy, setViewAttachBusy] = useState(false);
   const [newOpen, setNewOpen] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<ActionRequest | null>(null);
   const [remark, setRemark] = useState('');
+  const [editFrom, setEditFrom] = useState('');
+  const [editTo, setEditTo] = useState('');
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -440,6 +446,29 @@ function LeaveManager() {
     const id = window.setTimeout(() => setNotice(null), 3500);
     return () => window.clearTimeout(id);
   }, [notice]);
+
+  useEffect(() => {
+    if (!viewId) {
+      setViewAttachments([]);
+      return;
+    }
+    let cancelled = false;
+    setViewAttachBusy(true);
+    void api
+      .getPeopleLeaveAttachments(viewId)
+      .then((res) => {
+        if (!cancelled) setViewAttachments(res.data?.attachments || []);
+      })
+      .catch(() => {
+        if (!cancelled) setViewAttachments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setViewAttachBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewId]);
 
   useEffect(() => {
     if (!menuFor) return;
@@ -546,13 +575,16 @@ function LeaveManager() {
     setMenuFor(null);
     setRemark('');
     setActionError(null);
+    const first = rows[0];
+    setEditFrom(rows.length === 1 && first ? first.from_date : '');
+    setEditTo(rows.length === 1 && first ? first.to_date : '');
     setPendingAction({ rows, action });
   };
 
   const runAction = async () => {
     if (!pendingAction) return;
     const { rows, action } = pendingAction;
-    const needsRemark = action === 'reject' || action === 'manager_reject' || action === 'return';
+    const needsRemark = action === 'reject' || action === 'manager_reject' || action === 'decide_reject' || action === 'return';
     if (needsRemark && !remark.trim()) {
       setActionError('Please add a reason so the employee knows why.');
       return;
@@ -562,7 +594,11 @@ function LeaveManager() {
     const failed: string[] = [];
     for (const row of rows) {
       try {
-        await api.actPeopleLeave(row.id, action, remark.trim());
+        const dates =
+          rows.length === 1 && (editFrom || editTo)
+            ? { from_date: editFrom || row.from_date, to_date: editTo || row.to_date }
+            : undefined;
+        await api.actPeopleLeave(row.id, action, remark.trim(), dates);
       } catch (err) {
         failed.push(`${row.employee_name} (${row.id}): ${err instanceof Error ? err.message : 'failed'}`);
       }
@@ -707,6 +743,13 @@ function LeaveManager() {
     { icon: 'user', tone: 'violet', label: 'Pending with HR', value: k?.hr_review ?? 0, sub: 'Awaiting HR approval', stage: 'HR Review' },
     { icon: 'checkCircle', tone: 'green', label: 'Approved', value: k?.approved ?? 0, sub: k?.approved_days ? `${fmtDays(k.approved_days)} days this period` : 'This period' },
     { icon: 'xCircle', tone: 'rose', label: 'Rejected', value: k?.rejected ?? 0, sub: 'This period' },
+    {
+      icon: 'alertTriangle',
+      tone: 'rose',
+      label: 'Unauthorised days',
+      value: k?.unauthorized_days ?? (reg?.unauthorized || []).length,
+      sub: 'Cut when dates were customised',
+    },
   ];
 
   const rowActions = (row: PeopleLeaveApplication) => (
@@ -715,9 +758,21 @@ function LeaveManager() {
         <HrmsIcon name="eye" size={17} />
       </button>
       {row.stage === 'Manager Review' ? (
-        <button type="button" className="lv-act send" title="Forward to HR" aria-label={`Forward ${row.id} to HR`} onClick={() => ask([row], 'forward')}>
-          <HrmsIcon name="send" size={16} />
-        </button>
+        <>
+          <button type="button" className="lv-act ok" title="Approve as manager" aria-label={`Approve ${row.id} as manager`} onClick={() => ask([row], 'recommend')}>
+            <HrmsIcon name="check" size={17} strokeWidth={2.6} />
+          </button>
+          <button
+            type="button"
+            className="lv-act send"
+            title={row.manager_decision ? 'Send to HR' : 'Approve or reject first, then send to HR'}
+            aria-label={`Send ${row.id} to HR`}
+            disabled={!row.manager_decision}
+            onClick={() => ask([row], 'forward')}
+          >
+            <HrmsIcon name="send" size={16} />
+          </button>
+        </>
       ) : null}
       {row.stage === 'HR Review' ? (
         <>
@@ -749,8 +804,11 @@ function LeaveManager() {
           <div className="emp-popover emp-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: 230 }}>
             {row.stage === 'Manager Review' ? (
               <>
-                <button type="button" onClick={() => ask([row], 'manager_reject')}>
+                <button type="button" onClick={() => ask([row], 'decide_reject')}>
                   <HrmsIcon name="xCircle" size={15} /> Reject as manager
+                </button>
+                <button type="button" disabled={!row.manager_decision} onClick={() => ask([row], 'forward')}>
+                  <HrmsIcon name="send" size={15} /> Send to HR
                 </button>
                 <button type="button" onClick={() => ask([row], 'approve')}>
                   <HrmsIcon name="checkCircle" size={15} /> Approve now (skip HR)
@@ -829,6 +887,43 @@ function LeaveManager() {
 
       {error ? <div className="people-alert err">{error}</div> : null}
       {reg && !reg.available ? <div className="people-alert err">Leave Application is not installed on ERPNext (HRMS app missing).</div> : null}
+
+      {reg ? (
+        <section className="lv-unauthorized" aria-label="Unauthorised leave dates">
+          <h3>Unauthorised leave dates</h3>
+          <p>Days requested by the employee but removed when a manager or HR customised the approved period.</p>
+          {(reg.unauthorized || []).length ? (
+            <div style={{ overflow: 'auto' }}>
+              <table className="lv-unauthorized-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>Leave type</th>
+                    <th>Application</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(reg.unauthorized || []).map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.employee_name}</td>
+                      <td>{fmtDate(u.date)}</td>
+                      <td>{u.leave_type}</td>
+                      <td>
+                        <button type="button" className="lv-attach-open" onClick={() => setViewId(u.leave)}>
+                          {u.leave}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="lv-unauthorized-empty">No unauthorised leave dates in this range.</p>
+          )}
+        </section>
+      ) : null}
 
       <div className="att-kpis lv-kpis">
         {kpis.map((kp) => {
@@ -1326,7 +1421,15 @@ function LeaveManager() {
 
       {viewRow ? (
         <div className="emp-drawer-backdrop" role="presentation" onMouseDown={() => setViewId(null)}>
-          <aside className="emp-drawer lv-drawer" role="dialog" aria-modal="true" aria-label={`${viewRow.id} details`} onMouseDown={(e) => e.stopPropagation()}>
+          <aside
+            className="emp-drawer lv-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${viewRow.id} details`}
+            data-from={viewRow.from_date}
+            data-to={viewRow.to_date}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <header>
               <div className="emp-person lg">
                 <Avatar id={viewRow.employee} name={viewRow.employee_name} photo={viewRow.photo} />
@@ -1360,6 +1463,51 @@ function LeaveManager() {
               <dd>{viewRow.department || '—'}</dd>
               <dt>Reason</dt>
               <dd>{viewRow.reason || '—'}</dd>
+              {viewRow.original_from && (viewRow.original_from !== viewRow.from_date || viewRow.original_to !== viewRow.to_date) ? (
+                <>
+                  <dt>Originally requested</dt>
+                  <dd>
+                    {fmtDate(viewRow.original_from)} – {fmtDate(viewRow.original_to)}
+                  </dd>
+                </>
+              ) : null}
+              {(viewRow.unauthorized_dates || []).length ? (
+                <>
+                  <dt>Unauthorised days</dt>
+                  <dd>{(viewRow.unauthorized_dates || []).map(fmtDate).join(', ')}</dd>
+                </>
+              ) : null}
+              <dt>Attachments</dt>
+              <dd>
+                {viewAttachBusy ? (
+                  'Loading…'
+                ) : viewAttachments.length ? (
+                  <ul className="lv-attach-list">
+                    {viewAttachments.map((f) => (
+                      <li key={f.id}>
+                        <button
+                          type="button"
+                          className="lv-attach-open"
+                          onClick={() => {
+                            void api.openPeopleLeaveAttachment(f.id).then((res) => {
+                              const bin = atob(res.data.data);
+                              const bytes = new Uint8Array(bin.length);
+                              for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+                              const url = URL.createObjectURL(new Blob([bytes], { type: res.data.mime }));
+                              window.open(url, '_blank');
+                            });
+                          }}
+                        >
+                          {f.file_name.replace(`${viewRow.id}-`, '')}
+                        </button>
+                        <small>{String(f.uploaded_on || '').slice(0, 16)}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  'No attachment'
+                )}
+              </dd>
               <dt>Leave approver</dt>
               <dd>{viewRow.leave_approver_name || viewRow.leave_approver || 'Not set'}</dd>
               <dt>{viewRow.leave_type} balance</dt>
@@ -1433,11 +1581,20 @@ function LeaveManager() {
             <div className="emp-drawer-actions">
               {viewRow.stage === 'Manager Review' ? (
                 <>
-                  <button type="button" className="emp-btn primary" onClick={() => ask([viewRow], 'forward')}>
-                    <HrmsIcon name="send" size={15} /> Forward to HR
+                  <button type="button" className="emp-btn primary" onClick={() => ask([viewRow], 'recommend')}>
+                    <HrmsIcon name="check" size={15} /> Approve
                   </button>
-                  <button type="button" className="emp-btn outline" onClick={() => ask([viewRow], 'manager_reject')}>
+                  <button type="button" className="emp-btn outline" onClick={() => ask([viewRow], 'decide_reject')}>
                     <HrmsIcon name="x" size={15} /> Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="emp-btn primary"
+                    disabled={!viewRow.manager_decision}
+                    title={viewRow.manager_decision ? 'Send to HR' : 'Approve or reject first'}
+                    onClick={() => ask([viewRow], 'forward')}
+                  >
+                    <HrmsIcon name="send" size={15} /> Send to HR
                   </button>
                 </>
               ) : null}
@@ -1494,6 +1651,19 @@ function LeaveManager() {
             </p>
             {pendingAction.action === 'approve' ? (
               <p className="lv-modal-note">Approving submits the application in ERPNext and marks attendance as On Leave for these dates.</p>
+            ) : null}
+            {pendingAction.rows.length === 1 && ['recommend', 'decide_reject', 'forward', 'manager_reject', 'approve', 'reject'].includes(pendingAction.action) ? (
+              <div className="lv-date-edit">
+                <p className="lv-modal-note">Customise dates if needed. Days removed from the request are recorded as unauthorised leave.</p>
+                <label>
+                  <span>From</span>
+                  <input type="date" value={editFrom} max={editTo || undefined} onChange={(e) => setEditFrom(e.target.value)} />
+                </label>
+                <label>
+                  <span>To</span>
+                  <input type="date" value={editTo} min={editFrom || undefined} onChange={(e) => setEditTo(e.target.value)} />
+                </label>
+              </div>
             ) : null}
             <label>
               <span>{ACTION_COPY[pendingAction.action].remark}</span>

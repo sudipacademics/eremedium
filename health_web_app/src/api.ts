@@ -13,6 +13,42 @@ import {
 } from './types/labReport';
 import { PathologistQueue } from './types/pathologist';
 import { PatientAuthorizedReport, ReportChromeTemplate, ReportLifecycleQueue, ReportWhatsAppResult } from './types/reportLifecycle';
+
+export type LabtechSettingsPayload = {
+  can_manage: boolean;
+  reporting_pad: {
+    identity: Record<string, string | number>;
+    images: Record<string, { field: string; label: string; url: string }>;
+    source?: string;
+  };
+  whatsapp: {
+    ready: boolean;
+    provider: string;
+    phone_number_id: string;
+    sender_number: string;
+    token_configured: boolean;
+    hint: string;
+    report_enabled: number;
+    report_message: string;
+  };
+  department_defaults: Array<{
+    key: string;
+    label: string;
+    role?: string;
+    name: string;
+    qualification: string;
+    signature_url?: string;
+  }>;
+  pathologists: Array<{
+    employee: string;
+    name: string;
+    user?: string;
+    designation?: string;
+    department?: string;
+    photo?: string;
+    signature_url?: string;
+  }>;
+};
 import { AllBookingsQuery, AllBookingsResponse, BookingLifecycleDetail } from './types/bookingLifecycle';
 import type {
   InvAllocation,
@@ -1383,6 +1419,37 @@ export type SalesTeamMapData = {
   }>;
 };
 
+export type SalesTeamPerformanceAttachment = {
+  name?: string;
+  file_name?: string;
+  file_url?: string;
+  file_size?: number;
+};
+
+export type SalesTeamPerformanceReport = {
+  name: string;
+  sales_rep: string;
+  rep_code?: string;
+  full_name?: string;
+  designation?: string;
+  activity_date: string;
+  title: string;
+  doctors_met?: number;
+  visits_done?: number;
+  samples_collected?: number;
+  km_traveled?: number;
+  location_note?: string;
+  activity_summary: string;
+  creation?: string;
+  attachments?: SalesTeamPerformanceAttachment[];
+};
+
+export type SalesTeamPerformanceList = {
+  is_manager: boolean;
+  my_rep_id?: string;
+  reports: SalesTeamPerformanceReport[];
+};
+
 export type WbGeoHierarchy = {
   districts: Array<{
     name: string;
@@ -2026,7 +2093,11 @@ export type PeopleHrmsDashboard = {
     last_checkin: { name: string; time: string; log_type?: string } | null;
     today_status: string;
     checkin_available: boolean;
+    geofence_enabled?: number;
+    geofence_required?: number;
+    geofence_label?: string;
     series: Array<{ day: number; label: string; count: number }>;
+    records?: Array<{ name: string; time: string; log_type: string; date: string }>;
   };
   leave_balances: Array<{
     leave_type: string;
@@ -2164,7 +2235,15 @@ export type PeopleAttendanceRegister = {
 
 export type PeopleLeaveStage = 'Draft' | 'Manager Review' | 'HR Review' | 'Completed' | 'Rejected' | 'Cancelled';
 export type PeopleLeaveStatus = 'Draft' | 'Pending' | 'Manager Rejected' | 'Approved' | 'Rejected' | 'Cancelled';
-export type PeopleLeaveAction = 'forward' | 'manager_reject' | 'return' | 'resubmit' | 'approve' | 'reject';
+export type PeopleLeaveAction =
+  | 'recommend'
+  | 'decide_reject'
+  | 'forward'
+  | 'manager_reject'
+  | 'return'
+  | 'resubmit'
+  | 'approve'
+  | 'reject';
 
 export type PeopleLeaveApplication = {
   id: string;
@@ -2196,9 +2275,24 @@ export type PeopleLeaveApplication = {
   manager_on?: string | null;
   manager_remark?: string | null;
   hr_remark?: string | null;
+  original_from?: string | null;
+  original_to?: string | null;
+  unauthorized_dates?: string[];
 };
 
 export type PeopleLeaveBalanceSlot = { allocated: number; used: number; pending: number };
+
+export type PeopleLeaveUnauthorized = {
+  id: string;
+  leave: string;
+  employee: string;
+  employee_name: string;
+  department?: string | null;
+  leave_type: string;
+  date: string;
+  status: string;
+  reason?: string;
+};
 
 export type PeopleLeaveRegister = {
   available: boolean;
@@ -2207,6 +2301,7 @@ export type PeopleLeaveRegister = {
   year: number;
   me: string | null;
   applications: PeopleLeaveApplication[];
+  unauthorized?: PeopleLeaveUnauthorized[];
   employees: Array<{ id: string; name: string; department?: string | null; designation?: string | null; photo?: string | null; active: number }>;
   leave_types: Array<{ name: string; max_leaves_allowed: number; is_lwp: number }>;
   balances: Record<string, Record<string, PeopleLeaveBalanceSlot>>;
@@ -2228,6 +2323,7 @@ export type PeopleLeaveRegister = {
     hr_review: number;
     approved: number;
     rejected: number;
+    unauthorized_days?: number;
     approved_days: number;
     on_leave_today: number;
   };
@@ -2330,6 +2426,7 @@ export type PeoplePerformanceReview = {
   period: string;
   rating: number;
   remarks?: string | null;
+  recommendation?: string | null;
   reviewer?: string | null;
   modified: string;
 };
@@ -4629,6 +4726,26 @@ export const api = {
       method: 'POST',
       body,
       auth: true,
+    }),
+
+  uploadPeopleLeaveAttachment: (leave: string, fileName: string, fileData: string) =>
+    request<{ leave: string; attachments: Array<{ id: string; file_name: string; size: number; uploaded_on: string }> }>(
+      'upload_people_leave_attachment',
+      { method: 'POST', body: { leave, file_name: fileName, file_data: fileData }, auth: true, module: 'leaveAttach' },
+    ),
+
+  getPeopleLeaveAttachments: (leave: string) =>
+    request<{ leave: string; attachments: Array<{ id: string; file_name: string; size: number; uploaded_on: string }> }>(
+      'get_people_leave_attachments',
+      { method: 'POST', body: { leave }, auth: true, module: 'leaveAttach' },
+    ),
+
+  openPeopleLeaveAttachment: (file: string) =>
+    request<{ file_name: string; mime: string; data: string }>('open_people_leave_attachment', {
+      method: 'POST',
+      body: { file },
+      auth: true,
+      module: 'leaveAttach',
     }),
 
   submitExpenseClaim: (body: {
@@ -7028,10 +7145,30 @@ export const api = {
       auth: true,
     }),
 
-  actPeopleLeave: (name: string, action: PeopleLeaveAction, remark?: string) =>
-    request<{ name: string; stage: PeopleLeaveStage }>('act_people_leave', {
+  actPeopleLeave: (
+    name: string,
+    action: PeopleLeaveAction,
+    remark?: string,
+    dates?: { from_date?: string; to_date?: string; half_day?: number; half_day_date?: string },
+  ) =>
+    request<{
+      name: string;
+      stage: PeopleLeaveStage;
+      from_date?: string;
+      to_date?: string;
+      unauthorized_dates?: string[];
+      cut_dates?: string[];
+    }>('act_people_leave', {
       method: 'POST',
-      body: { name, action, remark: remark || '' },
+      body: {
+        name,
+        action,
+        remark: remark || '',
+        from_date: dates?.from_date || '',
+        to_date: dates?.to_date || '',
+        half_day: dates?.half_day != null ? String(dates.half_day) : '',
+        half_day_date: dates?.half_day_date || '',
+      },
       auth: true,
     }),
 
@@ -7071,11 +7208,19 @@ export const api = {
       auth: true,
     }),
 
-  savePeoplePerformanceReview: (body: { employee: string; period: string; rating: number; remarks?: string }) =>
-    request<{ name: string; employee: string; period: string; rating: number; updated: boolean }>('save_people_performance_review', {
+  savePeoplePerformanceReview: (body: { employee: string; period: string; rating: number; remarks?: string; recommendation?: string }) =>
+    request<{ name: string; employee: string; period: string; rating: number; recommendation?: string; updated: boolean }>('save_people_performance_review', {
       method: 'POST',
       body,
       auth: true,
+    }),
+
+  downloadPeoplePerformanceReport: (body: { employee: string; period: string }) =>
+    request<{ file_name: string; data: string; employee: string; period: string }>('download_performance_report_api', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'peopleMyTeam',
     }),
 
   approvePeoplePayroll: (month: string, slips: string[]) =>
@@ -7938,6 +8083,100 @@ export const api = {
 
   getSalesTeamMap: () =>
     request<SalesTeamMapData>('get_sales_team_map', { method: 'POST', auth: true }),
+
+  getSalesTeamPerformanceReports: (opts?: { limit?: number; activity_date?: string; sales_rep?: string }) =>
+    request<SalesTeamPerformanceList>('get_sales_team_performance_reports', {
+      method: 'POST',
+      body: {
+        limit: opts?.limit ?? 50,
+        ...(opts?.activity_date ? { activity_date: opts.activity_date } : {}),
+        ...(opts?.sales_rep ? { sales_rep: opts.sales_rep } : {}),
+      },
+      auth: true,
+    }),
+
+  getSalesTeamPortalActivity: (opts?: {
+    activity_date?: string;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    sales_rep?: string;
+  }) =>
+    request<{
+      is_manager: boolean;
+      activity_date?: string;
+      date_from?: string;
+      date_to?: string;
+      counts: { leads: number; visits: number; onboardings: number; employees?: number; days?: number };
+      today_counts: { leads: number; visits: number; onboardings: number };
+      leads: Array<Record<string, unknown>>;
+      visits: Array<Record<string, unknown>>;
+      onboardings: Array<Record<string, unknown>>;
+      daily: Array<Record<string, unknown>>;
+      by_employee: Array<Record<string, unknown>>;
+      prefill: Record<string, number>;
+    }>('get_sales_team_portal_activity', {
+      method: 'POST',
+      body: {
+        limit: opts?.limit ?? 500,
+        ...(opts?.activity_date ? { activity_date: opts.activity_date } : {}),
+        ...(opts?.date_from ? { date_from: opts.date_from } : {}),
+        ...(opts?.date_to ? { date_to: opts.date_to } : {}),
+        ...(opts?.sales_rep ? { sales_rep: opts.sales_rep } : {}),
+      },
+      auth: true,
+    }),
+
+  downloadSalesTeamPortalActivityCsv: (opts?: {
+    activity_date?: string;
+    date_from?: string;
+    date_to?: string;
+  }) =>
+    request<{ filename: string; csv: string; count: number; counts?: Record<string, number> }>(
+      'download_sales_team_portal_activity_csv',
+      {
+        method: 'POST',
+        body: {
+          ...(opts?.activity_date ? { activity_date: opts.activity_date } : {}),
+          ...(opts?.date_from ? { date_from: opts.date_from } : {}),
+          ...(opts?.date_to ? { date_to: opts.date_to } : {}),
+        },
+        auth: true,
+      },
+    ),
+
+  submitSalesTeamPerformanceReport: (body: Record<string, string | number>) =>
+    request<SalesTeamPerformanceReport>('submit_sales_team_performance_report', {
+      method: 'POST',
+      body,
+      auth: true,
+    }),
+
+  downloadSalesTeamPerformanceCsv: (opts?: { activity_date?: string; sales_rep?: string }) =>
+    request<{ filename: string; csv: string; count: number; is_manager?: boolean }>(
+      'download_sales_team_performance_csv',
+      {
+        method: 'POST',
+        body: {
+          ...(opts?.activity_date ? { activity_date: opts.activity_date } : {}),
+          ...(opts?.sales_rep ? { sales_rep: opts.sales_rep } : {}),
+        },
+        auth: true,
+      },
+    ),
+
+  downloadSalesTeamPerformanceFile: (reportName: string, fileName?: string) =>
+    request<{ file_name: string; file_content: string; content_type?: string }>(
+      'download_sales_team_performance_file',
+      {
+        method: 'POST',
+        body: {
+          report_name: reportName,
+          ...(fileName ? { file_name: fileName } : {}),
+        },
+        auth: true,
+      },
+    ),
 
   getAgencyDashboard: () =>
     request<AgencyDashboard>('get_agency_dashboard', {
@@ -9222,6 +9461,63 @@ export const api = {
       module: 'reportLifecycle',
     }),
 
+  getLabtechSettings: () =>
+    request<LabtechSettingsPayload>('get_labtech_settings', {
+      method: 'POST',
+      auth: true,
+      module: 'labtechSettings',
+    }),
+
+  saveLabtechReportingPad: (body: {
+    identity?: Record<string, string | number>;
+    images?: Record<string, { file_name: string; file_data: string }>;
+  }) =>
+    request<LabtechSettingsPayload>('save_labtech_reporting_pad', {
+      method: 'POST',
+      body: {
+        identity: body.identity ? JSON.stringify(body.identity) : undefined,
+        images: body.images ? JSON.stringify(body.images) : undefined,
+      },
+      auth: true,
+      module: 'labtechSettings',
+    }),
+
+  saveLabtechWhatsapp: (body: { report_enabled?: number; report_message?: string }) =>
+    request<LabtechSettingsPayload>('save_labtech_whatsapp', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'labtechSettings',
+    }),
+
+  savePathologistSignature: (body: {
+    employee: string;
+    file_name?: string;
+    file_data?: string;
+    clear?: number;
+  }) =>
+    request<LabtechSettingsPayload>('save_pathologist_signature', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'labtechSettings',
+    }),
+
+  saveDepartmentSignatureDefault: (body: {
+    department_key: string;
+    name?: string;
+    qualification?: string;
+    file_name?: string;
+    file_data?: string;
+    clear_image?: number;
+  }) =>
+    request<LabtechSettingsPayload>('save_department_signature_default', {
+      method: 'POST',
+      body,
+      auth: true,
+      module: 'labtechSettings',
+    }),
+
   sendAuthorizedReportWhatsApp: (journeyId: string) =>
     request<ReportWhatsAppResult>('send_authorized_report_whatsapp', {
       method: 'POST',
@@ -9230,7 +9526,11 @@ export const api = {
       module: 'reportShare',
     }),
 
-  downloadAuthorizedReport: (journeyId: string, template: ReportChromeTemplate = 'nabl', fileName?: string) =>
+  downloadAuthorizedReport: (
+    journeyId: string,
+    template: ReportChromeTemplate = 'with_header',
+    fileName?: string,
+  ) =>
     downloadBinary(
       'download_authorized_report_pdf',
       { journey_id: journeyId, template },

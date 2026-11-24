@@ -47,7 +47,7 @@ import { SalesPortalPage } from './pages/sales/SalesPortalPage';
 import { SalesLeadsPage } from './pages/sales/SalesLeadsPage';
 import { SalesVisitPage } from './pages/sales/SalesVisitPage';
 import { SalesOnboardPage } from './pages/sales/SalesOnboardPage';
-import { SalesProfilePage } from './pages/sales/SalesProfilePage';
+import { SalesMyHrPage } from './pages/sales/SalesMyHrPage';
 import { SalesFranchiseesPage } from './pages/sales/SalesFranchiseesPage';
 import { SalesCatalogPage } from './pages/sales/SalesCatalogPage';
 import { SalesCommissionPage } from './pages/sales/SalesCommissionPage';
@@ -143,6 +143,7 @@ import { PhlebotomistDashboard } from './pages/dashboard/PhlebotomistDashboard';
 import { PhlebotomistReports } from './pages/dashboard/PhlebotomistReports';
 
 import { LabTechDashboard } from './pages/dashboard/LabTechDashboard';
+import { LabTechSettingsPage } from './pages/dashboard/LabTechSettingsPage';
 
 import { AllBookingsPage } from './pages/dashboard/AllBookingsPage';
 
@@ -163,7 +164,6 @@ import { QmsDashboardPage } from './pages/dashboard/QmsDashboardPage';
 
 import { CriticalAlertsQueuePage } from './pages/dashboard/CriticalAlertsQueuePage';
 
-import { HrSelfServicePage } from './pages/dashboard/HrSelfServicePage';
 import { StaffPerformancePage } from './pages/dashboard/StaffPerformancePage';
 import { MyProfilePage, LabTechToMyProfile } from './pages/dashboard/MyProfilePage';
 import { ReagentDashboardPage } from './pages/dashboard/ReagentDashboardPage';
@@ -230,7 +230,27 @@ const STAFF_ACCESS = [
 
   ROLES.LAB_TECH,
 
+  ROLES.LAB_MANAGER,
+
+  ROLES.QC_MANAGER,
+
+  ROLES.LAB_ACCESSOR,
+
   ROLES.PATHOLOGIST,
+
+];
+
+const LAB_SIGN_ACCESS = [
+
+  ROLES.LAB_MANAGER,
+
+  ROLES.QC_MANAGER,
+
+  ROLES.PATHOLOGIST,
+
+  ROLES.ADMIN,
+
+  ROLES.SYSTEM_MANAGER,
 
 ];
 
@@ -677,7 +697,8 @@ export default function App() {
                 }
               >
                 <Route index element={<SalesPortalPage />} />
-                <Route path="profile" element={<SalesProfilePage />} />
+                <Route path="my-hr" element={<SalesMyHrPage />} />
+                <Route path="profile" element={<SalesMyHrPage />} />
                 <Route path="leads" element={<SalesLeadsPage />} />
                 <Route path="visit" element={<SalesVisitPage />} />
                 <Route path="onboard" element={<SalesOnboardPage />} />
@@ -937,6 +958,38 @@ export default function App() {
 
               <Route
 
+                path="settings"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.LAB_MANAGER, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <LabTechSettingsPage />
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
+                path="test-master"
+
+                element={
+
+                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.LAB_MANAGER, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+
+                    <p className="muted">Test Master</p>
+
+                  </ProtectedRoute>
+
+                }
+
+              />
+
+              <Route
+
                 path="all-bookings"
 
                 element={
@@ -1005,7 +1058,7 @@ export default function App() {
 
                 element={
 
-                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+                  <ProtectedRoute roles={LAB_SIGN_ACCESS}>
 
                     <PathologistPage />
 
@@ -1021,7 +1074,7 @@ export default function App() {
 
                 element={
 
-                  <ProtectedRoute roles={[ROLES.LAB_TECH, ROLES.ADMIN, ROLES.SYSTEM_MANAGER, ROLES.PATHOLOGIST]}>
+                  <ProtectedRoute roles={LAB_SIGN_ACCESS}>
 
                     <PathologistPage signedOnly />
 
@@ -1121,7 +1174,7 @@ export default function App() {
 
                     <LabTechToMyProfile tab="hr">
 
-                      <HrSelfServicePage />
+                      <MyProfilePage />
 
                     </LabTechToMyProfile>
 

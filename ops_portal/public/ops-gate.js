@@ -242,7 +242,7 @@
     if (!panel) {
       panel = document.createElement('div');
       panel.className = 'og-hr';
-      panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1" allow="geolocation *"></iframe>';
+      panel.innerHTML = '<iframe title="My HR Workspace" src="' + PEOPLE + '/people/profile?pa_embed=1&tab=hr" allow="geolocation *"></iframe>';
       main.appendChild(panel);
     }
     var sidebar = document.querySelector('.sidebar');

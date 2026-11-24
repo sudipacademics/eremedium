@@ -34,22 +34,24 @@ export function Modal({
   children,
   onClose,
   actions,
+  size = 'md',
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   actions?: ReactNode;
+  size?: 'md' | 'lg';
 }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="card-head">
+      <div className={`modal modal-${size}`}>
+        <div className="card-head modal-head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
-        {children}
+        <div className="modal-body">{children}</div>
         {actions ? <div className="modal-actions">{actions}</div> : null}
       </div>
     </div>

@@ -293,7 +293,12 @@ export function ReportLifecyclePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [authorizeTarget, setAuthorizeTarget] = useState<ReportLifecycleJourney | null>(null);
-  const [search, setSearch] = useState('');
+  const [sectionSearch, setSectionSearch] = useState<Record<SectionKey, string>>({
+    verified: '',
+    review: '',
+    authorized: '',
+    dispatched: '',
+  });
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
     verified: false,
     review: false,
@@ -335,25 +340,42 @@ export function ReportLifecyclePage() {
     return () => document.removeEventListener('click', close);
   }, [menuFor, exportOpen]);
 
-  const q = search.trim().toLowerCase();
+  function sectionQuery(key: SectionKey) {
+    return sectionSearch[key].trim().toLowerCase();
+  }
+
+  function setSectionQuery(key: SectionKey, value: string) {
+    setSectionSearch((cur) => ({ ...cur, [key]: value }));
+    if (value.trim()) setExpanded((cur) => ({ ...cur, [key]: true }));
+  }
+
   const verified = useMemo(
     () =>
       (queue?.verified_reports || []).filter((r) =>
-        matches(q, r.patient_name, r.trf_id, r.lab_report, r.tests, r.journey_id),
+        matches(sectionQuery('verified'), r.patient_name, r.trf_id, r.lab_report, r.tests, r.journey_id),
       ),
-    [queue, q],
+    [queue, sectionSearch.verified],
   );
   const review = useMemo(
-    () => (queue?.pending_review || []).filter((r) => matches(q, r.patient_name, r.customer_trf, r.journey_id, r.tests)),
-    [queue, q],
+    () =>
+      (queue?.pending_review || []).filter((r) =>
+        matches(sectionQuery('review'), r.patient_name, r.customer_trf, r.journey_id, r.tests),
+      ),
+    [queue, sectionSearch.review],
   );
   const authorized = useMemo(
-    () => (queue?.authorized || []).filter((r) => matches(q, r.patient_name, r.customer_trf, r.journey_id, r.tests)),
-    [queue, q],
+    () =>
+      (queue?.authorized || []).filter((r) =>
+        matches(sectionQuery('authorized'), r.patient_name, r.customer_trf, r.journey_id, r.tests),
+      ),
+    [queue, sectionSearch.authorized],
   );
   const dispatched = useMemo(
-    () => (queue?.dispatched || []).filter((r) => matches(q, r.patient_name, r.customer_trf, r.journey_id, r.tests)),
-    [queue, q],
+    () =>
+      (queue?.dispatched || []).filter((r) =>
+        matches(sectionQuery('dispatched'), r.patient_name, r.customer_trf, r.journey_id, r.tests),
+      ),
+    [queue, sectionSearch.dispatched],
   );
 
   async function refresh() {
@@ -469,10 +491,25 @@ export function ReportLifecyclePage() {
     });
   }
 
-  const preview = <T,>(key: SectionKey, rows: T[]) => (expanded[key] ? rows : rows.slice(0, PREVIEW_ROWS));
+  const preview = <T,>(key: SectionKey, rows: T[]) =>
+    sectionSearch[key].trim() || expanded[key] ? rows : rows.slice(0, PREVIEW_ROWS);
   const verifiedRows = preview('verified', verified);
   const verifiedIds = verifiedRows.map((r) => r.lab_report);
   const searchEmpty = 'No rows match your search.';
+
+  function tableSearch(key: SectionKey) {
+    return (
+      <label className="rl2-search">
+        <RIcon size={16}>{ICON_SEARCH}</RIcon>
+        <input
+          value={sectionSearch[key]}
+          onChange={(e) => setSectionQuery(key, e.target.value)}
+          placeholder="Search this table…"
+          aria-label="Search this table"
+        />
+      </label>
+    );
+  }
 
   const journeyMenu = (prefix: string, row: ReportLifecycleJourney, withAuthorize: boolean) => (
     <RowMenu {...menuProps(`${prefix}-${row.journey_id}`)}>
@@ -631,16 +668,7 @@ export function ReportLifecyclePage() {
           canExpand={verified.length > PREVIEW_ROWS}
           expanded={expanded.verified}
           onToggle={() => toggleExpanded('verified')}
-          extra={
-            <label className="rl2-search">
-              <RIcon size={16}>{ICON_SEARCH}</RIcon>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search patient name, TRF or test…"
-              />
-            </label>
-          }
+          extra={tableSearch('verified')}
         />
         <div className="lt-table-wrap">
           <table className="lt-table">
@@ -715,7 +743,7 @@ export function ReportLifecyclePage() {
               ) : (
                 <tr>
                   <td colSpan={9} className="lt-empty">
-                    {q ? searchEmpty : 'No verified reports awaiting sign-off.'}
+                    {sectionQuery('verified') ? searchEmpty : 'No verified reports awaiting sign-off.'}
                   </td>
                 </tr>
               )}
@@ -738,6 +766,7 @@ export function ReportLifecyclePage() {
           canExpand={review.length > PREVIEW_ROWS}
           expanded={expanded.review}
           onToggle={() => toggleExpanded('review')}
+          extra={tableSearch('review')}
         />
         <JourneyTable
           rows={preview('review', review)}
@@ -746,7 +775,7 @@ export function ReportLifecyclePage() {
           onToggleAll={(ids) => toggleAll('review', ids)}
           badgeTone="tone-blue"
           dateLabel="Updated On"
-          emptyText={q ? searchEmpty : 'Nothing in report review.'}
+          emptyText={sectionQuery('review') ? searchEmpty : 'Nothing in report review.'}
           renderActions={(row) => (
             <div className="rl2-actions">
               {row.customer_trf ? (
@@ -784,6 +813,7 @@ export function ReportLifecyclePage() {
           canExpand={authorized.length > PREVIEW_ROWS}
           expanded={expanded.authorized}
           onToggle={() => toggleExpanded('authorized')}
+          extra={tableSearch('authorized')}
         />
         <JourneyTable
           rows={preview('authorized', authorized)}
@@ -792,7 +822,7 @@ export function ReportLifecyclePage() {
           onToggleAll={(ids) => toggleAll('authorized', ids)}
           badgeTone="tone-violet"
           dateLabel="Updated On"
-          emptyText={q ? searchEmpty : 'No authorized reports waiting for dispatch.'}
+          emptyText={sectionQuery('authorized') ? searchEmpty : 'No authorized reports waiting for dispatch.'}
           renderActions={(row) => (
             <div className="rl2-actions">
               <ReportDispatchActions journeyId={row.journey_id} trfId={row.customer_trf} compact />
@@ -824,6 +854,7 @@ export function ReportLifecyclePage() {
           canExpand={dispatched.length > PREVIEW_ROWS}
           expanded={expanded.dispatched}
           onToggle={() => toggleExpanded('dispatched')}
+          extra={tableSearch('dispatched')}
         />
         <JourneyTable
           rows={preview('dispatched', dispatched)}
@@ -832,7 +863,7 @@ export function ReportLifecyclePage() {
           onToggleAll={(ids) => toggleAll('dispatched', ids)}
           badgeTone="tone-green"
           dateLabel="Dispatched On"
-          emptyText={q ? searchEmpty : 'No reports dispatched recently.'}
+          emptyText={sectionQuery('dispatched') ? searchEmpty : 'No reports dispatched recently.'}
           renderActions={(row) => (
             <div className="rl2-actions">
               <ReportDispatchActions journeyId={row.journey_id} trfId={row.customer_trf} compact />

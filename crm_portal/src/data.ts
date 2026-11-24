@@ -3,13 +3,53 @@ export const WINGS = [
   { id: 'aesthetic', name: 'Remedium Aesthetic', short: 'Aesthetic', color: '#db2777', tone: 'aesthetic' },
   { id: 'care', name: 'Remedium Care', short: 'Care', color: '#2563eb', tone: 'care' },
   { id: 'nexilab', name: 'NexiLab', short: 'NexiLab', color: '#7c3aed', tone: 'nexilab' },
-  { id: 'franchise', name: 'Franchise (FFMS/RFMS)', short: 'Franchise', color: '#0ea5e9', tone: 'franchise' },
+  { id: 'franchise', name: 'Franchise', short: 'Franchise', color: '#0ea5e9', tone: 'franchise' },
 ] as const;
 
 export type WingId = (typeof WINGS)[number]['id'];
 
+/** Franchise lead → which Remedium brand (stored as franchiseVertical). */
+export const FRANCHISE_VERTICALS = [
+  { id: 'lab', label: 'Remedium Lab' },
+  { id: 'care', label: 'Remedium Care' },
+  { id: 'aesthetic', label: 'Remedium Aesthetic' },
+] as const;
+
+export type FranchiseVerticalId = (typeof FRANCHISE_VERTICALS)[number]['id'];
+
+export function franchiseVerticalLabel(id?: string | null) {
+  const hit = FRANCHISE_VERTICALS.find((v) => v.id === id);
+  return hit?.label || '';
+}
+
 export function wingById(id: WingId | string) {
   return WINGS.find((w) => w.id === id) ?? WINGS[0];
+}
+
+/**
+ * Conversion credit owner for a Won lead.
+ * Prefer convertedBy; else infer from transfer history (credit stays with pre-transfer owner).
+ */
+export function leadConversionCredit(lead: {
+  status?: string;
+  owner: string;
+  convertedBy?: string;
+  convertedAt?: string;
+  transferHistory?: Array<{ previousOwner: string; transferredAt: string }>;
+}) {
+  if (lead.convertedBy?.trim()) return lead.convertedBy.trim();
+  if (lead.status !== 'Won') return lead.owner;
+  const hist = lead.transferHistory || [];
+  if (hist.length) {
+    const chronological = [...hist].reverse();
+    if (lead.convertedAt) {
+      const firstAfter = chronological.find((h) => h.transferredAt >= lead.convertedAt!);
+      if (firstAfter?.previousOwner?.trim()) return firstAfter.previousOwner.trim();
+    }
+    const oldest = chronological[0];
+    if (oldest?.previousOwner?.trim()) return oldest.previousOwner.trim();
+  }
+  return lead.owner;
 }
 
 /** Lead → Follow-up → Deal → Conversion → Closure */
@@ -29,7 +69,7 @@ export const LEAD_STATUSES = [
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
-export const LEAD_PIPELINE: LeadStatus[] = [
+export const LEAD_PIPELINE = [
   'New',
   'Contacted',
   'Interested',
@@ -37,7 +77,20 @@ export const LEAD_PIPELINE: LeadStatus[] = [
   'Proposal Required',
   'Ready to Proceed',
   'Won',
-];
+] as const satisfies readonly LeadStatus[];
+
+export type LeadPipelineStage = (typeof LEAD_PIPELINE)[number];
+
+/** Related statuses selectable from each funnel stage dropdown. */
+export const LEAD_PIPELINE_GROUPS: Record<LeadPipelineStage, LeadStatus[]> = {
+  New: ['New'],
+  Contacted: ['Contacted', 'Connected', 'Not Reachable'],
+  Interested: ['Interested', 'Not Interested'],
+  Qualified: ['Qualified'],
+  'Proposal Required': ['Proposal Required', 'Discussion Ongoing'],
+  'Ready to Proceed': ['Ready to Proceed'],
+  Won: ['Won', 'Lost'],
+};
 
 export const LEAD_SOURCES = [
   'Meta Ads',
@@ -50,6 +103,10 @@ export const LEAD_SOURCES = [
   'Field Marketing',
   'CSV Import',
   'Portal',
+  'Google Ads',
+  'WhatsApp',
+  'Google Sheets',
+  'Offline Camp',
 ] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
@@ -97,8 +154,25 @@ export type CrmLead = {
   createdAt: string;
   updatedAt?: string;
   nextFollowUp?: string;
-  franchiseModel?: 'FOFO' | 'FOCO' | '';
+  franchiseModel?: 'FOFO' | 'FOCO' | 'Other' | '';
+  /** Which franchise brand: Remedium Lab / Care / Aesthetic (Franchise wing only). */
+  franchiseVertical?: 'aesthetic' | 'care' | 'lab';
+  /** Meta / franchise survey: own_shop | rental_shop */
+  propertyOwnership?: string;
+  /** Meta / franchise survey: e.g. 2,00,000 */
+  investmentCapacity?: string;
+  /** Meta / franchise survey: e.g. 15_days, 6_month */
+  timeline?: string;
   territory?: string;
+  /** Franchise applicant geo + contact extras */
+  alternateMobile?: string;
+  state?: string;
+  district?: string;
+  subdivision?: string;
+  village?: string;
+  pinCode?: string;
+  preferredLocation?: string;
+  googleMapUrl?: string;
   rfmsLeadId?: string;
   /** Patient / service enquiry */
   serviceRequired?: string;
@@ -109,6 +183,11 @@ export type CrmLead = {
   conversionId?: string;
   conversionType?: 'aesthetic' | 'care' | 'lab' | 'franchise' | 'partner';
   convertedAt?: string;
+  /**
+   * Who earned the conversion — frozen at Won time.
+   * Lead ownership may transfer later; conversion credit stays with this person.
+   */
+  convertedBy?: string;
   /** REACH Franchise Sales Lead name after CRM → Reach assign */
   reachLeadId?: string;
   reachRepId?: string;
@@ -116,6 +195,24 @@ export type CrmLead = {
   reachVisitId?: string;
   reachAssignedAt?: string;
   history?: LeadHistoryEntry[];
+  /** Server-backed ownership transfer log (newest first). */
+  transferHistory?: LeadTransferRecord[];
+  /** Campaign attribution (Google Sheets / ads sync) */
+  campaignId?: string;
+  campaignName?: string;
+  /** Stable Google Sheet row reference — never delete CRM lead if sheet row is removed */
+  sheetRowRef?: string;
+  sheetKey?: string;
+};
+
+export type LeadTransferRecord = {
+  id: string;
+  previousOwner: string;
+  newOwner: string;
+  transferredBy: string;
+  transferredAt: string;
+  remarks: string;
+  followupsMoved: number;
 };
 
 export type CrmContact = {
@@ -158,6 +255,8 @@ export type CrmDeal = {
   leadId?: string;
   leadName?: string;
   activityId?: string;
+  /** Linked Care / Aesthetic / Lab / Partner booking when conversion starts */
+  bookingId?: string;
   wing: WingId;
   stage: DealStage;
   value: number;
@@ -169,6 +268,8 @@ export type CrmDeal = {
   lostReason?: LostReason | string;
   conversionId?: string;
   conversionType?: 'aesthetic' | 'care' | 'lab' | 'franchise' | 'partner';
+  /** Who closed the deal — does not change when the linked lead is transferred. */
+  convertedBy?: string;
 };
 
 export const FOLLOW_UP_TYPES = [
@@ -258,6 +359,53 @@ export function dealStageToLeadStatus(stage: DealStage): LeadStatus {
   if (stage === 'Won') return 'Won';
   if (stage === 'Lost') return 'Lost';
   return 'Qualified';
+}
+
+/** Follow-up / lead status → open deal stage. Won is owned by portal billing (null). */
+export function leadStatusToDealStage(status: LeadStatus | string): DealStage | null {
+  const s = normalizeLeadStatus(String(status || ''));
+  switch (s) {
+    case 'New':
+    case 'Contacted':
+    case 'Connected':
+    case 'Qualified':
+      return 'Opportunity Created';
+    case 'Interested':
+    case 'Discussion Ongoing':
+      return 'Discussion';
+    case 'Proposal Required':
+      return 'Proposal Shared';
+    case 'Ready to Proceed':
+      return 'Ready for Conversion';
+    case 'Not Interested':
+    case 'Lost':
+      return 'Lost';
+    case 'Won':
+      return null;
+    case 'Not Reachable':
+      return null;
+    default:
+      return null;
+  }
+}
+
+export function outcomeToDealStage(outcome: FollowUpOutcome | string): DealStage | null {
+  const lead = outcomeToLeadStatus(outcome);
+  return lead ? leadStatusToDealStage(lead) : null;
+}
+
+export function conversionTypeFromWing(
+  wing: string | undefined,
+  portal?: string | null,
+): CrmDeal['conversionType'] {
+  const p = String(portal || wing || '').toLowerCase();
+  if (p.includes('partner')) return 'partner';
+  if (p.includes('franchise') || p === 'ffms' || p === 'rfms') return 'franchise';
+  if (p.includes('aes') || p === 'aesthetic') return 'aesthetic';
+  if (p.includes('care')) return 'care';
+  if (p.includes('lab')) return 'lab';
+  if (wing === 'aesthetic' || wing === 'care' || wing === 'lab' || wing === 'franchise') return wing;
+  return 'lab';
 }
 
 export type CrmSalesStatus = 'Open' | 'Billed' | 'Closed';
@@ -421,7 +569,16 @@ export const SAMPLE_LEADS: CrmLead[] = [
     ownerInitials: 'SG',
     city: 'Bongaon',
     franchiseModel: 'FOFO',
+    franchiseVertical: 'care',
     territory: 'North 24 Parganas',
+    alternateMobile: '9123456781',
+    state: 'West Bengal',
+    district: 'North 24 Parganas',
+    subdivision: 'Bangaon',
+    village: 'Bongaon',
+    pinCode: '743235',
+    preferredLocation: 'Near Bongaon bus stand, North 24 Parganas',
+    googleMapUrl: 'https://maps.google.com/?q=Bongaon,West+Bengal',
     value: 550000,
     createdAt: '2026-10-20T10:15:00+05:30',
     nextFollowUp: '2026-11-20T14:00:00+05:30',
@@ -626,44 +783,54 @@ export const SAMPLE_CAMPAIGNS: CrmCampaign[] = [
   { id: 'CP-0003', name: 'Franchise FOFO North 24P', channel: 'Meta Ads', wing: 'franchise', spend: 86000, leads: 96, cpl: 896, roi: 6.2 },
 ];
 
-export const FUNNEL = [
-  { from: 'Leads', to: 'Qualified', rate: 75.9 },
-  { from: 'Qualified', to: 'Proposal', rate: 42.8 },
-  { from: 'Proposal', to: 'Won', rate: 37.2 },
-];
-
-export const WING_SHARE: { wing: WingId; pct: number }[] = [
-  { wing: 'lab', pct: 46.8 },
-  { wing: 'aesthetic', pct: 20.1 },
-  { wing: 'care', pct: 15.6 },
-  { wing: 'nexilab', pct: 8.7 },
-  { wing: 'franchise', pct: 8.8 },
-];
-
-export const KPI = {
-  totalLeads: 3842,
-  qualified: 2916,
-  opportunities: 1248,
-  dealsWon: 464,
-  dealValue: 8976370,
-  conversion: 12.1,
-  deltas: {
-    totalLeads: 26.4,
-    qualified: 32.1,
-    opportunities: 18.7,
-    dealsWon: 22.5,
-    dealValue: 28.6,
-    conversion: 2.4,
-  },
-};
-
 /* Fallback labels only — booking modal loads live lists from Care / Aesthetic APIs. */
 export const AESTHETIC_BRANCHES = ['Bongaon', 'Barasat'];
 export const CARE_BRANCHES = ['Ashoknagar', 'Hasnabad'];
-export const FRANCHISE_UNITS = [
-  { id: 'FR-BON', name: 'Biswas FOFO Hub', city: 'Bongaon', model: 'FOFO' },
-  { id: 'FR-BAR', name: 'Barasat Vector Centre', city: 'Barasat', model: 'FOCO' },
-  { id: 'FR-HAS', name: 'Hasnabad Collection Point', city: 'Hasnabad', model: 'FOFO' },
+
+export type WingUnit = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  model?: string;
+  code?: string;
+};
+
+/** Aesthetic clinic branches (fallback when /aes-api is offline). */
+export const AESTHETIC_BRANCH_UNITS: WingUnit[] = [
+  { id: 'AES-BGN', name: 'Bongaon', city: 'Bongaon', address: 'Bongaon, North 24 Parganas, West Bengal', code: 'BGN' },
+  { id: 'AES-BRS', name: 'Barasat', city: 'Barasat', address: 'Barasat, North 24 Parganas, West Bengal', code: 'BRS' },
+];
+
+/** Care clinic branches (fallback when /care-api is offline). */
+export const CARE_BRANCH_UNITS: WingUnit[] = [
+  { id: 'CARE-ASK', name: 'Ashoknagar', city: 'Ashoknagar', address: 'Ashoknagar, North 24 Parganas, West Bengal', code: 'ASK' },
+  { id: 'CARE-HAS', name: 'Hasnabad', city: 'Hasnabad', address: 'Hasnabad, North 24 Parganas, West Bengal', code: 'HAS' },
+];
+
+/** Lab wing — franchise / partner collection units. */
+export const FRANCHISE_UNITS: WingUnit[] = [
+  {
+    id: 'FR-BON',
+    name: 'Biswas FOFO Hub',
+    city: 'Bongaon',
+    model: 'FOFO',
+    address: 'Biswas FOFO Hub, Bongaon, North 24 Parganas, West Bengal',
+  },
+  {
+    id: 'FR-BAR',
+    name: 'Barasat Vector Centre',
+    city: 'Barasat',
+    model: 'FOCO',
+    address: 'Barasat Vector Centre, Barasat, North 24 Parganas, West Bengal',
+  },
+  {
+    id: 'FR-HAS',
+    name: 'Hasnabad Collection Point',
+    city: 'Hasnabad',
+    model: 'FOFO',
+    address: 'Hasnabad Collection Point, Hasnabad, North 24 Parganas, West Bengal',
+  },
 ];
 
 export const TIMELINE_SAMPLE = [

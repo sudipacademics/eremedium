@@ -78,6 +78,7 @@ type OpsValue = {
   createTask: (input: TaskInput) => void;
   logIssue: (input: IssueInput) => void;
   dismissToast: (id: number) => void;
+  notify: (text: string) => void;
 };
 
 const OpsContext = createContext<OpsValue | null>(null);
@@ -269,8 +270,10 @@ export function OpsProvider({ children }: { children: ReactNode }) {
       createTask,
       logIssue,
       dismissToast,
+      notify: toast,
     }),
     [
+      toast,
       totals,
       tasks,
       approvals,

@@ -1239,12 +1239,14 @@
     var label = document.createElement('label');
     label.className = className;
     label.setAttribute('data-leave-proof', '1');
-    label.innerHTML = '<span class="' + labelClass + '">Attachment (proof) — optional</span>' +
+    label.innerHTML = (labelClass ? '<span class="' + labelClass + '">Attachment (proof) — optional</span>' : 'Attachment (proof) — optional') +
       '<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" class="leave-proof-input" />' +
       '<small class="leave-proof-hint">PDF, JPG or PNG up to 5 MB. Visible to HR and your manager.</small>';
+    var submit = form.querySelector('button[type="submit"]');
     var anchor = form.querySelector('.le2-reason-block') || form.querySelector('textarea');
     var host = anchor ? (anchor.classList && anchor.classList.contains('le2-reason-block') ? anchor : anchor.closest('label') || anchor) : null;
-    if (host && host.parentNode) host.parentNode.insertBefore(label, host.nextSibling);
+    if (submit && submit.parentNode === form) form.insertBefore(label, submit);
+    else if (host && host.parentNode) host.parentNode.insertBefore(label, host.nextSibling);
     else form.appendChild(label);
     var input = label.querySelector('input');
     var hint = label.querySelector('small');
@@ -1271,6 +1273,13 @@
     if (self) leaveFileInput(self, 'le2-field leave-proof', 'le2-label');
     var hr = document.querySelector('form.lv-form');
     if (hr) leaveFileInput(hr, 'leave-proof', '');
+    // My Profile → HR Self Service → Apply leave (me-mini-form)
+    document.querySelectorAll('form.me-mini-form').forEach(function (form) {
+      var card = form.closest('.me-card');
+      var title = card && card.querySelector('h2');
+      if (!title || !/apply\s+leave/i.test(title.textContent || '')) return;
+      leaveFileInput(form, 'leave-proof me-leave-proof', '');
+    });
   }
 
   function uploadLeaveProof(leaveName) {
@@ -1511,16 +1520,45 @@
       var p = nativeFetch.apply(this, arguments);
       if (url.indexOf('submit_leave_application') !== -1 || url.indexOf('create_people_leave_request') !== -1) {
         return p.then(function (res) {
-          if (leaveFile && res.ok) {
-            res.clone().json().then(function (json) {
-              var msg = json && json.message;
-              if (msg && msg.status === 'error') return;
-              var data = msg && msg.data ? msg.data : msg;
+          return res.clone().json().then(function (json) {
+            var msg = json && json.message;
+            var nested = msg && typeof msg === 'object' ? msg : json;
+            var isErr = (nested && nested.status === 'error') || !res.ok;
+            var form = document.querySelector('form.me-mini-form') || document.querySelector('form[data-le2-screen="apply-for-leave"]');
+            var flash = function (text, bad) {
+              if (!form) {
+                if (bad) alert(text);
+                return;
+              }
+              var box = form.querySelector('[data-leave-flash]');
+              if (!box) {
+                box = document.createElement('div');
+                box.setAttribute('data-leave-flash', '1');
+                box.style.cssText = 'margin:8px 0;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:650';
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) form.insertBefore(box, btn);
+                else form.appendChild(box);
+              }
+              box.style.background = bad ? '#fff1f2' : '#ecfdf5';
+              box.style.color = bad ? '#9f1239' : '#065f46';
+              box.style.border = '1px solid ' + (bad ? '#fecdd3' : '#a7f3d0');
+              box.textContent = text;
+              try { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+            };
+            if (isErr) {
+              var errText = (nested && nested.message) || 'Could not submit leave';
+              if (typeof errText !== 'string') errText = 'Could not submit leave';
+              flash(String(errText).replace(/<[^>]+>/g, ''), true);
+            } else if (leaveFile) {
+              var data = nested && nested.data ? nested.data : nested;
               var name = (data && (data.name || (data.leave_application && data.leave_application.name))) || '';
               uploadLeaveProof(name);
-            }).catch(function () { uploadLeaveProof(''); });
-          }
-          return res;
+              flash('Leave submitted' + (name ? ' (' + name + ')' : '') + '. Uploading attachment…', false);
+            } else if (nested && nested.status === 'success') {
+              flash((nested.message && nested.message !== 'OK' ? nested.message : 'Leave submitted') + ' — sent to your reporting manager.', false);
+            }
+            return res;
+          }).catch(function () { return res; });
         });
       }
       if (url.indexOf('create_people_employee') === -1) return p;

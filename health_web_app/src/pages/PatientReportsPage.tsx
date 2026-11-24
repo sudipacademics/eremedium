@@ -52,7 +52,7 @@ export function PatientReportsPage() {
     try {
       await api.downloadAuthorizedReport(
         row.journey_id,
-        'nabl',
+        'with_header',
         `Lab_Report_${row.trf_id || row.journey_id}.pdf`,
       );
       setNotice('Report downloaded.');

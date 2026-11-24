@@ -18,6 +18,20 @@ export default defineConfig(({ mode }) => {
         '/rfms-api': { target: backend, changeOrigin: true, secure: true },
         '/care-api': { target: care, changeOrigin: true, secure: true },
         '/aes-api': { target: care, changeOrigin: true, secure: true },
+        '/gsheets': {
+          target: 'https://docs.google.com',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => {
+            const m = path.match(/^\/gsheets\/([^/]+)\/(csv|json)\/(.+)$/);
+            if (!m) return path;
+            const id = m[1];
+            const fmt = m[2] === 'json' ? 'json' : 'csv';
+            /* sheet segment already percent-encoded */
+            const sheet = m[3].split('?')[0];
+            return `/spreadsheets/d/${id}/gviz/tq?tqx=out:${fmt}&sheet=${sheet}`;
+          },
+        },
       },
     },
     preview: {

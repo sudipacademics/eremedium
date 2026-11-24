@@ -32,19 +32,22 @@ Portal key `crm` in `clinical_people_access.py` (`PORTALS["crm"]`):
 | Module | Paths |
 |---|---|
 | Dashboard | `/` |
-| Leads | `/leads` |
+| Service Lead (all wings) | `/leads/service/*` |
+| Franchise Lead (all wings) | `/leads/franchise/*` |
 | Contacts | `/contacts` |
 | Accounts | `/accounts` |
 | Deals | `/deals` |
-| Activities | `/activities` |
+| Service Followup (all wings) | `/activities/service/*` |
+| Franchise Followup (all wings) | `/activities/franchise/*` |
+| WhatsApp Centre (all wings) | `/whatsapp/*` |
 | Bookings | `/bookings` |
-| Franchise | `/franchise` |
-| Partner Bookings | `/partner-bookings` |
+| Franchise (FFMS/RFMS) | `/franchise` |
+| Partner Unit Bookings | `/partner-bookings` |
 | Campaigns | `/campaigns` |
-| Reports | `/reports` |
+| Reports & Analytics | `/reports` |
 | Settings | `/settings` |
 
-Roles: CRM Staff / CRM Manager (created on first use). Manage level adds CRM Manager.
+Roles: **CRM Executive** / **CRM Manager** (created on first use). Manage on any module → CRM Manager (sees all activity for enabled modules). Executive → only assigned modules. Categories **Service** / **Franchise** (stored on the access row) further scope leads, follow-ups, and WhatsApp wings for executives.
 
 ## Deploy
 

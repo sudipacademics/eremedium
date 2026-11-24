@@ -63,10 +63,11 @@ const MANAGER_GROUPS: NavGroup[] = [
   },
 ];
 
+/* Employee self-service directory — full attendance / leave pages. Portal embeds use Profile tabs instead (people-access). */
 const MY_WORKSPACE: NavGroup = {
   label: 'My workspace',
   items: [
-    { to: '/people/profile', label: 'Profile', icon: 'user' },
+    { to: '/people/profile', label: 'My HR Workspace', icon: 'user' },
     { to: '/people/attendance', label: 'My attendance', icon: 'clock' },
     { to: '/people/leave', label: 'My leave', icon: 'calendar' },
     { to: '/people/expenses', label: 'Expenses', icon: 'receipt' },
@@ -76,7 +77,11 @@ const MY_WORKSPACE: NavGroup = {
 
 const MANAGER_WORKSPACE: NavGroup = {
   label: 'My workspace',
-  items: [{ to: '/people/profile', label: 'Profile', icon: 'user' }],
+  items: [
+    { to: '/people/profile', label: 'My HR Workspace', icon: 'user' },
+    { to: '/people/attendance', label: 'My attendance', icon: 'clock' },
+    { to: '/people/leave', label: 'My leave', icon: 'calendar' },
+  ],
 };
 
 const FRANCHISE_GROUPS: NavGroup[] = [

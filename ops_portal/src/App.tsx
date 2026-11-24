@@ -14,8 +14,9 @@ import {
   SettingsPage,
   UnitPage,
   UnitsPage,
-  VendorsPage,
 } from './components/Pages';
+import { PharmacyPage } from './components/Pharmacy';
+import { VendorsPage } from './components/Vendors';
 
 export default function App() {
   return (
@@ -29,6 +30,8 @@ export default function App() {
           <Route path="services" element={<ServicesPage />} />
           <Route path="logistics" element={<LogisticsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
+          <Route path="inventory/pharmacy" element={<PharmacyPage />} />
+          <Route path="inventory/aesthetic" element={<PharmacyPage />} />
           <Route path="vendors" element={<VendorsPage />} />
           <Route path="quality" element={<QualityPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />

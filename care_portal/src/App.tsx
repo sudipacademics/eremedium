@@ -10,6 +10,7 @@ import { AppointmentsPage, SessionsPage } from './components/pages/Appointments'
 import { PatientDetailPage, PatientsPage } from './components/pages/Patients';
 import { LabCatalogPage, LabPage } from './components/pages/Lab';
 import { BillingPage } from './components/pages/Billing';
+import { VouchersPage } from './components/pages/Vouchers';
 import { InventoryPage } from './components/pages/Inventory';
 import { PharmacyPage } from './components/pages/Pharmacy';
 import { BranchesPage } from './components/pages/Branches';
@@ -109,6 +110,9 @@ function CareApp() {
           <Route path="diagnostics" element={<DiagnosticsPage />} />
           <Route path="diagnostics/master" element={<DiagnosticMasterPage />} />
           <Route path="billing" element={<BillingPage />} />
+          <Route path="billing/vouchers" element={<VouchersPage />} />
+          <Route path="billing/vouchers/list" element={<VouchersPage />} />
+          <Route path="billing/vouchers/reports" element={<VouchersPage />} />
           <Route path="pharmacy" element={<PharmacyPage />} />
           <Route path="pharmacy/stock" element={<Navigate to="/pharmacy" replace />} />
           <Route path="inventory" element={<InventoryPage />} />

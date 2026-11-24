@@ -2202,7 +2202,11 @@ function doctorFields(body) {
 
 export function listDoctors({ db, q }) {
   const today = todayStr();
-  const b = branchWhere(q, 's.branch_id');
+  /* Voucher doctor payments: doctors often sit at several centres; list every active doctor and
+     prefer the selected payment branch in sort order (do not hide others). */
+  const forPayment = q.for_payment === '1' || q.for_payment === 'true' || q.voucher === '1';
+  const prefer = forPayment ? int(q.prefer_branch || q.branch) : 0;
+  const b = forPayment ? { sql: '', args: [] } : branchWhere(q, 's.branch_id');
   /* CRM / Care booking may ask for Physiotherapist; default stays doctor (+ cosmetologist on Aesthetic). */
   const wanted = String(q.role || '').trim();
   const roleList =
@@ -2210,8 +2214,13 @@ export function listDoctors({ db, q }) {
       ? ['Physiotherapist']
       : wanted && CLINICIAN_ROLES.includes(wanted)
         ? [wanted]
-        : CLINICIAN_ROLES;
+        : forPayment
+          ? ['Doctor']
+          : CLINICIAN_ROLES;
   const roles = roleList.map(() => '?').join(',');
+  const order = forPayment && prefer
+    ? `CASE WHEN s.branch_id = ${prefer} THEN 0 ELSE 1 END, s.active DESC, s.name`
+    : 's.active DESC, s.role, s.name';
   const list = rows(
     db,
     `SELECT s.*, br.name AS branch,
@@ -2220,7 +2229,7 @@ export function listDoctors({ db, q }) {
             (SELECT COUNT(*) FROM appointments a WHERE a.practitioner_id = s.id AND a.status = 'Completed' AND a.date >= ?) AS completed30
        FROM practitioners s LEFT JOIN branches br ON br.id = s.branch_id
       WHERE s.role IN (${roles})${q.active === 'all' ? '' : ' AND s.active = 1'}${b.sql}
-      ORDER BY s.active DESC, s.role, s.name`,
+      ORDER BY ${order}`,
     today, today, addDays(today, -29), ...roleList, ...b.args,
   );
   return list.map((d) => {
@@ -2854,7 +2863,7 @@ export function saveBranchConfig({ db, body, params, user }) {
   return { ...next, saved: true };
 }
 
-function savedBranchConfig(db, id) {
+export function savedBranchConfig(db, id) {
   if (!id) return null;
   const raw = row(db, 'SELECT value FROM settings WHERE key = ?', BRANCH_CFG + int(id));
   if (!raw || !raw.value) return null;

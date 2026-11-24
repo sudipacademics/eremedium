@@ -35,7 +35,7 @@ export function SalesMyHrPage() {
       <iframe
         ref={frame}
         title="My HR Profile"
-        src={`${PEOPLE}/people/profile?pa_embed=1`}
+        src={`${PEOPLE}/people/profile?pa_embed=1&tab=hr`}
         allow="geolocation *"
       />
     </div>

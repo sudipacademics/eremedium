@@ -53,7 +53,17 @@ export const NAV: NavItem[] = [
       { label: 'Diagnostic Test Master', icon: 'clipboard', to: '/diagnostics/master' },
     ],
   },
-  { label: 'Billing & Invoice', icon: 'invoice', to: '/billing', module: 'Billing & Invoice' },
+  {
+    label: 'Billing & Invoice',
+    icon: 'invoice',
+    module: 'Billing & Invoice',
+    children: [
+      { label: 'Invoices', icon: 'invoice', to: '/billing' },
+      { label: 'Payment Voucher', icon: 'rupee', to: '/billing/vouchers' },
+      { label: 'Voucher List', icon: 'clipboard', to: '/billing/vouchers/list' },
+      { label: 'Expense Report', icon: 'chart', to: '/billing/vouchers/reports' },
+    ],
+  },
   { label: 'Pharmacy', icon: 'pill', to: '/pharmacy', module: 'Pharmacy' },
   { label: 'Inventory Management', icon: 'box', to: '/inventory', module: 'Inventory Management' },
   { label: 'Branch Management', icon: 'building', to: '/branches', module: 'Branch Management' },
@@ -252,9 +262,9 @@ function UserMenu() {
       {open && (
         <div className="dropdown user-menu">
           <p className="muted small">{me.user}</p>
-          <a className="menu-row" href="https://people.e-remedium.in/people/profile" target="_blank" rel="noreferrer">
-            <Icon name="user" size={16} /> My HR profile
-          </a>
+          <NavLink className="menu-row" to="/my-hr" onClick={() => setOpen(false)}>
+            <Icon name="user" size={16} /> My HR Workspace
+          </NavLink>
           <button type="button" className="menu-row" onClick={onSignOut}>
             <Icon name="logout" size={16} /> Sign out
           </button>

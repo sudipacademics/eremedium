@@ -54,6 +54,10 @@
 .leave-proof { display: grid; gap: 6px; margin-top: 12px; font-size: 0.82rem; font-weight: 700; color: #475569; }
 .leave-proof input[type="file"] { border: 1px dashed #b6d4d0; border-radius: 10px; padding: 10px; background: #f8fcfc; font: inherit; }
 .leave-proof small { font-weight: 500; color: #64748b; }
+.me-mini-form .me-leave-proof { margin: 4px 0 2px; font-size: 12.5px; font-weight: 650; color: #475569; }
+.me-mini-form .me-leave-proof input[type="file"] { width: 100%; }
+.leave-files { margin: 12px 0; }
+.leave-files .leave-file-open { border: 0; background: transparent; color: #1d6f72; font: inherit; font-weight: 650; cursor: pointer; padding: 0; text-decoration: underline; }
 .leave-files .leave-file-open { border: 0; background: none; color: #0f766e; font-weight: 800; cursor: pointer; padding: 0; text-decoration: underline; }
 .pay-lines input, .pay-lines select { width: 100%; box-sizing: border-box; border: 1px solid #d5e3e8; border-radius: 8px; padding: 6px 8px; font: inherit; }
 .pay-lines button, .pay-add { border: 1px solid #d5e3e8; background: #fff; border-radius: 999px; padding: 5px 10px; cursor: pointer; font-weight: 700; }

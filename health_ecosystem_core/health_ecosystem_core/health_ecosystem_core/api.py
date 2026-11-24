@@ -10293,6 +10293,30 @@ def save_labtech_whatsapp(sid=None, report_enabled=None, report_message=None):
         return _error(_("Could not save WhatsApp settings"))
 
 
+def _multipart_image_payload(file_name=None, file_data=None):
+    """Read the browser's raw file upload. A base64 form field often arrives empty."""
+    try:
+        req = getattr(frappe.local, "request", None)
+        files = getattr(req, "files", None) if req is not None else None
+        uploaded = None
+        if files:
+            uploaded = files.get("file") or files.get("file_data")
+        if uploaded and getattr(uploaded, "filename", None):
+            raw = uploaded.stream.read() if hasattr(uploaded, "stream") else uploaded.read()
+            if raw:
+                file_name = cstr(file_name or uploaded.filename).strip() or uploaded.filename
+                lower = cstr(file_name).lower()
+                mime = "image/png"
+                if lower.endswith(".jpg") or lower.endswith(".jpeg"):
+                    mime = "image/jpeg"
+                elif lower.endswith(".webp"):
+                    mime = "image/webp"
+                file_data = "data:" + mime + ";base64," + base64.b64encode(raw).decode("ascii")
+    except Exception:
+        frappe.log_error(title="multipart_image_payload", message=frappe.get_traceback())
+    return file_name, file_data
+
+
 @frappe.whitelist(allow_guest=True)
 def save_pathologist_signature(sid=None, employee=None, file_name=None, file_data=None, clear=None):
     denied = _require_lab_ops_access(sid)
@@ -10302,6 +10326,8 @@ def save_pathologist_signature(sid=None, employee=None, file_name=None, file_dat
         save_pathologist_signature as _save,
     )
 
+    if not cint(clear):
+        file_name, file_data = _multipart_image_payload(file_name, file_data)
     try:
         return _success(
             _save(
@@ -10339,6 +10365,8 @@ def save_department_signature_default(
         save_department_signature_default as _save,
     )
 
+    if not cint(clear_image):
+        file_name, file_data = _multipart_image_payload(file_name, file_data)
     try:
         return _success(
             _save(

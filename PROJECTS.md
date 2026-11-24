@@ -20,6 +20,7 @@ Live lab, pharmacy, careers, sales and wellness site. One ERPNext site, one Dock
 | Docker and server scripts | `docker/PROJECT.md` | Safe deploy, smoke tests and FFMS path fixes for the live server. |
 | People HRMS add-ons | `.deploy/` + `AGENTS_CONTEXT.md` (People HRMS section) | Add-on JS/CSS and `clinical_people_*` modules for people.e-remedium.in, plus the self-healing restore cron. |
 | Operations portal | `ops_portal/AGENTS.md` | Static operations console at ops.e-remedium.in with the HRMS sign-in gate (`public/ops-gate.js`). |
+| CRM portal | `crm_portal/AGENTS.md` | Telecaller CRM at crm.e-remedium.in — leads, Aesthetic/Care bookings, FFMS/RFMS franchise, partner-unit bookings. |
 
 ## Remedium Franchise Management (RFMS / FFMS)
 
@@ -34,6 +35,17 @@ Monorepo at `apps_external/ffms/PROJECT.md`.
 | Laravel API | `apps_external/ffms/apps/api/PROJECT.md` | Docker (PHP 8.2+) |
 
 Shared libraries live in `apps_external/ffms/packages/` (`api-client`, `types`, `ui`, `utils`, `validation`).
+
+## Smilecure AI Workforce
+
+Internal multi-channel AI agent platform (telephone, WhatsApp, email; Bengali, Hindi, English). Separate
+Docker Compose project (`aiw`: Laravel core, FastAPI AI service, React console, PostgreSQL + pgvector, Redis).
+Reaches the ERP/HRMS only over HTTP through verified endpoints. Phase 01 (foundation) done 2026-11-12,
+awaiting approval.
+
+| Project | Path | What it is |
+|---|---|---|
+| AI Workforce | `ai_workforce/AGENTS.md` → `ai_workforce/docs/PROJECT_BIBLE.md` | Architecture, documents, services and Docker environment. Dev console http://localhost:8700. |
 
 ## Spiritual-Tech Super App
 

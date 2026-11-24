@@ -3,10 +3,18 @@ import { api } from '../api';
 import type { ReportChromeTemplate, ReportWhatsAppResult } from '../types/reportLifecycle';
 import './ReportDispatchActions.css';
 
+/** Only delivery choice is header vs blank bands. NABL / Non-NABL pad comes from Test Master. */
 const DOWNLOAD_OPTIONS: Array<{ id: ReportChromeTemplate; label: string; hint: string }> = [
-  { id: 'nabl', label: 'With NABL Header', hint: 'NABL letterhead and approved footer' },
-  { id: 'non_nabl', label: 'With Non-NABL Header', hint: 'Non-NABL letterhead and approved footer' },
-  { id: 'none', label: 'Without Header/Footer', hint: 'Results only — no letterhead, branding, or disclaimer' },
+  {
+    id: 'with_header',
+    label: 'With Header',
+    hint: 'Letterhead pad from Test Master NABL mark (NABL or Non-NABL)',
+  },
+  {
+    id: 'without_header',
+    label: 'Without Header',
+    hint: 'Blank header/footer bands for pre-printed letterhead',
+  },
 ];
 
 type Props = {
@@ -22,10 +30,9 @@ export function ReportDispatchActions({ journeyId, trfId, compact, className }: 
   const [menuOpen, setMenuOpen] = useState(false);
   const [waState, setWaState] = useState<JobState>('idle');
   const [waMessage, setWaMessage] = useState<string | null>(null);
-  const [pdfState, setPdfState] = useState<Record<ReportChromeTemplate, JobState>>({
-    nabl: 'idle',
-    non_nabl: 'idle',
-    none: 'idle',
+  const [pdfState, setPdfState] = useState<Record<string, JobState>>({
+    with_header: 'idle',
+    without_header: 'idle',
   });
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [lastWa, setLastWa] = useState<ReportWhatsAppResult | null>(null);

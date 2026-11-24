@@ -172,7 +172,7 @@ export function FranchiseeDashboard() {
         <a className="btn" href="/b2b">
           B2B portal (MRP / wholesale)
         </a>
-        <a className="btn secondary" href="/dashboard/hr">
+        <a className="btn secondary" href="/dashboard/profile">
           HR — leave &amp; expenses
         </a>
         <a className="btn secondary" href="/dashboard/pharmacy-quotes">

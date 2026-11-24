@@ -29,6 +29,7 @@ HEADER_FIELDS = (
 	"result_layout",
 	"uses_age_related_ranges",
 	"machine_method",
+	"tat_days",
 	"report_heading_1",
 	"report_heading_2",
 	"description",
@@ -98,41 +99,69 @@ def _api():
 	return api
 
 
-def ensure_lab_test_master_fields():
-	"""NABL checkbox on Diagnostic Test Master (portal + Desk)."""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+def _clear_doctype_cache():
+	cache = getattr(frappe.local, "table_columns", None)
+	if isinstance(cache, dict):
+		cache.pop(DT, None)
+	frappe.clear_cache(doctype=DT)
 
+
+def _ensure_custom_field(spec):
+	"""Add a Custom Field when DocType meta does not already define it."""
+	if frappe.get_meta(DT).has_field(spec["fieldname"]):
+		return
+	if frappe.db.exists("Custom Field", {"dt": DT, "fieldname": spec["fieldname"]}):
+		return
+	doc = frappe.get_doc({"doctype": "Custom Field", "dt": DT, **spec})
+	doc.flags.ignore_validate = True
+	doc.flags.ignore_permissions = True
+	doc.insert(ignore_permissions=True)
+
+
+def ensure_lab_test_master_fields():
+	"""NABL checkbox and TAT (days) on Diagnostic Test Master (portal + Desk)."""
 	if not frappe.db.exists("DocType", DT):
 		return False
-	if frappe.db.has_column(DT, "is_nabl"):
-		return True
-	try:
-		create_custom_fields(
+	pending = []
+	if not frappe.get_meta(DT).has_field("is_nabl") and not frappe.db.has_column(DT, "is_nabl"):
+		pending.append(
 			{
-				DT: [
-					{
-						"fieldname": "is_nabl",
-						"label": "NABL",
-						"fieldtype": "Check",
-						"default": "0",
-						"insert_after": "report_category",
-						"in_list_view": 1,
-						"in_standard_filter": 1,
-						"description": "Mark this test as NABL-accredited. Used when choosing NABL vs Non-NABL report letterhead.",
-					}
-				]
-			},
-			ignore_validate=True,
-			update=True,
+				"fieldname": "is_nabl",
+				"label": "NABL",
+				"fieldtype": "Check",
+				"default": "0",
+				"insert_after": "report_category",
+				"in_list_view": 1,
+				"in_standard_filter": 1,
+				"description": "Mark this test as NABL-accredited. Used when choosing NABL vs Non-NABL report letterhead.",
+			}
 		)
-		frappe.clear_cache(doctype=DT)
-	except Exception:
-		frappe.log_error(title="ensure_lab_test_master_fields", message=frappe.get_traceback())
+	if not frappe.get_meta(DT).has_field("tat_days"):
+		pending.append(
+			{
+				"fieldname": "tat_days",
+				"label": "TAT (days)",
+				"fieldtype": "Int",
+				"default": "0",
+				"insert_after": "machine_method",
+				"non_negative": 1,
+				"description": "Turnaround time in days. 0 means Same day. Each number is one day.",
+			}
+		)
+	for spec in pending:
+		try:
+			_ensure_custom_field(spec)
+		except Exception:
+			frappe.log_error(title="ensure_lab_test_master_fields", message=frappe.get_traceback())
+	_clear_doctype_cache()
 	if not frappe.db.has_column(DT, "is_nabl"):
-		# Fallback when Custom Field creation is blocked — keep the portal usable.
 		frappe.db.sql(f"ALTER TABLE `tab{DT}` ADD COLUMN `is_nabl` INT(1) NOT NULL DEFAULT 0")
 		frappe.db.commit()
-	return frappe.db.has_column(DT, "is_nabl")
+	if not frappe.db.has_column(DT, "tat_days"):
+		frappe.db.sql(f"ALTER TABLE `tab{DT}` ADD COLUMN `tat_days` INT NOT NULL DEFAULT 0")
+		frappe.db.commit()
+	_clear_doctype_cache()
+	return frappe.db.has_column(DT, "is_nabl") and frappe.db.has_column(DT, "tat_days")
 
 
 def _level():
@@ -205,14 +234,22 @@ def _row_out(row, fields):
 	return {"id": row.name, **{f: row.get(f) for f in fields}}
 
 
+def _tat_days(value):
+	return max(0, cint(value))
+
+
 def test_detail(name):
 	doc = frappe.get_doc(DT, name)
+	header = {f: doc.get(f) for f in HEADER_FIELDS}
+	if header.get("tat_days") in (None, "") and frappe.db.has_column(DT, "tat_days"):
+		header["tat_days"] = frappe.db.sql(f"SELECT IFNULL(tat_days, 0) FROM `tab{DT}` WHERE name=%s", name)[0][0]
+	header["tat_days"] = _tat_days(header.get("tat_days"))
 	return {
 		"name": doc.name,
 		"test_name": doc.test_name,
 		"modified": cstr(doc.modified),
 		"modified_by": doc.modified_by,
-		**{f: doc.get(f) for f in HEADER_FIELDS},
+		**header,
 		"parameters": [_row_out(r, PARAM_FIELDS) for r in doc.get("parameters") or []],
 		"reference_ranges": [_row_out(r, RANGE_FIELDS) for r in doc.get("reference_ranges") or []],
 		"tubes": [{"tube": r.tube, "min_volume_ml": r.min_volume_ml, "preferred": cint(r.preferred)} for r in doc.get("tube_requirements") or []],
@@ -262,9 +299,10 @@ def get_lab_test_masters(sid=None, q=None, department=None, status=None, start=N
 	sql_where = " AND ".join(where)
 	total = frappe.db.sql(f"SELECT COUNT(*) FROM `tab{DT}` t WHERE {sql_where}", args)[0][0]
 	nabl_select = "IFNULL(t.is_nabl, 0) AS is_nabl" if frappe.db.has_column(DT, "is_nabl") else "0 AS is_nabl"
+	tat_select = "IFNULL(t.tat_days, 0) AS tat_days" if frappe.db.has_column(DT, "tat_days") else "0 AS tat_days"
 	rows = frappe.db.sql(
 		f"""SELECT t.name, t.test_name, t.department, t.nabl_discipline, t.specimen_material, t.lis_code, t.item,
-		           IFNULL(t.disabled, 0) AS disabled, {nabl_select}, t.result_layout, t.modified,
+		           IFNULL(t.disabled, 0) AS disabled, {nabl_select}, {tat_select}, t.result_layout, t.modified,
 		           (SELECT COUNT(*) FROM `tabDiagnostic Test Parameter` p WHERE p.parent = t.name AND p.parenttype = %s) AS parameters,
 		           (SELECT COUNT(*) FROM `tabDiagnostic Test Reference Range` r WHERE r.parent = t.name AND r.parenttype = %s) AS ranges
 		      FROM `tab{DT}` t WHERE {sql_where} ORDER BY t.test_name LIMIT %s OFFSET %s""",
@@ -331,7 +369,10 @@ def save_lab_test_master(sid=None, test=None, data=None):
 			doc = frappe.get_doc(DT, test)
 			if payload.get("modified") and cstr(doc.modified) != cstr(payload.get("modified")):
 				frappe.throw(_("{0} changed this test after you opened it. Reload and make your change again.").format(doc.modified_by))
-		doc.update(_clean(HEADER_FIELDS, payload, DT))
+		header = _clean(HEADER_FIELDS, payload, DT)
+		if "tat_days" in header:
+			header["tat_days"] = _tat_days(header["tat_days"])
+		doc.update(header)
 		if "parameters" in payload:
 			_merge_children(doc, "parameters", PARAM_FIELDS, "Diagnostic Test Parameter", payload.get("parameters"))
 		if "reference_ranges" in payload:
@@ -341,6 +382,11 @@ def save_lab_test_master(sid=None, test=None, data=None):
 				frappe.throw(_("Every parameter needs a name"))
 		doc.flags.ignore_permissions = True
 		doc.save() if not creating else doc.insert()
+		if "tat_days" in payload and frappe.db.has_column(DT, "tat_days") and not frappe.get_meta(DT).has_field("tat_days"):
+			frappe.db.sql(
+				f"UPDATE `tab{DT}` SET tat_days=%s WHERE name=%s",
+				(_tat_days(payload.get("tat_days")), doc.name),
+			)
 		frappe.db.commit()
 		return api._success({"test": test_detail(doc.name)}, message=_("Test saved"))
 	except frappe.ValidationError as exc:

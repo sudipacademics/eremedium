@@ -35,10 +35,10 @@ if (!AESTHETIC) {
   const redated = api.redateVisitInvoices(db);
   if (redated) console.log(`dated ${redated} consultation invoice(s) on the visit day`);
 }
+vouchers.ensure(db);
 if (AESTHETIC) {
   const missing = feedback.ensureRequests(db);
   if (missing) console.log(`added ${missing} feedback request(s) for sessions completed earlier`);
-  vouchers.ensure(db);
 }
 
 const P = 'Patients';
@@ -210,21 +210,21 @@ const ROUTES = [
         ['GET', '/feedback/settings', [BK, A, S], 'view', feedback.readSettings],
         ['PUT', '/feedback/settings', [BK, S], 'edit', feedback.saveSettings],
         ['GET', '/feedback/delivery', [BK, A], 'view', feedback.deliveryStatus],
-        ['GET', '/voucher-categories', null, 'view', vouchers.listCategories],
-        ['POST', '/voucher-categories', null, 'view', vouchers.saveCategory],
-        ['PATCH', '/voucher-categories/:id', null, 'view', vouchers.updateCategory],
-        ['GET', '/vouchers', null, 'view', vouchers.listVouchers],
-        ['GET', '/vouchers/report', null, 'view', vouchers.report],
-        ['POST', '/vouchers', null, 'view', vouchers.createVoucher],
-        ['GET', '/vouchers/:id', null, 'view', vouchers.getVoucher],
-        ['PATCH', '/vouchers/:id', null, 'view', vouchers.updateVoucher],
-        ['POST', '/vouchers/:id/cancel', null, 'view', vouchers.cancelVoucher],
-        ['POST', '/vouchers/:id/decision', null, 'view', vouchers.decideVoucher],
-        ['POST', '/vouchers/:id/payments', null, 'view', vouchers.addPayment],
-        ['GET', '/vouchers/:id/files/:fid', null, 'view', vouchers.fileBody],
         ['GET', '/aes-dashboard', 'Dashboard', 'view', aesDashboard.dashboard],
       ]
     : []),
+  ['GET', '/voucher-categories', null, 'view', vouchers.listCategories],
+  ['POST', '/voucher-categories', null, 'view', vouchers.saveCategory],
+  ['PATCH', '/voucher-categories/:id', null, 'view', vouchers.updateCategory],
+  ['GET', '/vouchers', null, 'view', vouchers.listVouchers],
+  ['GET', '/vouchers/report', null, 'view', vouchers.report],
+  ['POST', '/vouchers', null, 'view', vouchers.createVoucher],
+  ['GET', '/vouchers/:id', null, 'view', vouchers.getVoucher],
+  ['PATCH', '/vouchers/:id', null, 'view', vouchers.updateVoucher],
+  ['POST', '/vouchers/:id/cancel', null, 'view', vouchers.cancelVoucher],
+  ['POST', '/vouchers/:id/decision', null, 'view', vouchers.decideVoucher],
+  ['POST', '/vouchers/:id/payments', null, 'view', vouchers.addPayment],
+  ['GET', '/vouchers/:id/files/:fid', null, 'view', vouchers.fileBody],
 ].map(([method, path, modules, level, handler]) => {
   const keys = [];
   const pattern = new RegExp(`^${path.replace(/:(\w+)/g, (_, key) => { keys.push(key); return '(\\d+)'; })}$`);
@@ -276,7 +276,9 @@ async function handle(req, res) {
 
   /* Branch names only, read by HRMS so HR can assign staff to branches (new branches appear automatically). */
   if (path === '/branch-directory' && req.method === 'GET') {
-    return send(res, 200, { data: db.prepare('SELECT id, name, code, city, active FROM branches ORDER BY name').all() });
+    return send(res, 200, {
+      data: db.prepare('SELECT id, name, code, city, address, phone, active FROM branches ORDER BY name').all(),
+    });
   }
 
   /* Patient feedback links: no sign-in, the link token is the only key. */
@@ -372,9 +374,8 @@ const CONSOLE_ORIGINS = new Set(['https://aesthetics.e-remedium.in', 'https://op
 const FEEDBACK_ORIGINS = new Set(['https://remediumaesthetics.in', 'http://127.0.0.1:5180', 'http://localhost:5180']);
 
 function allowConsole(req, res) {
-  if (!AESTHETIC) return false;
   const origin = String(req.headers.origin || '');
-  if (FEEDBACK_ORIGINS.has(origin) && /^\/(care-api\/)?public\/feedback\//.test(String(req.url))) {
+  if (AESTHETIC && FEEDBACK_ORIGINS.has(origin) && /^\/(care-api\/)?public\/feedback\//.test(String(req.url))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -386,7 +387,9 @@ function allowConsole(req, res) {
     }
     return false;
   }
+  /* Aesthetic console + Ops voucher approval (both Care and Aesthetic APIs). */
   if (!CONSOLE_ORIGINS.has(origin)) return false;
+  if (!AESTHETIC && !/ops\.e-remedium\.in|127\.0\.0\.1:5182|localhost:5182/.test(origin)) return false;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Care-Sid');

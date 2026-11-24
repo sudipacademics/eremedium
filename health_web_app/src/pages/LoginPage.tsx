@@ -70,7 +70,7 @@ export function LoginPage() {
   const aestheticsHost =
     typeof window !== 'undefined' && window.location.hostname === 'aesthetics.e-remedium.in';
   const passwordFirst = staffHost || aestheticsHost;
-  const dedicatedStaffLogin = peopleHost || salesHost;
+  const dedicatedStaffLogin = peopleHost || salesHost || labtechHost;
   const [mode, setMode] = useState<LoginMode>(passwordFirst ? 'password' : 'otp');
   const [usr, setUsr] = useState('');
   const [pwd, setPwd] = useState('');
@@ -444,22 +444,32 @@ export function LoginPage() {
   if (dedicatedStaffLogin) {
     const brand = peopleHost
       ? { mark: 'PH', title: 'People Management - SLPL', kicker: 'People Management - SLPL', portal: 'people' as const }
-      : { mark: 'RP', title: 'Reach Portal', kicker: 'Reach Portal', portal: 'reach' as const };
+      : labtechHost
+        ? { mark: 'LT', title: 'Lab Tech - Smilecure', kicker: 'Lab Tech - Smilecure', portal: 'labtech' as const }
+        : { mark: 'RP', title: 'Reach Portal', kicker: 'Reach Portal', portal: 'reach' as const };
     const dedicatedSubtitle = peopleHost
       ? 'Employee portal — sign in with your work email and the password issued by HR.'
-      : 'Field sales — sign in with your Reach email and the password issued by your administrator.';
+      : labtechHost
+        ? 'Sign in with your lab email and the password issued by your administrator.'
+        : 'Field sales — sign in with your Reach email and the password issued by your administrator.';
     const foot = peopleHost
       ? 'Access is managed by HR in People HRMS → Portal Access.'
-      : 'Access is managed by HR in People HRMS → Portal Access → Reach / Sales.';
+      : labtechHost
+        ? 'Access is managed by HR in People HRMS → Portal Access → Lab Technician.'
+        : 'Access is managed by HR in People HRMS → Portal Access → Reach / Sales.';
     return (
       <div className="spl-page" data-portal={brand.portal}>
         <div className="spl-card">
-          {peopleHost ? (
+          {peopleHost || labtechHost ? (
             <div className="spl-brand spl-brand-logo">
               <div className="spl-logo-wrap">
-                <img className="spl-logo" src="/brand/smilecure-lifestyle.png?v=5" alt="Smilecure Lifestyle Private Limited" />
+                <img
+                  className="spl-logo"
+                  src={peopleHost ? '/brand/smilecure-lifestyle.png?v=5' : '/brand/labtech-smilecure-logo.png?v=1'}
+                  alt="Smilecure"
+                />
               </div>
-              <p className="spl-brand-sub">People Management - SLPL</p>
+              <p className="spl-brand-sub">{peopleHost ? 'People Management - SLPL' : 'Lab Tech - Smilecure'}</p>
             </div>
           ) : (
             <div className="spl-brand">
@@ -472,7 +482,7 @@ export function LoginPage() {
               </span>
             </div>
           )}
-          {peopleHost ? null : <p className="spl-kicker">{brand.kicker}</p>}
+          {peopleHost || labtechHost ? null : <p className="spl-kicker">{brand.kicker}</p>}
           <h1>Sign in</h1>
           <p className="spl-muted">{dedicatedSubtitle}</p>
           <form className="spl-form" onSubmit={onPasswordLogin}>

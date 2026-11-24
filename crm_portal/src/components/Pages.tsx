@@ -1,21 +1,34 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
-  DEAL_STAGES,
+  AESTHETIC_BRANCH_UNITS,
+  CARE_BRANCH_UNITS,
   FRANCHISE_UNITS,
-  LOST_REASONS,
   WINGS,
   formatINR,
   formatNumber,
-  type DealStage,
-  type LostReason,
   type WingId,
+  type WingUnit,
 } from '../data';
-import { listCrmSalesCloses } from '../crmApi';
+import { listAestheticBranches, listCareBranches, listCrmSalesCloses, type ClinicBranch } from '../crmApi';
 import { Icon } from '../icons';
 import { useCrm } from '../store';
-import { AddContactModal, ImportContactsModal, TransferOwnershipModal } from './Forms';
+import { AddContactModal, ImportContactsModal } from './Forms';
 import { Empty, StatusPill, WingPill } from './ui';
+
+function branchToUnit(b: ClinicBranch, prefix: string): WingUnit {
+  const city = String(b.city || b.name || '').trim();
+  const address =
+    String(b.address || '').trim() ||
+    (city ? `${city}, North 24 Parganas, West Bengal` : 'Address not set');
+  return {
+    id: `${prefix}-${b.id || b.code || b.name}`,
+    name: String(b.name || 'Branch'),
+    city: city || '—',
+    address,
+    code: b.code ? String(b.code) : undefined,
+  };
+}
 
 export { LeadsPage } from './Leads';
 
@@ -53,35 +66,37 @@ export function ContactsPage() {
 
   return (
     <>
-      <PageHead
-        title="Contacts"
-        subtitle="People linked to leads, accounts and franchise applicants."
-        actions={
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => setImportOpen(true)}>
-              Import Contact
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
-              <Icon name="plus" size={16} /> Add Contact
-            </button>
-          </div>
-        }
-      />
-      <div className="toolbar">
-        <div className="search" style={{ maxWidth: 280, flex: 1 }}>
-          <Icon name="search" size={16} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contacts…" />
+      <header className="page-head page-head-compact">
+        <div>
+          <h1>Contacts</h1>
         </div>
-        <select value={wing} onChange={(e) => setWing(e.target.value as WingId | 'all')}>
-          <option value="all">All wings</option>
-          {WINGS.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="card">
+      </header>
+      <div className="card lm-main">
+        <div className="fu-table-tools lm-table-tools">
+          <button type="button" className="btn btn-ghost" onClick={() => setImportOpen(true)}>
+            Import Contact
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={16} /> Add Contact
+          </button>
+          <div className="search fu-table-search">
+            <Icon name="search" size={15} />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search contacts…"
+              aria-label="Search contacts"
+            />
+          </div>
+          <select value={wing} onChange={(e) => setWing(e.target.value as WingId | 'all')} aria-label="Wing filter">
+            <option value="all">All wings</option>
+            {WINGS.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <table className="table">
           <thead>
             <tr>
@@ -121,42 +136,183 @@ export function ContactsPage() {
   );
 }
 
+function unitSearchBlob(u: WingUnit) {
+  const pin = (u.address.match(/\b\d{6}\b/g) || []).join(' ');
+  return `${u.name} ${u.city} ${u.address} ${u.code || ''} ${u.model || ''} ${pin}`.toLowerCase();
+}
+
+function filterUnitsByLocation(units: WingUnit[], query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return units;
+  const tokens = needle.split(/\s+/).filter(Boolean);
+  return units.filter((u) => {
+    const blob = unitSearchBlob(u);
+    return tokens.every((t) => blob.includes(t));
+  });
+}
+
+function WingUnitsCard({
+  wing,
+  title,
+  subtitle,
+  units,
+  totalCount,
+  extraCol,
+  query,
+}: {
+  wing: WingId;
+  title: string;
+  subtitle: string;
+  units: WingUnit[];
+  totalCount: number;
+  extraCol?: 'model' | 'code';
+  query: string;
+}) {
+  if (query.trim() && units.length === 0) return null;
+  return (
+    <div className="card lm-main">
+      <div className="card-head" style={{ marginBottom: 8 }}>
+        <div>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+            <WingPill wing={wing} />
+            {title}
+          </h3>
+          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '0.78rem' }}>{subtitle}</p>
+        </div>
+        <span className="badge-pill">
+          {query.trim() ? `${units.length} / ${totalCount}` : `${units.length}`} units
+        </span>
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Unit / Branch</th>
+            <th>City</th>
+            <th>Address</th>
+            {extraCol ? <th>{extraCol === 'model' ? 'Model' : 'Code'}</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {units.map((u) => (
+            <tr key={u.id}>
+              <td>
+                <strong>{u.name}</strong>
+              </td>
+              <td>{u.city || '—'}</td>
+              <td style={{ maxWidth: 360 }}>{u.address || '—'}</td>
+              {extraCol === 'model' ? <td>{u.model || '—'}</td> : null}
+              {extraCol === 'code' ? <td>{u.code || '—'}</td> : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {units.length === 0 ? <Empty text="No units found for this wing." /> : null}
+    </div>
+  );
+}
+
 export function AccountsPage() {
-  const crm = useCrm();
+  const [aesUnits, setAesUnits] = useState<WingUnit[]>(AESTHETIC_BRANCH_UNITS);
+  const [careUnits, setCareUnits] = useState<WingUnit[]>(CARE_BRANCH_UNITS);
+  const [loadNote, setLoadNote] = useState('');
+  const [locationQ, setLocationQ] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([listAestheticBranches(), listCareBranches()]).then(([aes, care]) => {
+      if (cancelled) return;
+      const notes: string[] = [];
+      if (aes.status === 'fulfilled' && aes.value.length) {
+        setAesUnits(aes.value.map((b) => branchToUnit(b, 'AES')));
+      } else {
+        notes.push('Aesthetic branches using cached list');
+      }
+      if (care.status === 'fulfilled' && care.value.length) {
+        setCareUnits(care.value.map((b) => branchToUnit(b, 'CARE')));
+      } else {
+        notes.push('Care branches using cached list');
+      }
+      setLoadNote(notes.join(' · '));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredAes = useMemo(() => filterUnitsByLocation(aesUnits, locationQ), [aesUnits, locationQ]);
+  const filteredCare = useMemo(() => filterUnitsByLocation(careUnits, locationQ), [careUnits, locationQ]);
+  const filteredLab = useMemo(() => filterUnitsByLocation(FRANCHISE_UNITS, locationQ), [locationQ]);
+  const matchTotal = filteredAes.length + filteredCare.length + filteredLab.length;
+
   return (
     <>
-      <PageHead title="Accounts / Organizations" subtitle="Clinics, franchise hubs, corporate accounts and patient groups." />
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Account</th>
-              <th>Type</th>
-              <th>Wing</th>
-              <th>City</th>
-              <th>Contacts</th>
-              <th>Deals</th>
-              <th>Owner</th>
-            </tr>
-          </thead>
-          <tbody>
-            {crm.accounts.map((a) => (
-              <tr key={a.id}>
-                <td>
-                  <strong>{a.name}</strong>
-                </td>
-                <td>{a.type}</td>
-                <td>
-                  <WingPill wing={a.wing} />
-                </td>
-                <td>{a.city}</td>
-                <td>{a.contacts}</td>
-                <td>{a.deals}</td>
-                <td>{a.owner}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <header className="page-head page-head-compact">
+        <div>
+          <h1>Accounts / Organizations</h1>
+          <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: '0.8rem' }}>
+            Wing-wise units — Aesthetic &amp; Care branches, Lab franchise hubs.
+            {loadNote ? ` · ${loadNote}` : ''}
+          </p>
+        </div>
+      </header>
+      <div className="card lm-main" style={{ marginBottom: 12 }}>
+        <div className="fu-table-tools lm-table-tools">
+          <div className="search fu-table-search" style={{ marginLeft: 0, flex: '1 1 320px', maxWidth: 480 }}>
+            <Icon name="search" size={15} />
+            <input
+              value={locationQ}
+              onChange={(e) => setLocationQ(e.target.value)}
+              placeholder="Search by pincode, address, town…"
+              aria-label="Search units by location"
+            />
+          </div>
+          {locationQ.trim() ? (
+            <>
+              <span className="badge-pill">{matchTotal} match{matchTotal === 1 ? '' : 'es'}</span>
+              <button type="button" className="btn btn-ghost" onClick={() => setLocationQ('')}>
+                Clear
+              </button>
+            </>
+          ) : (
+            <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
+              Find units near a town, street, or 6-digit PIN
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 12 }}>
+        {locationQ.trim() && matchTotal === 0 ? (
+          <div className="card">
+            <Empty text={`No units match “${locationQ.trim()}”. Try another town, address, or pincode.`} />
+          </div>
+        ) : null}
+        <WingUnitsCard
+          wing="aesthetic"
+          title="Aesthetic branches"
+          subtitle="Remedium Aesthetic clinic locations"
+          units={filteredAes}
+          totalCount={aesUnits.length}
+          extraCol="code"
+          query={locationQ}
+        />
+        <WingUnitsCard
+          wing="care"
+          title="Care branches"
+          subtitle="Remedium Care clinic locations"
+          units={filteredCare}
+          totalCount={careUnits.length}
+          extraCol="code"
+          query={locationQ}
+        />
+        <WingUnitsCard
+          wing="lab"
+          title="Lab franchise units"
+          subtitle="Existing franchise / partner collection hubs for lab work"
+          units={filteredLab}
+          totalCount={FRANCHISE_UNITS.length}
+          extraCol="model"
+          query={locationQ}
+        />
       </div>
     </>
   );
@@ -164,21 +320,45 @@ export function AccountsPage() {
 
 export function DealsPage() {
   const crm = useCrm();
-  const [convertId, setConvertId] = useState<string | null>(null);
-  const [lostId, setLostId] = useState<string | null>(null);
-  const [conversionId, setConversionId] = useState('');
-  const [conversionType, setConversionType] = useState<'aesthetic' | 'care' | 'lab' | 'franchise' | 'partner'>('aesthetic');
-  const [lostReason, setLostReason] = useState<LostReason | ''>('');
+  const [syncing, setSyncing] = useState(false);
   const total = crm.deals.reduce((sum, d) => sum + (d.value || 0), 0);
-  const converting = convertId ? crm.deals.find((d) => d.id === convertId) : null;
+  const won = crm.deals.filter((d) => d.stage === 'Won').length;
+  const lost = crm.deals.filter((d) => d.stage === 'Lost').length;
+
+  const syncBilling = async (quiet = false) => {
+    setSyncing(true);
+    try {
+      const { closes } = await listCrmSalesCloses(300);
+      const n = crm.applySalesCloses(closes);
+      if (!quiet) {
+        crm.pushToast(n ? `Synced ${n} portal bill(s) · Convert updates from billing` : 'No new portal bill closes yet');
+      }
+    } catch (err) {
+      if (!quiet) {
+        crm.pushToast(err instanceof Error ? err.message : 'Could not sync portal billing', 'err');
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    void syncBilling(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
       <PageHead
         title="Deals & Opportunities"
-        subtitle="Lead → Follow-up → Deal → Conversion → Closure. Synced from Follow-up Management."
+        subtitle="Stage & Lost sync from Follow-ups · Convert / Won syncs from Care, Aesthetic, Lab & Partner billing."
+        actions={
+          <button type="button" className="btn btn-ghost" onClick={() => syncBilling(false)} disabled={syncing}>
+            {syncing ? 'Syncing…' : 'Sync portal bills'}
+          </button>
+        }
       />
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
         <div className="kpi">
           <span>Open deals</span>
           <strong>{formatNumber(crm.deals.filter((d) => d.stage !== 'Won' && d.stage !== 'Lost').length)}</strong>
@@ -188,8 +368,12 @@ export function DealsPage() {
           <strong>{formatINR(total)}</strong>
         </div>
         <div className="kpi">
-          <span>From follow-ups</span>
-          <strong>{formatNumber(crm.deals.filter((d) => d.activityId).length)}</strong>
+          <span>Converted (billing)</span>
+          <strong>{formatNumber(won)}</strong>
+        </div>
+        <div className="kpi">
+          <span>Lost (follow-up)</span>
+          <strong>{formatNumber(lost)}</strong>
         </div>
       </div>
       <div className="card">
@@ -203,7 +387,7 @@ export function DealsPage() {
               <th>Prob.</th>
               <th>Close</th>
               <th>Owner</th>
-              <th>Actions</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -216,203 +400,39 @@ export function DealsPage() {
                     {d.leadId ? ` · ${d.leadId}` : ''}
                     {d.product ? ` · ${d.product}` : ''}
                     {d.conversionId ? ` · ${d.conversionId}` : ''}
+                    {d.bookingId ? ` · ${d.bookingId}` : ''}
                   </div>
                 </td>
                 <td>
                   <WingPill wing={d.wing} />
                 </td>
                 <td>
-                  <select
-                    className="inline-select"
-                    value={d.stage}
-                    disabled={d.stage === 'Won' || d.stage === 'Lost'}
-                    onChange={(e) => {
-                      const stage = e.target.value as DealStage;
-                      if (stage === 'Lost') {
-                        setLostId(d.id);
-                        setLostReason('');
-                        return;
-                      }
-                      if (stage === 'Won') {
-                        setConvertId(d.id);
-                        setConversionType(
-                          d.wing === 'care' || d.wing === 'aesthetic' || d.wing === 'lab' || d.wing === 'franchise'
-                            ? d.wing
-                            : 'lab',
-                        );
-                        setConversionId('');
-                        return;
-                      }
-                      crm.updateDeal(d.id, { stage });
-                      crm.pushToast(`${d.id} → ${stage}`);
-                    }}
-                  >
-                    {DEAL_STAGES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <StatusPill value={d.stage} />
+                  <div style={{ color: 'var(--muted)', fontSize: '0.68rem', marginTop: 4 }}>
+                    {d.stage === 'Won'
+                      ? 'From portal billing'
+                      : d.stage === 'Lost'
+                        ? d.lostReason
+                          ? `Follow-up · ${d.lostReason}`
+                          : 'From follow-up'
+                        : 'From follow-up'}
+                  </div>
                 </td>
                 <td>{formatINR(d.value)}</td>
                 <td>{d.probability != null ? `${d.probability}%` : '—'}</td>
                 <td>{d.closeDate}</td>
                 <td>{d.owner}</td>
                 <td>
-                  {d.stage !== 'Won' && d.stage !== 'Lost' ? (
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ padding: '4px 8px' }}
-                        onClick={() => {
-                          setConvertId(d.id);
-                          setConversionType(
-                            d.wing === 'care' || d.wing === 'aesthetic' || d.wing === 'lab' || d.wing === 'franchise'
-                              ? d.wing
-                              : 'lab',
-                          );
-                          setConversionId('');
-                        }}
-                      >
-                        Convert
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ padding: '4px 8px' }}
-                        onClick={() => {
-                          setLostId(d.id);
-                          setLostReason('');
-                        }}
-                      >
-                        Lost
-                      </button>
-                    </div>
-                  ) : (
-                    <StatusPill value={d.stage} />
-                  )}
+                  <StatusPill value={d.stage} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {crm.deals.length === 0 ? <Empty text="No deals yet. Mark a follow-up as Deal & Opportunity to sync here." /> : null}
+        {crm.deals.length === 0 ? (
+          <Empty text="No deals yet. Mark a follow-up as Deal & Opportunity — stage then tracks follow-up; Convert waits for portal billing." />
+        ) : null}
       </div>
-
-      {converting ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="card-head">
-              <h2>Conversion / Won · {converting.id}</h2>
-              <button type="button" className="icon-btn" onClick={() => setConvertId(null)} aria-label="Close">
-                ×
-              </button>
-            </div>
-            <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>
-              Capture Booking ID / Application ID after confirming the customer transaction.
-            </p>
-            <div className="form-grid">
-              <label className="field">
-                <span>Conversion type *</span>
-                <select
-                  value={conversionType}
-                  onChange={(e) => setConversionType(e.target.value as typeof conversionType)}
-                >
-                  <option value="aesthetic">Aesthetic → Patient Booking</option>
-                  <option value="care">Care → Patient Booking</option>
-                  <option value="lab">Lab → Centre Booking</option>
-                  <option value="partner">Franchise Unit → Partner Booking</option>
-                  <option value="franchise">Franchise → FFMS/RFMS Application</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>Booking / Application ID *</span>
-                <input
-                  value={conversionId}
-                  onChange={(e) => setConversionId(e.target.value)}
-                  placeholder="BK-… / RFMS-… / APP-…"
-                  autoFocus
-                />
-              </label>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setConvertId(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  if (!conversionId.trim()) {
-                    crm.pushToast('Enter Booking / Application ID', 'err');
-                    return;
-                  }
-                  const done = crm.convertDealWon(converting.id, {
-                    conversionType,
-                    conversionId: conversionId.trim(),
-                    service: converting.product,
-                  });
-                  if (!done) {
-                    crm.pushToast('Conversion failed', 'err');
-                    return;
-                  }
-                  crm.pushToast(`Deal ${converting.id} Won · ${conversionId.trim()}`);
-                  setConvertId(null);
-                }}
-              >
-                Mark Won / Converted
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {lostId ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="card-head">
-              <h2>Lost / Closed · {lostId}</h2>
-              <button type="button" className="icon-btn" onClick={() => setLostId(null)} aria-label="Close">
-                ×
-              </button>
-            </div>
-            <label className="field">
-              <span>Lost reason *</span>
-              <select value={lostReason} onChange={(e) => setLostReason(e.target.value as LostReason | '')}>
-                <option value="">Select reason</option>
-                {LOST_REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setLostId(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  if (!lostReason) {
-                    crm.pushToast('Lost reason is mandatory', 'err');
-                    return;
-                  }
-                  crm.updateDeal(lostId, { stage: 'Lost', lostReason });
-                  const deal = crm.deals.find((d) => d.id === lostId);
-                  if (deal?.leadId) crm.closeLeadLost(deal.leadId, lostReason);
-                  crm.pushToast(`Deal ${lostId} Lost · ${lostReason}`);
-                  setLostId(null);
-                }}
-              >
-                Confirm Lost
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -688,324 +708,9 @@ export function PartnerBookingsPage() {
   );
 }
 
-export function CampaignsPage() {
-  const crm = useCrm();
-  return (
-    <>
-      <PageHead title="Campaigns" subtitle="Paid and organic campaigns feeding the CRM inbox." />
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Campaign</th>
-              <th>Channel</th>
-              <th>Wing</th>
-              <th>Spend</th>
-              <th>Leads</th>
-              <th>CPL</th>
-              <th>ROI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {crm.campaigns.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <strong>{c.name}</strong>
-                </td>
-                <td>{c.channel}</td>
-                <td>
-                  <WingPill wing={c.wing} />
-                </td>
-                <td>{formatINR(c.spend)}</td>
-                <td>{formatNumber(c.leads)}</td>
-                <td>{formatINR(c.cpl)}</td>
-                <td>{c.roi}x</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
+export { CampaignsPage } from './Campaigns';
 
-export function ReportsPage() {
-  const crm = useCrm();
-  const [erpTotal, setErpTotal] = useState(0);
-  const won = crm.deals.filter((d) => d.stage === 'Won').length;
-  const open = crm.deals.filter((d) => d.stage !== 'Won' && d.stage !== 'Lost').length;
-  const closedSales = crm.bookings.filter((b) => (b.salesStatus || 'Open') === 'Closed');
-  const closedAmount = closedSales.reduce((s, b) => s + (b.billedAmount || 0), 0);
-  const byExecutive = useMemo(() => {
-    const map = new Map<string, { executive: string; bookings: number; closed: number; amount: number }>();
-    for (const b of crm.bookings) {
-      const key = b.executive || b.owner || 'Unassigned';
-      const row = map.get(key) || { executive: key, bookings: 0, closed: 0, amount: 0 };
-      row.bookings += 1;
-      if ((b.salesStatus || 'Open') === 'Closed') {
-        row.closed += 1;
-        row.amount += b.billedAmount || 0;
-      }
-      map.set(key, row);
-    }
-    return Array.from(map.values()).sort((a, b) => b.amount - a.amount || b.bookings - a.bookings);
-  }, [crm.bookings]);
+export { ReportsPage } from './Reports';
 
-  useEffect(() => {
-    let cancelled = false;
-    listCrmSalesCloses(300)
-      .then((data) => {
-        if (cancelled) return;
-        setErpTotal(data.totalAmount);
-        if (data.closes.length) crm.applySalesCloses(data.closes);
-      })
-      .catch(() => {
-        /* offline soft */
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+export { SettingsPage } from './Settings';
 
-  return (
-    <>
-      <PageHead
-        title="Reports & Analytics"
-        subtitle="Executive sales closes from CRM tracking tags on Care / Aesthetic / lab bills."
-      />
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
-        <div className="kpi">
-          <span>CRM leads</span>
-          <strong>{formatNumber(crm.leads.length)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Open deals</span>
-          <strong>{formatNumber(open)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Won deals</span>
-          <strong>{formatNumber(won)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Closed booking sales</span>
-          <strong>{formatNumber(closedSales.length)}</strong>
-        </div>
-        <div className="kpi">
-          <span>Executive billed</span>
-          <strong>{formatINR(closedAmount || erpTotal)}</strong>
-        </div>
-      </div>
-      <div className="card" style={{ marginBottom: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Sales by CRM executive</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Executive</th>
-              <th>Bookings</th>
-              <th>Closed</th>
-              <th>Billed amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byExecutive.map((r) => (
-              <tr key={r.executive}>
-                <td>
-                  <strong>{r.executive}</strong>
-                </td>
-                <td>{formatNumber(r.bookings)}</td>
-                <td>{formatNumber(r.closed)}</td>
-                <td>{formatINR(r.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {byExecutive.length === 0 ? <Empty text="No bookings with tracking tags yet." /> : null}
-      </div>
-      <div className="card">
-        <h3>Wing mix (current CRM session)</h3>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Wing</th>
-              <th>Leads</th>
-              <th>Deals</th>
-              <th>Bookings</th>
-            </tr>
-          </thead>
-          <tbody>
-            {WINGS.map((w) => (
-              <tr key={w.id}>
-                <td>
-                  <WingPill wing={w.id} />
-                </td>
-                <td>{crm.leads.filter((l) => l.wing === w.id).length}</td>
-                <td>{crm.deals.filter((d) => d.wing === w.id).length}</td>
-                <td>{crm.bookings.filter((b) => b.wing === w.id || (w.id === 'lab' && b.channel === 'Partner Portal')).length}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-export function SettingsPage() {
-  const crm = useCrm();
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'manager' | 'staff'>('staff');
-
-  return (
-    <>
-      <PageHead
-        title="Settings"
-        subtitle="CRM team roster, ownership transfer, and connected systems."
-        actions={
-          crm.isManager ? (
-            <button type="button" className="btn btn-primary" onClick={() => setTransferOpen(true)}>
-              Transfer ownership
-            </button>
-          ) : null
-        }
-      />
-      <div className="card" style={{ marginBottom: 14 }}>
-        <h3 style={{ marginTop: 0 }}>CRM team</h3>
-        <p style={{ marginTop: 0, color: 'var(--muted)', fontSize: '0.85rem' }}>
-          Managers can transfer leads and follow-ups between CRM owners. Your role:{' '}
-          <strong>{crm.userRoleLabel}</strong>.
-        </p>
-        {!crm.isManager ? (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ marginBottom: 12 }}
-            onClick={() => {
-              const me = crm.team.find((t) => t.name.toLowerCase() === crm.userName.toLowerCase());
-              if (me) crm.updateTeamMember(me.id, { role: 'manager', active: true });
-              else crm.addTeamMember({ name: crm.userName, role: 'manager' });
-              crm.pushToast('CRM Manager tools enabled for your login');
-            }}
-          >
-            Enable manager tools for my login
-          </button>
-        ) : null}
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Status</th>
-              {crm.isManager ? <th>Actions</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {crm.team.map((m) => (
-              <tr key={m.id}>
-                <td>
-                  <strong>{m.name}</strong>
-                </td>
-                <td>{m.email || '—'}</td>
-                <td>{m.role === 'manager' ? 'CRM Manager' : 'CRM Staff'}</td>
-                <td>{m.active ? 'Active' : 'Inactive'}</td>
-                {crm.isManager ? (
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ padding: '4px 8px' }}
-                      onClick={() =>
-                        crm.updateTeamMember(m.id, {
-                          role: m.role === 'manager' ? 'staff' : 'manager',
-                        })
-                      }
-                    >
-                      Make {m.role === 'manager' ? 'staff' : 'manager'}
-                    </button>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {crm.isManager ? (
-          <form
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 8, marginTop: 12 }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!name.trim()) {
-                crm.pushToast('Enter team member name', 'err');
-                return;
-              }
-              crm.addTeamMember({ name: name.trim(), email: email.trim() || undefined, role });
-              crm.pushToast(`${name.trim()} added to CRM team`);
-              setName('');
-              setEmail('');
-              setRole('staff');
-            }}
-          >
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" />
-            <select value={role} onChange={(e) => setRole(e.target.value as 'manager' | 'staff')}>
-              <option value="staff">Staff</option>
-              <option value="manager">Manager</option>
-            </select>
-            <button type="submit" className="btn btn-primary">
-              Add
-            </button>
-          </form>
-        ) : null}
-      </div>
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Connected systems</h3>
-        <table className="table">
-          <tbody>
-            <tr>
-              <td>
-                <strong>Care portal</strong>
-              </td>
-              <td>care.e-remedium.in · /care-api</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Aesthetic sessions</strong>
-              </td>
-              <td>care.e-remedium.in · /aes-api</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>FFMS / RFMS</strong>
-              </td>
-              <td>www.e-remedium.in · /rfms-api/v1</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Partner portal</strong>
-              </td>
-              <td>partners.remediumlabs.in · ERP book_lab_test</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>REACH (sales &amp; marketing)</strong>
-              </td>
-              <td>
-                reach.e-remedium.in · assign leads + follow-ups via ERP (list_crm_reach_reps /
-                assign_crm_lead_to_reach)
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <strong>This portal</strong>
-              </td>
-              <td>crm.e-remedium.in · same Hetzner host</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {transferOpen ? <TransferOwnershipModal onClose={() => setTransferOpen(false)} /> : null}
-    </>
-  );
-}

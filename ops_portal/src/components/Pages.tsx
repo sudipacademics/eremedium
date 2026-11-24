@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ASSETS,
   BRANCHES,
@@ -9,7 +9,6 @@ import {
   STOCK,
   UNIT_REVENUE,
   UNITS,
-  VENDORS,
   downloadCsv,
   formatINR,
   formatNumber,
@@ -345,7 +344,9 @@ export function LogisticsPage() {
 
 export function InventoryPage() {
   const { openModal, requisitions } = useOps();
-  const [onlyLow, setOnlyLow] = useState(true);
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [onlyLow, setOnlyLow] = useState(params.get('view') !== 'all');
   const rows = STOCK.filter((item) => !onlyLow || item.stock < item.reorder);
   return (
     <div className="page">
@@ -355,7 +356,13 @@ export function InventoryPage() {
         actions={<button type="button" className="btn primary" onClick={() => openModal('requisition', { unit: 'pharmacy', branch: 'Ashoknagar Pharmacy' })}>Raise Requisition</button>}
       />
       <div className="toolbar">
-        <Chips value={onlyLow ? 'Low stock' : 'All items'} options={['Low stock', 'All items']} onChange={(value) => setOnlyLow(value === 'Low stock')} />
+        <Chips
+          value={onlyLow ? 'Low stock' : 'All items'}
+          options={['Low stock', 'All items', 'Pharmacy', 'Aesthetic']}
+          onChange={(value) =>
+            value === 'Pharmacy' ? navigate('/inventory/pharmacy') : value === 'Aesthetic' ? navigate('/inventory/aesthetic?cat=consumables') : setOnlyLow(value === 'Low stock')
+          }
+        />
       </div>
       <article className="card">
         <div className="table-wrap">
@@ -405,44 +412,6 @@ export function InventoryPage() {
           ))}
         </article>
       ) : null}
-    </div>
-  );
-}
-
-export function VendorsPage() {
-  return (
-    <div className="page">
-      <PageHead title="Vendor Management" lede="Suppliers covering reagents, medicines, aesthetic devices and cold logistics." />
-      <article className="card">
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Vendor</th>
-                <th>Category</th>
-                <th>Units</th>
-                <th>Open orders</th>
-                <th>Rating</th>
-                <th>Contact</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {VENDORS.map((vendor) => (
-                <tr key={vendor.id}>
-                  <td><strong>{vendor.name}</strong><span className="muted">{vendor.id}</span></td>
-                  <td>{vendor.category}</td>
-                  <td>{vendor.units}</td>
-                  <td className="num">{vendor.orders}</td>
-                  <td className="num">{vendor.rating}</td>
-                  <td>{vendor.contact}</td>
-                  <td><StatusTag value={vendor.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </article>
     </div>
   );
 }

@@ -1,0 +1,85 @@
+/* Leave management — date customise + unauthorised days */
+.lv-date-edit {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff7f7;
+}
+
+.lv-date-edit .lv-modal-note {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.lv-date-edit label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #475569;
+}
+
+.lv-date-edit input[type='date'] {
+  width: 100%;
+  border: 1px solid #d5e0e5;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.lv-unauthorized {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fff7f7;
+}
+
+.lv-unauthorized h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: #9f1239;
+}
+
+.lv-unauthorized > p {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lv-unauthorized-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.lv-unauthorized-table th,
+.lv-unauthorized-table td {
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.lv-unauthorized-table thead {
+  color: #64748b;
+}
+
+.lv-unauthorized-table tbody tr {
+  border-top: 1px solid #fee2e2;
+}
+
+.lv-unauthorized-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lv-kpi-unauth.on,
+.lv-kpi-btn.on {
+  outline: 2px solid #e11d48;
+  outline-offset: 1px;
+}

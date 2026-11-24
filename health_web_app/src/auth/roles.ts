@@ -5,6 +5,8 @@ export const ROLES = {
   PHLEBOTOMIST: 'Phlebotomist',
   LAB_TECH: 'Lab Technician',
   LAB_MANAGER: 'Lab Manager',
+  QC_MANAGER: 'Quality Control Manager',
+  LAB_ACCESSOR: 'Lab Accessor',
   MATERIAL_REQUESTER: 'Material Requester',
   PATHOLOGIST: 'Pathologist',
   ADMIN: 'Health System Admin',
@@ -32,9 +34,23 @@ const STAFF_ROLES = [
   ROLES.SYSTEM_MANAGER,
   ROLES.LAB_TECH,
   ROLES.LAB_MANAGER,
+  ROLES.QC_MANAGER,
+  ROLES.LAB_ACCESSOR,
   ROLES.PATHOLOGIST,
   'Administrator',
 ];
+
+/** Lab Manager + Quality Control Manager may sign & finalize pathologist reports. */
+export function canSignLabReports(roles: string[] | undefined | null) {
+  return hasAnyRole(roles, [
+    ROLES.LAB_MANAGER,
+    ROLES.QC_MANAGER,
+    ROLES.PATHOLOGIST,
+    ROLES.ADMIN,
+    ROLES.SYSTEM_MANAGER,
+    'Administrator',
+  ]);
+}
 
 export function hasAnyRole(roles: string[] | undefined | null, required: string[]) {
   if (!Array.isArray(roles) || !required?.length) return false;
@@ -76,6 +92,14 @@ export function canManageInventory(roles: string[] | undefined | null) {
 
 export function isPathologist(roles: string[] | undefined | null) {
   return Array.isArray(roles) && roles.includes(ROLES.PATHOLOGIST);
+}
+
+export function isLabAccessor(roles: string[] | undefined | null) {
+  return Array.isArray(roles) && roles.includes(ROLES.LAB_ACCESSOR);
+}
+
+export function isQcManager(roles: string[] | undefined | null) {
+  return Array.isArray(roles) && roles.includes(ROLES.QC_MANAGER);
 }
 
 /** PhleboFirst customer (doctor / pharmacy / small lab); franchisees use PhleboFirst inside the partner portal. */
@@ -299,6 +323,8 @@ export function dashboardLabel(roles: string[]): string {
   if (isFranchisee(roles)) return 'Franchisee';
   if (isPhlebotomist(roles)) return 'Phlebotomist';
   if (isLabManager(roles)) return 'Lab Manager';
+  if (isQcManager(roles)) return 'Quality Control Manager';
+  if (isLabAccessor(roles)) return 'Accessor';
   if (isLabTechnician(roles)) return 'Lab Technician';
   if (isPathologist(roles)) return 'Pathologist';
   if (isRequesterOnly(roles)) return 'Material Requester';

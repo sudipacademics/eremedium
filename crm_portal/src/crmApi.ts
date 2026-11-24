@@ -1,18 +1,22 @@
 /** API helpers for Smilecure CRM — ERP session, Care/Aesthetic bookings, RFMS leads, partner unit bookings. */
 
+import { readCrmSession, readCsrfToken, type CrmSession } from './security';
+
 const SITE = 'health.localhost';
 
-function session() {
-  try {
-    return JSON.parse(localStorage.getItem('crm_session') || 'null') as {
-      sid?: string;
-      user?: string;
-      full_name?: string;
-      roles?: string[];
-    } | null;
-  } catch {
-    return null;
-  }
+function session(): CrmSession | null {
+  return readCrmSession();
+}
+
+function erpHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'X-Frappe-Site-Name': SITE,
+  };
+  const csrf = readCsrfToken();
+  if (csrf) headers['X-Frappe-CSRF-Token'] = csrf;
+  return headers;
 }
 
 async function erpMethod<T = unknown>(
@@ -28,11 +32,7 @@ async function erpMethod<T = unknown>(
   const res = await fetch(`/api/method/health_ecosystem_core.health_ecosystem_core.${method}`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'X-Frappe-Site-Name': SITE,
-    },
+    headers: erpHeaders(),
     body,
   });
   const json = await res.json().catch(() => ({}));
@@ -54,7 +54,12 @@ async function jsonFetch<T>(url: string, init?: RequestInit & { json?: unknown }
     body = JSON.stringify(init.json);
   }
   const s = session();
-  if (s?.sid) headers['X-Care-Sid'] = s.sid;
+  /* Prefer cookie session; only send Care sid header when cookie auth is unavailable. */
+  if (s?.sid && !document.cookie.includes('sid=')) {
+    headers['X-Care-Sid'] = s.sid;
+  }
+  const csrf = readCsrfToken();
+  if (csrf) headers['X-Frappe-CSRF-Token'] = csrf;
   const res = await fetch(url, { ...init, headers, body, credentials: 'include' });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -65,7 +70,15 @@ async function jsonFetch<T>(url: string, init?: RequestInit & { json?: unknown }
   return (data && typeof data === 'object' && 'data' in data ? data.data : data) as T;
 }
 
-export type ClinicBranch = { id: number; name: string; code?: string; city?: string; active?: number };
+export type ClinicBranch = {
+  id: number;
+  name: string;
+  code?: string;
+  city?: string;
+  address?: string;
+  phone?: string;
+  active?: number;
+};
 
 /** Live Care branches (public directory — Ashoknagar, Hasnabad, …). */
 export async function listCareBranches(): Promise<ClinicBranch[]> {
@@ -152,6 +165,8 @@ export type CareBookingPayload = {
   branch?: string;
   branch_id?: number;
   practitioner_id?: number;
+  /** When true, Care/Aesthetic APIs may ignore slot capacity. Default false. */
+  override_availability?: boolean;
 };
 
 function crmReferral(payload: { tracking_tag?: string; referred_by?: string; executive?: string }) {
@@ -203,7 +218,8 @@ export async function createCareBooking(payload: CareBookingPayload) {
       date: payload.date,
       time: payload.time,
       notes: crmNotes(payload),
-      override_availability: true,
+      /* Slot override only when explicitly marked (managers / forced walk-ins). */
+      override_availability: Boolean(payload.override_availability),
       ...(payload.branch_id ? { branch_id: payload.branch_id } : {}),
       ...(payload.practitioner_id ? { practitioner_id: payload.practitioner_id } : {}),
     },
@@ -246,7 +262,7 @@ export async function createAestheticBooking(payload: CareBookingPayload) {
       date: payload.date,
       time: payload.time,
       notes: crmNotes(payload),
-      override_availability: true,
+      override_availability: Boolean(payload.override_availability),
       ...(payload.branch_id ? { branch_id: payload.branch_id } : {}),
     },
   });
@@ -501,6 +517,37 @@ export async function listCrmOwnership(): Promise<CrmOwnershipMap> {
   };
 }
 
+export type CrmTransferHistoryRow = {
+  id: string;
+  lead_id: string;
+  lead_name: string;
+  previous_owner: string;
+  new_owner: string;
+  transferred_by: string;
+  transferred_at: string;
+  remarks: string;
+  followups_moved: number;
+  followup_ids: string[];
+};
+
+export type CrmTransferNotice = {
+  id: string;
+  recipient: string;
+  title: string;
+  body: string;
+  lead_id: string;
+  read: number;
+  created_at: string;
+};
+
+export type CrmRecordSnapshots = {
+  leads?: Record<string, unknown>[];
+  activities?: Record<string, unknown>[];
+  deals?: Record<string, unknown>[];
+  contacts?: Record<string, unknown>[];
+  count?: number;
+};
+
 export async function transferCrmOwnership(input: {
   fromOwner: string;
   toOwner: string;
@@ -508,13 +555,21 @@ export async function transferCrmOwnership(input: {
   activityIds?: string[];
   dealIds?: string[];
   contactIds?: string[];
-  note?: string;
+  note: string;
+  leadMeta?: Array<{ id: string; name: string; followup_ids?: string[] }>;
+  transferredByName?: string;
+  /** Full lead/follow-up payloads so the new owner's browser can load them. */
+  snapshots?: CrmRecordSnapshots;
 }) {
   return erpMethod<{
     saved?: number;
     leads?: number;
     activities?: number;
+    snapshots?: number;
+    history?: number;
     ownership?: CrmOwnershipMap;
+    transfer_history?: { history?: CrmTransferHistoryRow[] };
+    notices?: { notices?: CrmTransferNotice[]; unread?: number };
   }>('api.transfer_crm_ownership', {
     from_owner: input.fromOwner,
     to_owner: input.toOwner,
@@ -523,7 +578,58 @@ export async function transferCrmOwnership(input: {
     deal_ids: input.dealIds?.length ? JSON.stringify(input.dealIds) : undefined,
     contact_ids: input.contactIds?.length ? JSON.stringify(input.contactIds) : undefined,
     note: input.note,
+    lead_meta: input.leadMeta?.length ? JSON.stringify(input.leadMeta) : undefined,
+    transferred_by_name: input.transferredByName,
+    snapshots: input.snapshots ? JSON.stringify(input.snapshots) : undefined,
   });
+}
+
+/** Pull lead/follow-up payloads assigned to this owner (after transfer). */
+export async function listCrmRecordSnapshots(owner?: string, includeAll = false): Promise<CrmRecordSnapshots> {
+  const data = await erpMethod<CrmRecordSnapshots>('api.list_crm_record_snapshots', {
+    owner: owner || undefined,
+    include_all: includeAll ? 1 : 0,
+    limit: 2000,
+  });
+  return {
+    leads: Array.isArray(data?.leads) ? data.leads : [],
+    activities: Array.isArray(data?.activities) ? data.activities : [],
+    deals: Array.isArray(data?.deals) ? data.deals : [],
+    contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+    count: Number(data?.count) || 0,
+  };
+}
+
+/** Publish local records so other CRM logins can pull them (heal past transfers). */
+export async function upsertCrmRecordSnapshots(snapshots: CrmRecordSnapshots, defaultOwner?: string) {
+  return erpMethod<{ saved?: number }>('api.upsert_crm_record_snapshots', {
+    snapshots: JSON.stringify(snapshots),
+    default_owner: defaultOwner,
+  });
+}
+
+export async function listCrmTransferHistory(leadId?: string): Promise<CrmTransferHistoryRow[]> {
+  const data = await erpMethod<{ history?: CrmTransferHistoryRow[] }>('api.list_crm_transfer_history', {
+    lead_id: leadId || undefined,
+    limit: leadId ? 50 : 200,
+  });
+  return Array.isArray(data?.history) ? data.history : [];
+}
+
+export async function listCrmTransferNotices(recipient?: string): Promise<{
+  notices: CrmTransferNotice[];
+  unread: number;
+}> {
+  const data = await erpMethod<{ notices?: CrmTransferNotice[]; unread?: number }>(
+    'api.list_crm_transfer_notices',
+    { recipient: recipient || undefined, limit: 40 },
+  );
+  const notices = Array.isArray(data?.notices) ? data.notices : [];
+  return { notices, unread: Number(data?.unread) || notices.filter((n) => !n.read).length };
+}
+
+export async function markCrmTransferNoticeRead(noticeId: string) {
+  return erpMethod<{ ok?: boolean }>('api.mark_crm_transfer_notice_read', { notice_id: noticeId });
 }
 
 /** Push CRM lead + follow-up context to REACH and assign a Reach portal user. */
@@ -555,4 +661,162 @@ export async function syncCrmLeadStatusToReach(crmLeadId: string, status: string
   return erpMethod('api.sync_crm_lead_status_to_reach', { crm_lead_id: crmLeadId, status });
 }
 
-export { session as crmSession, erpMethod };
+export type CrmWhatsAppApiSettings = {
+  configured?: boolean;
+  enabled?: boolean;
+  provider?: 'meta' | 'interakt' | 'aisensy' | 'custom';
+  apiUrl?: string;
+  apiKey?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  senderNumber?: string;
+  webhookVerifyToken?: string;
+  channel?: 'franchise' | 'service';
+  franchiseFollowUp?: boolean;
+  serviceFollowUp?: boolean;
+};
+
+/** Meta Cloud WhatsApp — Franchise (AI Workforce) or Service channel. CRM Managers only. */
+export async function getCrmWhatsAppApi(channel: 'franchise' | 'service' = 'franchise'): Promise<CrmWhatsAppApiSettings> {
+  return erpMethod<CrmWhatsAppApiSettings>('api.get_crm_whatsapp_api', { channel });
+}
+
+/** Persist Service Meta Cloud WhatsApp credentials (server-side). */
+export async function saveCrmServiceWhatsAppApi(input: {
+  enabled: boolean;
+  provider?: string;
+  apiUrl?: string;
+  apiKey?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  senderNumber?: string;
+  webhookVerifyToken?: string;
+}) {
+  return erpMethod<{ ok?: boolean; configured?: boolean }>('api.save_crm_service_whatsapp_api', {
+    enabled: input.enabled ? 1 : 0,
+    provider: input.provider,
+    api_url: input.apiUrl,
+    api_key: input.apiKey,
+    phone_number_id: input.phoneNumberId,
+    waba_id: input.wabaId,
+    sender_number: input.senderNumber,
+    webhook_verify_token: input.webhookVerifyToken,
+  });
+}
+
+export type CrmWhatsAppConversation = {
+  id: string;
+  phone: string;
+  status: string;
+  contact_name: string;
+  crm_wing: string;
+  /** Franchise vs Service Meta number stream. */
+  crm_channel?: 'franchise' | 'service' | string;
+  channel?: 'franchise' | 'service' | string;
+  crm_lead_id?: string;
+  rfms_lead_id?: string;
+  last_message_at?: string;
+  last_direction?: string;
+  crm_last_read_at?: string;
+  /** Server shared-inbox flag: true only for unread inbound messages. */
+  unread?: boolean;
+  preview?: string;
+};
+
+export type CrmWhatsAppMessage = {
+  id: string;
+  direction: string;
+  body: string;
+  meta_message_id?: string;
+  status?: string;
+  created_at?: string;
+  media_url?: string;
+  media_kind?: string;
+  media_mime?: string;
+};
+
+export type CrmWhatsAppCounts = Record<string, number>;
+
+export async function listCrmWhatsAppConversations(input?: {
+  wing?: string;
+  q?: string;
+  limit?: number;
+  channel?: 'all' | 'franchise' | 'service' | string;
+}): Promise<{
+  conversations: CrmWhatsAppConversation[];
+  counts: CrmWhatsAppCounts;
+  wing: string;
+  channel?: string;
+}> {
+  return erpMethod('api.list_crm_whatsapp_conversations', {
+    wing: input?.wing || 'all',
+    q: input?.q,
+    limit: input?.limit ?? 100,
+    channel: input?.channel || 'all',
+  });
+}
+
+export async function getCrmWhatsAppThread(input: {
+  conversationId?: string;
+  phone?: string;
+  wing?: string;
+  channel?: 'franchise' | 'service' | string;
+  crmLeadId?: string;
+  contactName?: string;
+}): Promise<{ conversation: CrmWhatsAppConversation | null; messages: CrmWhatsAppMessage[] }> {
+  return erpMethod('api.get_crm_whatsapp_thread', {
+    conversation_id: input.conversationId,
+    phone: input.phone,
+    wing: input.wing,
+    channel: input.channel,
+    crm_lead_id: input.crmLeadId,
+    contact_name: input.contactName,
+  });
+}
+
+/** Mark chat read for the whole CRM team (shared WhatsApp Centre badge). */
+export async function markCrmWhatsAppConversationRead(conversationId: string) {
+  return erpMethod<{ ok?: boolean; id?: string; crm_last_read_at?: string }>(
+    'api.mark_crm_whatsapp_conversation_read',
+    { conversation_id: conversationId },
+  );
+}
+
+/** Send Meta Cloud WhatsApp — Franchise (AI) or Service (dedicated) channel. */
+export async function sendCrmWhatsApp(input: {
+  phone: string;
+  message: string;
+  contactName?: string;
+  crmLeadId?: string;
+  wing?: string;
+  channel?: 'franchise' | 'service';
+  conversationId?: string;
+  template?: string;
+  useTemplate?: boolean;
+}): Promise<{
+  ok?: boolean;
+  message_id?: string;
+  phone?: string;
+  conversation_id?: string;
+  crm_wing?: string;
+  channel?: string;
+  template?: string;
+  sender?: string;
+}> {
+  const wing = String(input.wing || 'franchise').toLowerCase();
+  /* Default Franchise (WA Centre brand tabs). Service follow-up/lead must pass channel: 'service'. */
+  const channel = input.channel === 'service' ? 'service' : 'franchise';
+  return erpMethod('api.send_crm_whatsapp', {
+    phone: input.phone,
+    message: input.message,
+    contact_name: input.contactName,
+    crm_lead_id: input.crmLeadId,
+    wing,
+    channel,
+    conversation_id: input.conversationId,
+    template: input.template,
+    use_template: input.useTemplate ? 1 : undefined,
+  });
+}
+
+export { session as crmSession };

@@ -48,7 +48,7 @@ export function StaffLayout() {
       : pathologist && !isLabTechnician(roles)
         ? '/dashboard/pathologist'
         : '/dashboard/lab-reports';
-  const topbarRole = onPathologist ? 'Pathologist' : dashboardLabel(roles);
+  const topbarName = user?.fullName || user?.full_name || user?.user || (onPathologist ? 'Pathologist' : 'Lab Technician');
   const showPatientBottomNav = isMobile && patientPortal && !phlebo && !labTech && !provider;
   const { liveShare } = usePhleboLocationToggles();
   usePhleboGps(liveShare, undefined, phlebo);
@@ -90,12 +90,16 @@ export function StaffLayout() {
         { type: 'link', to: '/dashboard/accession', label: 'Accession' },
         { type: 'link', to: '/dashboard/pf-inbox', label: 'PhleboFirst inbox' },
         { type: 'link', to: '/dashboard/report-lifecycle', label: 'Lifecycle' },
+        { type: 'link', to: '/dashboard/critical-alerts', label: 'Critical alerts' },
+        { type: 'link', to: '/dashboard/qc', label: 'IQC / NABL QC' },
+        { type: 'link', to: '/dashboard/qms', label: 'QMS' },
         { type: 'link', to: '/dashboard/lab-tech', label: 'Bench' },
         { type: 'link', to: '/dashboard/all-bookings', label: 'All bookings' },
         { type: 'link', to: '/dashboard/reagents', label: 'Reagents' },
         { type: 'link', to: '/dashboard/inventory', label: 'Inventory Management' },
         { type: 'link', to: '/dashboard/pathologist', label: 'Pathologist' },
-        { type: 'link', to: '/dashboard/pathologist/signed', label: 'Reports (Signed)' },
+        { type: 'link', to: '/dashboard/test-master', label: 'Test Master' },
+        { type: 'link', to: '/dashboard/settings', label: 'Settings' },
       );
       items.push({ type: 'link', to: '/dashboard/profile', label: 'My Profile' });
     } else {
@@ -113,7 +117,7 @@ export function StaffLayout() {
         items.push({ type: 'link', to: '/dashboard/pf-ops', label: 'PhleboFirst ops' });
       }
       if (isHrStaff(roles)) {
-        items.push({ type: 'link', to: '/dashboard/hr', label: 'HR' });
+        items.push({ type: 'link', to: '/dashboard/profile', label: 'HR' });
         items.push({ type: 'link', to: '/dashboard/performance', label: 'Training' });
       }
       if (patientPortal) {
@@ -197,7 +201,7 @@ export function StaffLayout() {
             {patientPortal && <NavLink to="/dashboard/patient">My health</NavLink>}
             {isFranchisee(roles) && <NavLink to="/dashboard/franchisee">Franchisee hub</NavLink>}
             {isStaff(roles) && <NavLink to="/dashboard/staff">Operations</NavLink>}
-            {isHrStaff(roles) && <NavLink to="/dashboard/hr">HR self-service</NavLink>}
+            {isHrStaff(roles) && <NavLink to="/dashboard/profile">HR self-service</NavLink>}
             {isHrStaff(roles) && <NavLink to="/people">People HRMS</NavLink>}
             {isHrStaff(roles) && <NavLink to="/dashboard/performance">Training & appraisal</NavLink>}
 
@@ -283,8 +287,8 @@ export function StaffLayout() {
           />
         ) : !isMobile && labTech ? (
           <LabTechTopbar
-            name={user?.fullName || user?.user || (onPathologist ? 'Pathologist' : 'Lab Technician')}
-            roleLabel={topbarRole}
+            name={topbarName}
+            roleLabel={topbarName}
             onLogout={logout}
             hideAlerts={requesterOnly || pfOnly}
           />
