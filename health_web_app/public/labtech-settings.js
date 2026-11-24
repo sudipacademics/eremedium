@@ -28,6 +28,7 @@
     error: '',
     inlinePdf: '',
     printBusy: false,
+    libOpen: true,
   };
 
   function esc(v) {
@@ -472,6 +473,25 @@
     );
   }
 
+  function rtmIcon(name) {
+    var paths = {
+      doc: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>',
+      pdf: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/>',
+      print: '<path d="M7 8V4h10v4"/><path d="M6 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v6H7z"/>',
+      reset: '<path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/>',
+      save: '<path d="M6 4h9l3 3v13H6z"/><path d="M8 4v5h8"/><path d="M8 20v-6h8v6"/>',
+      info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 8h.01"/>',
+      layers: '<path d="M12 4l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
+      eye: '<path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/>',
+      chev: '<path d="M6 9l6 6 6-6"/>',
+    };
+    return (
+      '<svg class="rtm-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (paths[name] || '') +
+      '</svg>'
+    );
+  }
+
   function libraryEntries() {
     var layouts = (st.rpm && st.rpm.layouts) || {};
     return [
@@ -497,10 +517,17 @@
   }
 
   function libraryHtml(large) {
+    var open = st.libOpen !== false;
     return (
-      '<div class="rtm-library' +
-      (large ? ' large' : '') +
-      '"><h3>Template library</h3><p class="rtm-help">Open a template to view its page preview.</p>' +
+      '<section class="rtm-card rtm-library-card' +
+      (open ? ' is-open' : ' is-shut') +
+      '"><button type="button" class="rtm-panel-head rtm-lib-toggle" data-rtm-lib-toggle="1" aria-expanded="' +
+      (open ? 'true' : 'false') +
+      '"><span class="rtm-ico">' +
+      rtmIcon('layers') +
+      '</span><h3>Template library</h3><span class="rtm-chev">' +
+      rtmIcon('chev') +
+      '</span></button><div class="rtm-lib-body"><p class="rtm-help">Open a template to view its page preview.</p>' +
       libraryEntries()
         .map(function (item) {
           var on = st.brand === item.brand && st.format === item.fmt;
@@ -519,11 +546,13 @@
             esc(item.lab) +
             '</small><small>' +
             esc(item.formatLabel) +
-            '</small><span>View preview</span></div></button>'
+            '</small><span class="rtm-view">' +
+            rtmIcon('eye') +
+            ' View preview</span></div></button>'
           );
         })
         .join('') +
-      '</div>'
+      '</div></section>'
     );
   }
 
@@ -606,7 +635,9 @@
         ? '<div class="rtm-apply"><label>Apply to LabTech branch' +
           branchSelect.replace('data-rpm-branch', 'data-rpm-apply-one') +
           '</label><button type="button" class="emp-btn ghost" data-rpm-apply-one>Apply to this branch</button></div>'
-        : '<p class="rtm-help">This template is the lab default. LabTech branches will be assigned here when that module is added. Franchise and other-module branches are not used.</p>';
+        : '<p class="rtm-info">' +
+          rtmIcon('info') +
+          '<span>This template is the lab default. LabTech branches will be assigned here when that module is added. Franchise and other-module branches are not used.</span></p>';
     var setup =
       '<div class="rtm-grid">' +
       '<section class="rtm-card rtm-left"><h3><span>1</span> Select Lab / Brand</h3>' +
@@ -698,18 +729,20 @@
             Math.max(40, 297 - box.top - box.bottom).toFixed(1) +
             ' mm</p>') +
       '</section>' +
-      '<section class="rtm-card rtm-right"><h3>Template</h3>' +
+      '<div class="rtm-side"><section class="rtm-card rtm-right">' +
+      '<div class="rtm-panel-head"><span class="rtm-ico">' +
+      rtmIcon('doc') +
+      '</span><h3>Template</h3></div>' +
       '<label class="rtm-num">Template name<input type="text" data-rpm-field="template_name" value="' +
       esc(L.template_name || defaultName) +
       '"/></label>' +
-      '<p class="rtm-help">Lab: <b>' +
+      '<div class="rtm-spec"><p>Lab: <b>' +
       esc(brandName) +
-      '</b><br/>Format: <b>' +
+      '</b></p><p>Format: <b>' +
       esc(formatLabel(st.format, st.brand)) +
-      '</b><br/>Branch: <b>' +
+      '</b></p><p>Branch: <b>' +
       esc(st.branch || 'Lab default') +
-      '</b></p>' +
-      '<p class="rtm-help">Page: A4 portrait<br/>Top ' +
+      '</b></p><p>Page: A4 portrait</p><p>Top ' +
       box.top +
       ' mm · bottom ' +
       box.bottom +
@@ -717,16 +750,21 @@
       box.left +
       ' mm · right ' +
       box.right +
-      ' mm</p>' +
+      ' mm</p></div>' +
       '<div class="rtm-actions">' +
-      '<button type="button" class="emp-btn ghost" data-rpm-pdf>Preview PDF</button>' +
-      '<button type="button" class="emp-btn ghost" data-rpm-pdf>Test print</button>' +
-      (can ? '<button type="button" class="emp-btn ghost" data-rpm-reset>Reset</button>' : '') +
-      (can ? '<button type="button" class="emp-btn primary" data-rpm-save>Save template</button>' : '') +
+      '<button type="button" class="emp-btn ghost rtm-tool" data-rpm-pdf>' +
+      rtmIcon('pdf') +
+      '<span>Preview PDF</span></button>' +
+      '<button type="button" class="emp-btn ghost rtm-tool" data-rpm-pdf>' +
+      rtmIcon('print') +
+      '<span>Test print</span></button>' +
+      (can ? '<button type="button" class="emp-btn ghost rtm-tool" data-rpm-reset>' + rtmIcon('reset') + '<span>Reset</span></button>' : '') +
+      (can ? '<button type="button" class="emp-btn primary rtm-save" data-rpm-save>' + rtmIcon('save') + '<span>Save template</span></button>' : '') +
       '</div>' +
       applyBlock +
+      '</section>' +
       libraryHtml(false) +
-      '</section></div>';
+      '</div></div>';
     return (
       '<div class="rtm" data-rpm-root="1">' +
       '<div class="rtm-head"><div><h2>Report Template Management</h2>' +
@@ -972,6 +1010,11 @@
           st.error = err.message;
           draw();
         });
+      return;
+    }
+    if (e.target.closest('[data-rtm-lib-toggle]')) {
+      st.libOpen = !st.libOpen;
+      draw();
       return;
     }
     var libCard = e.target.closest('[data-rtm-lib]');

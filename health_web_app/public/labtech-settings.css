@@ -409,6 +409,34 @@ html[data-lt-hold="settings"] .layout-labtech main.staff-page {
 .rtm-lib-preview .rtm-body * { display: none; }
 .rtm-library.large .rtm-lib-card { grid-template-columns: 120px 1fr; }
 .rtm-library.large .rtm-lib-preview .rtm-sheet { width: 120px; }
+.rtm-side { display: grid; gap: 12px; min-width: 0; }
+.rtm-side .rtm-card { padding: 0 0 14px; overflow: hidden; gap: 12px; }
+.rtm-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: #f5f3ff; border-bottom: 1px solid #ede9fe; }
+.rtm-panel-head h3 { margin: 0; font-size: 15px; color: #1e1b4b; }
+.rtm-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #ede9fe; color: #6d28d9; }
+.rtm-chev { margin-left: auto; color: #7c3aed; display: grid; transition: transform .15s ease; }
+button.rtm-lib-toggle { width: 100%; border: 0; cursor: pointer; font: inherit; text-align: left; color: inherit; }
+button.rtm-lib-toggle:hover { background: #ede9fe; }
+.rtm-lib-body { display: grid; gap: 12px; }
+.rtm-library-card.is-shut { padding-bottom: 0; }
+.rtm-library-card.is-shut .rtm-lib-body { display: none; }
+.rtm-library-card.is-shut .rtm-panel-head { border-bottom: 0; }
+.rtm-library-card.is-shut .rtm-chev { transform: rotate(180deg); }
+.rtm-side .rtm-num, .rtm-spec, .rtm-side .rtm-actions, .rtm-info, .rtm-side .rtm-help { margin-left: 14px; margin-right: 14px; }
+.rtm-side .rtm-num input { height: 40px; border-radius: 10px; background: #fff; }
+.rtm-spec { display: grid; gap: 2px; }
+.rtm-spec p { margin: 0; color: #334155; font-size: 13px; }
+.rtm-side .rtm-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.rtm-side .rtm-tool, .rtm-side .rtm-save { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border-radius: 12px; font-weight: 700; font-size: 13px; padding: 8px 8px; cursor: pointer; }
+.rtm-side .rtm-tool { background: #fff; border: 1px solid #e2e8f0; color: #334155; }
+.rtm-side .rtm-save { background: #7c3aed; border: 1px solid #7c3aed; color: #fff; }
+.rtm-info { display: flex; gap: 8px; align-items: flex-start; margin: 0 14px; padding: 10px 12px; border-radius: 12px; background: #eff6ff; color: #2563eb; font-size: 13px; }
+.rtm-info span { color: #1e3a8a; }
+.rtm-info .rtm-svg { flex: none; margin-top: 1px; }
+.rtm-library-card .rtm-lib-card { margin: 0 14px; border-radius: 14px; background: #fff; }
+.rtm-library-card .rtm-lib-card.on { background: #f5f3ff; border-color: #7c3aed; box-shadow: none; }
+.rtm-view { display: inline-flex; align-items: center; gap: 6px; color: #7c3aed; font-size: 12px; font-weight: 700; margin-top: 2px; }
+@media (max-width: 1280px) { .rtm-side .rtm-actions { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 1100px) {
   .rtm-grid, .rtm-labs, .rtm-formats, .rtm-art-row, .rtm-config-list, .rtm-library.large { grid-template-columns: 1fr; }
 }
